@@ -1,4 +1,6 @@
-
+import os
+import shutil
+import re
 
 def data_prep(source_dir, temp_dir, dict_path, lm_path):
     """
@@ -439,7 +441,7 @@ def make_lexicon_fst(data_directory, pronunciation_probabilities = True,
     subprocess.call(['fstarcsort', '--sort_type=olabel',
                 temp_fst_path, output_fst])
 
-def prepare_lang(data_directory, oov_code = "<unk>",
+def prepare_lang(data_directory, lm_path, oov_code = "<unk>",
                 position_dependent_phones = True,
                 num_sil_states = 5,
                 num_nonsil_states = 3,
@@ -462,3 +464,236 @@ def prepare_lang(data_directory, oov_code = "<unk>",
     create_word_file(data_directory)
     prepare_align_dict(data_directory)
     make_lexicon_fst(data_directory)
+
+    format_lm(data_directory, lm_path)
+
+class LM(object):
+    ngram_pattern = re.compile(r'^\\(\d)-grams:$')
+    def __init__(self, path):
+        self.path = path
+
+    def unigram_words(self):
+        current_ngram = None
+        with open(self.path, 'r', encoding = 'utf8') as f:
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+
+                ngram_match = self.ngram_pattern.match(line)
+                if ngram_match is not None:
+                    current_ngram = ngram_match.groups()[0]
+                    if current_ngram != '1':
+                        break
+                    continue
+                if current_ngram is None:
+                    continue
+                line = line.split('\t')
+                yield line[1]
+
+
+def find_oovs(words, lm):
+    oovs = []
+    for word in lm.unigram_words():
+        if word not in words:
+            oovs.append(word)
+    return oovs
+
+def oov_path(data_directory):
+    lang_directory = os.path.join(data_directory, 'lang')
+    return os.path.join(lang_directory, 'oov.txt')
+
+def save_oovs(oovs, data_directory):
+    with open(oov_path(data_directory), 'w', encoding = 'utf8') as f:
+        for line in oovs:
+            f.write(line + '\n')
+
+def format_fst(fst_path, formatted_fst_path, oovs):
+    ss = set(["<s>", "</s>"])
+    oovs = set(oovs)
+    with open(fst_path, 'r', encoding = 'utf8') as inf, \
+        open(formatted_fst_path, 'w', encoding = 'utf8') as outf:
+        for line in inf:
+            line = line.strip()
+            if line == '':
+                outf.write(line)
+                continue
+            line = line.split()
+            if len(line) >= 4:
+                if line[2] in oovs or line[3] in oovs:
+                    continue
+                if line[2] == '#0' or line[3] == '#0':
+                    raise(Exception('#0 a reserved symbol but found in the lm.'))
+
+                if line[2] == '<eps>':
+                    line[2] = '#0'
+
+                if line[2] in ss:
+                    line[2] = '<eps>'
+                if line[3] in ss:
+                    line[3] = '<eps>'
+
+            line = '\t'.join(line)
+
+            outf.write(line + '\n')
+
+def format_lm(data_directory, lm_path):
+    dict_directory = os.path.join(data_directory, 'dict')
+    lang_directory = os.path.join(data_directory, 'lang')
+    phone_directory = os.path.join(lang_directory, 'phones')
+    tmp_fst = os.path.join(lang_directory, 'temp.fst')
+    formatted_fst = os.path.join(lang_directory, 'formatted.fst')
+    words = load_word_to_int(lang_directory)
+    word_path = os.path.join(lang_directory, 'words.txt')
+    lm = LM(lm_path)
+    oovs = find_oovs(words, lm)
+    save_oovs(oovs, data_directory)
+
+    proc = subprocess.Popen(['arpa2fst', lm_path], stdout = subprocess.PIPE)
+    with open(tmp_fst, 'w', encoding = 'utf8') as f:
+        proc2 = subprocess.Popen(['fstprint'], stdin = proc.stdout, stdout = f)
+        proc2.wait()
+
+    format_fst(tmp_fst, formatted_fst, oovs)
+
+    comp_proc = subprocess.Popen(['fstcompile', '--isymbols='+word_path,
+        '--osymbols='+ word_path,
+        '--keep_isymbols=false', '--keep_osymbols=false', formatted_fst], stdout = subprocess.PIPE)
+    rmeps_proc = subprocess.Popen(['fstrmepsilon'], stdin = comp_proc.stdout, stdout = subprocess.PIPE)
+    g_fst_path = os.path.join(lang_directory, 'G.fst')
+    with open(g_fst_path, 'wb') as f:
+        final_proc = subprocess.Popen(['fstarcsort', '--sort_type=ilabel'], stdin = rmeps_proc.stdout, stdout = f)
+        final_proc.wait()
+    subprocess.call(['fstisstochastic', g_fst_path])
+
+def load_text(path):
+    with open(path, 'r', encoding = 'utf8') as f:
+        text = f.read().strip()
+    return text
+
+from collections import defaultdict
+
+def output_mapping(mapping, path):
+    with open(path, 'w', encoding = 'utf8') as f:
+        for k in sorted(mapping.keys()):
+            v = mapping[k]
+            if isinstance(v, list):
+                v = ' '.join(v)
+            f.write('{} {}\n'.format(k, v))
+
+def prep_train_data(source_directory, train_directory):
+    os.makedirs(train_directory, exist_ok = True)
+    speaker_dirs = os.listdir(source_directory)
+    speak_utt_mapping = defaultdict(list)
+    utt_speak_mapping = {}
+    utt_wav_mapping = {}
+    text_mapping = {}
+    for speaker_id in speaker_dirs:
+        speaker_dir = os.path.join(source_directory, speaker_id)
+        if not os.path.isdir(speaker_dir):
+            continue
+
+        for f in os.listdir(speaker_dir):
+            if not f.endswith('.lab'):
+                continue
+            utt_name = os.path.splitext(f)[0]
+            path = os.path.join(speaker_dir, f)
+            wav_path = path.replace('.lab', '.wav')
+            text_mapping[utt_name] = load_text(path)
+            speak_utt_mapping[speaker_id].append(utt_name)
+            utt_wav_mapping[utt_name] = wav_path
+            utt_speak_mapping[utt_name] = speaker_id
+
+    spk2utt = os.path.join(train_directory, 'spk2utt')
+    output_mapping(speak_utt_mapping, spk2utt)
+
+    utt2spk = os.path.join(train_directory, 'utt2spk')
+    output_mapping(utt_speak_mapping, utt2spk)
+
+    text = os.path.join(train_directory, 'text')
+    output_mapping(text_mapping, text)
+
+    wavscp = os.path.join(train_directory, 'wav.scp')
+    output_mapping(utt_wav_mapping, wavscp)
+
+def load_utt2spk(train_directory):
+    utt2spk = []
+    with open(os.path.join(train_directory, 'utt2spk'), 'r', encoding = 'utf8') as f:
+        for line in f:
+            line = line.strip()
+            if line == '':
+                continue
+            utt2spk.append(line.split())
+    return utt2spk
+
+def load_wavscp(train_directory):
+    wavscp = {}
+    with open(os.path.join(train_directory, 'wav.scp'), 'r', encoding = 'utf8') as f:
+        for line in f:
+            line = line.strip()
+            if line == '':
+                continue
+            utt, wav = line.split()
+            wavscp[utt] = wav
+    return wavscp
+
+def find_best_groupings(utt2spk, num_jobs):
+    num_utt = len(utt2spk)
+
+    interval = int(num_utt / num_jobs)
+    groups = []
+    current_ind = 0
+    for i in range(num_jobs):
+        if i == num_jobs - 1:
+            end_ind = -1
+        else:
+            end_ind = current_ind + interval
+            spk = utt2spk[end_ind][1]
+            for j in range(end_ind, num_utt):
+                if utt2spk[j][1] != spk:
+                    j -= 1
+                    break
+            else:
+                j = num_utt - 1
+            for k in range(end_ind, 0, -1):
+                if utt2spk[k][1] != spk:
+                    k += 1
+                    break
+
+            if j - end_ind < i - end_ind:
+                end_ind = j
+            else:
+                end_ind = k
+        groups.append(utt2spk[current_ind:end_ind])
+        current_ind = end_ind
+    return groups
+
+def save_groups(groups, seg_dir, wavscp):
+    for i, g in enumerate(groups):
+        with open(os.path.join(seg_dir, 'wav.{}.scp'.format(i+1)), 'w', encoding = 'utf8') as f:
+            for utt in g:
+                wav = wavscp[utt[0]]
+                f.write('{} {}\n'.format(utt[0], wav))
+
+def split_scp(train_directory, seg_dir, num_jobs):
+    utt2spk = load_utt2spk(train_directory)
+    groups = find_best_groupings(utt2spk, num_jobs)
+    wavscp = load_wavscp(train_directory)
+    save_groups(groups, seg_dir, wavscp)
+
+from .multiprocessing import mfcc
+
+def make_mfccs(train_directory, mfcc_directory, mfcc_config_path, num_jobs = None):
+    if num_jobs is None:
+        num_jobs = 6
+    log_directory = os.path.join(mfcc_directory, 'log')
+    os.makedirs(log_directory, exist_ok = True)
+    split_scp(train_directory, log_directory, num_jobs)
+    mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config_path)
+
+def prep_config(config_directory):
+    os.makedirs(config_directory, exist_ok = True)
+
+    mfcc_config = os.path.join(config_directory, 'mfcc.conf')
+    with open(mfcc_config, 'w') as f:
+        f.write('--use-energy=false   # only non-default option.')

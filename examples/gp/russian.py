@@ -2,6 +2,11 @@
 import os
 import shutil
 import re
+import sys
+base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+sys.path.insert(0,base)
+
+from aligner.data_prep import prepare_lang, prep_train_data, make_mfccs, prep_config
 
 lang_encodings = {
                 'AR': 'iso-8859-1',
@@ -34,7 +39,7 @@ data_dir = os.path.join(source_dir, 'kaldi_align_data')
 
 dict_path = os.path.join(source_dir, 'Russian_Dict', 'Russian-GPDict.txt')
 
-lm_path = os.path.join(source_dir, 'Russian_languageModel', 'RU.3gram.lm.gz')
+lm_path = os.path.join(source_dir, 'Russian_languageModel', 'RU.3gram.lm')
 
 temp_dir = r'D:\temp\GP\Russian'
 
@@ -166,5 +171,39 @@ if __name__ == '__main__':
         print('Done!')
     else:
         print('Using existing data directory.')
-    globalphone_dict_prep(dict_path, data_dir)
-    prepare_lang(data_dir)
+    config_dir = os.path.join(data_dir, 'conf')
+    if not os.path.exists(config_dir):
+        print('Creating a config directory...')
+        prep_config(config_dir)
+        print('Done!')
+    else:
+        print('Using existing config directory.')
+
+    dict_dir = os.path.join(data_dir, 'dict')
+    if not os.path.exists(dict_dir):
+        print('Prepping dictionary...')
+        globalphone_dict_prep(dict_path, data_dir)
+        print('Done!')
+    else:
+        print('Using existing dictionary.')
+
+    lang_dir = os.path.join(data_dir, 'lang')
+    if not os.path.exists(lang_dir):
+        print('Prepping language models...')
+        prepare_lang(data_dir, lm_path)
+        print('Done!')
+    else:
+        print('Using existing language models.')
+
+    train_dir = os.path.join(data_dir, 'train')
+    if not os.path.exists(train_dir):
+        print('Prepping training data...')
+        files_dir = os.path.join(data_dir, 'files')
+        prep_train_data(files_dir, train_dir)
+        print('Done!')
+    else:
+        print('Using existing training set up.')
+
+    mfcc_dir = os.path.join(data_dir, 'mfcc')
+    mfcc_config = os.path.join(config_dir, 'mfcc.conf')
+    make_mfccs(train_dir, mfcc_dir, mfcc_config, num_jobs = 6)
