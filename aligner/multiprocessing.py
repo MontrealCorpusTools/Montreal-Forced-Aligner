@@ -8,7 +8,7 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):
     raw_scp_path = os.path.join(mfcc_directory, 'raw_mfcc.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
     scp_path = os.path.join(log_directory, 'wav.{}.scp'.format(job_name))
-    print('beginning')
+
     with open(log_path, 'w') as f:
         comp_proc = subprocess.Popen(['compute-mfcc-feats', '--verbose=2',
                     '--config=' + mfcc_config_path,
@@ -19,7 +19,6 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):
             'ark,scp:{},{}'.format(raw_mfcc_path,raw_scp_path)],
             stdin = comp_proc.stdout, stderr = f)
         copy_proc.wait()
-    print('ended')
 
 def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config_path):
     jobs = [ (mfcc_directory, log_directory, x, mfcc_config_path)
