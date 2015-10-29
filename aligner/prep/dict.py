@@ -5,7 +5,7 @@ import math
 import subprocess
 import shutil
 
-from .helper import load_phone_to_int, load_word_to_int
+from .helper import load_phone_to_int, load_word_to_int, load_text
 
 def prepare_dict(data_directory, oov_code = "<unk>",
                 position_dependent_phones = True,
@@ -94,7 +94,6 @@ def generate_topo(lang_directory, sil_phones, nonsil_phones,
         f.write("\n<State> {} </State>\n".format(num_nonsil_states))
         f.write("</TopologyEntry>\n")
 
-        f.write('<Topology>\n')
         f.write("<TopologyEntry>\n")
         f.write("<ForPhones>\n")
         f.write("{}\n".format(' '.join(sil_phones)))
@@ -138,7 +137,6 @@ def write_oov(oov_code, lang_directory, word_mapping):
     with open(os.path.join(lang_directory,'oov.txt'),'w') as f:
         f.write(oov_code)
     save_int(os.path.join(lang_directory,'oov.int'), [oov_code], word_mapping)
-
 
 def validate_dict_dir(dict_directory):
     lexiconp_path = os.path.join(dict_directory, 'lexiconp.txt')

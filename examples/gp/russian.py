@@ -8,6 +8,8 @@ sys.path.insert(0,base)
 
 from aligner.data_prep import data_prep
 
+from aligner.train import train_mono
+
 lang_encodings = {
                 'AR': 'iso-8859-1',
                 'BG': 'utf8',
@@ -66,7 +68,7 @@ def parse_rmn_file(path, output_dir, lang_code):
                 with open(lab_path, 'w') as fw:
                     fw.write(line)
 
-def parse_trl_file(path, output_dir, lang_code):
+def parse_trl_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
     speaker_line_pattern = re.compile('^;SprecherID\s(\d{3})$')
     speaker = None
@@ -79,13 +81,19 @@ def parse_trl_file(path, output_dir, lang_code):
                     raise(Exception('The trl file did not start with the speaker id.'))
                 speaker = speaker_match.groups()[0]
             line = line.strip()
+            if line == '':
+                continue
             file_match = file_line_pattern.match(line)
             if file_match is not None:
                 current = file_match.groups()[0]
             elif current is not None:
-                lab_path = os.path.join(output_dir, '{}{}_{}.lab'.format(lang_code, speaker, current))
+                name = '{}{}_{}'.format(lang_code, speaker, current)
+                if name not in wav_files:
+                    continue
+                lab_path = os.path.join(output_dir, name+'.lab')
                 with open(lab_path, 'w', encoding = 'utf8') as fw:
                     fw.write(line.lower())
+
 
 def copy_wav_files(in_dir, out_dir):
     wave_files = [f for f in os.listdir(in_dir) if f.lower().endswith('.wav')]
@@ -106,12 +114,13 @@ def globalphone_prep(source_dir, data_dir):
         speaker_dir = os.path.join(adc_dir, speaker_id)
         if not os.path.isdir(speaker_dir):
             continue
+        wav_files = [os.path.splitext(x)[0] for x in os.listdir(speaker_dir) if x.endswith('.wav')]
         output_speaker_dir = os.path.join(files_dir, speaker_id)
         os.makedirs(output_speaker_dir, exist_ok = True)
         #rmn_path = os.path.join(rmn_dir, '{}{}.rmn'.format(lang_code, speaker_id))
         #parse_rmn_file(rmn_path, output_speaker_dir, lang_code)
         trl_path = os.path.join(trl_dir, '{}{}.trl'.format(lang_code, speaker_id))
-        parse_trl_file(trl_path, output_speaker_dir, lang_code)
+        parse_trl_file(trl_path, output_speaker_dir, lang_code, wav_files)
         copy_wav_files(speaker_dir, output_speaker_dir)
 
 def globalphone_dict_prep(path, data_dir):
@@ -181,3 +190,5 @@ if __name__ == '__main__':
         print('Using existing dictionary.')
 
     data_prep(data_dir, lm_path)
+
+    train_mono(data_dir)
