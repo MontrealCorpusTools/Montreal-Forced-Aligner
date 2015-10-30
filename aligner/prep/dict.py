@@ -31,6 +31,7 @@ def prepare_dict(data_directory, oov_code = "<unk>",
     create_word_boundaries(data_directory, position_dependent_phones)
     prepare_align_dict(data_directory)
     make_lexicon_fst(data_directory)
+    make_lexicon_fst_disambig(data_directory)
 
     write_oov(oov_code, lang_directory, word_mapping)
     create_int_files(lang_directory, phone_mapping, num_sil_states, num_nonsil_states)
@@ -71,7 +72,7 @@ def create_int_files(lang_directory, phone_mapping,
 
     convert_to_int(os.path.join(phone_directory, 'sets.txt'), phone_mapping)
     convert_to_int(os.path.join(phone_directory, 'roots.txt'), phone_mapping)
-    convert_to_int(os.path.join(phone_directory, 'word_boundary.txt'), phone_mapping)
+    convert_to_int(os.path.join(phone_directory, 'extra_questions.txt'), phone_mapping)
     convert_to_int(os.path.join(phone_directory, 'word_boundary.txt'), phone_mapping)
 
     sil_phones = [str(phone_mapping[x]) for x in sil]
@@ -82,6 +83,13 @@ def generate_topo(lang_directory, sil_phones, nonsil_phones,
                 num_sil_states = 5, num_nonsil_states = 3):
     filepath = os.path.join(lang_directory, 'topo')
     template = '<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>'
+    sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
+    transition_template = '<Transition> {} {}'
+    sil_transp = 1 / (num_sil_states - 1)
+    sil_transp = 1 / (num_sil_states - 1)
+    initial_transition = [transition_template.format(x, sil_transp) for x in range(num_sil_states-1)]
+    middle_transition = [transition_template.format(x, sil_transp) for x in range(1,num_sil_states)]
+    final_transition = [transition_template.format(num_sil_states-1, 0.75), transition_template.format(num_sil_states, 0.25)]
     with open(filepath, 'w') as f:
         f.write('<Topology>\n')
         f.write("<TopologyEntry>\n")
@@ -98,8 +106,15 @@ def generate_topo(lang_directory, sil_phones, nonsil_phones,
         f.write("<ForPhones>\n")
         f.write("{}\n".format(' '.join(sil_phones)))
         f.write("</ForPhones>\n")
-        states = [template.format(cur_state = x, next_state = x + 1)
-                    for x in range(num_sil_states)]
+        states = []
+        for i in range(num_sil_states):
+            if i == 0:
+                transition = ' '.join(initial_transition)
+            elif i == num_sil_states - 1:
+                transition = ' '.join(final_transition)
+            else:
+                transition = ' '.join(middle_transition)
+            states.append(sil_template.format(cur_state = i, transitions = transition))
         f.write('\n'.join(states))
         f.write("\n<State> {} </State>\n".format(num_sil_states))
         f.write("</TopologyEntry>\n")
@@ -363,7 +378,7 @@ def create_phone_symbol_table(data_directory):
     mapping = {}
 
     with open(outfile, 'w', encoding = 'utf8') as f:
-        for i, p in enumerate(['eps'] + silence_phones + nonsilence_phones + disambig):
+        for i, p in enumerate(['<eps>'] + silence_phones + nonsilence_phones + disambig):
             f.write(' '.join([p, str(i)]) + '\n')
             mapping[p] = str(i)
     return mapping
@@ -421,8 +436,8 @@ def create_word_file(data_directory):
         mapping['#0'] = i + 1
         f.write('{} {}\n'.format('<s>', i + 2))
         mapping['<s>'] = i + 2
-        f.write('{} {}\n'.format('<\s>', i + 3))
-        mapping['<\s>'] = i + 3
+        f.write('{} {}\n'.format('</s>', i + 3))
+        mapping['</s>'] = i + 3
     return mapping
 
 def prepare_align_dict(data_directory):
@@ -459,43 +474,99 @@ def prepare_align_dict(data_directory):
             f2.write('{} {} {}\n'.format(word_int, word_int, phones))
 
 def lexicon_to_fst(lexicon_path, lexicon_fst_path,
-                    pronunciation_probabilities, sil_prob):
-    loopstate = 0
-    nextstate = 1
-    with open(lexicon_path, 'r', encoding = 'utf8') as f, \
-        open(lexicon_fst_path, 'w', encoding = 'utf8') as outf:
-        for line in f:
-            line = line.strip()
-            if line == '':
-                continue
-            elements = line.split('\t')
+                    pronunciation_probabilities, sil_prob, silphone):
+    if sil_prob == 0:
+        loopstate = 0
+        nextstate = 1
+        with open(lexicon_path, 'r', encoding = 'utf8') as f, \
+            open(lexicon_fst_path, 'w', encoding = 'utf8') as outf:
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+                elements = line.split('\t')
 
-            w = elements.pop(0)
-            if not pronunciation_probabilities:
-                pron_cost = 0
-            else:
-                pron_prob = elements.pop(0)
-                pron_cost = -1 * math.log(float(pron_prob))
-
-            pron_cost_string = ''
-            if pron_cost != 0:
-                pron_cost_string = '\t{}'.pron_cost
-
-            s = loopstate
-            word_or_eps = w
-            elements = elements[-1].split(' ')
-            while len(elements) > 0:
-                p = elements.pop(0)
-                if len(elements) > 0:
-                    ns = nextstate
-                    nextstate += 1
+                w = elements.pop(0)
+                if not pronunciation_probabilities:
+                    pron_cost = 0
                 else:
-                    ns = loopstate
-                outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
-                word_or_eps = '<eps>'
-                pron_cost_string = ""
-                s = ns
-        outf.write("{}\t{}\n".format(loopstate, 0))
+                    pron_prob = elements.pop(0)
+                    pron_cost = -1 * math.log(float(pron_prob))
+
+                pron_cost_string = ''
+                if pron_cost != 0:
+                    pron_cost_string = '\t{}'.pron_cost
+
+                s = loopstate
+                word_or_eps = w
+                elements = elements[-1].split(' ')
+                while len(elements) > 0:
+                    p = elements.pop(0)
+                    if len(elements) > 0:
+                        ns = nextstate
+                        nextstate += 1
+                    else:
+                        ns = loopstate
+                    outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                    word_or_eps = '<eps>'
+                    pron_cost_string = ""
+                    s = ns
+            outf.write("{}\t{}\n".format(loopstate, 0))
+    else:
+        def is_sil(element):
+            return element == silphone
+        silcost = -1 * math.log(sil_prob);
+        nosilcost = -1 * math.log(1.0 - sil_prob)
+        startstate = 0
+        loopstate = 1
+        silstate = 2
+        with open(lexicon_path, 'r', encoding = 'utf8') as f, \
+            open(lexicon_fst_path, 'w', encoding = 'utf8') as outf:
+            outf.write('\t'.join(map(str,[startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
+
+            outf.write('\t'.join(map(str,[startstate, loopstate, silphone, '<eps>',silcost]))+"\n")
+            outf.write('\t'.join(map(str,[silstate, loopstate, silphone, '<eps>']))+"\n")
+            nextstate = 3
+
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+                elements = line.split('\t')
+
+                w = elements.pop(0)
+                if not pronunciation_probabilities:
+                    pron_cost = 0
+                else:
+                    pron_prob = elements.pop(0)
+                    pron_cost = -1 * math.log(float(pron_prob))
+
+                pron_cost_string = ''
+                if pron_cost != 0:
+                    pron_cost_string = '\t{}'.pron_cost
+
+                s = loopstate
+                word_or_eps = w
+                elements = elements[-1].split(' ')
+                while len(elements) > 0:
+                    p = elements.pop(0)
+                    if len(elements) > 0:
+                        ns = nextstate
+                        nextstate += 1
+                        outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                        word_or_eps = '<eps>'
+                        pron_cost_string = ""
+                        pron_cost = 0.0
+                        s = ns
+                    else:
+                        if not is_sil(p):
+                            local_nosilcost = nosilcost + pron_cost
+                            local_silcost = silcost + pron_cost;
+                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
+                            outf.write('\t'.join(map(str,[s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                        else:
+                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
+            outf.write("{}\t{}\n".format(loopstate, 0))
 
 def make_lexicon_fst_disambig(data_directory, pronunciation_probabilities = True,
                     sil_prob = 0.5):
@@ -510,7 +581,7 @@ def make_lexicon_fst_disambig(data_directory, pronunciation_probabilities = True
     lexicon_disamb_path = os.path.join(dict_directory, 'lexiconp_disambig.txt')
 
     lexicon_fst_path = os.path.join(lang_directory, 'lexicon_disambig.text.fst')
-    lexicon_to_fst(lexicon_disamb_path, lexicon_fst_path, pronunciation_probabilities, sil_prob)
+    lexicon_to_fst(lexicon_disamb_path, lexicon_fst_path, pronunciation_probabilities, sil_prob, silphone)
     temp_fst_path = os.path.join(lang_directory, 'temp.fst')
     phones_file_path = os.path.join(lang_directory, 'phones.txt')
     words_file_path = os.path.join(lang_directory, 'words.txt')
@@ -525,18 +596,28 @@ def make_lexicon_fst_disambig(data_directory, pronunciation_probabilities = True
 
 
     output_fst = os.path.join(lang_directory, 'L_disambig.fst')
-    comp_proc = subprocess.Popen(['fstcompile', '--isymbols={}'.format(phones_file_path),
+    temp_fst_path = os.path.join(lang_directory, 'temp.fst')
+    subprocess.call(['fstcompile', '--isymbols={}'.format(phones_file_path),
                     '--osymbols={}'.format(words_file_path),
                     '--keep_isymbols=false','--keep_osymbols=false',
-                    lexicon_fst_path], stdout = subprocess.PIPE)
-    selfloop_proc = subprocess.Popen(['fstaddselfloops',
-        phone_disambig_symbol_path, word_disambig_symbol_path],
-        stdin = comp_proc.stdout, stdout = subprocess.PIPE)
-    with open(output_fst, 'wb') as f:
-        sort_proc = subprocess.Popen(['fstarcsort', '--sort_type=olabel',
-                     output_fst], stdin = selfloop_proc.stdout,
-                     stdout = f)
-        sort_proc.wait()
+                    lexicon_fst_path, temp_fst_path])
+    subprocess.call(['fstaddselfloops',
+        phone_disambig_symbol_path, word_disambig_symbol_path,temp_fst_path, temp_fst_path])
+
+    subprocess.call(['fstarcsort', '--sort_type=olabel',
+                temp_fst_path, output_fst])
+    #comp_proc = subprocess.Popen(['fstcompile', '--isymbols={}'.format(phones_file_path),
+                    #'--osymbols={}'.format(words_file_path),
+                    #'--keep_isymbols=false','--keep_osymbols=false',
+                    #lexicon_fst_path], stdout = subprocess.PIPE)
+    #selfloop_proc = subprocess.Popen(['fstaddselfloops',
+        #phone_disambig_symbol_path, word_disambig_symbol_path],
+        #stdin = comp_proc.stdout, stdout = subprocess.PIPE)
+    #with open(output_fst, 'wb') as f:
+        #sort_proc = subprocess.Popen(['fstarcsort', '--sort_type=olabel',
+                     #output_fst], stdin = selfloop_proc.stdout,
+                     #stdout = f)
+        #sort_proc.wait()
 
 def make_lexicon_fst(data_directory, pronunciation_probabilities = True,
                     sil_prob = 0.5):
@@ -553,7 +634,7 @@ def make_lexicon_fst(data_directory, pronunciation_probabilities = True,
     lexicon_path = os.path.join(dict_directory, 'lexiconp.txt')
 
     lexicon_fst_path = os.path.join(lang_directory, 'lexicon.text.fst')
-    lexicon_to_fst(lexicon_path, lexicon_fst_path, pronunciation_probabilities, sil_prob)
+    lexicon_to_fst(lexicon_path, lexicon_fst_path, pronunciation_probabilities, sil_prob, silphone)
 
     phones_file_path = os.path.join(lang_directory, 'phones.txt')
     words_file_path = os.path.join(lang_directory, 'words.txt')

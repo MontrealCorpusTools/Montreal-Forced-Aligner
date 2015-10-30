@@ -43,7 +43,7 @@ def mono_realign_func(mono_directory, iteration, job_name, mdl, scale_opts, num_
             '--retry-beam={}'.format(beam*4), '--careful=false', mdl,
         "ark:"+fst_path, "ark:"+feat_path, "ark,t:"+ ali_path],
         stderr = logf)
-        align_proc.wait()
+        align_proc.communicate()
 
 def mono_acc_stats_func(mono_directory, iteration, job_name, feat_path):
     log_path = os.path.join(mono_directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
@@ -56,7 +56,7 @@ def mono_acc_stats_func(mono_directory, iteration, job_name, feat_path):
              "ark:"+feat_path, "ark,t:" + ali_path,
           acc_path],
           stderr = logf)
-        acc_proc.wait()
+        acc_proc.communicate()
 
 def mono_acc_stats(iteration, mono_directory, split_directory, num_jobs):
     jobs = [ (mono_directory, iteration, x, os.path.join(split_directory,str(x), 'cmvndeltafeats'))
@@ -114,6 +114,41 @@ def mono_realign(iteration, mono_directory, split_directory,
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(mono_realign_func, args = i) for i in jobs]
         output = [p.get() for p in results]
-    mono_acc_stats(iteration, mono_directory, split_directory, num_jobs)
+
+def ali_to_textgrid_func(directory, lang_directory, split_directory, job_name):
+    text_int_path = os.path.join(split_directory, str(job_name), 'text.int')
+    log_path = os.path.join(directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
+    ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
+    model_path = os.path.join(directory, 'final.mdl')
+    aligned_path = os.path.join(directory, 'aligned.{}'.format(job_name))
+    word_ctm_path = os.path.join(directory, 'word_ctm.{}'.format(job_name))
+    phone_ctm_path = os.path.join(directory, 'phone_ctm.{}'.format(job_name))
+    with open(log_path, 'w') as logf:
+        lin_proc = subprocess.Popen(['linear-to-nbest', "ark:"+ ali_path,
+                      "ark:"+ text_int_path,
+                      '', '', 'ark:-'],
+                      stdout = subprocess.PIPE, stderr = logf)
+        align_proc = subprocess.Popen(['lattice-align-words',
+                        os.path.join(lang_directory, 'phones', 'word_boundary.int'), model_path,
+                        'ark:-', 'ark:'+aligned_path],
+                        stdin = lin_proc.stdout, stderr = logf)
+        align_proc.communicate()
+
+        subprocess.call(['nbest-to-ctm', 'ark:'+aligned_path,
+                                word_ctm_path], stderr = logf)
+        phone_proc = subprocess.Popen(['lattice-to-phone-lattice', model_path,
+                    'ark:'+aligned_path, "ark:-"], stdout = subprocess.PIPE,
+                    stderr = logf)
+        nbest_proc = subprocess.Popen(['nbest-to-ctm', "ark:-", phone_ctm_path],
+                        stdin = phone_proc.stdout, stderr = logf)
+        nbest_proc.communicate()
 
 
+def convert_ali_to_textgrids(directory, lang_directory, split_directory, num_jobs):
+
+    jobs = [ (directory, lang_directory, split_directory, x)
+                for x in range(1, num_jobs + 1)]
+
+    with mp.Pool(processes = num_jobs) as pool:
+        results = [pool.apply_async(ali_to_textgrid_func, args = i) for i in jobs]
+        output = [p.get() for p in results]

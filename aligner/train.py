@@ -1,12 +1,13 @@
 import os
 import subprocess
 import re
+import shutil
 
 from .prep.helper import (load_scp, load_utt2spk, find_best_groupings,
                         utt2spk_to_spk2utt, save_scp, load_oov_int,
                         load_word_to_int)
 
-from .multiprocessing import mono_realign, mono_align_equal
+from .multiprocessing import mono_realign, mono_align_equal, mono_acc_stats, convert_ali_to_textgrids
 
 num_iters = 40
 
@@ -165,9 +166,7 @@ def init_mono(split_directory, lang_directory, mono_directory, num_jobs):
     mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs)
     log_path = os.path.join(mono_directory, 'log', 'update.0.log')
     with open(log_path, 'w') as logf:
-        pattern = r'^0.*.acc$'
-        pattern = re.compile(pattern)
-        acc_files = [os.path.join(mono_directory, x) for x in os.listdir(mono_directory) if pattern.match(x) is not None]
+        acc_files = [os.path.join(mono_directory, '0.{}.acc'.format(x)) for x in range(1, num_jobs+1)]
         est_proc = subprocess.Popen(['gmm-est', '--min-gaussian-occupancy=3',
                 '--mix-up={}'.format(num_gauss), '--power={}'.format(power),
                 mdl_path, "gmm-sum-accs - {}|".format(' '.join(acc_files)),
@@ -183,23 +182,24 @@ def do_training(mono_directory, split_directory, lang_directory, num_jobs):
             mono_realign(i, mono_directory, split_directory,
                         lang_directory, scale_opts, num_jobs, boost_silence, num_gauss)
 
+        mono_acc_stats(i, mono_directory, split_directory, num_jobs)
         log_path = os.path.join(mono_directory, 'log', 'update.{}.log'.format(i))
         occs_path = os.path.join(mono_directory, '{}.occs'.format(i+1))
         model_path = os.path.join(mono_directory,'{}.mdl'.format(i))
         next_model_path = os.path.join(mono_directory,'{}.mdl'.format(i+1))
         with open(log_path, 'w') as logf:
-            pattern = r'^{}.*.acc$'.format(i)
-            pattern = re.compile(pattern)
-            acc_files = [os.path.join(mono_directory, x) for x in os.listdir(mono_directory) if pattern.match(x) is not None]
+            acc_files = [os.path.join(mono_directory, '{}.{}.acc'.format(i, x)) for x in range(1, num_jobs+1)]
             est_proc = subprocess.Popen(['gmm-est', '--write-occs='+occs_path,
                     '--mix-up='+str(num_gauss), '--power='+str(power), model_path,
                     "gmm-sum-accs - {}|".format(' '.join(acc_files)), next_model_path],
                     stderr = logf)
+            est_proc.communicate()
         if i < max_iter_inc:
             num_gauss += inc_gauss
+    shutil.copy(os.path.join(mono_directory,'{}.mdl'.format(num_iters)), os.path.join(mono_directory,'final.mdl'))
 
 
-def train_mono(data_directory, num_jobs = 6):
+def train_mono(data_directory, num_jobs = 4):
     lang_directory = os.path.join(data_directory, 'lang')
     train_directory = os.path.join(data_directory, 'train')
     mono_directory = os.path.join(data_directory, 'mono')
@@ -210,6 +210,7 @@ def train_mono(data_directory, num_jobs = 6):
 
     init_mono(split_directory, lang_directory, mono_directory, num_jobs)
     do_training(mono_directory, split_directory, lang_directory, num_jobs)
+    convert_ali_to_textgrids(mono_directory, lang_directory, split_directory, num_jobs)
 
 def train_tri():
     pass
