@@ -26,7 +26,7 @@ lm_path = os.path.join(source_dir, 'Russian_languageModel', 'RU.3gram.lm')
 if __name__ == '__main__':
     globalphone_prep(source_dir, data_dir, lang_code)
 
-        globalphone_dict_prep(dict_path, data_dir, lang_code)
+    globalphone_dict_prep(dict_path, data_dir, lang_code)
 
     data_prep(data_dir, lm_path)
 

@@ -14,7 +14,7 @@ def prepare_lang(data_directory, lm_path, oov_code = "<unk>",
     dict_directory = os.path.join(data_directory, 'dict')
     lang_directory = os.path.join(data_directory, 'lang')
     phone_dir = os.path.join(lang_directory, 'phones')
-
+    return
     format_lm(data_directory, lm_path)
 
 class LM(object):
@@ -39,6 +39,8 @@ class LM(object):
                 if current_ngram is None:
                     continue
                 line = line.split('\t')
+                if len(line) < 2:
+                    continue
                 yield line[1]
 
 
@@ -97,21 +99,31 @@ def format_lm(data_directory, lm_path):
     word_path = os.path.join(lang_directory, 'words.txt')
     lm = LM(lm_path)
     oovs = find_oovs(words, lm)
+    log_path = os.path.join(lang_directory, 'log.txt')
+    with open(log_path,'w') as logf:
+        proc = subprocess.Popen(['arpa2fst', lm_path], stdout = subprocess.PIPE)
+        with open(tmp_fst, 'w', encoding = 'utf8') as f:
+            proc2 = subprocess.Popen(['fstprint'],
+                            stdin = proc.stdout, stdout = f,
+                            stderr = logf)
+            proc2.wait()
 
-    proc = subprocess.Popen(['arpa2fst', lm_path], stdout = subprocess.PIPE)
-    with open(tmp_fst, 'w', encoding = 'utf8') as f:
-        proc2 = subprocess.Popen(['fstprint'], stdin = proc.stdout, stdout = f)
-        proc2.wait()
+        format_fst(tmp_fst, formatted_fst, oovs)
 
-    format_fst(tmp_fst, formatted_fst, oovs)
-
-    comp_proc = subprocess.Popen(['fstcompile', '--isymbols='+word_path,
-        '--osymbols='+ word_path,
-        '--keep_isymbols=false', '--keep_osymbols=false', formatted_fst], stdout = subprocess.PIPE)
-    rmeps_proc = subprocess.Popen(['fstrmepsilon'], stdin = comp_proc.stdout, stdout = subprocess.PIPE)
-    g_fst_path = os.path.join(lang_directory, 'G.fst')
-    with open(g_fst_path, 'wb') as f:
-        final_proc = subprocess.Popen(['fstarcsort',
-                '--sort_type=ilabel'], stdin = rmeps_proc.stdout, stdout = f)
-        final_proc.wait()
-    subprocess.call(['fstisstochastic', g_fst_path])
+        comp_proc = subprocess.Popen(['fstcompile', '--isymbols='+word_path,
+            '--osymbols='+ word_path,
+            '--keep_isymbols=false', '--keep_osymbols=false', formatted_fst],
+             stdout = subprocess.PIPE,
+                            stderr = logf)
+        rmeps_proc = subprocess.Popen(['fstrmepsilon'],
+                stdin = comp_proc.stdout, stdout = subprocess.PIPE,
+                            stderr = logf)
+        g_fst_path = os.path.join(lang_directory, 'G.fst')
+        with open(g_fst_path, 'wb') as f:
+            final_proc = subprocess.Popen(['fstarcsort',
+                    '--sort_type=ilabel'],
+                    stdin = rmeps_proc.stdout, stdout = f,
+                            stderr = logf)
+            final_proc.wait()
+        subprocess.call(['fstisstochastic', g_fst_path],
+                            stderr = logf)

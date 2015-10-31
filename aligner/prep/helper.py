@@ -15,7 +15,10 @@ def load_phone_to_int(lang_directory):
             line = line.strip()
             if line == '':
                 continue
-            symbol, i = line.split(' ')
+            try:
+                symbol, i = line.split(' ')
+            except ValueError:
+                raise(Exception('There was a problem parsing the line \'{}\'.'.format(line)))
             mapping[symbol] = i
     return mapping
 
@@ -27,7 +30,10 @@ def load_word_to_int(lang_directory):
             line = line.strip()
             if line == '':
                 continue
-            symbol, i = line.split(' ')
+            try:
+                symbol, i = line.split(' ')
+            except ValueError:
+                raise(Exception('There was a problem parsing the line \'{}\'.'.format(line)))
             mapping[symbol] = i
     return mapping
 
@@ -108,7 +114,7 @@ def load_wavscp(train_directory):
             line = line.strip()
             if line == '':
                 continue
-            utt, wav = line.split()
+            utt, wav = line.split(' ')
             wavscp[utt] = wav
     return wavscp
 

@@ -160,7 +160,11 @@ def validate_dict_dir(dict_directory):
         open(lexicon_path, 'r', encoding = 'utf8') as inf:
             for line in inf:
                 line = line.strip()
-                word, pron = line.split('\t')
+                try:
+                    word, pron = line.split('\t')
+                except ValueError:
+                    print(line)
+                    raise
                 line = '\t'.join([word, '1.0', pron])
                 outf.write(line + '\n')
 

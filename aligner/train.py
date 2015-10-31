@@ -203,6 +203,10 @@ def train_mono(data_directory, num_jobs = 4):
     lang_directory = os.path.join(data_directory, 'lang')
     train_directory = os.path.join(data_directory, 'train')
     mono_directory = os.path.join(data_directory, 'mono')
+    final_mdl = os.path.join(mono_directory, 'final.mdl')
+    if os.path.exists(final_mdl):
+        print('Monophone training already done, using previous final.mdl')
+        return
     os.makedirs(os.path.join(mono_directory, 'log'), exist_ok = True)
     split_directory = os.path.join(train_directory, 'split{}'.format(num_jobs))
     if not os.path.exists(split_directory):

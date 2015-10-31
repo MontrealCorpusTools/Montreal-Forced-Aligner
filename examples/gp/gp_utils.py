@@ -14,7 +14,7 @@ lang_encodings = {
                 'GE': 'iso-8859-1',
                 'HA': 'utf8',
                 'JA': '',
-                'KO': '',
+                'KO': 'korean',
                 'RU': 'koi8-r',
                 'PO': 'iso-8859-1',
                 'PL': 'utf8',
@@ -26,7 +26,7 @@ lang_encodings = {
                 'VN': 'utf8'
                 }
 
-def parse_rmn_file(path, output_dir, lang_code):
+def parse_rmn_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
     speaker_line_pattern = re.compile('^;SprecherID\s(\d{3})$')
     speaker = None
@@ -43,25 +43,32 @@ def parse_rmn_file(path, output_dir, lang_code):
             if file_match is not None:
                 current = file_match.groups()[0]
             elif current is not None:
-                lab_path = os.path.join(output_dir, '{}{}_{}.lab'.format(lang_code, speaker, current))
+                name = '{}_{}'.format(speaker, current)
+                if not name.startswith(lang_code):
+                    name = lang_code + name
+                if name not in wav_files:
+                    continue
+                lab_path = os.path.join(output_dir, name + '.lab')
                 with open(lab_path, 'w') as fw:
                     fw.write(line)
 
 def parse_trl_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
-    speaker_line_pattern = re.compile('^;SprecherID\s((\w{2})?\d{3})$')
+    speaker_line_pattern = re.compile('^;SprecherID\s((\w{2})?\d{2,3}).*$')
     speaker = None
     current = None
     with open(path, 'r', encoding = lang_encodings[lang_code]) as f:
         for line in f:
+            line = line.strip()
+            if line == '':
+                continue
             if speaker is None:
                 speaker_match = speaker_line_pattern.match(line)
                 if speaker_match is None:
                     raise(Exception('The file \'{}\' did not start with the speaker id.'.format(path)))
                 speaker = speaker_match.groups()[0]
-            line = line.strip()
-            if line == '':
-                continue
+                if len(speaker) == 2:
+                    speaker = '0' + speaker
             file_match = file_line_pattern.match(line)
             if file_match is not None:
                 current = file_match.groups()[0]
@@ -74,7 +81,6 @@ def parse_trl_file(path, output_dir, lang_code, wav_files):
                 lab_path = os.path.join(output_dir, name+'.lab')
                 with open(lab_path, 'w', encoding = 'utf8') as fw:
                     fw.write(line.lower())
-
 
 def copy_wav_files(in_dir, out_dir):
     wave_files = [f for f in os.listdir(in_dir) if f.lower().endswith('.wav')]
@@ -117,10 +123,12 @@ def globalphone_prep(source_dir, data_dir, lang_code):
         wav_files = get_utterances_with_wavs(speaker_dir)
         output_speaker_dir = os.path.join(files_dir, speaker_id)
         os.makedirs(output_speaker_dir, exist_ok = True)
-        #rmn_path = os.path.join(rmn_dir, '{}{}.rmn'.format(lang_code, speaker_id))
-        #parse_rmn_file(rmn_path, output_speaker_dir, lang_code)
-        trl_path = os.path.join(trl_dir, '{}{}.trl'.format(lang_code, speaker_id))
-        parse_trl_file(trl_path, output_speaker_dir, lang_code, wav_files)
+        if lang_code in ['CH', 'WU']:
+            rmn_path = os.path.join(rmn_dir, '{}{}.rmn'.format(lang_code, speaker_id))
+            parse_rmn_file(rmn_path, output_speaker_dir, lang_code, wav_files)
+        else:
+            trl_path = os.path.join(trl_dir, '{}{}.trl'.format(lang_code, speaker_id))
+            parse_trl_file(trl_path, output_speaker_dir, lang_code, wav_files)
         copy_wav_files(speaker_dir, output_speaker_dir)
     print('Done!')
 
@@ -153,19 +161,37 @@ def globalphone_dict_prep(path, data_dir, lang_code):
 
     phone_cleanup_pattern = re.compile(r'(M_|\{| WB\}|\})')
     word_cleanup_pattern = re.compile(r'\(\d+\)')
+    line_break_pattern = re.compile(r'\}\s+')
+    word_pattern = re.compile(r'^{([^{}]+)\s+')
     words = []
     with open(path, 'r', encoding = 'utf8') as f:
-        for line in f:
-            line = line.strip()
-            word, phones = line.split('} ', maxsplit=1)
-            if 'SIL' in phones:
-                continue
-            word = word[1:]
-            word = word_cleanup_pattern.sub('', word)
-            phones = phone_cleanup_pattern.sub('', phones)
-            matches = phones.split()
-            nonsil.update(matches)
-            words.append((word.lower(), ' '.join(matches)))
+        try:
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+                print(line)
+                try:
+                    word, phones = line_break_pattern.split(line, maxsplit=1)
+                except ValueError:
+                    raise(Exception('There was a problem with the line \'{}\'.'.format(line)))
+                if 'SIL' in phones:
+                    continue
+                word = word[1:].strip()
+                if '{' in word:
+                    word = word_pattern.match(line)
+                    word = word.groups()[0]
+                    phones = word_pattern.sub('',line)
+                word = word_cleanup_pattern.sub('', word)
+                phones = phone_cleanup_pattern.sub('', phones).strip()
+                matches = phones.split()
+                nonsil.update(matches)
+                words.append((word.lower(), ' '.join(matches)))
+        except UnicodeDecodeError:
+            s = f.readline()
+            print(repr(s))
+            print(f.readline())
+            raise(Exception)
 
     with open(lexicon_path, 'a', encoding = 'utf8') as lf, \
         open(lexicon_nosil_path, 'w', encoding = 'utf8') as lnsf:

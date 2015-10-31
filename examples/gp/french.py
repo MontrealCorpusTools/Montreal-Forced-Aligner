@@ -13,7 +13,7 @@ from aligner.train import train_mono
 from gp_utils import lang_encodings, globalphone_prep, globalphone_dict_prep
 
 
-source_dir = os.path.normpath(r'/home/michael/dev/kaldi-gp-alignment/alignment/GlobalPhone/French')
+source_dir = os.path.normpath(r'D:\Data\GlobalPhone\French')
 
 lang_code = 'FR'
 

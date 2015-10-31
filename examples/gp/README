@@ -1,0 +1,16 @@
+Issues with GlobalPhone corpora:
+
+See appendix A of https://www.era.lib.ed.ac.uk/bitstream/handle/1842/5773/Lal2011.pdf
+
+French pronunciation dictionary has a newline character in the entry for ""
+
+Korean transcript for speaker 34 lacks entries (rmn file only has the final
+few entries)
+
+Rename Korean ".words" file to ".txt"
+
+Rename Portuguese ".utf8.allwords" to ".txt"
+
+Vietnamese:
+    Pronunciation dictionary has tone as separate segments in transcriptions
+
