@@ -5,132 +5,17 @@ import shutil
 
 from .prep.helper import (load_scp, load_utt2spk, find_best_groupings,
                         utt2spk_to_spk2utt, save_scp, load_oov_int,
-                        load_word_to_int)
+                        load_word_to_int, load_text)
 
-from .multiprocessing import mono_realign, mono_align_equal, mono_acc_stats, convert_ali_to_textgrids
+from .multiprocessing import (align, mono_align_equal, compile_train_graphs,
+                            acc_stats, tree_stats, convert_alignments,
+                             convert_ali_to_textgrids, calc_fmllr)
 
-num_iters = 40
+from .align import align_si, align_fmllr
 
-scale_opts = ['--transition-scale=1.0',
-                '--acoustic-scale=0.1',
-                '--self-loop-scale=0.1']
+from .data_split import setup_splits, get_feat_dim
 
-max_iter_inc = 30
-totgauss = 1000
-boost_silence = 1.0
-realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 23, 26, 29, 32, 35, 38]
-stage = -4
-power = 0.25
-
-feat_template="ark,s,cs:apply-cmvn {cmvn_opts} --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feats_path} ark:- | add-deltas ark:- ark:- |"
-
-def filter_scp(scp, group_mapping):
-    groups = [[] for x in range(len(group_mapping))]
-    for t in scp:
-        groups[group_mapping[t[0]]].append(t)
-    return groups
-
-def make_mapping_for_groups(groups):
-    mapping = {}
-    for i, g in enumerate(groups):
-        for line in g:
-            mapping[line[0]] = i
-    return mapping
-
-def text_to_int(text, words, oov):
-    newtext = []
-    for i, t in enumerate(text):
-        line = t[1:]
-        new_line = []
-        for w in line:
-            if w in words:
-                new_line.append(str(words[w]))
-            else:
-                new_line.append(str(oov))
-        newtext.append([text[i][0]] + new_line)
-    return newtext
-
-def setup_splits(train_directory, split_directory, lang_directory, num_jobs):
-    utt2spk = load_utt2spk(train_directory)
-    utt2spks = find_best_groupings(utt2spk, num_jobs)
-    utt_mapping = make_mapping_for_groups(utt2spks)
-    spk2utts = [utt2spk_to_spk2utt(x) for x in utt2spks]
-    spk_mapping = make_mapping_for_groups(spk2utts)
-
-    words = load_word_to_int(lang_directory)
-    oov = load_oov_int(lang_directory)
-
-    wavs = load_scp(os.path.join(train_directory, 'wav.scp'))
-    feats = load_scp(os.path.join(train_directory, 'feats.scp'))
-    text = load_scp(os.path.join(train_directory, 'text'))
-
-    wav_groups = filter_scp(wavs, utt_mapping)
-    feat_groups = filter_scp(feats, utt_mapping)
-    text_groups = filter_scp(text, utt_mapping)
-
-    cmvns = load_scp(os.path.join(train_directory, 'cmvn.scp'))
-    cmvn_groups = filter_scp(cmvns, spk_mapping)
-    for i in range(num_jobs):
-        job_dir = os.path.join(split_directory, str(i+1))
-        os.makedirs(job_dir, exist_ok = True)
-        wav_path = os.path.join(job_dir, 'wav.scp')
-        utt2spk_path = os.path.join(job_dir, 'utt2spk')
-        spk2utt_path = os.path.join(job_dir, 'spk2utt')
-        feats_path = os.path.join(job_dir, 'feats.scp')
-        cmvn_path = os.path.join(job_dir, 'cmvn.scp')
-        text_path = os.path.join(job_dir, 'text')
-        text_int_path = os.path.join(job_dir, 'text.int')
-        save_scp(wav_groups[i], wav_path)
-        save_scp(utt2spks[i], utt2spk_path)
-        save_scp(spk2utts[i], spk2utt_path)
-        save_scp(feat_groups[i], feats_path)
-        save_scp(cmvn_groups[i], cmvn_path)
-        save_scp(text_groups[i], text_path)
-        save_scp(text_to_int(text_groups[i], words, oov), text_int_path)
-        save_scp(text_groups[i], text_path)
-        make_feats_file(job_dir)
-
-def feats_gen(directory):
-    kwargs = {'cmvn_opts': '',
-                'utt2spk_path': os.path.join(directory, 'utt2spk'),
-                'cmvn_path': os.path.join(directory, 'cmvn.scp'),
-                'feats_path': os.path.join(directory, 'feats.scp')}
-    return feat_template.format(**kwargs)
-
-def make_feats_file(directory):
-    path = os.path.join(directory, 'cmvndeltafeats')
-    if not os.path.exists(path):
-        with open(path, 'wb') as outf, open(os.devnull, 'w') as devnull:
-            cmvn_proc = subprocess.Popen(['apply-cmvn',
-                        '--utt2spk=ark:'+os.path.join(directory, 'utt2spk'),
-                        'scp:'+os.path.join(directory, 'cmvn.scp'),
-                        'scp:'+os.path.join(directory, 'feats.scp'),
-                        'ark:-'], stdout = subprocess.PIPE,
-                        stderr = devnull)
-            deltas_proc = subprocess.Popen(['add-deltas', 'ark:-', 'ark:-'],
-                                    stdin = cmvn_proc.stdout,
-                                    stdout = outf,
-                                    stderr = devnull)
-            deltas_proc.communicate()
-        with open(path, 'rb') as inf, open(path+'_sub','wb') as outf:
-            subprocess.call(["subset-feats", "--n=10", "ark:-", "ark:-"],
-                        stdin = inf, stdout = outf)
-
-def get_feat_dim(split_directory):
-    #Not working
-    cmvn_opts = ''
-    directory = os.path.join(split_directory, '1')
-
-    make_feats_file(directory)
-    path = os.path.join(directory, 'cmvndeltafeats')
-    with open(path, 'rb') as f:
-        dim_proc = subprocess.Popen(['feat-to-dim', 'ark,s,cs:-', '-'],
-                                    stdin = f,
-                                    stdout = subprocess.PIPE)
-        stdout, stderr = dim_proc.communicate()
-        feats = stdout.decode('utf8').strip()
-
-    return feats
+from .config import *
 
 def get_num_gauss(mono_directory):
     with open(os.devnull, 'w') as devnull:
@@ -163,6 +48,7 @@ def init_mono(split_directory, lang_directory, mono_directory, num_jobs):
                         stdin = f,
                         stderr = logf)
     num_gauss = get_num_gauss(mono_directory)
+    compile_train_graphs(mono_directory, lang_directory, split_directory, num_jobs)
     mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs)
     log_path = os.path.join(mono_directory, 'log', 'update.0.log')
     with open(log_path, 'w') as logf:
@@ -174,21 +60,54 @@ def init_mono(split_directory, lang_directory, mono_directory, num_jobs):
                 stderr = logf)
         est_proc.communicate()
 
-def do_training(mono_directory, split_directory, lang_directory, num_jobs):
-    num_gauss = get_num_gauss(mono_directory)
+def do_mono_training(directory, split_directory, lang_directory, num_jobs):
+    num_gauss = get_num_gauss(directory)
+    num_iters = mono_num_iters
+    realign_iters = mono_realign_iters
+    do_training(directory, split_directory, lang_directory,
+                        num_gauss, num_jobs,
+                    num_iters = num_iters, realign_iters = realign_iters)
+
+def do_tri_training(directory, split_directory, lang_directory, num_jobs):
+    num_gauss = tri_num_gauss
+    num_iters = tri_num_iters
+    realign_iters = tri_realign_iters
+    do_training(directory, split_directory, lang_directory, num_gauss,
+                num_jobs, num_iters = num_iters, realign_iters = realign_iters)
+
+def do_tri_fmllr_training(directory, split_directory,
+                        lang_directory, num_jobs):
+    num_gauss = tri_num_gauss
+    num_iters = tri_num_iters
+    realign_iters = tri_realign_iters
+    do_training(directory, split_directory, lang_directory,
+                    num_gauss, num_jobs, do_fmllr = True,
+                    num_iters = num_iters, realign_iters = realign_iters)
+
+def do_training(directory, split_directory, lang_directory,
+                    num_gauss, num_jobs, do_fmllr = False,
+                    num_iters = 40, realign_iters = None):
+    if realign_iters is None:
+        realign_iters = list(range(0, num_iters, 10))
+    sil_phones = load_text(os.path.join(lang_directory, 'phones', 'silence.csl'))
+    max_iter_inc = num_iters - 10
     inc_gauss = int((totgauss - num_gauss) / max_iter_inc)
     for i in range(1, num_iters):
         if i in realign_iters:
-            mono_realign(i, mono_directory, split_directory,
-                        lang_directory, scale_opts, num_jobs, boost_silence, num_gauss)
+            align(i, directory, split_directory,
+                        lang_directory, num_jobs, do_fmllr)
+        if do_fmllr and i in fmllr_iters:
+            calc_fmllr(directory, split_directory, sil_phones,
+                    num_jobs, do_fmllr, i)
 
-        mono_acc_stats(i, mono_directory, split_directory, num_jobs)
-        log_path = os.path.join(mono_directory, 'log', 'update.{}.log'.format(i))
-        occs_path = os.path.join(mono_directory, '{}.occs'.format(i+1))
-        model_path = os.path.join(mono_directory,'{}.mdl'.format(i))
-        next_model_path = os.path.join(mono_directory,'{}.mdl'.format(i+1))
+
+        acc_stats(i, directory, split_directory, num_jobs, do_fmllr)
+        log_path = os.path.join(directory, 'log', 'update.{}.log'.format(i))
+        occs_path = os.path.join(directory, '{}.occs'.format(i+1))
+        model_path = os.path.join(directory,'{}.mdl'.format(i))
+        next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
         with open(log_path, 'w') as logf:
-            acc_files = [os.path.join(mono_directory, '{}.{}.acc'.format(i, x)) for x in range(1, num_jobs+1)]
+            acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x)) for x in range(1, num_jobs+1)]
             est_proc = subprocess.Popen(['gmm-est', '--write-occs='+occs_path,
                     '--mix-up='+str(num_gauss), '--power='+str(power), model_path,
                     "gmm-sum-accs - {}|".format(' '.join(acc_files)), next_model_path],
@@ -196,7 +115,10 @@ def do_training(mono_directory, split_directory, lang_directory, num_jobs):
             est_proc.communicate()
         if i < max_iter_inc:
             num_gauss += inc_gauss
-    shutil.copy(os.path.join(mono_directory,'{}.mdl'.format(num_iters)), os.path.join(mono_directory,'final.mdl'))
+    shutil.copy(os.path.join(directory,'{}.mdl'.format(num_iters)),
+                    os.path.join(directory,'final.mdl'))
+    shutil.copy(os.path.join(directory,'{}.occs'.format(num_iters)),
+                    os.path.join(directory,'final.occs'))
 
 
 def train_mono(data_directory, num_jobs = 4):
@@ -204,23 +126,124 @@ def train_mono(data_directory, num_jobs = 4):
     train_directory = os.path.join(data_directory, 'train')
     mono_directory = os.path.join(data_directory, 'mono')
     final_mdl = os.path.join(mono_directory, 'final.mdl')
+    split_directory = os.path.join(train_directory, 'split{}'.format(num_jobs))
     if os.path.exists(final_mdl):
         print('Monophone training already done, using previous final.mdl')
         return
     os.makedirs(os.path.join(mono_directory, 'log'), exist_ok = True)
-    split_directory = os.path.join(train_directory, 'split{}'.format(num_jobs))
     if not os.path.exists(split_directory):
         setup_splits(train_directory, split_directory, lang_directory, num_jobs)
 
     init_mono(split_directory, lang_directory, mono_directory, num_jobs)
-    do_training(mono_directory, split_directory, lang_directory, num_jobs)
+    do_mono_training(mono_directory, split_directory, lang_directory, num_jobs)
     convert_ali_to_textgrids(mono_directory, lang_directory, split_directory, num_jobs)
 
-def train_tri():
-    pass
+def init_tri(split_directory, lang_directory, align_directory, tri_directory, cluster_thresh, num_jobs):
+    context_opts = []
+    ci_phones = load_text(os.path.join(lang_directory, 'phones', 'context_indep.csl'))
 
-def train_tri_fmllr():
-    pass
+    tree_stats(tri_directory, align_directory, split_directory, ci_phones, num_jobs)
+    log_path = os.path.join(tri_directory, 'log', 'questions.log')
+    tree_path = os.path.join(tri_directory, 'tree')
+    treeacc_path = os.path.join(tri_directory, 'treeacc')
+    sets_int_path = os.path.join(lang_directory, 'phones', 'sets.int')
+    roots_int_path = os.path.join(lang_directory, 'phones', 'roots.int')
+    extra_question_int_path = os.path.join(lang_directory, 'phones', 'extra_questions.int')
+    topo_path = os.path.join(lang_directory, 'topo')
+    questions_path = os.path.join(tri_directory, 'questions.int')
+    questions_qst_path = os.path.join(tri_directory, 'questions.qst')
+    with open(log_path, 'w') as logf:
+        subprocess.call(['cluster-phones'] + context_opts +
+        [treeacc_path, sets_int_path, questions_path], stderr = logf)
+
+    with open(extra_question_int_path, 'r') as inf, \
+        open(questions_path, 'a') as outf:
+            for line in inf:
+                outf.write(line)
+
+    log_path = os.path.join(tri_directory, 'log', 'compile_questions.log')
+    with open(log_path, 'w') as logf:
+        subprocess.call(['compile-questions'] + context_opts +
+                [topo_path, questions_path, questions_qst_path],
+                stderr = logf)
+
+    log_path = os.path.join(tri_directory, 'log', 'build_tree.log')
+    with open(log_path, 'w') as logf:
+        subprocess.call(['build-tree'] + context_opts +
+            ['--verbose=1', '--max-leaves={}'.format(tri_num_states), \
+            '--cluster-thresh={}'.format(cluster_thresh),
+             treeacc_path, roots_int_path, questions_qst_path,
+             topo_path, tree_path], stderr = logf)
+
+    log_path = os.path.join(tri_directory, 'log', 'init_model.log')
+    occs_path = os.path.join(tri_directory, '0.occs')
+    mdl_path = os.path.join(tri_directory, '0.mdl')
+    with open(log_path, 'w') as logf:
+        subprocess.call(['gmm-init-model',
+        '--write-occs='+occs_path, tree_path, treeacc_path,
+        topo_path, mdl_path], stderr = logf)
+
+    log_path = os.path.join(tri_directory, 'log', 'mixup.log')
+    with open(log_path, 'w') as logf:
+        subprocess.call(['gmm-mixup', '--mix-up={}'.format(tri_num_gauss),
+         mdl_path, occs_path, mdl_path], stderr = logf)
+    os.remove(treeacc_path)
+
+    compile_train_graphs(tri_directory, lang_directory, split_directory, num_jobs)
+    os.rename(occs_path, os.path.join(tri_directory, '1.occs'))
+    os.rename(mdl_path, os.path.join(tri_directory, '1.mdl'))
+
+    convert_alignments(tri_directory, align_directory, num_jobs)
+
+    if os.path.exists(os.path.join(align_directory, 'trans.1')):
+        for i in range(1, num_jobs + 1):
+            shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
+                    os.path.join(tri_directory, 'trans.{}'.format(i)))
+
+def train_tri(data_directory, num_jobs = 4, cluster_thresh = 100):
+    lang_directory = os.path.join(data_directory, 'lang')
+    train_directory = os.path.join(data_directory, 'train')
+    tri_directory = os.path.join(data_directory, 'tri')
+    mono_directory = os.path.join(data_directory, 'mono')
+    mono_ali_directory = os.path.join(data_directory, 'mono_ali')
+    final_mdl = os.path.join(tri_directory, 'final.mdl')
+    if os.path.exists(final_mdl):
+        print('Triphone training already done, using previous final.mdl')
+        return
+    if not os.path.exists(mono_ali_directory):
+        align_si(data_directory, mono_directory, mono_ali_directory, num_jobs)
+
+    os.makedirs(os.path.join(tri_directory, 'log'), exist_ok = True)
+    split_directory = os.path.join(train_directory, 'split{}'.format(num_jobs))
+    if not os.path.exists(split_directory):
+        setup_splits(train_directory, split_directory,
+                                lang_directory, num_jobs)
+    init_tri(split_directory, lang_directory, mono_ali_directory, tri_directory, cluster_thresh, num_jobs)
+    do_tri_training(tri_directory, split_directory, lang_directory, num_jobs)
+    convert_ali_to_textgrids(tri_directory, lang_directory, split_directory, num_jobs)
+
+def train_tri_fmllr(data_directory, num_jobs = 4, cluster_thresh = 100):
+    lang_directory = os.path.join(data_directory, 'lang')
+    train_directory = os.path.join(data_directory, 'train')
+    tri_directory = os.path.join(data_directory, 'tri')
+    tri2_directory = os.path.join(data_directory, 'tri_fmllr')
+    ali_directory = os.path.join(data_directory, 'tri_ali_fmllr')
+    final_mdl = os.path.join(tri2_directory, 'final.mdl')
+    if os.path.exists(final_mdl):
+        print('Triphone FMLLR training already done, using previous final.mdl')
+        return
+    if not os.path.exists(ali_directory):
+        align_fmllr(data_directory, tri_directory, ali_directory, num_jobs)
+
+    os.makedirs(os.path.join(tri2_directory, 'log'), exist_ok = True)
+    split_directory = os.path.join(train_directory, 'split{}'.format(num_jobs))
+    if not os.path.exists(split_directory):
+        setup_splits(train_directory, split_directory,
+                                lang_directory, num_jobs)
+    init_tri(split_directory, lang_directory, ali_directory, tri2_directory, cluster_thresh, num_jobs)
+    do_tri_fmllr_training(tri2_directory, split_directory, lang_directory, num_jobs)
+    convert_ali_to_textgrids(tri2_directory, lang_directory, split_directory, num_jobs)
+
 
 def train_sgmm_sat():
     pass

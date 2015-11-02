@@ -37,15 +37,27 @@ def load_word_to_int(lang_directory):
             mapping[symbol] = i
     return mapping
 
+def reverse_mapping(mapping):
+    reverse = {}
+    if mapping is not None:
+        for k,v in mapping.items():
+            reverse[v] = k
+    return reverse
+
 def save_groups(groups, seg_dir, pattern):
     for i, g in enumerate(groups):
         path = os.path.join(seg_dir, pattern.format(i+1))
         save_scp(g, path)
 
+def make_safe(element):
+    if isinstance(element, list):
+        return ' '.join(map(make_safe, element))
+    return str(element)
+
 def save_scp(scp, path):
     with open(path, 'w', encoding = 'utf8') as f:
         for line in scp:
-            f.write('{}\n'.format(' '.join(line)))
+            f.write('{}\n'.format(' '.join(map(make_safe,line))))
 
 def load_scp(path):
     scp = []
@@ -63,8 +75,7 @@ def utt2spk_to_spk2utt(utt2spk):
         mapping[line[1]].append(line[0])
     spk2utt = []
     for k in sorted(mapping.keys()):
-        for v in sorted(mapping[k]):
-            spk2utt.append((k, v))
+        spk2utt.append((k, sorted(mapping[k])))
     return spk2utt
 
 
@@ -84,7 +95,6 @@ def find_best_groupings(scp, num_jobs):
                 spk = utt
             else:
                 spk = utt.split('_')[0]
-            print(spk)
             for j in range(end_ind, num_utt):
                 if not scp[j][0].startswith(spk):
                     j -= 1

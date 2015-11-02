@@ -8,7 +8,7 @@ sys.path.insert(0,base)
 
 from aligner.data_prep import data_prep
 
-from aligner.train import train_mono
+from aligner.train import train_mono, train_tri, train_tri_fmllr
 
 from gp_utils import lang_encodings, globalphone_prep, globalphone_dict_prep
 
@@ -31,3 +31,6 @@ if __name__ == '__main__':
     data_prep(data_dir, lm_path)
 
     train_mono(data_dir)
+
+    train_tri(data_dir)
+    train_tri_fmllr(data_dir, num_jobs = 10)

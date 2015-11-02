@@ -170,7 +170,6 @@ def globalphone_dict_prep(path, data_dir, lang_code):
                 line = line.strip()
                 if line == '':
                     continue
-                print(line)
                 try:
                     word, phones = line_break_pattern.split(line, maxsplit=1)
                 except ValueError:
