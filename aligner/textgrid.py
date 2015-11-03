@@ -4,11 +4,15 @@ import sys
 from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
+from .prep.dict import positions
+
 def parse_ctm(ctm_path, mapping):
     file_dict = defaultdict(list)
     with open(ctm_path, 'r') as f:
         for line in f:
             line = line.strip()
+            if line == '':
+                continue
             line = line.split(' ')
             filename = line[0]
             begin = float(line[2])
@@ -19,6 +23,9 @@ def parse_ctm(ctm_path, mapping):
                 label = mapping[label]
             except KeyError:
                 pass
+            for p in positions:
+                if label.endswith(p):
+                    label = label[:-1 * len(p)]
             file_dict[filename].append([begin, end, label])
     return file_dict
 

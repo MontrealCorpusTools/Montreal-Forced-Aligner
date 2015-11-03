@@ -68,18 +68,27 @@ def do_mono_training(directory, split_directory, lang_directory, num_jobs):
                         num_gauss, num_jobs,
                     num_iters = num_iters, realign_iters = realign_iters)
 
-def do_tri_training(directory, split_directory, lang_directory, num_jobs):
+def do_tri_training(directory, split_directory,
+                    lang_directory, num_jobs, align_often = True):
     num_gauss = tri_num_gauss
-    num_iters = tri_num_iters
-    realign_iters = tri_realign_iters
+    if align_often:
+        num_iters = mono_num_iters
+        realign_iters = mono_realign_iters
+    else:
+        num_iters = tri_num_iters
+        realign_iters = tri_realign_iters
     do_training(directory, split_directory, lang_directory, num_gauss,
                 num_jobs, num_iters = num_iters, realign_iters = realign_iters)
 
 def do_tri_fmllr_training(directory, split_directory,
-                        lang_directory, num_jobs):
+                        lang_directory, num_jobs, align_often = True):
     num_gauss = tri_num_gauss
-    num_iters = tri_num_iters
-    realign_iters = tri_realign_iters
+    if align_often:
+        num_iters = mono_num_iters
+        realign_iters = mono_realign_iters
+    else:
+        num_iters = tri_num_iters
+        realign_iters = tri_realign_iters
     do_training(directory, split_directory, lang_directory,
                     num_gauss, num_jobs, do_fmllr = True,
                     num_iters = num_iters, realign_iters = realign_iters)
@@ -93,6 +102,11 @@ def do_training(directory, split_directory, lang_directory,
     max_iter_inc = num_iters - 10
     inc_gauss = int((totgauss - num_gauss) / max_iter_inc)
     for i in range(1, num_iters):
+        model_path = os.path.join(directory,'{}.mdl'.format(i))
+        occs_path = os.path.join(directory, '{}.occs'.format(i+1))
+        next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
+        if os.path.exists(next_model_path):
+            continue
         if i in realign_iters:
             align(i, directory, split_directory,
                         lang_directory, num_jobs, do_fmllr)
@@ -103,9 +117,6 @@ def do_training(directory, split_directory, lang_directory,
 
         acc_stats(i, directory, split_directory, num_jobs, do_fmllr)
         log_path = os.path.join(directory, 'log', 'update.{}.log'.format(i))
-        occs_path = os.path.join(directory, '{}.occs'.format(i+1))
-        model_path = os.path.join(directory,'{}.mdl'.format(i))
-        next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
         with open(log_path, 'w') as logf:
             acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x)) for x in range(1, num_jobs+1)]
             est_proc = subprocess.Popen(['gmm-est', '--write-occs='+occs_path,
