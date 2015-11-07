@@ -39,7 +39,9 @@ globalphone_dir = r'D:\Data\GlobalPhone'
 
 source_dirs = {k: os.path.join(globalphone_dir, v) for k,v in full_names.items()}
 
-data_dirs = {k: os.path.join(v, 'kaldi_align_data') for k,v in source_dirs.items()}
+data_directory = r'D:\Data\kaldi-gp-data'
+
+data_dirs = {k: os.path.join(data_directory, k) for k,v in source_dirs.items()}
 
 dict_paths = {k: os.path.join(source_dirs[k],
                             '{}_Dict'.format(v),
@@ -58,12 +60,12 @@ if __name__ == '__main__':
             continue
         print(k)
 
-        globalphone_prep(source_dirs[k], data_dirs[k], k)
-
         globalphone_dict_prep(dict_paths[k], data_dirs[k], k)
 
-        data_prep(data_dirs[k], lm_paths[k])
+        globalphone_prep(source_dirs[k], data_dirs[k], k)
 
+        data_prep(data_dirs[k], lm_paths[k])
+        continue
         train_mono(data_dirs[k])
         train_tri(data_dirs[k], num_jobs = 6)
         train_tri_fmllr(data_dirs[k], num_jobs = 6)

@@ -4,6 +4,8 @@ import re
 
 from .prep import prepare_dict, prepare_lang, prepare_train_data, prepare_mfccs, prepare_config
 
+from .validation import validate_training_directory
+
 def data_prep(data_directory, lm_path):
     """
     Prepares data for alignment from a directory of sound files with
@@ -46,6 +48,7 @@ def data_prep(data_directory, lm_path):
     else:
         print('Using existing training set up.')
 
+    validate_training_directory(data_directory, fail_ok = True)
 
     mfcc_dir = os.path.join(data_directory, 'mfcc')
     if not os.path.exists(mfcc_dir):

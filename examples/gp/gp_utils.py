@@ -26,6 +26,64 @@ lang_encodings = {
                 'VN': 'utf8'
                 }
 
+lang_dict_utf8mappings = {
+                'AR': [],
+                'BG': [],
+                'CH': [],
+                'WU': [],
+                'CR': [],
+                'CZ': [],
+                'FR': [],
+                'GE': [(re.compile('~a'),'ä'),
+                        (re.compile('~o'),'ö'),
+                        (re.compile('~u'),'ü'),
+                        (re.compile('~s'),'ß'),
+                        (re.compile('~A'),'Ä'),
+                        (re.compile('~O'),'Ö'),
+                        (re.compile('~U'),'Ü'),],
+                'HA': [],
+                'JA': [],
+                'KO': [],
+                'RU': [],
+                'PO': [],
+                'PL': [],
+                'SP': [],
+                'SW': [(re.compile('aO'),'å'),
+                        (re.compile('AO'),'Å'),
+                        (re.compile(r'a\^'),'ä'),
+                        (re.compile(r'A\^'),'Ä'),
+                        (re.compile(r'o\^'),'ö'),
+                        (re.compile(r'O\^'),'Ö'),
+                        (re.compile(r'e\+'),'é'),],
+                'TA': [],
+                'TH': [],
+                'TU': [],
+                'VN': []
+                }
+
+lang_trl_utf8mappings = {
+                'AR': [],
+                'BG': [],
+                'CH': [],
+                'WU': [],
+                'CR': [],
+                'CZ': [],
+                'FR': [],
+                'GE': [],
+                'HA': [],
+                'JA': [],
+                'KO': [],
+                'RU': [],
+                'PO': [(re.compile('>'),'> ')],
+                'PL': [],
+                'SP': [],
+                'SW': [],
+                'TA': [],
+                'TH': [],
+                'TU': [],
+                'VN': []
+                }
+
 def parse_rmn_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
     speaker_line_pattern = re.compile('^;SprecherID\s(\d{3})$')
@@ -52,7 +110,29 @@ def parse_rmn_file(path, output_dir, lang_code, wav_files):
                 with open(lab_path, 'w') as fw:
                     fw.write(line)
 
-def parse_trl_file(path, output_dir, lang_code, wav_files):
+sanitize_pattern = re.compile('(^\W|\W$)')
+
+def sanitize(line, lang_code, graphemes):
+    for r, s in lang_trl_utf8mappings[lang_code]:
+        line = r.sub(s, line)
+    line = line.lower()
+    if '-' in graphemes:
+        graphemes = graphemes - set('-')
+        hyphen = '-'
+    else:
+        hyphen = ''
+    split_pattern = re.compile('[^{}{}]'.format(hyphen, ''.join(sorted(graphemes))))
+    line = line.split()
+    newline = []
+    for w in line:
+        w = split_pattern.split(w)
+        for c in w:
+            c = sanitize_pattern.sub('',c)
+            if c:
+                newline.append(c)
+    return ' '.join(newline)
+
+def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
     speaker_line_pattern = re.compile('^;SprecherID\s((\w{2})?\d{2,3}).*$')
     speaker = None
@@ -80,7 +160,7 @@ def parse_trl_file(path, output_dir, lang_code, wav_files):
                     continue
                 lab_path = os.path.join(output_dir, name+'.lab')
                 with open(lab_path, 'w', encoding = 'utf8') as fw:
-                    fw.write(line.lower())
+                    fw.write(sanitize(line, lang_code, graphemes))
 
 def copy_wav_files(in_dir, out_dir):
     wave_files = [f for f in os.listdir(in_dir) if f.lower().endswith('.wav')]
@@ -105,7 +185,19 @@ def get_utterances_with_wavs(speaker_dir):
         wav_files.append(base)
     return wav_files
 
+def load_graphemes(dict_dir):
+    graphemes = set()
+    with open(os.path.join(dict_dir, 'grapheme.txt'), 'r', encoding = 'utf8') as f:
+        for line in f:
+            line = line.strip()
+            if line == '':
+                continue
+            graphemes.add(line)
+    return graphemes
+
 def globalphone_prep(source_dir, data_dir, lang_code):
+    dict_dir = os.path.join(data_dir, 'dict')
+    graphemes = load_graphemes(dict_dir)
     files_dir = os.path.join(data_dir, 'files')
     if os.path.exists(files_dir):
         print('Using existing data directory.')
@@ -128,9 +220,15 @@ def globalphone_prep(source_dir, data_dir, lang_code):
             parse_rmn_file(rmn_path, output_speaker_dir, lang_code, wav_files)
         else:
             trl_path = os.path.join(trl_dir, '{}{}.trl'.format(lang_code, speaker_id))
-            parse_trl_file(trl_path, output_speaker_dir, lang_code, wav_files)
+            parse_trl_file(trl_path, output_speaker_dir, lang_code, wav_files, graphemes)
         copy_wav_files(speaker_dir, output_speaker_dir)
     print('Done!')
+
+def utf8ize(word, lang_code):
+    for r, s in lang_dict_utf8mappings[lang_code]:
+        word = r.sub(s, word)
+    return word
+
 
 def globalphone_dict_prep(path, data_dir, lang_code):
     dict_dir = os.path.join(data_dir, 'dict')
@@ -142,6 +240,7 @@ def globalphone_dict_prep(path, data_dir, lang_code):
 
     extra_questions_path = os.path.join(dict_dir, 'extra_questions.txt')
     lexicon_path = os.path.join(dict_dir, 'lexicon.txt')
+    grapheme_path = os.path.join(dict_dir, 'grapheme.txt')
     lexicon_nosil_path = os.path.join(dict_dir, 'lexicon_nosil.txt')
     lexiconp_path = os.path.join(dict_dir, 'lexiconp.txt')
     nonsilence_phones_path = os.path.join(dict_dir, 'nonsilence_phones.txt')
@@ -164,6 +263,7 @@ def globalphone_dict_prep(path, data_dir, lang_code):
     line_break_pattern = re.compile(r'\}\s+')
     word_pattern = re.compile(r'^{([^{}]+)\s+')
     words = []
+    word_characters = set()
     with open(path, 'r', encoding = 'utf8') as f:
         try:
             for line in f:
@@ -182,15 +282,23 @@ def globalphone_dict_prep(path, data_dir, lang_code):
                     word = word.groups()[0]
                     phones = word_pattern.sub('',line)
                 word = word_cleanup_pattern.sub('', word)
+                word = word.strip()
+                word = utf8ize(word, lang_code)
+                word = word.lower()
+                word_characters.update(word)
                 phones = phone_cleanup_pattern.sub('', phones).strip()
                 matches = phones.split()
                 nonsil.update(matches)
-                words.append((word.lower(), ' '.join(matches)))
+                words.append((word, ' '.join(matches)))
         except UnicodeDecodeError:
             s = f.readline()
             print(repr(s))
             print(f.readline())
             raise(Exception)
+
+    with open(grapheme_path, 'w', encoding = 'utf8') as f:
+        for char in sorted(word_characters):
+            f.write(char + '\n')
 
     with open(lexicon_path, 'a', encoding = 'utf8') as lf, \
         open(lexicon_nosil_path, 'w', encoding = 'utf8') as lnsf:
