@@ -84,6 +84,30 @@ lang_trl_utf8mappings = {
                 'VN': []
                 }
 
+lang_phone_cleanup = {
+                'AR': [],
+                'BG': [],
+                'CH': [],
+                'WU': [],
+                'CR': [],
+                'CZ': [],
+                'FR': [],
+                'GE': [],
+                'HA': [(re.compile(r'([a-zA-Z0-9]+)\s(T\d|L|S)'), r'\1_\2'),
+                        (re.compile(r'H_'), ''),],
+                'JA': [],
+                'KO': [],
+                'RU': [],
+                'PO': [],
+                'PL': [],
+                'SP': [],
+                'SW': [],
+                'TA': [],
+                'TH': [],
+                'TU': [],
+                'VN': [(re.compile(r'([a-zA-Z0-9]+)\s(T\d)'), r'\1_\2')]
+                }
+
 def parse_rmn_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
     speaker_line_pattern = re.compile('^;SprecherID\s(\d{3})$')
@@ -230,6 +254,15 @@ def utf8ize(word, lang_code):
     return word
 
 
+phone_cleanup_pattern = re.compile(r'(M_|\{| WB\}|\})')
+
+def cleanup_transcription(phone_sequence, lang_code):
+    for r, s in lang_phone_cleanup[lang_code]:
+        phone_sequence = r.sub(s, phone_sequence)
+    phone_sequence = phone_cleanup_pattern.sub('', phone_sequence).strip()
+    return phone_sequence
+
+
 def globalphone_dict_prep(path, data_dir, lang_code):
     dict_dir = os.path.join(data_dir, 'dict')
     if  os.path.exists(dict_dir):
@@ -258,7 +291,6 @@ def globalphone_dict_prep(path, data_dir, lang_code):
 
     nonsil = set()
 
-    phone_cleanup_pattern = re.compile(r'(M_|\{| WB\}|\})')
     word_cleanup_pattern = re.compile(r'\(\d+\)')
     line_break_pattern = re.compile(r'\}\s+')
     word_pattern = re.compile(r'^{([^{}]+)\s+')
@@ -286,8 +318,10 @@ def globalphone_dict_prep(path, data_dir, lang_code):
                 word = utf8ize(word, lang_code)
                 word = word.lower()
                 word_characters.update(word)
-                phones = phone_cleanup_pattern.sub('', phones).strip()
+                phones = cleanup_transcription(phones, lang_code)
                 matches = phones.split()
+                if len(matches) == 2 and matches[0] == matches[1]:
+                    matches = matches[:1]
                 nonsil.update(matches)
                 words.append((word, ' '.join(matches)))
         except UnicodeDecodeError:
