@@ -32,23 +32,26 @@ full_names = {
                 'TA': 'Tamil',
                 'TH': 'Thai',
                 'TU': 'Turkish',
-                'VN': 'Vietnamese'
+                'VN': 'Vietnamese',
+                'UA': 'Ukrainian'
                 }
 
 globalphone_dir = r'D:\Data\GlobalPhone'
 
-source_dirs = {k: os.path.join(globalphone_dir, v) for k,v in full_names.items()}
+base_dirs = {k: os.path.join(globalphone_dir, v) for k,v in full_names.items()}
+
+source_dirs = {k: os.path.join(base_dirs[k], v) for k,v in full_names.items()}
 
 data_directory = r'D:\Data\kaldi-gp-data'
 
 data_dirs = {k: os.path.join(data_directory, k) for k,v in source_dirs.items()}
 
-dict_paths = {k: os.path.join(source_dirs[k],
+dict_paths = {k: os.path.join(base_dirs[k],
                             '{}_Dict'.format(v),
                             '{}-GPDict.txt'.format(v))
                     for k,v in full_names.items()}
 
-lm_paths = {k: os.path.join(source_dirs[k],
+lm_paths = {k: os.path.join(base_dirs[k],
                             '{}_languageModel'.format(v),
                             '{}.3gram.lm'.format(k))
                     for k,v in full_names.items()}

@@ -14,3 +14,16 @@ Rename Portuguese ".utf8.allwords" to ".txt"
 Vietnamese:
     Pronunciation dictionary has tone as separate segments in transcriptions
 
+Japanese:
+    Initial entries lack phones, changed to:
+        {#ARTIK#} {{M_+QK WB}}
+        {#ATMEN#} {{M_+QK WB}}
+        {#MUELL#} {{M_+QK WB}}
+        {#N_ARTIK#} {{M_+QK WB}}
+        {#SCHMATZEN#} {{M_+QK WB}}
+
+Arabic
+    AR037.rmn remove spaces from beginnings of lines 161 and 163
+
+Croatian
+    Remove all periods from abbreviations in dictionary (e.g., mr., dr., sv., etc)

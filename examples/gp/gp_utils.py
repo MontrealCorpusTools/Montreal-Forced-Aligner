@@ -20,10 +20,12 @@ lang_encodings = {
                 'PL': 'utf8',
                 'SP': 'iso-8859-1',
                 'SW': 'iso-8859-1',
+                'SA': 'utf8',
                 'TA': '',
                 'TH': 'utf8',
                 'TU': 'iso-8859-9',
-                'VN': 'utf8'
+                'VN': 'utf8',
+                'UA': 'utf8',
                 }
 
 lang_dict_utf8mappings = {
@@ -55,10 +57,12 @@ lang_dict_utf8mappings = {
                         (re.compile(r'o\^'),'ö'),
                         (re.compile(r'O\^'),'Ö'),
                         (re.compile(r'e\+'),'é'),],
+                'SA': [],
                 'TA': [],
                 'TH': [],
                 'TU': [],
-                'VN': []
+                'VN': [],
+                'UA': [],
                 }
 
 lang_trl_utf8mappings = {
@@ -78,10 +82,12 @@ lang_trl_utf8mappings = {
                 'PL': [],
                 'SP': [],
                 'SW': [],
+                'SA': [],
                 'TA': [],
                 'TH': [],
                 'TU': [],
-                'VN': []
+                'VN': [],
+                'UA': [],
                 }
 
 lang_phone_cleanup = {
@@ -102,21 +108,23 @@ lang_phone_cleanup = {
                 'PL': [],
                 'SP': [],
                 'SW': [],
+                'SA': [],
                 'TA': [],
                 'TH': [],
                 'TU': [],
-                'VN': [(re.compile(r'([a-zA-Z0-9]+)\s(T\d)'), r'\1_\2')]
+                'VN': [(re.compile(r'([a-zA-Z0-9]+)\s(T\d)'), r'\1_\2')],
+                'UA': [],
                 }
 
 def parse_rmn_file(path, output_dir, lang_code, wav_files):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
-    speaker_line_pattern = re.compile('^;SprecherID\s(\d{3})$')
+    speaker_line_pattern = re.compile('^;(sprecherid|speakerid)\s(\d{3})$')
     speaker = None
     current = None
     with open(path, 'r') as f:
         for line in f:
             if speaker is None:
-                speaker_match = speaker_line_pattern.match(line)
+                speaker_match = speaker_line_pattern.match(line.lower())
                 if speaker_match is None:
                     raise(Exception('The rmn file did not start with the speaker id.'))
                 speaker = speaker_match.groups()[0]
@@ -132,7 +140,7 @@ def parse_rmn_file(path, output_dir, lang_code, wav_files):
                     continue
                 lab_path = os.path.join(output_dir, name + '.lab')
                 with open(lab_path, 'w') as fw:
-                    fw.write(line)
+                    fw.write(sanitize(line, lang_code, graphemes))
 
 sanitize_pattern = re.compile('(^\W|\W$)')
 
@@ -158,7 +166,7 @@ def sanitize(line, lang_code, graphemes):
 
 def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):
     file_line_pattern = re.compile('^;\s+(\d+)\s*:$')
-    speaker_line_pattern = re.compile('^;SprecherID\s((\w{2})?\d{2,3}).*$')
+    speaker_line_pattern = re.compile('^;(sprecherid|speakerid)\s((\w{2})?\d{2,3}).*$')
     speaker = None
     current = None
     with open(path, 'r', encoding = lang_encodings[lang_code]) as f:
@@ -167,8 +175,9 @@ def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):
             if line == '':
                 continue
             if speaker is None:
-                speaker_match = speaker_line_pattern.match(line)
+                speaker_match = speaker_line_pattern.match(line.lower())
                 if speaker_match is None:
+                    print(line.lower())
                     raise(Exception('The file \'{}\' did not start with the speaker id.'.format(path)))
                 speaker = speaker_match.groups()[0]
                 if len(speaker) == 2:
@@ -239,7 +248,7 @@ def globalphone_prep(source_dir, data_dir, lang_code):
         wav_files = get_utterances_with_wavs(speaker_dir)
         output_speaker_dir = os.path.join(files_dir, speaker_id)
         os.makedirs(output_speaker_dir, exist_ok = True)
-        if lang_code in ['CH', 'WU']:
+        if lang_code in ['CH', 'WU', 'JA']:
             rmn_path = os.path.join(rmn_dir, '{}{}.rmn'.format(lang_code, speaker_id))
             parse_rmn_file(rmn_path, output_speaker_dir, lang_code, wav_files)
         else:
@@ -254,7 +263,7 @@ def utf8ize(word, lang_code):
     return word
 
 
-phone_cleanup_pattern = re.compile(r'(M_|\{| WB\}|\})')
+phone_cleanup_pattern = re.compile(r'(UA_|SWA_|M_|\{| WB\}|\})')
 
 def cleanup_transcription(phone_sequence, lang_code):
     for r, s in lang_phone_cleanup[lang_code]:
@@ -306,7 +315,7 @@ def globalphone_dict_prep(path, data_dir, lang_code):
                     word, phones = line_break_pattern.split(line, maxsplit=1)
                 except ValueError:
                     raise(Exception('There was a problem with the line \'{}\'.'.format(line)))
-                if 'SIL' in phones:
+                if 'SIL' in phones or '+QK' in phones:
                     continue
                 word = word[1:].strip()
                 if '{' in word:
