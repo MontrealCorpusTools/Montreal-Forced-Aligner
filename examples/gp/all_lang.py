@@ -28,6 +28,7 @@ full_names = {
                 'PO': 'Portuguese',
                 'PL': 'Polish',
                 'SP': 'Spanish',
+                'SA': 'Swahili',
                 'SW': 'Swedish',
                 'TA': 'Tamil',
                 'TH': 'Thai',

@@ -179,7 +179,7 @@ def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):
                 if speaker_match is None:
                     print(line.lower())
                     raise(Exception('The file \'{}\' did not start with the speaker id.'.format(path)))
-                speaker = speaker_match.groups()[0]
+                speaker = speaker_match.groups()[1]
                 if len(speaker) == 2:
                     speaker = '0' + speaker
             file_match = file_line_pattern.match(line)
