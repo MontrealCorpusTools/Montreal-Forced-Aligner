@@ -175,6 +175,8 @@ def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):
             if line == '':
                 continue
             if speaker is None:
+                if line.startswith('\ufeff'):
+                    line = line[1:]
                 speaker_match = speaker_line_pattern.match(line.lower())
                 if speaker_match is None:
                     print(line.lower())
