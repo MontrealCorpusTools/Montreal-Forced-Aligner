@@ -157,11 +157,12 @@ def sanitize(line, lang_code, graphemes):
     line = line.split()
     newline = []
     for w in line:
-        w = split_pattern.split(w)
-        for c in w:
-            c = sanitize_pattern.sub('',c)
-            if c:
-                newline.append(c)
+        #w = split_pattern.split(w)
+        #for c in w:
+        #    c = sanitize_pattern.sub('',c)
+        #    if c:
+        #        newline.append(c)
+        newline.append(w)
     return ' '.join(newline)
 
 def parse_trl_file(path, output_dir, lang_code, wav_files, graphemes):

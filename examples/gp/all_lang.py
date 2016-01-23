@@ -69,7 +69,6 @@ if __name__ == '__main__':
         globalphone_prep(source_dirs[k], data_dirs[k], k)
 
         data_prep(data_dirs[k], lm_paths[k])
-        continue
         train_mono(data_dirs[k])
         train_tri(data_dirs[k], num_jobs = 6)
         train_tri_fmllr(data_dirs[k], num_jobs = 6)
