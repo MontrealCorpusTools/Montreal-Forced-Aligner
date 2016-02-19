@@ -2,6 +2,13 @@
 __pycache__/
 *.py[cod]
 
+tests/data/generated
+
+thirdparty/*
+!thirdparty/**/
+!thirdparty/*.md
+!thirdparty/*.py
+
 # C extensions
 *.so
 

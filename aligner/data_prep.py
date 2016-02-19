@@ -2,11 +2,11 @@ import os
 import shutil
 import re
 
-from .prep import prepare_dict, prepare_lang, prepare_train_data, prepare_mfccs, prepare_config
+from .prep import prepare_dict, prepare_train_data, prepare_mfccs, prepare_config
 
 from .validation import validate_training_directory
 
-def data_prep(data_directory, lm_path):
+def data_prep(data_directory):
     """
     Prepares data for alignment from a directory of sound files with
     TextGrids (or label files)
@@ -19,8 +19,6 @@ def data_prep(data_directory, lm_path):
         Path to directory to temporary store files used in alignment
     dict_path : str
         Path to a pronunciation dictionary
-    lm_path : str
-        Path to a language model
     """
     config_dir = os.path.join(data_directory, 'conf')
     if not os.path.exists(config_dir):
@@ -32,12 +30,11 @@ def data_prep(data_directory, lm_path):
 
     lang_dir = os.path.join(data_directory, 'lang')
     if not os.path.exists(lang_dir):
-        print('Preparing dictionary and language models...')
+        print('Preparing dictionary...')
         prepare_dict(data_directory)
-        prepare_lang(data_directory, lm_path)
         print('Done!')
     else:
-        print('Using existing dictionary and language models.')
+        print('Using existing dictionary.')
 
     train_dir = os.path.join(data_directory, 'train')
     if not os.path.exists(train_dir):
@@ -58,15 +55,3 @@ def data_prep(data_directory, lm_path):
         print('Done!')
     else:
         print('Using existing mfccs.')
-
-def transcription_prep():
-    pass
-
-def dictionary_prep():
-    pass
-
-def lm_prep():
-    pass
-
-def mfcc_prep():
-    pass
