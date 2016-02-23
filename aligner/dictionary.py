@@ -4,6 +4,8 @@ import math
 import subprocess
 from collections import defaultdict
 
+from .helper import thirdparty_binary
+
 class Dictionary(object):
     topo_template = '<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>'
     topo_sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
@@ -360,12 +362,12 @@ class Dictionary(object):
 
         output_fst = os.path.join(self.output_directory, 'L.fst')
         temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
-        subprocess.call(['fstcompile', '--isymbols={}'.format(phones_file_path),
+        subprocess.call([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
                         '--osymbols={}'.format(words_file_path),
                         '--keep_isymbols=false','--keep_osymbols=false',
                         lexicon_fst_path, temp_fst_path])
 
-        subprocess.call(['fstarcsort', '--sort_type=olabel',
+        subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
                     temp_fst_path, output_fst])
 
     def _write_fst_text(self):
