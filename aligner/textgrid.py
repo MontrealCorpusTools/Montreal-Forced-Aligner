@@ -4,8 +4,6 @@ import sys
 from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
-from .prep.dict import positions
-
 def parse_ctm(ctm_path, mapping):
     file_dict = defaultdict(list)
     with open(ctm_path, 'r') as f:

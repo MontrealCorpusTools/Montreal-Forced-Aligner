@@ -21,7 +21,7 @@ class Dictionary(object):
                     num_nonsil_states = 3, shared_silence_phones = False,
                     pronunciation_probabilities = True,
                     sil_prob = 0.5):
-        self.output_directory = output_directory
+        self.output_directory = os.path.join(output_directory, 'dictionary')
         if not os.path.exists(self.phones_dir):
             os.makedirs(self.phones_dir, exist_ok = True)
         self.num_sil_states = num_sil_states
