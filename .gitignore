@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 
+# Mac BS
+.DS_Store
+
+
 tests/data/generated
 
 thirdparty/*
