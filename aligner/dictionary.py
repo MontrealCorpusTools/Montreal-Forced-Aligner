@@ -1,5 +1,7 @@
 import os
 import shutil
+import math
+import subprocess
 from collections import defaultdict
 
 class Dictionary(object):
@@ -15,6 +17,7 @@ class Dictionary(object):
     def __init__(self, input_path, output_directory, oov_code = '<unk>',
                     position_dependent_phones = True, num_sil_states = 5,
                     num_nonsil_states = 3, shared_silence_phones = False,
+                    pronunciation_probabilities = True,
                     sil_prob = 0.5):
         self.output_directory = output_directory
         if not os.path.exists(self.phones_dir):
@@ -25,6 +28,7 @@ class Dictionary(object):
         self.sil_prob = sil_prob
         self.oov_code = oov_code
         self.position_dependent_phones = position_dependent_phones
+        self.pronunciation_probabilities = pronunciation_probabilities
 
         self.words = defaultdict(list)
         self.nonsil_phones = set()
@@ -72,6 +76,34 @@ class Dictionary(object):
         self.words_mapping['</s>'] = i + 3
 
     @property
+    def positional_sil_phones(self):
+        sil_phones = []
+        for p in self.sil_phones:
+            sil_phones.append(p)
+            for pos in self.positions:
+                sil_phones.append(p+pos)
+        return sil_phones
+
+    @property
+    def positional_nonsil_phones(self):
+        nonsil_phones = []
+        for p in self.nonsil_phones:
+            for pos in self.positions:
+                nonsil_phones.append(p+pos)
+        return nonsil_phones
+
+    @property
+    def optional_silence_csl(self):
+        return '{}'.format(self.phone_mapping[optional_silence])
+
+    @property
+    def silence_csl(self):
+        if self.position_dependent_phones:
+            return ':'.join(map(str,(self.phone_mapping[x] for x in self.positional_sil_phones)))
+        else:
+            return ':'.join(map(str,(self.phone_mapping[x] for x in self.sil_phones)))
+
+    @property
     def phones_dir(self):
         return os.path.join(self.output_directory, 'phones')
 
@@ -80,8 +112,8 @@ class Dictionary(object):
         return self.sil_phones & self.nonsil_phones
 
     def write(self):
-        self._write_lexicon()
-        self._write_lexiconp()
+        #self._write_lexicon()
+        #self._write_lexiconp()
 
         self._write_graphemes()
         self._write_phone_map_file()
@@ -90,6 +122,12 @@ class Dictionary(object):
         self._write_topo()
         self._write_word_boundaries()
         self._write_word_file()
+        self._write_fst_text()
+        self._write_fst_binary()
+
+    def cleanup(self):
+        os.remove(os.path.join(self.output_directory, 'temp.fst'))
+        os.remove(os.path.join(self.output_directory, 'lexicon.text.fst'))
 
     def _write_graphemes(self):
         outfile = os.path.join(self.output_directory, 'graphemes.txt')
@@ -162,7 +200,9 @@ class Dictionary(object):
 
     def _write_word_boundaries(self):
         boundary_path = os.path.join(self.output_directory, 'phones', 'word_boundary.txt')
-        with open(boundary_path, 'w', encoding = 'utf8') as f:
+        boundary_int_path = os.path.join(self.output_directory, 'phones', 'word_boundary.int')
+        with open(boundary_path, 'w', encoding = 'utf8') as f, \
+            open(boundary_int_path, 'w', encoding ='utf8') as intf:
             if self.position_dependent_phones:
                 for p in sorted(self.phone_mapping.keys(),
                             key = lambda x: self.phone_mapping[x]):
@@ -178,6 +218,7 @@ class Dictionary(object):
                     elif p.endswith('_E'):
                         cat = 'end'
                     f.write(' '.join([p, cat])+'\n')
+                    intf.write(' '.join([str(self.phone_mapping[p]), cat])+'\n')
 
     def _write_word_file(self):
         words_path = os.path.join(self.output_directory, 'words.txt')
@@ -237,47 +278,50 @@ class Dictionary(object):
         sets_file = os.path.join(self.output_directory, 'phones', 'sets.txt')
         roots_file = os.path.join(self.output_directory, 'phones', 'roots.txt')
 
-        phone_silence = os.path.join(self.output_directory, 'phones', 'silence.txt')
-        phone_nonsilence = os.path.join(self.output_directory, 'phones', 'nonsilence.txt')
+        sets_int_file = os.path.join(self.output_directory, 'phones', 'sets.int')
+        roots_int_file = os.path.join(self.output_directory, 'phones', 'roots.int')
 
 
         with open(sets_file, 'w', encoding = 'utf8') as setf, \
-                    open(roots_file, 'w', encoding = 'utf8') as rootf:
+                    open(roots_file, 'w', encoding = 'utf8') as rootf,\
+                    open(sets_int_file, 'w', encoding = 'utf8') as setintf, \
+                    open(roots_int_file, 'w', encoding = 'utf8') as rootintf:
 
             #process silence phones
-            with open(phone_silence, 'w', encoding = 'utf8') as silf:
-                for i, sp in enumerate(self.sil_phones):
-                    if self.position_dependent_phones:
-                        mapped = [sp+x for x in [''] + self.positions]
-                    else:
-                        mapped = [sp]
-                    setf.write(' '.join(mapped) + '\n')
-                    for item in mapped:
-                        silf.write(item + '\n')
-                    if i == 0:
-                        line = sil_sharesplit + mapped
-                    else:
-                        line = sharesplit + mapped
-                    rootf.write(' '.join(line) + '\n')
+            for i, sp in enumerate(self.sil_phones):
+                if self.position_dependent_phones:
+                    mapped = [sp+x for x in [''] + self.positions]
+                else:
+                    mapped = [sp]
+                setf.write(' '.join(mapped) + '\n')
+                setintf.write(' '.join(map(str, (self.phone_mapping[x] for x in mapped))) + '\n')
+                if i == 0:
+                    line = sil_sharesplit + mapped
+                    lineint = sil_sharesplit + [self.phone_mapping[x] for x in mapped]
+                else:
+                    line = sharesplit + mapped
+                    lineint = sharesplit + [self.phone_mapping[x] for x in mapped]
+                rootf.write(' '.join(line) + '\n')
+                rootintf.write(' '.join(map(str, lineint)) + '\n')
 
             #process nonsilence phones
-            with open(phone_nonsilence, 'w', encoding = 'utf8') as nonsilf:
-                for nsp in sorted(self.nonsil_phones):
-                    if self.position_dependent_phones:
-                        mapped = [nsp+x for x in  self.positions]
-                    else:
-                        mapped = [nsp]
-                    setf.write(' '.join(mapped) + '\n')
-                    for item in mapped:
-                        nonsilf.write(item + '\n')
-                    line = sharesplit + mapped
-                    rootf.write(' '.join(line) + '\n')
-
-        shutil.copy(phone_silence, os.path.join(self.output_directory, 'phones', 'context_indep.txt'))
+            for nsp in sorted(self.nonsil_phones):
+                if self.position_dependent_phones:
+                    mapped = [nsp+x for x in  self.positions]
+                else:
+                    mapped = [nsp]
+                setf.write(' '.join(mapped) + '\n')
+                setintf.write(' '.join(map(str, (self.phone_mapping[x] for x in mapped))) + '\n')
+                line = sharesplit + mapped
+                lineint = sharesplit + [self.phone_mapping[x] for x in mapped]
+                rootf.write(' '.join(line) + '\n')
+                rootintf.write(' '.join(map(str, lineint)) + '\n')
 
     def _write_extra_questions(self):
         phone_extra = os.path.join(self.phones_dir, 'extra_questions.txt')
-        with open(phone_extra, 'w', encoding = 'utf8') as outf:
+        phone_extra_int = os.path.join(self.phones_dir, 'extra_questions.int')
+        with open(phone_extra, 'w', encoding = 'utf8') as outf, \
+            open(phone_extra_int, 'w', encoding = 'utf8') as intf:
             sils = []
             for sp in sorted(self.sil_phones):
                 if self.position_dependent_phones:
@@ -286,6 +330,7 @@ class Dictionary(object):
                     mapped = [sp]
                 sils.extend(mapped)
             outf.write(' '.join(sils) + '\n')
+            intf.write(' '.join(str, (self.phone_mapping[x] for x in sils)) + '\n')
             nonsils = []
             for nsp in sorted(self.nonsil_phones):
                 if self.position_dependent_phones:
@@ -294,10 +339,106 @@ class Dictionary(object):
                     mapped = [nsp]
                 nonsils.extend(mapped)
             outf.write(' '.join(nonsils) + '\n')
+            intf.write(' '.join(str, (self.phone_mapping[x] for x in nonsils)) + '\n')
 
             for p in self.positions:
                 line = [x + p for x in sorted(self.nonsil_phones)]
                 outf.write(' '.join(line) + '\n')
+                intf.write(' '.join(str, (self.phone_mapping[x] for x in line)) + '\n')
             for p in [''] + self.positions:
                 line = [x + p for x in sorted(self.sil_phones)]
                 outf.write(' '.join(line) + '\n')
+                intf.write(' '.join(str, (self.phone_mapping[x] for x in line)) + '\n')
+
+    def _write_fst_binary(self):
+
+        lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+
+        phones_file_path = os.path.join(self.output_directory, 'phones.txt')
+        words_file_path = os.path.join(self.output_directory, 'words.txt')
+
+
+        output_fst = os.path.join(self.output_directory, 'L.fst')
+        temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
+        subprocess.call(['fstcompile', '--isymbols={}'.format(phones_file_path),
+                        '--osymbols={}'.format(words_file_path),
+                        '--keep_isymbols=false','--keep_osymbols=false',
+                        lexicon_fst_path, temp_fst_path])
+
+        subprocess.call(['fstarcsort', '--sort_type=olabel',
+                    temp_fst_path, output_fst])
+
+    def _write_fst_text(self):
+        lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+        if self.sil_prob != 0:
+            silphone = self.optional_silence
+            def is_sil(element):
+                return element == silphone
+            silcost = -1 * math.log(self.sil_prob);
+            nosilcost = -1 * math.log(1.0 - self.sil_prob)
+            startstate = 0
+            loopstate = 1
+            silstate = 2
+        else:
+            loopstate = 0
+            nextstate = 1
+
+        with open(lexicon_fst_path, 'w', encoding = 'utf8') as outf:
+            if self.sil_prob > 0:
+
+                outf.write('\t'.join(map(str,[startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
+
+                outf.write('\t'.join(map(str,[startstate, loopstate, silphone, '<eps>',silcost]))+"\n")
+                outf.write('\t'.join(map(str,[silstate, loopstate, silphone, '<eps>']))+"\n")
+                nextstate = 3
+            for w in sorted(self.words.keys()):
+                for phones in sorted(self.words[w]):
+                    phones = [x for x in phones]
+                    if self.position_dependent_phones:
+                        if len(phones) == 1:
+                            phones[0] += '_S'
+                        else:
+                            for i in range(len(phones)):
+                                if i == 0:
+                                    phones[i] += '_B'
+                                elif i == len(phones) - 1:
+                                    phones[i] += '_E'
+                                else:
+                                    phones[i] += '_I'
+                if not self.pronunciation_probabilities:
+                    pron_cost = 0
+                else:
+                    p = 1.0
+                    pron_cost = -1 * math.log(p)
+
+                pron_cost_string = ''
+                if pron_cost != 0:
+                    pron_cost_string = '\t{}'.pron_cost
+
+                s = loopstate
+                word_or_eps = w
+                while len(phones) > 0:
+                    p = phones.pop(0)
+                    if len(phones) > 0:
+                        ns = nextstate
+                        nextstate += 1
+                        outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                        word_or_eps = '<eps>'
+                        pron_cost_string = ""
+                        pron_cost = 0.0
+                        s = ns
+                    elif self.sil_prob == 0:
+                        ns = loopstate
+                        outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                        word_or_eps = '<eps>'
+                        pron_cost_string = ""
+                        s = ns
+                    else:
+                        if not is_sil(p):
+                            local_nosilcost = nosilcost + pron_cost
+                            local_silcost = silcost + pron_cost;
+                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
+                            outf.write('\t'.join(map(str,[s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                        else:
+                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
+            outf.write("{}\t{}\n".format(loopstate, 0))
