@@ -1,45 +1,349 @@
 
 import os
 import shutil
+import subprocess
+import re
 
-temp_directory = os.path.normpath(os.path.expanduser('~/Documents/MFA'))
+from .helper import thirdparty_binary
+
+from .config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig
+
+from .multiprocessing import (align, mono_align_equal, compile_train_graphs,
+                            acc_stats, tree_stats, convert_alignments,
+                             convert_ali_to_textgrids, calc_fmllr)
+
+TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+
 
 class BaseAligner(object):
-    def __init__(self, source_directory, output_directory):
-
-        self.source_directory = source_directory
-        dirname = os.path.split(self.source_directory)[-1]
+    def __init__(self, corpus, dictionary, output_directory,
+                    temp_directory = None, num_jobs = 3):
+        self.mono_config = MonophoneConfig()
+        self.tri_config = TriphoneConfig()
+        self.tri_fmllr_config = TriphoneFmllrConfig()
+        self.corpus = corpus
+        self.dictionary = dictionary
         self.output_directory = output_directory
-        self.temp_directory = os.path.join(temp_directory, dirname)
-        if os.path.exists(self.temp_directory): # Clean up from failed runs?
-            shutil.rmtree(self.temp_directory)
+        if self.corpus.num_jobs != num_jobs:
+            num_jobs = self.corpus.num_jobs
+        self.num_jobs = num_jobs
+        if temp_directory is None:
+            temp_directory = TEMP_DIR
+        self.temp_directory = temp_directory
 
-        self.dict_dir = os.path.join(self.temp_directory, 'dict')
-        self.lang_dir = os.path.join(self.temp_directory, 'lang')
-        self.phones_dir = os.path.join(self.lang_dir, 'phones')
-        self.mfcc_dir = os.path.join(self.temp_directory, 'mfcc')
-        self.conf_dir = os.path.join(self.temp_directory, 'conf')
-        self.train_dir = os.path.join(self.temp_directory, 'train')
-        os.makedirs(self.dict_dir)
-        os.makedirs(self.mfcc_dir)
-        os.makedirs(self.conf_dir)
-        os.makedirs(self.train_dir)
-        os.makedirs(self.phones_dir)
+    @property
+    def mono_directory(self):
+        return os.path.join(self.temp_directory, 'mono')
 
-    def data_prep(self):
-        self.prep_config()
-        self.prep_dict()
+    @property
+    def mono_final_model_path(self):
+        return os.path.join(self.mono_directory, 'final.mdl')
 
-    def prep_mfcc(self):
-        pass
+    @property
+    def mono_ali_directory(self):
+        return os.path.join(self.temp_directory, 'mono_ali')
 
-    def prep_dict(self):
-        prepare_dict(self)
+    @property
+    def tri_directory(self):
+        return os.path.join(self.temp_directory, 'tri')
 
-    def prep_train(self):
-        pass
+    @property
+    def tri_ali_directory(self):
+        return os.path.join(self.temp_directory, 'tri_ali')
 
-    def prep_config(self):
-        mfcc_config = os.path.join(self.conf_dir, 'mfcc.conf')
-        with open(mfcc_config, 'w') as f:
-            f.write('--use-energy=false   # only non-default option.')
+    @property
+    def tri_final_model_path(self):
+        return os.path.join(self.tri_directory, 'final.mdl')
+
+    @property
+    def tri_fmllr_directory(self):
+        return os.path.join(self.temp_directory, 'tri_fmllr')
+
+    @property
+    def tri_fmllr_ali_directory(self):
+        return os.path.join(self.temp_directory, 'tri_fmllr_ali')
+
+    @property
+    def tri_fmllr_final_model_path(self):
+        return os.path.join(self.tri_fmllr_directory, 'final.mdl')
+
+    def train_mono(self):
+        final_mdl = os.path.join(self.mono_directory, 'final.mdl')
+        split_directory = self.corpus.split_directory
+        if os.path.exists(final_mdl):
+            print('Monophone training already done, using previous final.mdl')
+            return
+        os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok = True)
+        if not os.path.exists(split_directory):
+            self.corpus.setup_splits(self.dictionary)
+
+        self.init_mono()
+        self.do_mono_training()
+        #self.convert_ali_to_textgrids(mono_directory, lang_directory, split_directory, num_jobs)
+
+    def export_textgrids(self):
+        if os.path.exists(self.tri_fmllr_final_model_path):
+            model_directory = self.tri_fmllr_directory
+        elif os.path.exists(self.tri_final_model_path):
+            model_directory = self.tri_directory
+        elif os.path.exists(self.mono_final_model_path):
+            model_directory = self.mono_directory
+        convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
+                            self.corpus.split_directory, self.num_jobs)
+
+    def get_num_gauss_mono(self):
+        with open(os.devnull, 'w') as devnull:
+            proc = subprocess.Popen([thirdparty_binary('gmm-info'),
+                        '--print-args=false',
+                        os.path.join(self.mono_directory, '0.mdl')],
+                        stderr = devnull,
+                        stdout = subprocess.PIPE)
+            stdout, stderr = proc.communicate()
+            num = stdout.decode('utf8')
+            matches = re.search(r'gaussians (\d+)', num)
+            num = int(matches.groups()[0])
+        return num
+
+    def init_mono(self):
+        log_dir = os.path.join(self.mono_directory, 'log')
+        os.makedirs(log_dir, exist_ok =True)
+        tree_path = os.path.join(self.mono_directory,'tree')
+        mdl_path = os.path.join(self.mono_directory,'0.mdl')
+
+        directory = self.corpus.split_directory
+        feat_dim = self.corpus.get_feat_dim()
+        path = os.path.join(directory, 'cmvndeltafeats.0_sub')
+        feat_path = os.path.join(directory, 'cmvndeltafeats.0')
+        shared_phones_opt = "--shared-phones=" + os.path.join(self.dictionary.phones_dir, 'sets.int')
+        log_path = os.path.join(log_dir, 'log')
+        with open(path, 'rb') as f, open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-init-mono'),shared_phones_opt,
+                            "--train-feats=ark:-",
+                            os.path.join(self.dictionary.output_directory,'topo'),
+                            feat_dim,
+                            mdl_path,
+                            tree_path],
+                            stdin = f,
+                            stderr = logf)
+        num_gauss = self.get_num_gauss_mono()
+        compile_train_graphs(self.mono_directory, self.dictionary.output_directory,
+                                self.corpus.split_directory, self.num_jobs)
+        mono_align_equal(self.mono_directory, self.dictionary.output_directory,
+                                self.corpus.split_directory, self.num_jobs)
+        log_path = os.path.join(self.mono_directory, 'log', 'update.0.log')
+        with open(log_path, 'w') as logf:
+            acc_files = [os.path.join(self.mono_directory, '0.{}.acc'.format(x)) for x in range(self.num_jobs)]
+            est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
+                    '--min-gaussian-occupancy=3',
+                    '--mix-up={}'.format(num_gauss), '--power={}'.format(self.mono_config.power),
+                    mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                            ' '.join(acc_files)),
+                    os.path.join(self.mono_directory,'1.mdl')],
+                    stderr = logf)
+            est_proc.communicate()
+
+    def do_mono_training(self):
+        self.mono_config.num_gauss = self.get_num_gauss_mono()
+        self._do_training(self.mono_directory, self.mono_config)
+
+    def _do_training(self, directory, config):
+        if config.realign_iters is None:
+            config.realign_iters = list(range(0, config.num_iters, 10))
+        num_gauss = config.num_gauss
+        sil_phones = self.dictionary.silence_csl
+        max_iter_inc = config.num_iters - 10
+        inc_gauss = int((config.totgauss - config.num_gauss) / config.max_iter_inc)
+        for i in range(1, config.num_iters):
+            model_path = os.path.join(directory,'{}.mdl'.format(i))
+            occs_path = os.path.join(directory, '{}.occs'.format(i+1))
+            next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
+            if os.path.exists(next_model_path):
+                continue
+            if i in config.realign_iters:
+                align(i, directory, self.corpus.split_directory,
+                            self.dictionary.optional_silence_csl,
+                            self.num_jobs, config)
+            if config.do_fmllr and i in config.fmllr_iters:
+                calc_fmllr(directory, self.corpus.split_directory, sil_phones,
+                        self.num_jobs, config, initial = False, iteration = i)
+
+            acc_stats(i, directory, self.corpus.split_directory, self.num_jobs,
+                        config.do_fmllr)
+            log_path = os.path.join(directory, 'log', 'update.{}.log'.format(i))
+            with open(log_path, 'w') as logf:
+                acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))
+                                                for x in range(self.num_jobs)]
+                est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
+                        '--write-occs='+occs_path,
+                        '--mix-up='+str(num_gauss), '--power='+str(config.power),
+                        model_path,
+                        "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                        ' '.join(acc_files)),
+                        next_model_path],
+                        stderr = logf)
+                est_proc.communicate()
+            if i < max_iter_inc:
+                num_gauss += inc_gauss
+        shutil.copy(os.path.join(directory,'{}.mdl'.format(config.num_iters)),
+                        os.path.join(directory,'final.mdl'))
+        shutil.copy(os.path.join(directory,'{}.occs'.format(config.num_iters)),
+                        os.path.join(directory,'final.occs'))
+
+    def init_tri(self, fmllr = False):
+        if fmllr:
+            config = self.tri_fmllr_config
+            directory = self.tri_fmllr_directory
+            align_directory = self.tri_ali_directory
+        else:
+            config = self.tri_config
+            directory = self.tri_directory
+            align_directory = self.mono_ali_directory
+        if os.path.exists(os.path.join(directory, 'trans.0')):
+            return
+        context_opts = []
+        ci_phones = self.dictionary.silence_csl
+
+        tree_stats(directory, align_directory,
+                    self.corpus.split_directory, ci_phones, self.num_jobs)
+        log_path = os.path.join(directory, 'log', 'questions.log')
+        tree_path = os.path.join(directory, 'tree')
+        treeacc_path = os.path.join(directory, 'treeacc')
+        sets_int_path = os.path.join(self.dictionary.phones_dir, 'sets.int')
+        roots_int_path = os.path.join(self.dictionary.phones_dir, 'roots.int')
+        extra_question_int_path = os.path.join(self.dictionary.phones_dir, 'extra_questions.int')
+        topo_path = os.path.join(self.dictionary.output_directory, 'topo')
+        questions_path = os.path.join(directory, 'questions.int')
+        questions_qst_path = os.path.join(directory, 'questions.qst')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('cluster-phones')] + context_opts +
+            [treeacc_path, sets_int_path, questions_path], stderr = logf)
+
+        with open(extra_question_int_path, 'r') as inf, \
+            open(questions_path, 'a') as outf:
+                for line in inf:
+                    outf.write(line)
+
+        log_path = os.path.join(directory, 'log', 'compile_questions.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('compile-questions')] + context_opts +
+                    [topo_path, questions_path, questions_qst_path],
+                    stderr = logf)
+
+        log_path = os.path.join(directory, 'log', 'build_tree.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call(['build-tree'] + context_opts +
+                ['--verbose=1', '--max-leaves={}'.format(config.num_states),
+                '--cluster-thresh={}'.format(config.cluster_threshold),
+                 treeacc_path, roots_int_path, questions_qst_path,
+                 topo_path, tree_path], stderr = logf)
+
+        log_path = os.path.join(directory, 'log', 'init_model.log')
+        occs_path = os.path.join(directory, '0.occs')
+        mdl_path = os.path.join(directory, '0.mdl')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-init-model'),
+            '--write-occs='+occs_path, tree_path, treeacc_path,
+            topo_path, mdl_path], stderr = logf)
+
+        log_path = os.path.join(directory, 'log', 'mixup.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-mixup'),
+                    '--mix-up={}'.format(config.num_gauss),
+             mdl_path, occs_path, mdl_path], stderr = logf)
+        os.remove(treeacc_path)
+
+        compile_train_graphs(directory, self.dictionary.output_directory,
+                                self.corpus.split_directory, self.num_jobs)
+        os.rename(occs_path, os.path.join(directory, '1.occs'))
+        os.rename(mdl_path, os.path.join(directory, '1.mdl'))
+
+        convert_alignments(directory, align_directory, self.num_jobs)
+
+        if os.path.exists(os.path.join(align_directory, 'trans.1')):
+            for i in range(self.num_jobs):
+                shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
+                        os.path.join(directory, 'trans.{}'.format(i)))
+
+    def do_tri_training(self):
+        self._do_training(self.tri_directory, self.tri_config)
+
+    def do_tri_fmllr_training(self):
+        self._do_training(self.tri_fmllr_directory, self.tri_fmllr_config)
+
+    def train_tri(self):
+        if os.path.exists(self.tri_final_model_path):
+            print('Triphone training already done, using previous final.mdl')
+            return
+        if not os.path.exists(self.mono_ali_directory):
+            self.align_si()
+
+        os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok = True)
+        self.corpus.setup_splits(self.dictionary)
+        self.init_tri(fmllr = False)
+        self.do_tri_training()
+        #convert_ali_to_textgrids(tri_directory, lang_directory, split_directory, num_jobs)
+
+    def train_tri_fmllr(self):
+        if os.path.exists(self.tri_fmllr_final_model_path):
+            print('Triphone FMLLR training already done, using previous final.mdl')
+            return
+        if not os.path.exists(self.tri_ali_directory):
+            self.align_fmllr()
+
+        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
+        self.corpus.setup_splits(self.dictionary)
+        self.init_tri(fmllr = True)
+        self.do_tri_fmllr_training()
+        #convert_ali_to_textgrids(tri2_directory, lang_directory, split_directory, num_jobs)
+
+
+    def align_si(self, fmllr = True):
+        if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
+            model_directory = self.tri_fmllr_directory
+            output_directory = self.tri_fmllr_ali_directory
+            config = self.tri_fmllr_config
+        elif os.path.exists(self.tri_final_model_path):
+            model_directory = self.tri_directory
+            output_directory = self.tri_ali_directory
+            config = self.tri_config
+        elif os.path.exists(self.mono_final_model_path):
+            model_directory = self.mono_directory
+            output_directory = self.mono_ali_directory
+            config = self.mono_config
+
+        optional_silence = self.dictionary.optional_silence_csl
+        oov = self.dictionary.oov_int
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
+        self.corpus.setup_splits(self.dictionary)
+
+        shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
+        shutil.copy(os.path.join(model_directory, 'final.mdl'),
+                                    os.path.join(output_directory, '0.mdl'))
+        shutil.copy(os.path.join(model_directory, 'final.occs'),
+                            os.path.join(output_directory, '0.occs'))
+
+        feat_type = 'delta'
+
+        compile_train_graphs(output_directory, self.dictionary.output_directory,
+                            self.corpus.split_directory, self.num_jobs)
+        align(0, output_directory, self.corpus.split_directory,
+                    optional_silence, self.num_jobs, config)
+        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
+        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
+
+    def align_fmllr(self):
+        model_directory = self.tri_directory
+        output_directory = self.tri_ali_directory
+        self.align_si(fmllr = False)
+        sil_phones = self.dictionary.silence_csl
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
+
+        calc_fmllr(output_directory, self.corpus.split_directory,
+                    sil_phones, self.num_jobs, self.tri_fmllr_config, initial = True)
+        optional_silence = self.dictionary.optional_silence_csl
+        align(-1, output_directory, self.corpus.split_directory,
+                    optional_silence, self.num_jobs, self.tri_fmllr_config)

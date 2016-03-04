@@ -28,7 +28,7 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):
 
 def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
     jobs = [ (mfcc_directory, log_directory, x, mfcc_config.path)
-                for x in range(1, num_jobs + 1)]
+                for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(mfcc_func, args = i) for i in jobs]
         output = [p.get() for p in results]
@@ -50,8 +50,9 @@ def acc_stats(iteration, directory, split_directory, num_jobs, fmllr = False):
     feat_name = 'cmvndeltafeats'
     if fmllr:
         feat_name += '_fmllr'
-    jobs = [ (directory, iteration, x, os.path.join(split_directory,str(x), feat_name))
-                for x in range(1, num_jobs + 1)]
+    feat_name += '.{}'
+    jobs = [ (directory, iteration, x, os.path.join(split_directory,feat_name.format(x)))
+                for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(acc_stats_func, args = i) for i in jobs]
         output = [p.get() for p in results]
@@ -62,7 +63,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
     mdl_path = os.path.join(directory,'0.mdl')
     data_directory = os.path.join(split_directory, str(job_name))
     log_path = os.path.join(directory, 'log', 'compile-graphs.0.{}.log'.format(job_name))
-    with open(os.path.join(data_directory,'text.int'), 'r') as inf, \
+    with open(os.path.join(split_directory,'text.{}.int'.format(job_name)), 'r') as inf, \
         open(fst_path, 'wb') as outf, \
         open(log_path, 'w') as logf:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
@@ -74,7 +75,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
 def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
     jobs = [ (directory, lang_directory, split_directory, x)
-                for x in range(1, num_jobs + 1)]
+                for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(compile_train_graphs_func, args = i) for i in jobs]
@@ -99,55 +100,51 @@ def mono_align_equal_func(mono_directory, lang_directory, split_directory, job_n
 
 def mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs):
 
-    jobs = [ (mono_directory, lang_directory, split_directory, x, os.path.join(split_directory,str(x), 'cmvndeltafeats'))
-                for x in range(1, num_jobs + 1)]
+    jobs = [ (mono_directory, lang_directory, split_directory, x, os.path.join(split_directory,'cmvndeltafeats.{}'.format(x)))
+                for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(mono_align_equal_func, args = i) for i in jobs]
         output = [p.get() for p in results]
     acc_stats(0, mono_directory, split_directory, num_jobs)
 
-def align_func(directory, iteration, job_name, mdl, feat_path):
-    if iteration == 1:
-        beam = 6
-    else:
-        beam = 10
+def align_func(directory, iteration, job_name, mdl, config, feat_path):
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     with open(log_path, 'w') as logf:
-        align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')]+ scale_opts +
-            ['--beam={}'.format(beam),
-            '--retry-beam={}'.format(beam*4), '--careful=false', mdl,
+        align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')]+ config.scale_opts +
+            ['--beam={}'.format(config.beam),
+            '--retry-beam={}'.format(config.beam * 4), '--careful=false', mdl,
         "ark:"+fst_path, "ark:"+feat_path, "ark,t:"+ ali_path],
         stderr = logf)
         align_proc.communicate()
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, fmllr = False):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl="{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
-                                    boost_silence, optional_silence, mdl_path)
+                                    config.boost_silence, optional_silence, mdl_path)
 
     feat_name = 'cmvndeltafeats'
-    if fmllr:
+    if config.do_fmllr:
         feat_name += '_fmllr'
-
-    jobs = [ (directory, iteration, x, mdl, os.path.join(split_directory,str(x), feat_name))
-                for x in range(1, num_jobs + 1)]
+    feat_name += '.{}'
+    jobs = [ (directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)))
+                for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(align_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def ali_to_textgrid_func(directory, lang_directory, split_directory, job_name, word_mapping, phone_mapping):
-    text_int_path = os.path.join(split_directory, str(job_name), 'text.int')
-    log_path = os.path.join(directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
-    ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    model_path = os.path.join(directory, 'final.mdl')
-    aligned_path = os.path.join(directory, 'aligned.{}'.format(job_name))
-    word_ctm_path = os.path.join(directory, 'word_ctm.{}'.format(job_name))
-    phone_ctm_path = os.path.join(directory, 'phone_ctm.{}'.format(job_name))
-    tg_path = os.path.join(directory, 'textgrids')
+def ali_to_textgrid_func(output_directory, model_directory, dictionary, split_directory, job_name):
+    text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
+    log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
+    ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
+    model_path = os.path.join(model_directory, 'final.mdl')
+    aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
+    word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
+    phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
+    tg_path = output_directory
     os.makedirs(tg_path, exist_ok = True)
     with open(log_path, 'w') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:"+ ali_path,
@@ -155,7 +152,7 @@ def ali_to_textgrid_func(directory, lang_directory, split_directory, job_name, w
                       '', '', 'ark:-'],
                       stdout = subprocess.PIPE, stderr = logf)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                        os.path.join(lang_directory, 'phones', 'word_boundary.int'), model_path,
+                        os.path.join(dictionary.phones_dir, 'word_boundary.int'), model_path,
                         'ark:-', 'ark:'+aligned_path],
                         stdin = lin_proc.stdout, stderr = logf)
         align_proc.communicate()
@@ -168,16 +165,11 @@ def ali_to_textgrid_func(directory, lang_directory, split_directory, job_name, w
         nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'), "ark:-", phone_ctm_path],
                         stdin = phone_proc.stdout, stderr = logf)
         nbest_proc.communicate()
-        ctm_to_textgrid(word_ctm_path, phone_ctm_path, tg_path, word_mapping, phone_mapping)
+        ctm_to_textgrid(word_ctm_path, phone_ctm_path, tg_path, dictionary)
 
-
-
-def convert_ali_to_textgrids(directory, lang_directory, split_directory, num_jobs):
-
-    word_mapping = reverse_mapping(load_word_to_int(lang_directory))
-    phone_mapping = reverse_mapping(load_phone_to_int(lang_directory))
-    jobs = [ (directory, lang_directory, split_directory, x, word_mapping, phone_mapping)
-                for x in range(1, num_jobs + 1)]
+def convert_ali_to_textgrids(output_directory, model_directory, dictionary, split_directory, num_jobs):
+    jobs = [ (output_directory, model_directory, dictionary, split_directory, x)
+                for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(ali_to_textgrid_func, args = i) for i in jobs]
@@ -199,16 +191,17 @@ def tree_stats(directory, align_directory, split_directory,
     feat_name = 'cmvndeltafeats'
     if fmllr:
         feat_name += '_fmllr'
+    feat_name += '.{}'
     mdl_path = os.path.join(align_directory, 'final.mdl')
     jobs = [ (directory, ci_phones, mdl_path,
-            os.path.join(split_directory,str(x), feat_name),
+            os.path.join(split_directory, feat_name.format(x)),
             os.path.join(align_directory, 'ali.{}'.format(x)),x)
-                for x in range(1, num_jobs + 1)]
+                for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(tree_stats_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(1, num_jobs+1)]
+    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
@@ -234,23 +227,23 @@ def convert_alignments_func(directory, align_directory, job_name):
 def convert_alignments(directory, align_directory, num_jobs):
 
     jobs = [ (directory, align_directory, x)
-                for x in range(1, num_jobs + 1)]
+                for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(convert_alignments_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def calc_fmllr_func(directory, split_directory, sil_phones, job_name, fmllr, model_name = 'final'):
-    sdir = os.path.join(split_directory, str(job_name))
-    feat_path = os.path.join(sdir, 'cmvndeltafeats')
-    if fmllr:
+def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial, model_name = 'final'):
+    feat_path = os.path.join(split_directory, 'cmvndeltafeats')
+    if not initial:
         feat_path += '_fmllr'
-    feat_fmllr_path = os.path.join(sdir, 'cmvndeltafeats_fmllr')
+    feat_path += '.{}'.format(job_name)
+    feat_fmllr_path = os.path.join(split_directory, 'cmvndeltafeats_fmllr.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'fmllr.{}.log'.format(job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
-    spk2utt_path = os.path.join(sdir, 'spk2utt')
-    utt2spk_path = os.path.join(sdir, 'utt2spk')
-    if fmllr:
+    spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
+    utt2spk_path = os.path.join(split_directory, 'utt2spk.{}'.format(job_name))
+    if not initial:
         tmp_trans_path = os.path.join(directory, 'trans.temp.{}'.format(job_name))
         trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
         cmp_trans_path = os.path.join(directory, 'trans.cmp.{}'.format(job_name))
@@ -268,19 +261,19 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, fmllr, mod
 
         subprocess.call([thirdparty_binary('gmm-est-fmllr'),
                 '--verbose=4',
-                '--fmllr-update-type={}'.format(fmllr_update_type),
+                '--fmllr-update-type={}'.format(config.fmllr_update_type),
       '--spk2utt=ark:'+spk2utt_path, mdl_path ,"ark,s,cs:"+feat_path,
       'ark,s,cs:'+weight_path, 'ark:'+tmp_trans_path],
             stderr = logf)
 
-        if fmllr:
+        if not initial:
             subprocess.call([thirdparty_binary('compose-transforms'), '--b-is-affine=true',
             'ark:'+ tmp_trans_path, 'ark:'+ trans_path,
             'ark:'+ cmp_trans_path], stderr = logf)
             os.remove(tmp_trans_path)
             os.remove(trans_path)
             os.rename(cmp_trans_path, trans_path)
-            feat_path = os.path.join(sdir, 'cmvndeltafeats')
+            feat_path = os.path.join(split_directory, 'cmvndeltafeats.{}'.format(job_name))
         else:
             trans_path = tmp_trans_path
         subprocess.call([thirdparty_binary('transform-feats'),
@@ -290,14 +283,14 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, fmllr, mod
                 stderr = logf)
 
 
-def calc_fmllr(directory, split_directory, sil_phones, num_jobs,
-            fmllr = False, iteration = None):
+def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
+            initial = False, iteration = None):
     if iteration is None:
         model_name = 'final'
     else:
         model_name = iteration
-    jobs = [ (directory, split_directory, sil_phones, x, fmllr, model_name)
-                for x in range(1, num_jobs + 1)]
+    jobs = [ (directory, split_directory, sil_phones, x, config, initial, model_name)
+                for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(calc_fmllr_func, args = i) for i in jobs]
         output = [p.get() for p in results]

@@ -6,9 +6,10 @@ import sys
 base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 sys.path.insert(0,base)
 
-from aligner.data_prep import data_prep
-
-from aligner.train import train_mono, train_tri, train_tri_fmllr
+from aligner.corpus import Corpus
+from aligner.config import MfccConfig
+from aligner.dictionary import Dictionary
+from aligner.aligner import BaseAligner
 
 from gp_utils import lang_encodings, globalphone_prep, globalphone_dict_prep
 
@@ -52,11 +53,6 @@ dict_paths = {k: os.path.join(base_dirs[k],
                             '{}-GPDict.txt'.format(v))
                     for k,v in full_names.items()}
 
-lm_paths = {k: os.path.join(base_dirs[k],
-                            '{}_languageModel'.format(v),
-                            '{}.3gram.lm'.format(k))
-                    for k,v in full_names.items()}
-
 if __name__ == '__main__':
     for k in sorted(full_names.keys()):
         if not os.path.exists(source_dirs[k]):
@@ -68,7 +64,27 @@ if __name__ == '__main__':
 
         globalphone_prep(source_dirs[k], data_dirs[k], k)
 
-        data_prep(data_dirs[k], lm_paths[k])
-        train_mono(data_dirs[k])
-        train_tri(data_dirs[k], num_jobs = 6)
-        train_tri_fmllr(data_dirs[k], num_jobs = 6)
+        output_dir = os.path.join(data_dirs[k], 'textgrid_output')
+
+        corpus_dir = os.path.join(data_dirs[k], 'files')
+        dict_path = os.path.join(data_dirs[k], 'dict', 'lexicon.txt')
+
+        temp_dir = os.path.join(data_dirs[k], 'new_temp')
+
+        dictionary = Dictionary(dict_path, temp_dir)
+        dictionary.write()
+
+
+
+        c = MfccConfig(temp_dir)
+        corpus = Corpus(corpus_dir, temp_dir, c, num_jobs = 4)
+        corpus.write()
+        corpus.create_mfccs()
+        corpus.setup_splits(dictionary)
+
+        a = BaseAligner(corpus, dictionary, output_dir,
+                            temp_directory = temp_dir, num_jobs = 4)
+        a.train_mono()
+        a.train_tri()
+        a.train_tri_fmllr()
+        a.export_textgrids()

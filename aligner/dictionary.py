@@ -45,6 +45,8 @@ class Dictionary(object):
                     continue
                 line = line.split()
                 word = line.pop(0).lower()
+                if word in ['!sil', oov_code]:
+                    continue
                 self.graphemes.update(word)
                 pron = line
                 self.words[word].append(pron)
@@ -54,17 +56,23 @@ class Dictionary(object):
         self.phone_mapping = {}
         i = 0
         self.phone_mapping['<eps>'] = i
-        for p in sorted(self.sil_phones) + sorted(self.nonsil_phones) + sorted(self.disambig):
-            if self.position_dependent_phones:
-                if p in self.sil_phones:
-                    i += 1
-                    self.phone_mapping[p] = i
-                for pos in self.positions:
-                    i += 1
-                    self.phone_mapping[p+pos] = i
-            else:
+        if self.position_dependent_phones:
+            for p in self.positional_sil_phones:
                 i += 1
                 self.phone_mapping[p] = i
+            for p in self.positional_nonsil_phones:
+                i += 1
+                self.phone_mapping[p] = i
+        else:
+            for p in sorted(self.sil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+            for p in sorted(self.nonsil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+        for p in sorted(self.disambig):
+            i += 1
+            self.phone_mapping[p] = i
 
         self.words_mapping = {}
         i = 0
@@ -77,10 +85,33 @@ class Dictionary(object):
         self.words_mapping['<s>'] = i + 2
         self.words_mapping['</s>'] = i + 3
 
+    def to_int(self, item):
+        if item not in self.words_mapping:
+            return self.oov_int
+        return self.words_mapping[item]
+
+    @property
+    def reversed_word_mapping(self):
+        mapping = {}
+        for k,v in self.words_mapping.items():
+            mapping[v] = k
+        return mapping
+
+    @property
+    def reversed_phone_mapping(self):
+        mapping = {}
+        for k,v in self.phone_mapping.items():
+            mapping[v] = k
+        return mapping
+
+    @property
+    def oov_int(self):
+        return self.words_mapping[self.oov_code]
+
     @property
     def positional_sil_phones(self):
         sil_phones = []
-        for p in self.sil_phones:
+        for p in sorted(self.sil_phones):
             sil_phones.append(p)
             for pos in self.positions:
                 sil_phones.append(p+pos)
@@ -89,14 +120,14 @@ class Dictionary(object):
     @property
     def positional_nonsil_phones(self):
         nonsil_phones = []
-        for p in self.nonsil_phones:
+        for p in sorted(self.nonsil_phones):
             for pos in self.positions:
                 nonsil_phones.append(p+pos)
         return nonsil_phones
 
     @property
     def optional_silence_csl(self):
-        return '{}'.format(self.phone_mapping[optional_silence])
+        return '{}'.format(self.phone_mapping[self.optional_silence])
 
     @property
     def silence_csl(self):
@@ -123,6 +154,7 @@ class Dictionary(object):
         self._write_phone_symbol_table()
         self._write_topo()
         self._write_word_boundaries()
+        self._write_extra_questions()
         self._write_word_file()
         self._write_fst_text()
         self._write_fst_binary()
@@ -243,7 +275,11 @@ class Dictionary(object):
             f.write('<Topology>\n')
             f.write("<TopologyEntry>\n")
             f.write("<ForPhones>\n")
-            f.write("{}\n".format(' '.join(self.nonsil_phones)))
+            if self.position_dependent_phones:
+                phones = self.positional_nonsil_phones
+            else:
+                phones = sorted(self.nonsil_phones)
+            f.write("{}\n".format(' '.join(str(self.phone_mapping[x]) for x in phones)))
             f.write("</ForPhones>\n")
             states = [self.topo_template.format(cur_state = x, next_state = x + 1)
                         for x in range(self.num_nonsil_states)]
@@ -253,7 +289,11 @@ class Dictionary(object):
 
             f.write("<TopologyEntry>\n")
             f.write("<ForPhones>\n")
-            f.write("{}\n".format(' '.join(self.sil_phones)))
+            if self.position_dependent_phones:
+                phones = self.positional_sil_phones
+            else:
+                phones = self.sil_phones
+            f.write("{}\n".format(' '.join(str(self.phone_mapping[x]) for x in phones)))
             f.write("</ForPhones>\n")
             states = []
             for i in range(self.num_sil_states):
@@ -324,33 +364,28 @@ class Dictionary(object):
         phone_extra_int = os.path.join(self.phones_dir, 'extra_questions.int')
         with open(phone_extra, 'w', encoding = 'utf8') as outf, \
             open(phone_extra_int, 'w', encoding = 'utf8') as intf:
-            sils = []
-            for sp in sorted(self.sil_phones):
-                if self.position_dependent_phones:
-                    mapped = [sp+x for x in ['', ''] + self.positions]
-                else:
-                    mapped = [sp]
-                sils.extend(mapped)
+            if self.position_dependent_phones:
+                sils = sorted(self.positional_sil_phones)
+            else:
+                sils = sorted(self.sil_phones)
             outf.write(' '.join(sils) + '\n')
-            intf.write(' '.join(str, (self.phone_mapping[x] for x in sils)) + '\n')
-            nonsils = []
-            for nsp in sorted(self.nonsil_phones):
-                if self.position_dependent_phones:
-                    mapped = [nsp+x for x in [''] + self.positions]
-                else:
-                    mapped = [nsp]
-                nonsils.extend(mapped)
+            intf.write(' '.join(map(str, (self.phone_mapping[x] for x in sils))) + '\n')
+
+            if self.position_dependent_phones:
+                nonsils = sorted(self.positional_nonsil_phones)
+            else:
+                nonsils = sorted(self.nonsil_phones)
             outf.write(' '.join(nonsils) + '\n')
-            intf.write(' '.join(str, (self.phone_mapping[x] for x in nonsils)) + '\n')
+            intf.write(' '.join(map(str, (self.phone_mapping[x] for x in nonsils))) + '\n')
 
             for p in self.positions:
                 line = [x + p for x in sorted(self.nonsil_phones)]
                 outf.write(' '.join(line) + '\n')
-                intf.write(' '.join(str, (self.phone_mapping[x] for x in line)) + '\n')
+                intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
             for p in [''] + self.positions:
                 line = [x + p for x in sorted(self.sil_phones)]
                 outf.write(' '.join(line) + '\n')
-                intf.write(' '.join(str, (self.phone_mapping[x] for x in line)) + '\n')
+                intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
 
     def _write_fst_binary(self):
 
@@ -407,40 +442,40 @@ class Dictionary(object):
                                     phones[i] += '_E'
                                 else:
                                     phones[i] += '_I'
-                if not self.pronunciation_probabilities:
-                    pron_cost = 0
-                else:
-                    p = 1.0
-                    pron_cost = -1 * math.log(p)
-
-                pron_cost_string = ''
-                if pron_cost != 0:
-                    pron_cost_string = '\t{}'.pron_cost
-
-                s = loopstate
-                word_or_eps = w
-                while len(phones) > 0:
-                    p = phones.pop(0)
-                    if len(phones) > 0:
-                        ns = nextstate
-                        nextstate += 1
-                        outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
-                        word_or_eps = '<eps>'
-                        pron_cost_string = ""
-                        pron_cost = 0.0
-                        s = ns
-                    elif self.sil_prob == 0:
-                        ns = loopstate
-                        outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
-                        word_or_eps = '<eps>'
-                        pron_cost_string = ""
-                        s = ns
+                    if not self.pronunciation_probabilities:
+                        pron_cost = 0
                     else:
-                        if not is_sil(p):
-                            local_nosilcost = nosilcost + pron_cost
-                            local_silcost = silcost + pron_cost;
-                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
-                            outf.write('\t'.join(map(str,[s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                        p = 1.0
+                        pron_cost = -1 * math.log(p)
+
+                    pron_cost_string = ''
+                    if pron_cost != 0:
+                        pron_cost_string = '\t{}'.pron_cost
+
+                    s = loopstate
+                    word_or_eps = w
+                    while len(phones) > 0:
+                        p = phones.pop(0)
+                        if len(phones) > 0:
+                            ns = nextstate
+                            nextstate += 1
+                            outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                            word_or_eps = '<eps>'
+                            pron_cost_string = ""
+                            pron_cost = 0.0
+                            s = ns
+                        elif self.sil_prob == 0:
+                            ns = loopstate
+                            outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                            word_or_eps = '<eps>'
+                            pron_cost_string = ""
+                            s = ns
                         else:
-                            outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
+                            if not is_sil(p):
+                                local_nosilcost = nosilcost + pron_cost
+                                local_silcost = silcost + pron_cost;
+                                outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
+                                outf.write('\t'.join(map(str,[s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                            else:
+                                outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
             outf.write("{}\t{}\n".format(loopstate, 0))

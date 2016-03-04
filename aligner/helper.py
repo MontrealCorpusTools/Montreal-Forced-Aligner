@@ -19,23 +19,6 @@ def load_scp(path):
             scp.append(line.split())
     return scp
 
-def save_scp(scp, path):
-    with open(path, 'w', encoding = 'utf8') as f:
-        for line in scp:
-            f.write('{}\n'.format(' '.join(map(make_safe,line))))
-
-def split_scp(scp_path, seg_dir, num_jobs):
-    base = os.path.basename(scp_path)
-    name = os.path.splitext(base)[0]
-    pattern = name + '.{}.scp'
-    scp = load_scp(scp_path)
-    groups = find_best_groupings(scp, num_jobs)
-    save_groups(groups, seg_dir, pattern)
-
-def save_groups(groups, seg_dir, pattern):
-    for i, g in enumerate(groups):
-        path = os.path.join(seg_dir, pattern.format(i+1))
-        save_scp(g, path)
 
 def load_text(path):
     with open(path, 'r', encoding = 'utf8') as f:
@@ -97,40 +80,6 @@ def utt2spk_to_spk2utt(utt2spk):
     return spk2utt
 
 
-def find_best_groupings(scp, num_jobs):
-    num_utt = len(scp)
-
-    interval = int(num_utt / num_jobs)
-    groups = []
-    current_ind = 0
-    for i in range(num_jobs):
-        if i == num_jobs - 1:
-            end_ind = num_utt
-        else:
-            end_ind = current_ind + interval
-            utt = scp[end_ind][0]
-            if '_' not in utt:
-                spk = utt
-            else:
-                spk = utt.split('_')[0]
-            for j in range(end_ind, num_utt):
-                if not scp[j][0].startswith(spk):
-                    j -= 1
-                    break
-            else:
-                j = num_utt - 1
-            if j - end_ind < i - end_ind:
-                end_ind = j
-            else:
-                k = end_ind
-                for k in range(end_ind, 0, -1):
-                    if not scp[k][0].startswith(spk):
-                        k += 1
-                        break
-                end_ind = k
-        groups.append(scp[current_ind:end_ind])
-        current_ind = end_ind
-    return groups
 
 def load_utt2spk(train_directory):
     utt2spk = load_scp(os.path.join(train_directory, 'utt2spk'))
