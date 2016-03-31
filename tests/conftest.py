@@ -30,6 +30,58 @@ def basic_dict_path(dict_dir):
     return os.path.join(dict_dir, 'basic.txt')
 
 @pytest.fixture(scope='session')
+def expected_dict_path(dict_dir):
+    return os.path.join(dict_dir, 'expected')
+
+@pytest.fixture(scope='session')
+def basic_topo_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'topo')
+
+@pytest.fixture(scope='session')
+def basic_graphemes_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'graphemes.txt')
+
+@pytest.fixture(scope='session')
+def basic_phone_map_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'phone_map.txt')
+
+@pytest.fixture(scope='session')
+def basic_phones_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'phones.txt')
+
+@pytest.fixture(scope='session')
+def basic_words_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'words.txt')
+
+@pytest.fixture(scope='session')
+def basic_rootsint_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'roots.int')
+
+@pytest.fixture(scope='session')
+def basic_rootstxt_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'roots.txt')
+
+#@pytest.fixture(scope='session')
+#def basic_roots_path(expected_dict_path):
+#    return os.path.join(expected_dict_path, 'roots.txt')
+
+@pytest.fixture(scope='session')
+def basic_setsint_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'sets.int')
+
+@pytest.fixture(scope='session')
+def basic_setstxt_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'sets.txt')
+
+@pytest.fixture(scope='session')
+def basic_word_boundaryint_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'word_boundary.int')
+
+@pytest.fixture(scope='session')
+def basic_word_boundarytxt_path(expected_dict_path):
+    return os.path.join(expected_dict_path, 'word_boundary.txt')
+
+@pytest.fixture(scope='session')
 def sick_dict_path(dict_dir):
     return os.path.join(dict_dir, 'sick.txt')
 

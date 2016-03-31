@@ -231,7 +231,7 @@ class BaseAligner(object):
 
         log_path = os.path.join(directory, 'log', 'build_tree.log')
         with open(log_path, 'w') as logf:
-            subprocess.call(['build-tree'] + context_opts +
+            subprocess.call([thirdparty_binary('build-tree')] + context_opts +
                 ['--verbose=1', '--max-leaves={}'.format(config.num_states),
                 '--cluster-thresh={}'.format(config.cluster_threshold),
                  treeacc_path, roots_int_path, questions_qst_path,

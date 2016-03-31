@@ -9,7 +9,7 @@ else:
 
 def CollectBinaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
-    for root, dirs, files in os.walk(directory):
+    for root, dirs, files in os.walk(directory, followlinks = True)):
         for name in files:
             ext = os.path.splitext(name)
             (key, value) = ext
@@ -17,11 +17,11 @@ def CollectBinaries(directory):
                     key != 'configure' and key != 'Doxyfile' and \
                     key != 'INSTALL' and key != 'NOTES' and \
                     key != 'TODO' and key != 'Makefile':
-                shutil.copy(os.path.normpath(root + '/' + name), outdirectory)
+                shutil.copy(os.path.join(root, name), outdirectory)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dir')
     args = parser.parse_args()
-    directory = args.dir
+    directory = os.path.expanduser(args.dir)
     CollectBinaries(directory)
