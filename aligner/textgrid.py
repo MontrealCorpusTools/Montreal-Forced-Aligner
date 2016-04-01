@@ -37,7 +37,7 @@ def find_max(input):
     return max(x[1] for x in input)
 
 def ctm_to_textgrid(word_ctm_path, phone_ctm_path, out_directory,
-                    dictionary):
+                    dictionary, corpus):
     if not os.path.exists(word_ctm_path):
         return
     current = None
@@ -55,5 +55,7 @@ def ctm_to_textgrid(word_ctm_path, phone_ctm_path, out_directory,
             phonetier.add(*interval)
         tg.append(wordtier)
         tg.append(phonetier)
-        outpath = os.path.join(out_directory, k + '.TextGrid')
+        speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
+        os.makedirs(speaker_directory, exist_ok=True)
+        outpath = os.path.join(speaker_directory, k + '.TextGrid')
         tg.write(outpath)

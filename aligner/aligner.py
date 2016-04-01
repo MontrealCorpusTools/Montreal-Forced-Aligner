@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import re
+from tqdm import tqdm
 
 from .helper import thirdparty_binary
 
@@ -17,7 +18,7 @@ TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 class BaseAligner(object):
     def __init__(self, corpus, dictionary, output_directory,
-                    temp_directory = None, num_jobs = 3):
+                    temp_directory = None, num_jobs = 3, call_back = None):
         self.mono_config = MonophoneConfig()
         self.tri_config = TriphoneConfig()
         self.tri_fmllr_config = TriphoneFmllrConfig()
@@ -30,6 +31,9 @@ class BaseAligner(object):
         if temp_directory is None:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
+        self.call_back = call_back
+        if self.call_back is None:
+            self.call_back = print
 
     @property
     def mono_directory(self):
@@ -89,7 +93,7 @@ class BaseAligner(object):
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
-                            self.corpus.split_directory, self.num_jobs)
+                            self.corpus, self.num_jobs)
 
     def get_num_gauss_mono(self):
         with open(os.devnull, 'w') as devnull:
@@ -144,6 +148,7 @@ class BaseAligner(object):
 
     def do_mono_training(self):
         self.mono_config.num_gauss = self.get_num_gauss_mono()
+        self.call_back('Beginning monophone training...')
         self._do_training(self.mono_directory, self.mono_config)
 
     def _do_training(self, directory, config):
@@ -153,7 +158,11 @@ class BaseAligner(object):
         sil_phones = self.dictionary.silence_csl
         max_iter_inc = config.num_iters - 10
         inc_gauss = int((config.totgauss - config.num_gauss) / config.max_iter_inc)
-        for i in range(1, config.num_iters):
+        if self.call_back == print:
+            iters = tqdm(range(1, config.num_iters))
+        else:
+            iters = range(1, config.num_iters)
+        for i in iters:
             model_path = os.path.join(directory,'{}.mdl'.format(i))
             occs_path = os.path.join(directory, '{}.occs'.format(i+1))
             next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
@@ -265,9 +274,11 @@ class BaseAligner(object):
                         os.path.join(directory, 'trans.{}'.format(i)))
 
     def do_tri_training(self):
+        self.call_back('Beginning triphone training...')
         self._do_training(self.tri_directory, self.tri_config)
 
     def do_tri_fmllr_training(self):
+        self.call_back('Beginning speaker-adapted triphone training...')
         self._do_training(self.tri_fmllr_directory, self.tri_fmllr_config)
 
     def train_tri(self):

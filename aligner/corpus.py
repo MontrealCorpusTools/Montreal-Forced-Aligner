@@ -272,11 +272,14 @@ class Corpus(object):
     def create_mfccs(self):
         log_directory = self.mfcc_log_directory
         os.makedirs(log_directory, exist_ok = True)
+        if os.path.exists(os.path.join(self.mfcc_directory,'cmvn')):
+            print("Using previous MFCCs")
+            return
         self._split_wavs(self.mfcc_log_directory)
         mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_config)
         self._combine_feats()
         self._calc_cmvn()
-
+ 
     def _combine_feats(self):
         self.feat_mapping = {}
         feat_path = os.path.join(self.output_directory, 'feats.scp')

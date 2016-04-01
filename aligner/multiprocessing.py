@@ -106,7 +106,7 @@ def mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs):
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(mono_align_equal_func, args = i) for i in jobs]
         output = [p.get() for p in results]
-    acc_stats(0, mono_directory, split_directory, num_jobs)
+    #acc_stats(0, mono_directory, split_directory, num_jobs)
 
 def align_func(directory, iteration, job_name, mdl, config, feat_path):
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
@@ -136,16 +136,14 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
         results = [pool.apply_async(align_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def ali_to_textgrid_func(output_directory, model_directory, dictionary, split_directory, job_name):
-    text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
+def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, job_name):
+    text_int_path = os.path.join(corpus.split_directory, 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
     aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
-    tg_path = output_directory
-    os.makedirs(tg_path, exist_ok = True)
     with open(log_path, 'w') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:"+ ali_path,
                       "ark:"+ text_int_path,
@@ -165,10 +163,10 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, split_di
         nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'), "ark:-", phone_ctm_path],
                         stdin = phone_proc.stdout, stderr = logf)
         nbest_proc.communicate()
-        ctm_to_textgrid(word_ctm_path, phone_ctm_path, tg_path, dictionary)
+        ctm_to_textgrid(word_ctm_path, phone_ctm_path, output_directory, dictionary, corpus)
 
-def convert_ali_to_textgrids(output_directory, model_directory, dictionary, split_directory, num_jobs):
-    jobs = [ (output_directory, model_directory, dictionary, split_directory, x)
+def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corpus, num_jobs):
+    jobs = [ (output_directory, model_directory, dictionary, corpus, x)
                 for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
