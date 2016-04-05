@@ -145,6 +145,7 @@ class Dictionary(object):
         return self.sil_phones & self.nonsil_phones
 
     def write(self):
+        print('Creating dictionary information...')
         #self._write_lexicon()
         #self._write_lexiconp()
 

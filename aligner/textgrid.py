@@ -55,7 +55,11 @@ def ctm_to_textgrid(word_ctm_path, phone_ctm_path, out_directory,
             phonetier.add(*interval)
         tg.append(wordtier)
         tg.append(phonetier)
-        speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
-        os.makedirs(speaker_directory, exist_ok=True)
+        if corpus.speaker_directories:
+            speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
+        else:
+            speaker_directory = out_directory
+        if not os.path.exists(speaker_directory):
+            os.makedirs(speaker_directory, exist_ok=True)
         outpath = os.path.join(speaker_directory, k + '.TextGrid')
         tg.write(outpath)

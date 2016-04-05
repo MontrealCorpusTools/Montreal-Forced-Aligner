@@ -43,12 +43,12 @@ def load_scp(path):
 
 class Corpus(object):
     def __init__(self, directory, output_directory, mfcc_config,
-                speaker_directories = True,
+                speaker_characters = 0,
                 num_jobs = 3):
+        print('Setting up corpus information...')
         self.directory = directory
         self.output_directory = os.path.join(output_directory, 'train')
         os.makedirs(self.output_directory, exist_ok = True)
-        self.speaker_directories = speaker_directories
         self.num_jobs = num_jobs
         self.mfcc_config = mfcc_config
 
@@ -57,23 +57,26 @@ class Corpus(object):
         self.utt_wav_mapping = {}
         self.text_mapping = {}
 
-        if self.speaker_directories:
-            speaker_dirs = os.listdir(self.directory)
-            for speaker_id in speaker_dirs:
-                speaker_dir = os.path.join(self.directory, speaker_id)
-                if not os.path.isdir(speaker_dir):
-                    continue
-
-                for f in os.listdir(speaker_dir):
-                    if not f.endswith('.lab'):
+        if speaker_characters > 0:
+            self.speaker_directories = False
+        else:
+            self.speaker_directories = True
+        for root, dirs, files in os.walk(self.directory, followlinks = True):
+            for f in files:
+                if not f.endswith('.lab'):
                         continue
-                    utt_name = os.path.splitext(f)[0]
-                    path = os.path.join(speaker_dir, f)
-                    wav_path = path.replace('.lab', '.wav')
-                    self.text_mapping[utt_name] = load_text(path)
-                    self.speak_utt_mapping[speaker_id].append(utt_name)
-                    self.utt_wav_mapping[utt_name] = wav_path
-                    self.utt_speak_mapping[utt_name] = speaker_id
+                utt_name = os.path.splitext(f)[0]
+                path = os.path.join(root, f)
+                wav_path = path.replace('.lab', '.wav')
+                self.text_mapping[utt_name] = load_text(path)
+                if self.speaker_directories:
+                    speaker_id = os.path.basename(root)
+                else:
+                    speaker_id = f[:speaker_characters]
+                self.speak_utt_mapping[speaker_id].append(utt_name)
+                self.utt_wav_mapping[utt_name] = wav_path
+                self.utt_speak_mapping[utt_name] = speaker_id
+
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.utt_wav_mapping)
         self.groups = self.find_best_groupings()
@@ -275,9 +278,11 @@ class Corpus(object):
         if os.path.exists(os.path.join(self.mfcc_directory,'cmvn')):
             print("Using previous MFCCs")
             return
+        print('Calculating MFCCs...')
         self._split_wavs(self.mfcc_log_directory)
         mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_config)
         self._combine_feats()
+        print('Calculating CMVN...')
         self._calc_cmvn()
  
     def _combine_feats(self):
