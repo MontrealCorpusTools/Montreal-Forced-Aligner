@@ -47,7 +47,7 @@ class TriphoneFmllrConfig(TriphoneConfig):
         'fmllr_iters': [2, 4, 6, 12],
         'fmllr_power': 0.2}
         defaults.update(kwargs)
-        super(TriphoneFmllrConfig, self).__init__(align_often, **defaults)
+        super(TriphoneFmllrConfig, self).__init__(**defaults)
 
 
 class MfccConfig(object):
