@@ -38,7 +38,7 @@ if __name__ == '__main__':
     parser.add_argument('output_dir', help = 'Full path to output directory, will be created if it doesn\'t exist')
     parser.add_argument('-s', '--speaker_characters', type = int, default = 0,
                     help = 'Number of characters of filenames to use for determining speaker, default is to use directory names')
-    parser.add_argument('-f', '--fast', help = "Perform a quick alignment with half the number of alignment iterations")
+    parser.add_argument('-f', '--fast', help = "Perform a quick alignment with half the number of alignment iterations", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = args.corpus_dir
     dict_path = args.dict_path
