@@ -17,8 +17,11 @@ class MonophoneConfig(object):
         self.max_iter_inc = 30
         self.totgauss = 1000
         self.boost_silence = 1.0
-        self.realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
+        if kwargs.get('align_often', False):
+            self.realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
                                     16, 18, 20, 23, 26, 29, 32, 35, 38]
+        else:
+            self.realign_iters = [1, 5, 10, 15, 20, 25, 30, 35, 38]
         self.stage = -4
         self.power = 0.25
 
@@ -28,17 +31,12 @@ class MonophoneConfig(object):
             setattr(self, k, v)
 
 class TriphoneConfig(MonophoneConfig):
-    def __init__(self, align_often = True, **kwargs):
+    def __init__(self, **kwargs):
         defaults = {'num_iters': 35,
         'num_states': 3100,
         'num_gauss': 50000,
         'cluster_threshold': 100,
         'silence_weight': 0.0}
-        if align_often:
-            defaults['realign_iters'] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
-                                    16, 18, 20, 23, 26, 29, 32, 35, 38]
-        else:
-            defaults['realign_iters'] = [10, 20, 30]
         defaults.update(kwargs)
         super(TriphoneConfig, self).__init__(**defaults)
 

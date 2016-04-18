@@ -18,10 +18,18 @@ TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 class BaseAligner(object):
     def __init__(self, corpus, dictionary, output_directory,
-                    temp_directory = None, num_jobs = 3, call_back = None):
-        self.mono_config = MonophoneConfig()
-        self.tri_config = TriphoneConfig()
-        self.tri_fmllr_config = TriphoneFmllrConfig()
+                    temp_directory = None, num_jobs = 3, call_back = None,
+                    mono_params = None, tri_params = None,
+                    tri_fmllr_params = None):
+        if mono_params is None:
+            mono_params = {}
+        if tri_params is None:
+            tri_params = {}
+        if tri_fmllr_params is None:
+            tri_fmllr_params = {}
+        self.mono_config = MonophoneConfig(**mono_params)
+        self.tri_config = TriphoneConfig(**tri_params)
+        self.tri_fmllr_config = TriphoneFmllrConfig(**tri_fmllr_params)
         self.corpus = corpus
         self.dictionary = dictionary
         self.output_directory = output_directory
