@@ -22,7 +22,7 @@ def load_scp(path):
 
 def load_text(path):
     with open(path, 'r', encoding = 'utf8') as f:
-        text = f.read().strip()
+        text = f.read().strip().lower()
     return text
 
 def load_phone_to_int(lang_directory):
