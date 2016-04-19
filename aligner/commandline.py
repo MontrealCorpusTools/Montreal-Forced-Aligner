@@ -13,7 +13,7 @@ def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, s
     corpus_name = os.path.basename(corpus_dir)
     dictionary = Dictionary(dict_path, os.path.join(TEMP_DIR, corpus_name))
     dictionary.write()
-    c = MfccConfig(TEMP_DIR, **{'sample-frequency': sample_rate})
+    c = MfccConfig(TEMP_DIR, kwargs={'sample-frequency': sample_rate})
     corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters)
     corpus.write()
     corpus.create_mfccs()
