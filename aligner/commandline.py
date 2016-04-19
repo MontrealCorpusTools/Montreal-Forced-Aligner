@@ -9,11 +9,11 @@ from aligner.aligner import BaseAligner
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast = False):
+def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, sample_rate, fast = False):
     corpus_name = os.path.basename(corpus_dir)
     dictionary = Dictionary(dict_path, os.path.join(TEMP_DIR, corpus_name))
     dictionary.write()
-    c = MfccConfig(TEMP_DIR)
+    c = MfccConfig(TEMP_DIR, **{'sample-frequency': sample_rate})
     corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters)
     corpus.write()
     corpus.create_mfccs()
@@ -39,9 +39,10 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--speaker_characters', type = int, default = 0,
                     help = 'Number of characters of filenames to use for determining speaker, default is to use directory names')
     parser.add_argument('-f', '--fast', help = "Perform a quick alignment with half the number of alignment iterations", action = 'store_true')
+    parser.add_argument('-r', '--sample_rate', help = "Sampling frequency of the sound files", type = int, default = 16000)
     args = parser.parse_args()
     corpus_dir = args.corpus_dir
     dict_path = args.dict_path
     output_dir = args.output_dir
-    align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters, args.fast)
+    align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters, args.sample_rate, args.fast)
 
