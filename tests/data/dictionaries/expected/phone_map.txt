@@ -1,0 +1,5 @@
+sil sil sil_B sil_E sil_I sil_S
+spn spn spn_B spn_E spn_I spn_S
+phoneb phoneb_B phoneb_E phoneb_I phoneb_S
+phonea phonea_B phonea_E phonea_I phonea_S
+phonec phonec_B phonec_E phonec_I phonec_S

@@ -1,0 +1,8 @@
+<eps> 0
+!SIL 1
+<unk> 2
+worda 3
+wordb 4
+#0 5
+<s> 6
+</s> 7
