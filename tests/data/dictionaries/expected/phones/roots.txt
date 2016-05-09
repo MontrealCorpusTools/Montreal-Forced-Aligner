@@ -1,0 +1,5 @@
+shared split sil sil_B sil_E sil_I sil_S
+shared split spn spn_B spn_E spn_I spn_S
+shared split phonea_B phonea_E phonea_I phonea_S
+shared split phoneb_B phoneb_E phoneb_I phoneb_S
+shared split phonec_B phonec_E phonec_I phonec_S
