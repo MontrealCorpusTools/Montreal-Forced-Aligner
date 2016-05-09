@@ -7,7 +7,6 @@ __pycache__/
 
 
 tests/data/generated
-tests/data/dictionaries/expected
 
 thirdparty
 !thirdparty/*.md
