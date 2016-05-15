@@ -33,33 +33,59 @@ def parse_ctm(ctm_path, dictionary, mode = 'word'):
             file_dict[filename].append([begin, end, label])
     return file_dict
 
-def find_max(input):
-    return max(x[1] for x in input)
+def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
 
-def ctm_to_textgrid(word_ctm_path, phone_ctm_path, out_directory,
-                    dictionary, corpus):
-    if not os.path.exists(word_ctm_path):
-        return
-    current = None
-    word_dict = parse_ctm(word_ctm_path, dictionary, mode = 'word')
-    phone_dict = parse_ctm(phone_ctm_path, dictionary, mode = 'phone')
-    num_files = len(word_dict)
-    for i,(k,v) in enumerate(word_dict.items()):
-        maxtime = find_max(v+phone_dict[k])
-        tg = TextGrid(maxTime = maxtime)
-        wordtier = IntervalTier(name = 'words', maxTime = maxtime)
-        phonetier = IntervalTier(name = 'phones', maxTime = maxtime)
-        for interval in v:
-            wordtier.add(*interval)
-        for interval in phone_dict[k]:
-            phonetier.add(*interval)
-        tg.append(wordtier)
-        tg.append(phonetier)
-        if corpus.speaker_directories:
-            speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
-        else:
-            speaker_directory = out_directory
-        if not os.path.exists(speaker_directory):
-            os.makedirs(speaker_directory, exist_ok=True)
-        outpath = os.path.join(speaker_directory, k + '.TextGrid')
-        tg.write(outpath)
+    if not os.path.exists(out_directory):
+        os.makedirs(out_directory, exist_ok=True)
+    if not corpus.segments:
+        for i,(k,v) in enumerate(word_ctm.items()):
+            maxtime = corpus.get_wav_duration(k)
+            tg = TextGrid(maxTime = maxtime)
+            wordtier = IntervalTier(name = 'words', maxTime = maxtime)
+            phonetier = IntervalTier(name = 'phones', maxTime = maxtime)
+            for interval in v:
+                wordtier.add(*interval)
+            for interval in phone_ctm[k]:
+                phonetier.add(*interval)
+            tg.append(wordtier)
+            tg.append(phonetier)
+            if corpus.speaker_directories:
+                speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
+            else:
+                speaker_directory = out_directory
+            if not os.path.exists(speaker_directory):
+                os.makedirs(speaker_directory, exist_ok=True)
+            outpath = os.path.join(speaker_directory, k + '.TextGrid')
+            tg.write(outpath)
+    else:
+        tgs = {}
+        for i,(k,v) in enumerate(word_ctm.items()):
+            rec = corpus.segments[k]
+            rec, begin, end = rec.split(' ')
+            maxtime = corpus.get_wav_duration(k)
+            if rec not in tgs:
+                tgs[rec] = TextGrid(maxTime = maxtime)
+            tg = tgs[rec]
+            begin = float(begin)
+            speaker = corpus.utt_speak_mapping[k]
+            word_tier_name = '{} - words'.format(speaker)
+            phone_tier_name = '{} - phones'.format(speaker)
+            wordtier = tg.getFirst(word_tier_name)
+            if wordtier is None:
+                wordtier = IntervalTier(name = word_tier_name, maxTime = maxtime)
+                tg.append(wordtier)
+            phonetier = tg.getFirst(phone_tier_name)
+            if phonetier is None:
+                phonetier = IntervalTier(name = phone_tier_name, maxTime = maxtime)
+                tg.append(phonetier)
+            for interval in v:
+                interval = interval[0] + begin, interval[1] + begin, interval[2]
+                wordtier.add(*interval)
+            for interval in phone_ctm[k]:
+                interval = interval[0] + begin, interval[1] + begin, interval[2]
+                phonetier.add(*interval)
+        for k,v in tgs.items():
+            outpath = os.path.join(out_directory, k + '.TextGrid')
+            v.write(outpath)
+
+
