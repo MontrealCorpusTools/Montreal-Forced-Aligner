@@ -5,7 +5,7 @@ import os
 
 from .helper import load_text, load_word_to_int, load_phone_to_int, reverse_mapping, thirdparty_binary
 
-from .textgrid import ctm_to_textgrid
+from .textgrid import ctm_to_textgrid, parse_ctm
 
 from .config import *
 
@@ -13,13 +13,26 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):
     raw_mfcc_path = os.path.join(mfcc_directory, 'raw_mfcc.{}.ark'.format(job_name))
     raw_scp_path = os.path.join(mfcc_directory, 'raw_mfcc.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
-    scp_path = os.path.join(log_directory, 'wav.{}.scp'.format(job_name))
+    segment_path = os.path.join(log_directory, 'segments.{}'.format(job_name))
 
     with open(log_path, 'w') as f:
-        comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
-                    '--config=' + mfcc_config_path,
-         'scp,p:'+scp_path, 'ark:-'], stdout = subprocess.PIPE,
-         stderr = f)
+        if os.path.exists(segment_path):
+            scp_path = os.path.join(log_directory, 'wav.scp'.format(job_name))
+            seg_proc = subprocess.Popen([thirdparty_binary('extract-segments'),
+                'scp,p:'+scp_path, segment_path, 'ark:-'], stdout = subprocess.PIPE,
+                stderr = f)
+            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
+                        '--config=' + mfcc_config_path,
+                 'ark:-', 'ark:-'], stdout = subprocess.PIPE,
+                 stderr = f,
+                 stdin = seg_proc.stdout)
+        else:
+            scp_path = os.path.join(log_directory, 'wav.{}.scp'.format(job_name))
+
+            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
+                        '--config=' + mfcc_config_path,
+             'scp,p:'+scp_path, 'ark:-'], stdout = subprocess.PIPE,
+             stderr = f)
         copy_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
             '--compress=true', 'ark:-',
             'ark,scp:{},{}'.format(raw_mfcc_path,raw_scp_path)],
@@ -163,7 +176,6 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
         nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'), "ark:-", phone_ctm_path],
                         stdin = phone_proc.stdout, stderr = logf)
         nbest_proc.communicate()
-        ctm_to_textgrid(word_ctm_path, phone_ctm_path, output_directory, dictionary, corpus)
 
 def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corpus, num_jobs):
     jobs = [ (output_directory, model_directory, dictionary, corpus, x)
@@ -172,6 +184,16 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
     with mp.Pool(processes = num_jobs) as pool:
         results = [pool.apply_async(ali_to_textgrid_func, args = i) for i in jobs]
         output = [p.get() for p in results]
+    word_ctm = {}
+    phone_ctm = {}
+    for i in range(num_jobs):
+        word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
+        phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
+        if not os.path.exists(word_ctm_path):
+            continue
+        word_ctm.update(parse_ctm(word_ctm_path, dictionary, mode = 'word'))
+        phone_ctm.update(parse_ctm(phone_ctm_path, dictionary, mode = 'phone'))
+    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus)
 
 def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):
     context_opts = []
