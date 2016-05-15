@@ -1,7 +1,3 @@
 #!/bin/sh
 
-
-if [ `uname` == Darwin ]; then
-	pyinstaller -w --clean -n montreal-forced-aligner --debug -y --additional-hooks-dir=freezing/hooks aligner/commandline.py
-
-fi
+pyinstaller -w --clean -n montreal-forced-aligner --debug -y --additional-hooks-dir=freezing/hooks aligner/command_line/train_and_align.py

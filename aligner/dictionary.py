@@ -2,9 +2,18 @@ import os
 import shutil
 import math
 import subprocess
+import re
 from collections import defaultdict
 
 from .helper import thirdparty_binary
+
+def compile_graphemes(graphemes):
+    if '-' in graphemes:
+        base = r'^\W*([-{}]+?)\W*'
+    else:
+        base = r'^\W*([{}]+?)\W*'
+    string = ''.join(x for x in graphemes if x != '-')
+    return re.compile(base.format(string))
 
 class Dictionary(object):
     topo_template = '<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>'
@@ -22,8 +31,6 @@ class Dictionary(object):
                     pronunciation_probabilities = True,
                     sil_prob = 0.5):
         self.output_directory = os.path.join(output_directory, 'dictionary')
-        if not os.path.exists(self.phones_dir):
-            os.makedirs(self.phones_dir, exist_ok = True)
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
         self.shared_silence_phones = shared_silence_phones
@@ -51,6 +58,7 @@ class Dictionary(object):
                 pron = line
                 self.words[word].append(pron)
                 self.nonsil_phones.update(pron)
+        self.word_pattern = compile_graphemes(self.graphemes)
         self.words['!SIL'].append(['sil'])
         self.words[self.oov_code].append(['spn'])
         self.phone_mapping = {}
@@ -85,10 +93,23 @@ class Dictionary(object):
         self.words_mapping['<s>'] = i + 2
         self.words_mapping['</s>'] = i + 3
 
+        self.oovs_found = set()
+
     def to_int(self, item):
+        m = self.word_pattern.match(item)
+        if m is None:
+            return None
+        item = m.groups()[0]
         if item not in self.words_mapping:
+            self.oovs_found.add(item)
             return self.oov_int
         return self.words_mapping[item]
+
+    def save_oovs_found(self, directory):
+        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding = 'utf8') as f:
+            for oov in sorted(self.oovs_found):
+                f.write(oov + '\n')
+        self.oovs_found = set()
 
     @property
     def reversed_word_mapping(self):
@@ -146,6 +167,8 @@ class Dictionary(object):
 
     def write(self):
         print('Creating dictionary information...')
+        if not os.path.exists(self.phones_dir):
+            os.makedirs(self.phones_dir, exist_ok = True)
         #self._write_lexicon()
         #self._write_lexiconp()
 

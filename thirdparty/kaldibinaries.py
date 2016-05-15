@@ -11,7 +11,7 @@ else:
     lib_ext = '.dylib'
 
 ignored_filenames = ['.DS_Store', 'configure' , 'Doxyfile' ,
-                'INSTALL', 'NOTES','TODO','Makefile','AUTHORS', 
+                'INSTALL', 'NOTES','TODO','Makefile','AUTHORS',
                 'COPYING', 'NEWS', 'README', 'CHANGELOG', 'DISCLAIMER',
                 'log', 'makefile', 'packImageTarFile']
 
@@ -24,7 +24,8 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                 'transform-feats', 'gmm-est', 'gmm-sum-accs', 'gmm-init-mono',
                 'cluster-phones', 'compile-questions', 'build-tree','gmm-init-model',
                 'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'compute-cmvn-stats',
-                'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats']
+                'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
+                'extract-segments']
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -41,16 +42,17 @@ def CollectBinaries(directory):
             bin_name = os.path.join(bin_out, name)
             if not os.path.exists(bin_name):
                 shutil.copy(os.path.join(fstbin_dir, name), bin_out)
-            p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, err = p.communicate()
-            rc = p.returncode
-            output = output.decode()
-            libs = dylib_pattern.findall(output)
-            for l in libs:
-                if l.startswith('/usr'):
-                    continue
-                lib = os.path.basename(l)
-                subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
+                if sys.platform == 'darwin':
+                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    output, err = p.communicate()
+                    rc = p.returncode
+                    output = output.decode()
+                    libs = dylib_pattern.findall(output)
+                    for l in libs:
+                        if l.startswith('/usr'):
+                            continue
+                        lib = os.path.basename(l)
+                        subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
     for name in os.listdir(fstlib_dir):
         ext = os.path.splitext(name)
         (key, value) = ext

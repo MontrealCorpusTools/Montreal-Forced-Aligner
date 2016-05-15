@@ -59,6 +59,10 @@ class MfccConfig(object):
         self.output_directory = output_directory
         self.write()
 
+    def update(self, kwargs):
+        self.config_dict.update(kwargs)
+        self.write()
+
     @property
     def config_directory(self):
         path = os.path.join(self.output_directory, 'config')
