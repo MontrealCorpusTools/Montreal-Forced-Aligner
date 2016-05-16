@@ -1,0 +1,5 @@
+six
+packaging
+pyinstaller
+scipy
+tqdm
