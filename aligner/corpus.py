@@ -115,6 +115,7 @@ class Corpus(object):
                 lab_name = find_lab(f, files)
                 wav_path = os.path.join(root, f)
                 if lab_name is not None:
+                    utt_name = file_name
                     lab_path = os.path.join(root, lab_name)
                     self.text_mapping[utt_name] = load_text(lab_path)
                     if self.speaker_directories:

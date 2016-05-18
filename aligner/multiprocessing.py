@@ -3,7 +3,7 @@ import multiprocessing as mp
 import subprocess
 import os
 
-from .helper import load_text, load_word_to_int, load_phone_to_int, reverse_mapping, thirdparty_binary
+from .helper import make_path_safe, load_text, load_word_to_int, load_phone_to_int, reverse_mapping, thirdparty_binary
 
 from .textgrid import ctm_to_textgrid, parse_ctm
 
@@ -136,7 +136,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):
 def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl="{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
-                                    config.boost_silence, optional_silence, mdl_path)
+                                    config.boost_silence, optional_silence, make_path_safe(mdl_path))
 
     feat_name = 'cmvndeltafeats'
     if config.do_fmllr:
