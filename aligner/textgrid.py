@@ -56,7 +56,10 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
             if not os.path.exists(speaker_directory):
                 os.makedirs(speaker_directory, exist_ok=True)
             outpath = os.path.join(speaker_directory, k + '.TextGrid')
-            tg.write(outpath)
+            try:
+                tg.write(outpath)
+            except ValueError:
+                print('Could not write textgrid for {}'.format(k))
     else:
         tgs = {}
         for i,(k,v) in enumerate(word_ctm.items()):
@@ -86,6 +89,9 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
                 phonetier.add(*interval)
         for k,v in tgs.items():
             outpath = os.path.join(out_directory, k + '.TextGrid')
-            v.write(outpath)
+            try:
+                v.write(outpath)
+            except ValueError:
+                print('Could not write textgrid for {}'.format(k))
 
 
