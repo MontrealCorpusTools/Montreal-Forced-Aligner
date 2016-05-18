@@ -5,7 +5,7 @@ import subprocess
 import re
 from tqdm import tqdm
 
-from ..helper import thirdparty_binary
+from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                             acc_stats, tree_stats, convert_alignments,
@@ -80,7 +80,7 @@ class TrainableAligner(BaseAligner):
                     '--min-gaussian-occupancy=3',
                     '--mix-up={}'.format(num_gauss), '--power={}'.format(self.mono_config.power),
                     mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                            ' '.join(acc_files)),
+                                            ' '.join(map(make_path_safe, acc_files))),
                     os.path.join(self.mono_directory,'1.mdl')],
                     stderr = logf)
             est_proc.communicate()
