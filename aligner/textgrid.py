@@ -58,8 +58,9 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
             outpath = os.path.join(speaker_directory, k + '.TextGrid')
             try:
                 tg.write(outpath)
-            except ValueError:
+            except ValueError as e:
                 print('Could not write textgrid for {}'.format(k))
+                print(e)
     else:
         tgs = {}
         for i,(k,v) in enumerate(word_ctm.items()):
@@ -91,7 +92,8 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
             outpath = os.path.join(out_directory, k + '.TextGrid')
             try:
                 v.write(outpath)
-            except ValueError:
+            except ValueError as e:
                 print('Could not write textgrid for {}'.format(k))
+                print(e)
 
 
