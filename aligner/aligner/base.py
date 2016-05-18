@@ -5,7 +5,7 @@ import subprocess
 import re
 from tqdm import tqdm
 
-from ..helper import thirdparty_binary
+from ..helper import thirdparty_binary, make_path_safe
 
 from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig
 
@@ -314,7 +314,7 @@ class BaseAligner(object):
                         '--mix-up='+str(num_gauss), '--power='+str(config.power),
                         model_path,
                         "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                        ' '.join(acc_files)),
+                                        ' '.join(map(make_path_safe, acc_files))),
                         next_model_path],
                         stderr = logf)
                 est_proc.communicate()
