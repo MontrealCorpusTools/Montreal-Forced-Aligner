@@ -9,6 +9,9 @@ def thirdparty_binary(binary_name):
         return binary_name
     return bin_path
 
+def make_path_safe(path):
+    return '"{}"'.format(path)
+
 def load_scp(path):
     scp = []
     with open(path, 'r', encoding = 'utf8') as f:
