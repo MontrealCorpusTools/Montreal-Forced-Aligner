@@ -40,23 +40,22 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
     if not corpus.segments:
         for i,(k,v) in enumerate(word_ctm.items()):
             maxtime = corpus.get_wav_duration(k)
-            tg = TextGrid(maxTime = maxtime)
-            wordtier = IntervalTier(name = 'words', maxTime = maxtime)
-            phonetier = IntervalTier(name = 'phones', maxTime = maxtime)
-            for interval in v:
-                wordtier.add(*interval)
-            for interval in phone_ctm[k]:
-                phonetier.add(*interval)
-            tg.append(wordtier)
-            tg.append(phonetier)
-            if corpus.speaker_directories:
-                speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
-            else:
-                speaker_directory = out_directory
-            if not os.path.exists(speaker_directory):
-                os.makedirs(speaker_directory, exist_ok=True)
-            outpath = os.path.join(speaker_directory, k + '.TextGrid')
             try:
+                tg = TextGrid(maxTime = maxtime)
+                wordtier = IntervalTier(name = 'words', maxTime = maxtime)
+                phonetier = IntervalTier(name = 'phones', maxTime = maxtime)
+                for interval in v:
+                    wordtier.add(*interval)
+                for interval in phone_ctm[k]:
+                    phonetier.add(*interval)
+                tg.append(wordtier)
+                tg.append(phonetier)
+                if corpus.speaker_directories:
+                    speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
+                else:
+                    speaker_directory = out_directory
+                os.makedirs(speaker_directory, exist_ok=True)
+                outpath = os.path.join(speaker_directory, k + '.TextGrid')
                 tg.write(outpath)
             except ValueError as e:
                 print('Could not write textgrid for {}'.format(k))
