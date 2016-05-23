@@ -1,3 +1,4 @@
+textgrid
 six
 packaging
 pyinstaller

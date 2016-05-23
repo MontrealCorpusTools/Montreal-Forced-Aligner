@@ -31,13 +31,18 @@ if __name__ == '__main__':
             'Topic :: Scientific/Engineering',
             'Topic :: Text Processing :: Linguistic',
           ],
-          keywords='phonology corpus phonetics',
+          keywords='phonology corpus phonetics alignment segmentation',
           url='https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner',
           author='Montreal Corpus Tools',
           author_email='michael.e.mcauliffe@gmail.com',
-          packages=['aligner',],
+          packages=['aligner',
+                    'aligner.aligner',
+                    'aligner.command_line',
+                    'aligner.gui'],
           install_requires=[
-              'textgrid'
+              'textgrid',
+              'scipy',
+              'tqdm',
           ],
         cmdclass={'test': PyTest},
         extras_require={
