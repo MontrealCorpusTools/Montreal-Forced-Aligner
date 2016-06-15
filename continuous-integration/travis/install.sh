@@ -7,11 +7,11 @@ if [ ! -d "$HOME/tools/kaldi" ]; then
   git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
   cd kaldi/tools
   extras/check_dependencies.sh
-  make -j 3
+  make -j 4
   cd ../src
   ./configure
-  make depend -j 3
-  make -j 3
+  make depend -j 4
+  make -j 4
 else
   echo "Kaldi already installed."
 fi
