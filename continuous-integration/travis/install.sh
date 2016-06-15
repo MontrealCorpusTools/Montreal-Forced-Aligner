@@ -1,21 +1,6 @@
 #!/bin/sh
 set -e
 
-if [ ! -d "$HOME/tools/kaldi" ]; then
-  mkdir -p $HOME/tools
-  cd $HOME/tools
-  git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
-  cd kaldi/tools
-  extras/check_dependencies.sh
-  make -j 4
-  cd ../src
-  ./configure
-  make depend -j 4
-  make -j 4
-else
-  echo "Kaldi already installed."
-fi
-
 #check to see if miniconda folder is empty
 if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
@@ -31,4 +16,23 @@ if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   pip install -q coveralls coverage textgrid tqdm
 else
   echo "Miniconda already installed."
+fi
+
+if [ ! -d "$HOME/tools/kaldi" ]; then
+  mkdir -p $HOME/downloads
+  cd $HOME/downloads
+  git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
+  cd kaldi/tools
+  extras/check_dependencies.sh
+  make -j 4
+  cd ../src
+  ./configure
+  make depend -j 4
+  make -j 4
+  cd $HOME/MontrealCorpusTools/Montreal-Forced-Aligner
+  source activate test-environment
+  python thirdparty/kaldibinaries.py $HOME/downloads/kaldi
+  cp thirdparty/bin $HOME/tools/kaldi
+else
+  echo "Kaldi already installed."
 fi
