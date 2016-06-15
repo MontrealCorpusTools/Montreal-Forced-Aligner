@@ -19,7 +19,7 @@ fi
 
 if [ ! -d "$HOME/tools/kaldi" ]; then
   mkdir -p $HOME/tools
-  cd tools
+  cd $HOME/tools
   git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
   cd kaldi/tools
   extras/check_dependencies.sh
