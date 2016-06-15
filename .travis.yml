@@ -8,6 +8,7 @@ notifications:
   email: false
 
 sudo: true
+dist: trusty
 
 addons:
   apt:
