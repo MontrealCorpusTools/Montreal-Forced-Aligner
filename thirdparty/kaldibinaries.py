@@ -6,7 +6,7 @@ import re
 
 if sys.platform == 'win32':
     exe_ext = '.exe'
-else:
+elif sys.platform == 'darwin':
     exe_ext = ''
     lib_ext = '.dylib'
 
