@@ -9,9 +9,9 @@ from .helper import thirdparty_binary
 
 def compile_graphemes(graphemes):
     if '-' in graphemes:
-        base = r'^\W*([-{}]+?)\W*'
+        base = r'^\W*([-{}]+)\W*'
     else:
-        base = r'^\W*([{}]+?)\W*'
+        base = r'^\W*([{}]+)\W*'
     string = ''.join(x for x in graphemes if x != '-')
     return re.compile(base.format(string))
 
