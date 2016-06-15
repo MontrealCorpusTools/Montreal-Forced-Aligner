@@ -32,7 +32,7 @@ if [ ! -d "$HOME/tools/kaldi" ]; then
   cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
   source activate test-environment
   python thirdparty/kaldibinaries.py $HOME/downloads/kaldi
-  cp thirdparty/bin $HOME/tools/kaldi
+  cp -R thirdparty/bin $HOME/tools/kaldi
 else
   echo "Kaldi already installed."
 fi
