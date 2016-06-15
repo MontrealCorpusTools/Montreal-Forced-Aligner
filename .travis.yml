@@ -1,0 +1,45 @@
+language: python
+python:
+  - 3.5
+branches:
+  only:
+    - master
+notifications:
+  email: false
+
+sudo: true
+dist: trusty
+
+addons:
+  apt:
+    packages:
+      - libatlas3-base
+
+before_install:
+  - sudo rm -rf /dev/shm
+  - sudo ln -s /run/shm /dev/shm
+  - sudo ln -s -f bash /bin/sh
+  - bash continuous-integration/travis/install.sh
+
+# Install packages
+install:
+  - export PATH="$HOME/miniconda/miniconda/bin:$PATH"
+  - source activate test-environment
+  - which python
+  - conda list
+
+before_script:
+  - python thirdparty/kaldibinaries.py $HOME/tools/kaldi
+
+# Run test
+script:
+  - "coverage run --source=aligner setup.py test"
+
+# Calculate coverage
+after_success:
+  - coveralls
+
+cache:
+  directories:
+    - $HOME/miniconda
+    - $HOME/tools
