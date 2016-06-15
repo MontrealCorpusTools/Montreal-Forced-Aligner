@@ -18,7 +18,7 @@ else
   echo "Miniconda already installed."
 fi
 
-if [ ! -d "$HOME/tools/kaldi" ]; then
+if [ -d "$HOME/tools/kaldi" ]; then
   mkdir -p $HOME/downloads
   cd $HOME/downloads
   git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
@@ -34,5 +34,7 @@ if [ ! -d "$HOME/tools/kaldi" ]; then
   python thirdparty/kaldibinaries.py $HOME/downloads/kaldi
   cp thirdparty/bin $HOME/tools/kaldi
 else
+  ls $HOME
+
   echo "Kaldi already installed."
 fi
