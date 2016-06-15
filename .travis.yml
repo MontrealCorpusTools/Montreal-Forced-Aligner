@@ -30,7 +30,7 @@ install:
   - conda list
 
 before_script:
-  - python thirdparty/kaldibinaries $HOME/kaldi
+  - python thirdparty/kaldibinaries.py $HOME/kaldi
 
 # Run test
 script:
