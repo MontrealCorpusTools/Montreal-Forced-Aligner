@@ -16,6 +16,7 @@ addons:
       - libatlas3-base
 
 before_install:
+  - pwd
   - sudo rm -rf /dev/shm
   - sudo ln -s /run/shm /dev/shm
   - sudo ln -s -f bash /bin/sh
