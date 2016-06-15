@@ -18,7 +18,7 @@ else
   echo "Miniconda already installed."
 fi
 
-if [ -d "$HOME/tools/kaldi" ]; then
+if [ ! -d "$HOME/tools/kaldi" ]; then
   mkdir -p $HOME/downloads
   cd $HOME/downloads
   git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
@@ -29,12 +29,10 @@ if [ -d "$HOME/tools/kaldi" ]; then
   ./configure
   make depend -j 4
   make -j 4
-  cd $HOME/MontrealCorpusTools/Montreal-Forced-Aligner
+  cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
   source activate test-environment
   python thirdparty/kaldibinaries.py $HOME/downloads/kaldi
   cp thirdparty/bin $HOME/tools/kaldi
 else
-  ls $HOME
-
   echo "Kaldi already installed."
 fi
