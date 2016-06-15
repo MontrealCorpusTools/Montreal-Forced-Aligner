@@ -6,9 +6,12 @@ import re
 
 if sys.platform == 'win32':
     exe_ext = '.exe'
-else:
+elif sys.platform == 'darwin':
     exe_ext = ''
     lib_ext = '.dylib'
+else:
+    exe_ext = ''
+    lib_ext = '.so'
 
 ignored_filenames = ['.DS_Store', 'configure' , 'Doxyfile' ,
                 'INSTALL', 'NOTES','TODO','Makefile','AUTHORS',
