@@ -260,7 +260,7 @@ class Corpus(object):
                 oovs = []
                 for i in range(len(text)):
                     t = text[i]
-                    lookup = dictionary.to_int(text[i])
+                    lookup = dictionary.to_int(t)
                     if lookup is None:
                         continue
                     if lookup == oov_code:
