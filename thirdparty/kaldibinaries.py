@@ -59,7 +59,7 @@ def CollectBinaries(directory):
     for name in os.listdir(fstlib_dir):
         ext = os.path.splitext(name)
         (key, value) = ext
-        if value == lib_ext:
+        if value.startswith(lib_ext):
             shutil.copy(os.path.join(fstlib_dir, name), bin_out)
 
     src_dir = os.path.join(directory, 'src')
