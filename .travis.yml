@@ -33,6 +33,7 @@ before_script:
   - ls $HOME/tools/kaldi
   - cp -Rf $HOME/tools/kaldi/ thirdparty/bin/
   - ls thirdparty/bin
+  - export LD_LIBRARY_PATH=$HOME/tools/kaldi:$LD_LIBRARY_PATH
 
 # Run test
 script:
