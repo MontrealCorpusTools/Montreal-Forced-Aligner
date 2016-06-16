@@ -30,7 +30,9 @@ install:
   - conda list
 
 before_script:
-  - cp -Rfl $HOME/tools/kaldi thirdparty/bin
+  - ls $HOME/tools/kaldi
+  - cp -Rf $HOME/tools/kaldi/ thirdparty/bin/
+  - ls thirdparty/bin
 
 # Run test
 script:
