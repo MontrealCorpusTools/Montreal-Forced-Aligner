@@ -8,10 +8,10 @@ if sys.platform == 'win32':
     exe_ext = '.exe'
 elif sys.platform == 'darwin':
     exe_ext = ''
-    lib_ext = '.dylib'
+    lib_ext = ['.dylib']
 else:
     exe_ext = ''
-    lib_ext = '.so'
+    lib_ext = ['.so', '.so.1']
 
 ignored_filenames = ['.DS_Store', 'configure' , 'Doxyfile' ,
                 'INSTALL', 'NOTES','TODO','Makefile','AUTHORS',
@@ -57,9 +57,11 @@ def CollectBinaries(directory):
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
     for name in os.listdir(fstlib_dir):
-        ext = os.path.splitext(name)
-        (key, value) = ext
-        if value.startswith(lib_ext):
+        c = False
+        for le in lib_ext:
+            if name.endswith(le):
+                c = True
+        if c:
             shutil.copy(os.path.join(fstlib_dir, name), bin_out)
 
     src_dir = os.path.join(directory, 'src')
