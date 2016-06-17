@@ -30,6 +30,10 @@ def basic_dict_path(dict_dir):
     return os.path.join(dict_dir, 'basic.txt')
 
 @pytest.fixture(scope='session')
+def frclitics_dict_path(dict_dir):
+    return os.path.join(dict_dir, 'frclitics.txt')
+
+@pytest.fixture(scope='session')
 def expected_dict_path(dict_dir):
     return os.path.join(dict_dir, 'expected')
 
