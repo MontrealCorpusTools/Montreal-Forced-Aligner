@@ -111,6 +111,48 @@ class Dictionary(object):
                 f.write(oov + '\n')
         self.oovs_found = set()
 
+    def separate_clitics(self, item):
+        vocab = []
+        self.to_int(item)
+        if item in self.oovs_found:
+            chars = list(item)
+            count = 0
+            for i in chars:
+                if i == '\'' or i == '-':
+                    count = count + 1     
+            for i in range(count):
+                for punc in chars:
+                    if punc == '\'' or punc == '-':
+                        idx = chars.index(punc)
+                        option1withpunc = ''.join(chars[:idx+1])
+                        option1nopunc = ''.join(chars[:idx])
+                        option2withpunc = ''.join(chars[idx:])
+                        option2nopunc = ''.join(chars[idx+1:])
+                        if option1withpunc in self.words:
+                            self.to_int(option1withpunc)
+                            vocab.append((self.to_int(option1withpunc), option1withpunc))
+                            self.to_int(option2nopunc)
+                            vocab.append((self.to_int(option2nopunc), option2nopunc))
+                        else:
+                            self.to_int(option1nopunc)
+                            vocab.append((self.to_int(option1nopunc), option1nopunc))
+                            if option2withpunc in self.words:
+                                self.to_int(option2withpunc)
+                                vocab.append((self.to_int(option2withpunc), option2withpunc))
+                            else:
+                                self.to_int(option2nopunc)
+                                vocab.append((self.to_int(option2nopunc), option2nopunc))
+                        chars = list(option2nopunc)
+        else:
+            return item
+        if vocab == []:
+            return None
+        elif len(vocab) > 0:
+            splitwords = []
+            for i in vocab:
+                splitwords.append(i[1])
+            return splitwords
+
     @property
     def reversed_word_mapping(self):
         mapping = {}
