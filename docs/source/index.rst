@@ -11,6 +11,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   introduction.rst
    installation.rst
    tutorial.rst
    commonerrors.rst
