@@ -27,8 +27,8 @@ mv align/align montreal-forced-aligner/lib/align
 cd montreal-forced-aligner
 mkdir bin
 cd bin
-ln -s ../lib/mfa_train_and_align train_and_align
-ln -s ../lib/mfa_align align
+ln -s ../lib/train_and_align mfa_train_and_align
+ln -s ../lib/align mfa_align
 
 cd ../..
 zip -r montreal-forced-aligner.zip montreal-forced-aligner/
