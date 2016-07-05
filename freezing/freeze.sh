@@ -31,7 +31,7 @@ ln -s ../lib/train_and_align mfa_train_and_align
 ln -s ../lib/align mfa_align
 
 cd ../..
-cp ../pretrained_models montreal-forced-aligner/
+cp -r ../pretrained_models montreal-forced-aligner/pretrained_models
 
 if [ `uname` == Darwin ]; then
 zip -r montreal-forced-aligner.zip montreal-forced-aligner
