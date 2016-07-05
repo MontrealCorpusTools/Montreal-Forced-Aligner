@@ -114,12 +114,12 @@ class Dictionary(object):
     def separate_clitics(self, item):
         vocab = []
         self.to_int(item)
-        if item in self.oovs_found:
-            chars = list(item)
-            count = 0
-            for i in chars:
-                if i == '\'' or i == '-':
-                    count = count + 1     
+        chars = list(item)
+        count = 0
+        for i in chars:
+            if i == '\'' or i == '-':
+                count = count + 1
+        if item not in self.words:   
             for i in range(count):
                 for punc in chars:
                     if punc == '\'' or punc == '-':
@@ -131,8 +131,13 @@ class Dictionary(object):
                         if option1withpunc in self.words:
                             self.to_int(option1withpunc)
                             vocab.append((self.to_int(option1withpunc), option1withpunc))
-                            self.to_int(option2nopunc)
-                            vocab.append((self.to_int(option2nopunc), option2nopunc))
+                            if option2nopunc in self.words:
+                                self.to_int(option2nopunc)
+                                vocab.append((self.to_int(option2nopunc), option2nopunc))
+                            else:
+                                if '\'' not in list(option2nopunc) and '-' not in list(option2nopunc):
+                                    self.to_int(option2nopunc)
+                                    vocab.append((self.to_int(option2nopunc), option2nopunc))
                         else:
                             self.to_int(option1nopunc)
                             vocab.append((self.to_int(option1nopunc), option1nopunc))
@@ -140,14 +145,25 @@ class Dictionary(object):
                                 self.to_int(option2withpunc)
                                 vocab.append((self.to_int(option2withpunc), option2withpunc))
                             else:
-                                self.to_int(option2nopunc)
-                                vocab.append((self.to_int(option2nopunc), option2nopunc))
+                                if option2nopunc in self.words:
+                                    self.to_int(option2nopunc)
+                                    vocab.append((self.to_int(option2nopunc), option2nopunc))
+                                else:
+                                    if '\'' not in list(option2nopunc) and '-' not in list(option2nopunc):
+                                        self.to_int(option2nopunc)
+                                        vocab.append((self.to_int(option2nopunc), option2nopunc))
                         chars = list(option2nopunc)
         else:
             return item
         if vocab == []:
-            return None
+            return item
         elif len(vocab) > 0:
+            unk = []
+            for i in vocab:
+                if i[1] not in self.words:
+                    unk.append(i[1])
+            if len(unk) == count + 1:
+                return item
             splitwords = []
             for i in vocab:
                 splitwords.append(i[1])
@@ -545,3 +561,68 @@ class Dictionary(object):
                             else:
                                 outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
             outf.write("{}\t{}\n".format(loopstate, 0))
+
+
+class OrthographicDictionary(Dictionary):
+
+    def __init__(self, input_dict, output_directory, oov_code = '<unk>',
+                    position_dependent_phones = True, num_sil_states = 5,
+                    num_nonsil_states = 3, shared_silence_phones = False,
+                    pronunciation_probabilities = True,
+                    sil_prob = 0.5):
+        self.output_directory = os.path.join(output_directory, 'dictionary')
+        self.num_sil_states = num_sil_states
+        self.num_nonsil_states = num_nonsil_states
+        self.shared_silence_phones = shared_silence_phones
+        self.sil_prob = sil_prob
+        self.oov_code = oov_code
+        self.position_dependent_phones = position_dependent_phones
+        self.pronunciation_probabilities = pronunciation_probabilities
+
+        self.words = defaultdict(list)
+        self.nonsil_phones = set()
+        self.sil_phones = set(['sil', 'spn'])
+        self.optional_silence = 'sil'
+        self.disambig = set()
+        self.graphemes = set()
+        for w in input_dict:
+            self.graphemes.update(w)
+            pron = input_dict[w]
+            self.words[w].append(pron)
+            self.nonsil_phones.update(pron)
+        self.word_pattern = compile_graphemes(self.graphemes)
+        self.words['!SIL'].append(['sil'])
+        self.words[self.oov_code].append(['spn'])
+        self.phone_mapping = {}
+        i = 0
+        self.phone_mapping['<eps>'] = i
+        if self.position_dependent_phones:
+            for p in self.positional_sil_phones:
+                i += 1
+                self.phone_mapping[p] = i
+            for p in self.positional_nonsil_phones:
+                i += 1
+                self.phone_mapping[p] = i
+        else:
+            for p in sorted(self.sil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+            for p in sorted(self.nonsil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+        for p in sorted(self.disambig):
+            i += 1
+            self.phone_mapping[p] = i
+
+        self.words_mapping = {}
+        i = 0
+        self.words_mapping['<eps>'] = i
+        for w in sorted(self.words.keys()):
+            i += 1
+            self.words_mapping[w] = i
+
+        self.words_mapping['#0'] = i + 1
+        self.words_mapping['<s>'] = i + 2
+        self.words_mapping['</s>'] = i + 3
+
+        self.oovs_found = set()
