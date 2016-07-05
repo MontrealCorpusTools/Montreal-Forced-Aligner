@@ -28,7 +28,7 @@ Enter the following command into the terminal:
 
 .. code-block:: bash
 
-   bin/mfa_align --english /path/to/librispeech/dataset ~/Documents/aligned_librispeech
+   bin/mfa_align /path/to/librispeech/dataset ~/Documents/aligned_librispeech --language english
 
 Aligning through training
 -------------------------
