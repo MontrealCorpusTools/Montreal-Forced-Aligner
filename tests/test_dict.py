@@ -20,11 +20,15 @@ def test_basic(basic_dict_path, generated_dir):
 def test_frclitics(frclitics_dict_path, generated_dir):
     d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, 'frclitics'))
     x = d.write()
-    assert d.separate_clitics('aujourd') == None
+    assert d.separate_clitics('aujourd') == 'aujourd'
     assert d.separate_clitics('aujourd\'hui') == 'aujourd\'hui'
     assert d.separate_clitics('vingt-six') == ['vingt', 'six']
     assert d.separate_clitics('m\'appelle') == ['m\'', 'appelle']
     assert d.separate_clitics('c\'est') == 'c\'est'
+    assert d.separate_clitics('purple-people-eater') == 'purple-people-eater'
+    assert d.separate_clitics('m\'appele') == ['m\'', 'appele']
+    assert d.separate_clitics('m\'ving-sic') == ["m'", 'ving', 'sic']
+    assert d.separate_clitics('flying\'purple-people-eater') == 'flying\'purple-people-eater'
 
 @pytest.mark.xfail
 def test_basic_topo(generated_dir, basic_topo_path):

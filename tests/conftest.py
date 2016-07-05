@@ -98,6 +98,14 @@ def acoustic_corpus_lab_path(basic_dir):
     return os.path.join(basic_dir, 'acoustic_corpus.lab')
 
 @pytest.fixture(scope='session')
+def michael_corpus_lab_path(basic_dir):
+    return os.path.join(basic_dir, 'michael_corpus.lab')
+
+@pytest.fixture(scope='session')
+def output_directory(basic_dir):
+    return os.path.join(basic_dir, 'output')
+
+@pytest.fixture(scope='session')
 def acoustic_corpus_textgrid_path(basic_dir):
     return os.path.join(basic_dir, 'acoustic_corpus.TextGrid')
 
