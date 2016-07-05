@@ -21,14 +21,13 @@ class TrainableAligner(BaseAligner):
     def save(self, path):
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
-        print(basename)
         archive = Archive.empty(basename)
         archive.add_triphone_model(self.tri_fmllr_directory)
         archive.add_dictionary(self.dictionary)
         os.makedirs(directory, exist_ok = True)
-        basename, _ = os.path.splitext(directory)
-        print(basename)
-        print(archive.dump(basename))
+        basename, _ = os.path.splitext(path)
+        archive.dump(basename)
+        print('Saved model to {}'.format(path))
 
     def do_tri_training(self):
         self.call_back('Beginning triphone training...')

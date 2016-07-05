@@ -239,13 +239,22 @@ class Corpus(object):
             output.append(output_g)
         return output
 
-    @property
-    def grouped_text(self):
+    def grouped_text(self, dictionary = None):
         output = []
         for g in self.groups:
             output_g = []
             for u in g:
-                output_g.append([u, self.text_mapping[u]])
+                if dictionary is None:
+                    text = self.text_mapping[u]
+                else:
+                    text = self.text_mapping[u].split()
+                    new_text = []
+                    for t in text:
+                        lookup = dictionary.separate_clitics(t)
+                        if lookup is None:
+                            continue
+                        new_text.extend(lookup)
+                output_g.append([u, new_text])
             output.append(output_g)
         return output
 
@@ -253,10 +262,10 @@ class Corpus(object):
         oov_code = str(dictionary.oov_int)
         all_oovs = []
         output = []
-        for g in self.groups:
+        grouped_texts = self.grouped_text(dictionary)
+        for g in grouped_texts:
             output_g = []
-            for u in g:
-                text = self.text_mapping[u].split()
+            for u, text in g:
                 oovs = []
                 for i in range(len(text)):
                     t = text[i]
@@ -388,7 +397,7 @@ class Corpus(object):
 
     def _split_texts(self, directory, dictionary = None):
         pattern = 'text.{}'
-        save_groups(self.grouped_text, directory, pattern)
+        save_groups(self.grouped_text(dictionary), directory, pattern)
         if dictionary is not None:
             pattern = 'text.{}.int'
             ints, all_oovs = self.grouped_text_int(dictionary)
