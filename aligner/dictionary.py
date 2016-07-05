@@ -20,7 +20,7 @@ class Dictionary(object):
     topo_sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
     topo_transition_template = '<Transition> {} {}'
     positions = ["_B", "_E", "_I", "_S"]
-
+    clitic_markers = ["'", '-']
     @staticmethod
     def read(filename):
         pass
@@ -113,61 +113,47 @@ class Dictionary(object):
 
     def separate_clitics(self, item):
         vocab = []
-        self.to_int(item)
         chars = list(item)
         count = 0
         for i in chars:
-            if i == '\'' or i == '-':
+            if i in self.clitic_markers:
                 count = count + 1
-        if item not in self.words:   
+        if item not in self.words:
             for i in range(count):
                 for punc in chars:
-                    if punc == '\'' or punc == '-':
+                    if punc in self.clitic_markers:
                         idx = chars.index(punc)
                         option1withpunc = ''.join(chars[:idx+1])
                         option1nopunc = ''.join(chars[:idx])
                         option2withpunc = ''.join(chars[idx:])
                         option2nopunc = ''.join(chars[idx+1:])
                         if option1withpunc in self.words:
-                            self.to_int(option1withpunc)
-                            vocab.append((self.to_int(option1withpunc), option1withpunc))
+                            vocab.append(option1withpunc)
                             if option2nopunc in self.words:
-                                self.to_int(option2nopunc)
-                                vocab.append((self.to_int(option2nopunc), option2nopunc))
-                            else:
-                                if '\'' not in list(option2nopunc) and '-' not in list(option2nopunc):
-                                    self.to_int(option2nopunc)
-                                    vocab.append((self.to_int(option2nopunc), option2nopunc))
+                                vocab.append(option2nopunc)
+                            elif all(x not in list(option2nopunc) for x in self.clitic_markers):
+                                vocab.append(option2nopunc)
                         else:
-                            self.to_int(option1nopunc)
-                            vocab.append((self.to_int(option1nopunc), option1nopunc))
+                            vocab.append(option1nopunc)
                             if option2withpunc in self.words:
-                                self.to_int(option2withpunc)
-                                vocab.append((self.to_int(option2withpunc), option2withpunc))
-                            else:
-                                if option2nopunc in self.words:
-                                    self.to_int(option2nopunc)
-                                    vocab.append((self.to_int(option2nopunc), option2nopunc))
-                                else:
-                                    if '\'' not in list(option2nopunc) and '-' not in list(option2nopunc):
-                                        self.to_int(option2nopunc)
-                                        vocab.append((self.to_int(option2nopunc), option2nopunc))
+                                vocab.append(option2withpunc)
+                            elif option2nopunc in self.words:
+                                vocab.append(option2nopunc)
+                            elif all(x not in list(option2nopunc) for x in self.clitic_markers):
+                                vocab.append(option2nopunc)
                         chars = list(option2nopunc)
         else:
-            return item
+            return [item]
         if vocab == []:
-            return item
+            return [item]
         elif len(vocab) > 0:
             unk = []
             for i in vocab:
-                if i[1] not in self.words:
-                    unk.append(i[1])
+                if i not in self.words:
+                    unk.append(i)
             if len(unk) == count + 1:
-                return item
-            splitwords = []
-            for i in vocab:
-                splitwords.append(i[1])
-            return splitwords
+                return [item]
+            return vocab
 
     @property
     def reversed_word_mapping(self):
