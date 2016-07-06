@@ -43,6 +43,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
     c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
     corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)
     dictionary = no_dictionary(corpus, os.path.join(TEMP_DIR, corpus_name))
+    dictionary.write()
     corpus.write()
     corpus.create_mfccs()
     corpus.setup_splits(dictionary)
@@ -67,7 +68,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_dir', help = 'Full path to the source directory to align')
-    parser.add_argument('dict_path', help = 'Full path to the pronunciation dictionary to use')
+    parser.add_argument('dict_path', help = 'Full path to the pronunciation dictionary to use', nargs='?', default = '')
     parser.add_argument('output_dir', help = 'Full path to output directory, will be created if it doesn\'t exist')
     parser.add_argument('-o', '--output_model_path', type = str, default = '', help = 'Full path to save resulting acoustic and dictionary model')
     parser.add_argument('-s', '--speaker_characters', type = int, default = 0,
@@ -84,11 +85,15 @@ if __name__ == '__main__':
     output_model_path = args.output_model_path
     if not output_model_path:
         output_model_path = None
-    if args.nodict == True:
+    if args.nodict == False and dict_path == '':
+        raise(Exception('Must specify dictionary or nodict option'))
+    if args.nodict == True and dict_path != '':
+        raise(Exception('Dict_path cannot be specified with nodict option'))
+    elif args.nodict == True:
         align_corpus_no_dict(corpus_dir, output_dir, args.speaker_characters,
                     args.fast,
                     output_model_path, args.num_jobs, args.verbose)
-    if args.nodict == False:
+    elif args.nodict == False:
         align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters,
                     args.fast,
                     output_model_path, args.num_jobs, args.verbose)
