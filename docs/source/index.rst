@@ -9,11 +9,13 @@ Welcome to Montreal Forced Aligner's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    introduction.rst
    installation.rst
-   tutorial.rst
+   data_prep.rst
+   aligning.rst
+   example.rst
    commonerrors.rst
 
 
