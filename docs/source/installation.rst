@@ -56,8 +56,8 @@ not your default Python) and assume Linux in the commands.
 3. Open a terminal and go to the unzipped folder (``cd /path/to/Montreal-Forced-Aligner/thirdparty``)
 4. Run the ``thirdparty/kaldibinaries.py`` script point it to where Kaldi was built (``python thirdparty/kaldibinaries.py /path/to/kaldi/root``)
 5. Run ``pip install -r requirements.txt`` to install the requirements for the aligner.
-6. Build the executable by doing ``freezing/freeze.sh`` and there will be a ``montreal-forced-aligner`` folder in the dist/ folder.
-7. This folder should contain two executables ``mfa_align`` and ``mfa_train_and_align`` that should be used for alignment.
+6. Run the build script via ``freezing/freeze.sh`` and there will be a ``montreal-forced-aligner`` folder in the ``dist`` folder.
+7. This folder should contain a ``bin`` folder with two executables ``mfa_align`` and ``mfa_train_and_align`` that should be used for alignment.
 
 Files created when using the Montreal Forced Aligner
 ====================================================
