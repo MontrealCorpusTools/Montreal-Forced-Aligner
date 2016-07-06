@@ -14,7 +14,7 @@ All releases for the Montreal Forced Aligner are available on
 Mac
 ===
 
-1. Download the zip folder for Mac and unzip the folder to anywhere
+1. Download the zip archive for Mac and unzip the folder to anywhere
 2. Open a terminal window
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
 4. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align``
@@ -23,7 +23,7 @@ Mac
 Windows
 =======
 
-1. Download the zip folder for Windows and unzip the folder to anywhere
+1. Download the zip archive for Windows and unzip the folder to anywhere
 2. Open a command window (Open the Start menu and search for ``cmd``)
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd C:\path\to\montreal-forced-aligner``,
    you can copy the path of it by holding Shift and right clicking on the folder
@@ -38,7 +38,7 @@ The Linux distributions were built on Ubuntu 14.04, and so may not work on
 machines that have older versions of Linux system packages.  If these instructions
 do not work, then the executables will have to be built from source.
 
-1. Download the zip folder for Linux and unzip the folder to anywhere
+1. Download the tar.gz archive for Linux and untar the folder to anywhere
 2. Open a terminal window
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
 4. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align``
