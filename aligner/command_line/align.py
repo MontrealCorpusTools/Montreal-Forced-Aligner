@@ -23,6 +23,8 @@ def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, 
                         temp_directory = os.path.join(TEMP_DIR, corpus_name), num_jobs = num_jobs)
     a.verbose = verbose
     corpus.setup_splits(a.dictionary)
+    shutil.copy(os.path.join(corpus.split_directory, 'utterance_oovs.txt'), output_directory)
+    shutil.copy(os.path.join(corpus.split_directory, 'oovs_found.txt'), output_directory)
     a.do_align()
     a.export_textgrids()
 
