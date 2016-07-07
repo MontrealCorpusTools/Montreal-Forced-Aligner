@@ -12,14 +12,14 @@ Common options for both aligner executables
 .. cmdoption:: -s NUMBER
                --speaker_characters NUMBER
 
-   Number of characters to use to identify speakers, if not specified,
+   Number of characters to use to identify speakers; if not specified,
    the aligner assumes that the directory name is the identifier for the
    speaker
 
 .. cmdoption:: -j NUMBER
                --num_jobs NUMBER
 
-  Number of jobs to use, defaults to 3, set higher if you have more
+  Number of jobs to use; defaults to 3, set higher if you have more
   processors available and would like to align faster
 
 .. cmdoption:: -v
@@ -61,17 +61,17 @@ Extra options (in addition to the common ones listed above):
 
 Steps to align:
 
-1. Open terminal or command window, and change directory to ``montreal-forced-aligner`` folder.
+1. Open terminal or command window, and change directory to ``montreal-forced-aligner`` folder
 
 2. Type ``bin/mfa_align`` followed by the arguments described
-   above.
+   above
 
 .. note::
    On Mac/Unix, to save time typing out the path, you
    can drag a folder from Finder into Terminal and it will put the full
    path to that folder into your command.
 
-   On Windows, you can hold shift and right-click on a folder/file and select
+   On Windows, you can hold Shift and right-click on a folder/file. Select
    "Copy as path..." and paste it into the command window.
 
 
@@ -97,7 +97,7 @@ Extra options (in addition to the common ones listed above):
 .. cmdoption:: -o PATH
                --output_model_path PATH
 
-  Path to a zip file to save the results acoustic models (and dictionary)
+  Path to a zip file to save the results' acoustic models (and dictionary)
   from training to use in future aligning
 
 .. cmdoption:: --nodict
@@ -113,10 +113,10 @@ Extra options (in addition to the common ones listed above):
 
 Steps to align:
 
-1. Open terminal or command window, and change directory to ``montreal-forced-aligner`` folder.
+1. Open terminal or command window, and change directory to the ``montreal-forced-aligner`` folder
 
 2. Type ``bin/mfa_train_and_align`` followed by the arguments described
-   above.
+   above
 
 An example command:
 
