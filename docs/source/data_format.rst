@@ -8,30 +8,29 @@ Prosodylab-Aligner format
 =========================
 
 Every .wav sound file you are aligning must have a corresponding .lab
-file which contains the text transcription of that .wav file.  The .wav and
+file containing the text transcription of that .wav file.  The .wav and
 .lab files must have the same name. For example, if you have ``givrep_1027_2_1.wav``,
 its transcription should be in ``givrep_1027_2_1.lab`` (which is just a
 text file with the .lab extension).
 
 
 .. note:: If you have transcriptions in a
-   tab-separated text file (or an Excel file which can be saved as one),
+   tab-separated text file (or an Excel file, which can be saved as one),
    you can generate .lab files from it using the relabel function of relabel_clean.py.
    The relabel_clean.py script is currently in the prosodylab.alignertools repository on GitHub.
 
 In terms of directory structure, the default configuration assumes that
-files are separated into subdirectories based on their speaker (and one
+files are separated into subdirectories based on their speaker (with one
 speaker per file).
 
 <<PICTURE OF SPEAKER-SUBDIRECTORY STRUCTURE - ALA LIBRISPEECH CORPUS>>
 
-An alternate way to specify which speaker says which
-segment is to use the ``-s`` flag with a number of characters of the file name
-to use as the speaker identifier.
+An alternative way to specify which speaker says which
+segment is to use the ``-s`` flag with some number of characters of the file name as the speaker identifier.
 
 <<PICTURE OF SPEAKER_UTTERANCE STRUCTURE - ALA PROSODYLAB EXPERIMENTS>>
 
-The output from aligning this format of data will be TextGrids with a tier
+The output from aligning this format of data will be TextGrids that have a tier
 for words and a tier for phones.
 
 <<PICTURE OF OUTPUT TEXTGRID - ALA A LIBRISPEECH UTTERANCE>>
@@ -73,12 +72,12 @@ be replaced in the output with '<unk>' for unknown word.
    be output to a file named ``oovs_found.txt``
    in the output directory, if you would like to add them to the dictionary
    you are using.  To help find any typos in transcriptions, a file named
-   ``utterance_oovs.txt`` will put in the output directory which will list
+   ``utterance_oovs.txt`` will be put in the output directory and will list
    the unknown words per utterance.
 
 As part of parsing orthographic transcriptions, punctuation is stripped
-from the ends of words.  In addition, all words are converted to lower
-case so that dictionary look up is not case-sensitive.
+from the ends of words.  In addition, all words are converted to lowercase 
+so that dictionary lookup is not case-sensitive.
 
 Dictionary lookup will attempt to generate the most maximal coverage of
 novel forms if they use some overt morpheme boundary in the orthography.
@@ -91,7 +90,7 @@ bound clitic and the stem.  Thus given a dictionary like:
 ::
 
    c'est S E
-   c S A
+   c S E
    c' S
    etait E T E
    un A N
@@ -114,8 +113,8 @@ With a pronunciation of:
 
 ::
 
-   S E A N S A
-   S E T E A N S A
+   S E A N S E
+   S E T E A N S E
 
 The key point to note is that the pronunciation of the clitic `c'` is ``S``
 and the pronunciation of the letter `c` in French is ``S A``.
