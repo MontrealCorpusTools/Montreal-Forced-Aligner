@@ -185,6 +185,11 @@ class Corpus(object):
                 speaker_mapping[v].append(k)
             self.speaker_groups.append(speaker_mapping)
 
+    def speaker_utterance_info(self):
+        num_speakers = len(self.speak_utt_mapping.keys())
+        average_utterances = sum(len(x) for x in self.speak_utt_mapping.values())/ num_speakers
+        return 'Number of speakers in corpus: {}, average number of utterances per speaker: {}'.format(num_speakers, average_utterances)
+
     def parse_mfcc_logs(self):
         pass
 
