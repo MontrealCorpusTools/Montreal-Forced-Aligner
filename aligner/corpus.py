@@ -496,16 +496,15 @@ class Corpus(object):
 
     def setup_splits(self, dictionary):
         split_dir = self.split_directory
-        if os.path.exists(split_dir):
-            return
-        os.makedirs(split_dir)
-        self._split_wavs(split_dir)
-        self._split_utt2spk(split_dir)
-        self._split_spk2utt(split_dir)
-        self._split_feats(split_dir)
+        if not os.path.exists(split_dir):
+            os.makedirs(split_dir)
+            self._split_wavs(split_dir)
+            self._split_utt2spk(split_dir)
+            self._split_spk2utt(split_dir)
+            self._split_feats(split_dir)
+            self._split_cmvns(split_dir)
+            self._split_and_norm_feats()
         self._split_texts(split_dir, dictionary)
-        self._split_cmvns(split_dir)
-        self._split_and_norm_feats()
 
     def _split_and_norm_feats(self):
         split_dir = self.split_directory
