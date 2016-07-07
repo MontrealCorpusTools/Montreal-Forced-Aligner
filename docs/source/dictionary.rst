@@ -20,8 +20,8 @@ Dictionaries should be specified in the following format:
   WORDA PHONEA PHONEB
   WORDB PHONEB PHONEC
 
-Where each line is a word with a transcription separated by white space.
-Each phone should be separated by white space as well.
+where each line is a word with a transcription separated by white space.
+Each phone in the transcription should be separated by white space as well.
 
 A dictionary for English that has good coverage is the lexicon derived
 from the LibriSpeech corpus (`LibriSpeech lexicon`_).
@@ -29,7 +29,7 @@ This lexicon uses the Arpabet transcription format (like the `CMU Pronouncing Di
 
 There is an option when running the aligner for not using a dictionary (``--nodict``).
 When run in this mode, the aligner will construct pronunciations for words
-in the corpus based off their orthographies.  In this mode, a dataset with an example transcription
+in the corpus based on their orthographies.  In this mode, a dataset with an example transcription
 
 ::
 

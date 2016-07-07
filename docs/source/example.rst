@@ -9,13 +9,13 @@ Example
 *******
 
 This example for aligning the LibriSpeech test data set assumes that
-the Montreal Forced Aligner is has been downloaded and works.
+the Montreal Forced Aligner has been downloaded and works.
 
 Set up
 ======
 
-1. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer.
-2. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer.
+1. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
+2. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer
 
 
 Alignment
