@@ -50,9 +50,12 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
             results = [pool.apply_async(mfcc_func, args = i) for i in jobs]
             output = [p.get() for p in results]
         except OSError as e:
-            r = True
-        if r:
-            raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
+            if e.errorno == 24:
+                r = True
+            else:
+                raise
+    if r:
+        raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
 
 def acc_stats_func(directory, iteration, job_name, feat_path):
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
@@ -190,8 +193,17 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
                 for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
-        results = [pool.apply_async(ali_to_textgrid_func, args = i) for i in jobs]
-        output = [p.get() for p in results]
+        r = False
+        try:
+            results = [pool.apply_async(ali_to_textgrid_func, args = i) for i in jobs]
+            output = [p.get() for p in results]
+        except OSError as e:
+            if e.errorno == 24:
+                r = True
+            else:
+                raise
+    if r:
+        raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
     word_ctm = {}
     phone_ctm = {}
     for i in range(num_jobs):
