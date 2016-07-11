@@ -4,7 +4,9 @@
 Data formats
 ************
 
-Prosodylab-Aligner format
+.. _prosodylab_format:
+
+Prosodylab-aligner format
 =========================
 
 Every .wav sound file you are aligning must have a corresponding .lab
@@ -34,6 +36,8 @@ The output from aligning this format of data will be TextGrids that have a tier
 for words and a tier for phones.
 
 <<PICTURE OF OUTPUT TEXTGRID - ALA A LIBRISPEECH UTTERANCE>>
+
+.. _textgrid_format:
 
 TextGrid format
 ===============
@@ -76,7 +80,7 @@ be replaced in the output with '<unk>' for unknown word.
    the unknown words per utterance.
 
 As part of parsing orthographic transcriptions, punctuation is stripped
-from the ends of words.  In addition, all words are converted to lowercase 
+from the ends of words.  In addition, all words are converted to lowercase
 so that dictionary lookup is not case-sensitive.
 
 Dictionary lookup will attempt to generate the most maximal coverage of
