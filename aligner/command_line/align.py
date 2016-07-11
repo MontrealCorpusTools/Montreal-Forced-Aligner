@@ -16,7 +16,7 @@ def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, 
     corpus_name = os.path.basename(corpus_dir)
     c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
     corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)
-    print(corpus.speaker_utterance_info)
+    print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
     archive = Archive(model_path)

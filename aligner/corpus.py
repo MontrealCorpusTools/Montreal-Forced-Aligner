@@ -290,11 +290,14 @@ class Corpus(object):
     @property
     def grouped_cmvn(self):
         output = []
-        for g in self.speaker_groups:
-            output_g = []
-            for s in sorted(g.keys()):
-                output_g.append([s, self.cmvn_mapping[s]])
-            output.append(output_g)
+        try:
+            for g in self.speaker_groups:
+                output_g = []
+                for s in sorted(g.keys()):
+                    output_g.append([s, self.cmvn_mapping[s]])
+                output.append(output_g)
+        except KeyError:
+            raise(CorpusError('Something went wrong while setting up the corpus. Please delete the {} folder and try again.'.format(self.output_directory)))
         return output
 
     @property

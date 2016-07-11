@@ -34,7 +34,7 @@ cd ../..
 cp -r ../pretrained_models montreal-forced-aligner/pretrained_models
 
 if [ `uname` == Darwin ]; then
-zip -r montreal-forced-aligner.zip montreal-forced-aligner
+zip -y -r montreal-forced-aligner.zip montreal-forced-aligner
 else
 tar -zcvf montreal-forced-aligner.tar.gz montreal-forced-aligner
 fi
