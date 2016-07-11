@@ -21,8 +21,12 @@ def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, f
     corpus.write()
     corpus.create_mfccs()
     corpus.setup_splits(dictionary)
-    shutil.copy(os.path.join(corpus.split_directory, 'utterance_oovs.txt'), output_directory)
-    shutil.copy(os.path.join(corpus.split_directory, 'oovs_found.txt'), output_directory)
+    utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
+    if os.path.exists(utt_oov_path):
+        shutil.copy(utt_oov_path, output_directory)
+    oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
+    if os.path.exists(oov_path):
+        shutil.copy(oov_path, output_directory)
     mono_params = {'align_often': not fast}
     tri_params = {'align_often': not fast}
     tri_fmllr_params = {'align_often': not fast}
