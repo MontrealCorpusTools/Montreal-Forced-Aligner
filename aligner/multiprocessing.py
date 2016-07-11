@@ -45,14 +45,14 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
     jobs = [ (mfcc_directory, log_directory, x, mfcc_config.path)
                 for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
+        r = False
         try:
             results = [pool.apply_async(mfcc_func, args = i) for i in jobs]
             output = [p.get() for p in results]
         except OSError as e:
-            if e.errorno == 24:
-                raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
-            else:
-                raise
+            r = True
+        if r:
+            raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
 
 def acc_stats_func(directory, iteration, job_name, feat_path):
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
