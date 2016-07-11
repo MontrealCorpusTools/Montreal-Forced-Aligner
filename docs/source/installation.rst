@@ -1,8 +1,9 @@
-.. _installation:
 
 .. _`Montreal Forced Aligner releases`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases
 
 .. _`Kaldi GitHub repository`: https://github.com/kaldi-asr/kaldi
+
+.. _installation:
 
 ************
 Installation
