@@ -1,4 +1,3 @@
-.. _dictionary:
 
 .. _`LibriSpeech lexicon`: http://www.openslr.org/resources/11/librispeech-lexicon.txt
 
@@ -8,6 +7,7 @@
 
 .. _`Prosodylab-aligner French dictionary`: https://github.com/prosodylab/prosodylab-alignermodels/blob/master/FrenchQuEu/fr-QuEu.dict
 
+.. _dictionary:
 
 ************
 Dictionaries

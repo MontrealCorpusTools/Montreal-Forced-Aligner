@@ -38,7 +38,7 @@ Align using pretrained models
 The Montreal Forced Aligner comes with pretrained models/dictionaries for:
 
 - English - trained from the LibriSpeech data set (`LibriSpeech corpus`_)
-- Quebec French
+- Quebec French - coming soon
 
 Command template:
 
