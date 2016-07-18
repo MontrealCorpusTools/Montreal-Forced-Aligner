@@ -15,6 +15,8 @@
 
 .. _`EasyAlign homepage`: http://latlcui.unige.ch/phonetique/easyalign.php
 
+.. _`Gentle homepage`: https://lowerquality.com/gentle/
+
 .. _`@wavable`: https://twitter.com/wavable
 
 .. _`Github`: http://mmcauliffe.github.io/
@@ -79,13 +81,16 @@ Most tools for forced alignment used by linguists rely on the HMM Toolkit
 * FAVE-align (`FAVE-align homepage`_)
 * (Web) MAUS(`MAUS homepage`_)
 
-Praat (`Praat homepage`_) has a built-in aligner as well.
-EasyAlign (`EasyAlign homepage`_) is a Praat plug-in built to facilitate its use.
+EasyAlign (`EasyAlign homepage`_) is a Praat (`Praat homepage`_) plug-in for forced alignment as well.
 
 Montreal Forced Aligner is most similar to the Prosodylab-aligner, and
 was developed at the same lab.  Because the Montreal Forced Aligner uses
 a different toolkit to do alignment, trained models cannot be used with
 the Prosodylab-aligner, and vice versa.
+
+Another Kaldi-based forced aligner is Gentle (`Gentle homepage`_) which uses Kaldi's neural networks to
+align English data.  The Montreal Forced Aligner allows for training on any data that you might have, and
+can be used with languages other than English.
 
 Contributors
 ============
