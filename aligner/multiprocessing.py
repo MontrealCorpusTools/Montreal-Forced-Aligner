@@ -11,7 +11,7 @@ from .config import *
 
 from .exceptions import CorpusError
 
-def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):
+def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path): # pragma: no cover
     raw_mfcc_path = os.path.join(mfcc_directory, 'raw_mfcc.{}.ark'.format(job_name))
     raw_scp_path = os.path.join(mfcc_directory, 'raw_mfcc.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
@@ -57,7 +57,7 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
     if r:
         raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
 
-def acc_stats_func(directory, iteration, job_name, feat_path):
+def acc_stats_func(directory, iteration, job_name, feat_path): # pragma: no cover
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
     model_path = os.path.join(directory,'{}.mdl'.format(iteration))
     next_model_path = os.path.join(directory,'{}.mdl'.format(iteration+1))
@@ -81,7 +81,7 @@ def acc_stats(iteration, directory, split_directory, num_jobs, fmllr = False):
         results = [pool.apply_async(acc_stats_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name):
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name): # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(directory,'tree')
     mdl_path = os.path.join(directory,'0.mdl')
@@ -105,7 +105,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
         results = [pool.apply_async(compile_train_graphs_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def mono_align_equal_func(mono_directory, lang_directory, split_directory, job_name, feat_path):
+def mono_align_equal_func(mono_directory, lang_directory, split_directory, job_name, feat_path): # pragma: no cover
     fst_path = os.path.join(mono_directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(mono_directory,'tree')
     mdl_path = os.path.join(mono_directory,'0.mdl')
@@ -132,7 +132,7 @@ def mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs):
         output = [p.get() for p in results]
     #acc_stats(0, mono_directory, split_directory, num_jobs)
 
-def align_func(directory, iteration, job_name, mdl, config, feat_path):
+def align_func(directory, iteration, job_name, mdl, config, feat_path): # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
@@ -160,7 +160,7 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
         results = [pool.apply_async(align_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, job_name):
+def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, job_name): # pragma: no cover
     text_int_path = os.path.join(corpus.split_directory, 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
@@ -215,7 +215,7 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
         phone_ctm.update(parse_ctm(phone_ctm_path, dictionary, mode = 'phone'))
     ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus)
 
-def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):
+def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name): # pragma: no cover
     context_opts = []
     log_path = os.path.join(directory, 'log', 'acc_tree.{}.log'.format(job_name))
 
@@ -249,7 +249,7 @@ def tree_stats(directory, align_directory, split_directory,
     for f in tree_accs:
         os.remove(f)
 
-def convert_alignments_func(directory, align_directory, job_name):
+def convert_alignments_func(directory, align_directory, job_name): # pragma: no cover
 
     mdl_path = os.path.join(directory, '1.mdl')
     tree_path = os.path.join(directory, 'tree')
@@ -272,7 +272,7 @@ def convert_alignments(directory, align_directory, num_jobs):
         results = [pool.apply_async(convert_alignments_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial, model_name = 'final'):
+def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial, model_name = 'final'): # pragma: no cover
     feat_path = os.path.join(split_directory, 'cmvndeltafeats')
     if not initial:
         feat_path += '_fmllr'
