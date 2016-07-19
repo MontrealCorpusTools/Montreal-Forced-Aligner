@@ -13,6 +13,7 @@ PRETRAINED_LANGUAGES = ['english']
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose):
+    os.makedirs(output_directory, exist_ok = True)
     corpus_name = os.path.basename(corpus_dir)
     c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
     corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)

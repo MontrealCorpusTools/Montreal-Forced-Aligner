@@ -42,6 +42,33 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path): # prag
         copy_proc.wait()
 
 def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
+    '''
+    Multiprocessing function that converts wav files into MFCCs
+
+    See http://kaldi-asr.org/doc/feat.html and
+    http://kaldi-asr.org/doc/compute-mfcc-feats_8cc.html for more details on how
+    MFCCs are computed.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/make_mfcc.sh
+    for the bash script this function was based on.
+
+    Parameters
+    ----------
+    mfcc_directory : str
+        Directory to save MFCC feature matrices
+    log_directory : str
+        Directory to store log files
+    num_jobs : int
+        The number of processes to use in calculation
+    mfcc_config : :class:`~aligner.config.MfccConfig`
+        Configuration object for generating MFCCs
+
+    Raises
+    ------
+    CorpusError
+        If the files per speaker exceeds the number of files that are
+        allowed to be open on the computer (for Unix-based systems)
+    '''
     jobs = [ (mfcc_directory, log_directory, x, mfcc_config.path)
                 for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
@@ -71,6 +98,31 @@ def acc_stats_func(directory, iteration, job_name, feat_path): # pragma: no cove
         acc_proc.communicate()
 
 def acc_stats(iteration, directory, split_directory, num_jobs, fmllr = False):
+    '''
+    Multiprocessing function that computes stats for GMM training
+
+    See http://kaldi-asr.org/doc/gmm-acc-stats-ali_8cc.html for more details
+    on the Kaldi binary this runs.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_mono.sh
+    for the bash script this function was extracted from
+
+    Parameters
+    ----------
+    iteration : int
+        Iteration to calculate stats for
+    directory : str
+        Directory of training (monophone, triphone, speaker-adapted triphone
+        training directories)
+    split_directory : str
+        Directory of training data split into the number of jobs
+    num_jobs : int
+        The number of processes to use in calculation
+    fmllr : bool, optional
+        Whether the current training session is using fMLLR (speaker-adaptation),
+        defaults to False
+
+    '''
     feat_name = 'cmvndeltafeats'
     if fmllr:
         feat_name += '_fmllr'
@@ -98,6 +150,27 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
         proc.communicate()
 
 def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
+    '''
+    Multiprocessing function that compiles training graphs for utterances
+
+    See http://kaldi-asr.org/doc/compile-train-graphs_8cc.html for more details
+    on the Kaldi binary this function calls.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_mono.sh
+    for the bash script that this function was extracted from.
+
+    Parameters
+    ----------
+    directory : str
+        Directory of training (monophone, triphone, speaker-adapted triphone
+        training directories)
+    lang_directory : str
+        Directory of the language model used
+    split_directory : str
+        Directory of training data split into the number of jobs
+    num_jobs : int
+        The number of processes to use
+    '''
     jobs = [ (directory, lang_directory, split_directory, x)
                 for x in range(num_jobs)]
 
@@ -105,7 +178,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
         results = [pool.apply_async(compile_train_graphs_func, args = i) for i in jobs]
         output = [p.get() for p in results]
 
-def mono_align_equal_func(mono_directory, lang_directory, split_directory, job_name, feat_path): # pragma: no cover
+def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path): # pragma: no cover
     fst_path = os.path.join(mono_directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(mono_directory,'tree')
     mdl_path = os.path.join(mono_directory,'0.mdl')
@@ -122,9 +195,26 @@ def mono_align_equal_func(mono_directory, lang_directory, split_directory, job_n
                 stderr = logf)
         stats_proc.communicate()
 
-def mono_align_equal(mono_directory, lang_directory, split_directory, num_jobs):
+def mono_align_equal(mono_directory, split_directory, num_jobs):
+    '''
+    Multiprocessing function that creates equal alignments for base monophone training
 
-    jobs = [ (mono_directory, lang_directory, split_directory, x, os.path.join(split_directory,'cmvndeltafeats.{}'.format(x)))
+    See http://kaldi-asr.org/doc/align-equal-compiled_8cc.html for more details
+    on the Kaldi binary this function calls.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_mono.sh
+    for the bash script that this function was extracted from.
+
+    Parameters
+    ----------
+    mono_directory : str
+        Directory of monophone training
+    split_directory : str
+        Directory of training data split into the number of jobs
+    num_jobs : int
+        The number of processes to use
+    '''
+    jobs = [ (mono_directory, split_directory, x, os.path.join(split_directory,'cmvndeltafeats.{}'.format(x)))
                 for x in range(num_jobs)]
 
     with mp.Pool(processes = num_jobs) as pool:
@@ -145,6 +235,32 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path): # pragma
         align_proc.communicate()
 
 def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
+    '''
+    Multiprocessing function that aligns based on the current model
+
+    See http://kaldi-asr.org/doc/gmm-align-compiled_8cc.html and
+    http://kaldi-asr.org/doc/gmm-boost-silence_8cc.html for more details
+    on the Kaldi binary this function calls.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/align_si.sh
+    for the bash script this function was based on.
+
+    Parameters
+    ----------
+    iteration : int
+        Iteration to align
+    directory : str
+        Directory of training (monophone, triphone, speaker-adapted triphone
+        training directories)
+    split_directory : str
+        Directory of training data split into the number of jobs
+    optional_silence : str
+        Colon-separated list of silence phones to boost
+    num_jobs : int
+        The number of processes to use in calculation
+    config : :class:`~aligner.config.MonophoneConfig`, :class:`~aligner.config.TriphoneConfig` or :class:`~aligner.config.TriphoneFmllrConfig`
+        Configuration object for training
+    '''
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl="{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                     config.boost_silence, optional_silence, make_path_safe(mdl_path))
@@ -189,6 +305,43 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
         nbest_proc.communicate()
 
 def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corpus, num_jobs):
+    '''
+    Multiprocessing function that aligns based on the current model
+
+    See:
+
+    - http://kaldi-asr.org/doc/linear-to-nbest_8cc.html
+    - http://kaldi-asr.org/doc/lattice-align-words_8cc.html
+    - http://kaldi-asr.org/doc/lattice-to-phone-lattice_8cc.html
+    - http://kaldi-asr.org/doc/nbest-to-ctm_8cc.html
+
+    for more details
+    on the Kaldi binaries this function calls.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/get_train_ctm.sh
+    for the bash script that this function was based on.
+
+    Parameters
+    ----------
+    output_directory : str
+        Directory to write TextGrid files to
+    model_directory : str
+        Directory of training (monophone, triphone, speaker-adapted triphone
+        training directories)
+    dictionary : :class:`~aligner.dictionary.Dictionary`
+        Dictionary object that has information about pronunciations
+    corpus : :class:`~aligner.corpus.Corpus`
+        Corpus object that has information about the dataset
+    num_jobs : int
+        The number of processes to use in calculation
+
+    Raises
+    ------
+    CorpusError
+        If the files per speaker exceeds the number of files that are
+        allowed to be open on the computer (for Unix-based systems)
+
+    '''
     jobs = [ (output_directory, model_directory, dictionary, corpus, x)
                 for x in range(num_jobs)]
 
@@ -228,6 +381,30 @@ def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name): #
 
 def tree_stats(directory, align_directory, split_directory,
             ci_phones, num_jobs, fmllr = False):
+    '''
+    Multiprocessing function that computes stats for decision tree training
+
+    See http://kaldi-asr.org/doc/acc-tree-stats_8cc.html for more details
+    on the Kaldi binary this runs.
+
+    Parameters
+    ----------
+    directory : str
+        Directory of training (triphone, speaker-adapted triphone
+        training directories)
+    align_directory : str
+        Directory of previous alignment
+    split_directory : str
+        Directory of training data split into the number of jobs
+    ci_phones : str
+        Colon-separated list of context-independent phones
+    num_jobs : int
+        The number of processes to use in calculation
+    fmllr : bool, optional
+        Whether the current training session is using fMLLR (speaker-adaptation),
+        defaults to False
+
+    '''
     feat_name = 'cmvndeltafeats'
     if fmllr:
         feat_name += '_fmllr'
@@ -265,6 +442,23 @@ def convert_alignments_func(directory, align_directory, job_name): # pragma: no 
             "ark:"+new_ali_path], stderr = logf)
 
 def convert_alignments(directory, align_directory, num_jobs):
+    '''
+    Multiprocessing function that converts alignments from previous training
+
+    See http://kaldi-asr.org/doc/convert-ali_8cc.html for more details
+    on the Kaldi binary this runs.
+
+    Parameters
+    ----------
+    directory : str
+        Directory of training (triphone, speaker-adapted triphone
+        training directories)
+    align_directory : str
+        Directory of previous alignment
+    num_jobs : int
+        The number of processes to use in calculation
+
+    '''
 
     jobs = [ (directory, align_directory, x)
                 for x in range(num_jobs)]
@@ -325,6 +519,43 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
 
 def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
             initial = False, iteration = None):
+    '''
+    Multiprocessing function that computes speaker adaptation (fMLLR)
+
+    See:
+
+    - http://kaldi-asr.org/doc/gmm-est-fmllr_8cc.html
+    - http://kaldi-asr.org/doc/ali-to-post_8cc.html
+    - http://kaldi-asr.org/doc/weight-silence-post_8cc.html
+    - http://kaldi-asr.org/doc/compose-transforms_8cc.html
+    - http://kaldi-asr.org/doc/transform-feats_8cc.html
+
+    for more details
+    on the Kaldi binary this runs.
+
+    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/align_fmllr.sh
+    for the original bash script that this function was based on.
+
+    Parameters
+    ----------
+    directory : str
+        Directory of training (triphone, speaker-adapted triphone
+        training directories)
+    split_directory : str
+        Directory of training data split into the number of jobs
+    sil_phones : str
+        Colon-separated list of silence phones
+    num_jobs : int
+        The number of processes to use in calculation
+    config : :class:`~aligner.config.TriphoneFmllrConfig`
+        Configuration object for training
+    initial : bool, optional
+        Whether this is the first computation of speaker-adaptation,
+        defaults to False
+    iteration : int
+        Specifies the current iteration, defaults to None
+
+    '''
     if iteration is None:
         model_name = 'final'
     else:

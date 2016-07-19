@@ -10,7 +10,7 @@ from scipy.io import wavfile
 from .helper import thirdparty_binary, load_text, make_safe
 from .multiprocessing import mfcc
 
-from .exceptions import SampleRateError
+from .exceptions import SampleRateError, CorpusError
 
 def output_mapping(mapping, path):
     with open(path, 'w', encoding = 'utf8') as f:
@@ -31,6 +31,23 @@ def save_groups(groups, seg_dir, pattern):
         save_scp(g, path)
 
 def load_scp(path):
+    '''
+    Load a Kaldi script file (.scp)
+
+    See http://kaldi-asr.org/doc/io.html#io_sec_scp_details for more information
+
+    Parameters
+    ----------
+    path : str
+        Path to Kaldi script file
+
+    Returns
+    -------
+    dict
+        Dictionary where the keys are the first couple and the values are all
+        other columns in the script file
+
+    '''
     scp = {}
     with open(path, 'r', encoding = 'utf8') as f:
         for line in f:
@@ -47,6 +64,21 @@ def load_scp(path):
     return scp
 
 def find_lab(filename, files):
+    '''
+    Finds a .lab file that corresponds to a wav file
+
+    Parameters
+    ----------
+    filename : str
+        Name of wav file
+    files : list
+        List of files to search in
+
+    Returns
+    -------
+    str or None
+        If a corresponding .lab file is found, returns it, otherwise returns None
+    '''
     name, ext = os.path.splitext(filename)
     for f in files:
         fn, fext = os.path.splitext(f)
@@ -55,6 +87,21 @@ def find_lab(filename, files):
     return None
 
 def find_textgrid(filename, files):
+    '''
+    Finds a TextGrid file that corresponds to a wav file
+
+    Parameters
+    ----------
+    filename : str
+        Name of wav file
+    files : list
+        List of files to search in
+
+    Returns
+    -------
+    str or None
+        If a corresponding TextGrid is found, returns it, otherwise returns None
+    '''
     name, ext = os.path.splitext(filename)
     for f in files:
         fn, fext = os.path.splitext(f)
@@ -63,11 +110,37 @@ def find_textgrid(filename, files):
     return None
 
 def get_n_channels(file_path):
+    '''
+    Return the number of channels for a sound file
+
+    Parameters
+    ----------
+    file_path : str
+        Path to a wav file
+
+    Returns
+    -------
+    int
+        Number of channels (1 if mono, 2 if stereo)
+    '''
+
     with wave.open(file_path,'rb') as soundf:
         n_channels = soundf.getnchannels()
     return n_channels
 
 def extract_temp_channel(wav_path, channel, temp_directory):
+    '''
+    Extract a single channel from a stereo file to a new mono wav file
+
+    Parameters
+    ----------
+    wav_path : str
+        Path to stereo wav file
+    channel : int
+        Channel of file to extract
+    temp_directory : str
+        Directory to save extracted
+    '''
     rate, data = wavfile.read(wav_path)
     name, ext = os.path.splitext(wav_path)
     base = os.path.basename(name)
@@ -82,9 +155,45 @@ def extract_temp_channel(wav_path, channel, temp_directory):
     return new_path
 
 class Corpus(object):
+    '''
+    Class that stores information about the dataset to align.
+
+    Corpus objects have a number of mappings from either utterances or speakers
+    to various properties, and mappings between utterances and speakers.
+
+    See http://kaldi-asr.org/doc/data_prep.html for more information about
+    the files that are created by this class.
+
+
+    Parameters
+    ----------
+    directory : str
+        Directory of the dataset to align
+    output_directory : str
+        Directory to store generated data for the Kaldi binaries
+    mfcc_config : MfccConfig
+        Configuration object for how to calculate MFCCs
+    speaker_characters : int, optional
+        Number of characters in the filenames to count as the speaker ID,
+        if not specified, speaker IDs are generated from directory names
+    num_jobs : int, optional
+        Number of processes to use, defaults to 3
+
+    Raises
+    ------
+    CorpusError
+        Raised if the specified corpus directory does not exist
+    SampleRateError
+        Raised if the wav files in the dataset do not share a consistent sample rate
+
+    '''
     def __init__(self, directory, output_directory, mfcc_config,
                 speaker_characters = 0,
                 num_jobs = 3):
+        if not os.path.exists(directory):
+            raise(CorpusError('The directory \'{}\' does not exist.'.format(directory)))
+        if num_jobs < 1:
+            num_jobs = 1
         print('Setting up corpus information...')
         self.directory = directory
         sample_rate = self.get_sample_rate()
@@ -94,6 +203,8 @@ class Corpus(object):
         os.makedirs(self.temp_directory, exist_ok = True)
         self.num_jobs = num_jobs
         self.mfcc_config = mfcc_config
+
+        # Set up mapping dictionaries
 
         self.speak_utt_mapping = defaultdict(list)
         self.utt_speak_mapping = {}
@@ -571,5 +682,5 @@ class Corpus(object):
                     sample_rates.add(sr)
                     n_channels = soundf.getnchannels()
         if len(sample_rates) > 1:
-            raise(Exception('All files must have the same sample rate, but the following sample rates were found: {}. Resample?'.format(sorted(sample_rates))))
+            raise(SampleRateError('All files must have the same sample rate, but the following sample rates were found: {}. Resample?'.format(sorted(sample_rates))))
         return list(sample_rates)[0]
