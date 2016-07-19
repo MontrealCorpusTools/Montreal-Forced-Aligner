@@ -18,8 +18,8 @@ one for training a model while aligning.
    :toctree: generated/
    :template: class.rst
 
-   pretrained.PretrainedAligner
-   trainable.TrainableAligner
+   PretrainedAligner
+   TrainableAligner
 
 
 .. _corpus_api:
