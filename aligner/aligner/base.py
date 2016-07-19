@@ -18,6 +18,31 @@ from ..exceptions import NoSuccessfulAlignments
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 class BaseAligner(object):
+    '''
+    Base aligner class for common aligner functions
+
+    Parameters
+    ----------
+    corpus : :class:`~aligner.corpus.Corpus`
+        Corpus object for the dataset
+    dictionary : :class:`~aligner.dictionary.Dictionary`
+        Dictionary object for the pronunciation dictionary
+    output_directory : str
+        Path to export aligned TextGrids
+    temp_directory : str, optional
+        Specifies the temporary directory root to save files need for Kaldi.
+        If not specified, it will be set to ``~/Documents/MFA``
+    num_jobs : int, optional
+        Number of processes to use, defaults to 3
+    call_back : callable, optional
+        Specifies a call back function for alignment
+    mono_params : :class:`~aligner.config.MonophoneConfig`, optional
+        Monophone training parameters to use, if different from defaults
+    tri_params : :class:`~aligner.config.TriphoneConfig`, optional
+        Triphone training parameters to use, if different from defaults
+    tri_fmllr_params : :class:`~aligner.config.TriphoneFmllrConfig`, optional
+        Speaker-adapted triphone training parameters to use, if different from defaults
+    '''
     def __init__(self, corpus, dictionary, output_directory,
                     temp_directory = None, num_jobs = 3, call_back = None,
                     mono_params = None, tri_params = None,
@@ -82,6 +107,9 @@ class BaseAligner(object):
         return os.path.join(self.tri_fmllr_directory, 'final.mdl')
 
     def export_textgrids(self):
+        '''
+        Export a TextGrid file for every sound file in the dataset
+        '''
         if os.path.exists(self.tri_fmllr_final_model_path):
             model_directory = self.tri_fmllr_directory
         elif os.path.exists(self.tri_final_model_path):
@@ -92,6 +120,9 @@ class BaseAligner(object):
                             self.corpus, self.num_jobs)
 
     def get_num_gauss_mono(self):
+        '''
+        Get the number of gaussians for a monophone model
+        '''
         with open(os.devnull, 'w') as devnull:
             proc = subprocess.Popen([thirdparty_binary('gmm-info'),
                         '--print-args=false',
@@ -105,6 +136,9 @@ class BaseAligner(object):
         return num
 
     def parse_log_directory(self, directory, iteration):
+        '''
+        Parse error files and relate relevant information about unaligned files
+        '''
         if not self.verbose:
             return
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
@@ -133,44 +167,10 @@ class BaseAligner(object):
             self.call_back('missing data gaussians', num_too_little_data)
         self.call_back('could not align', error_files)
 
-
-    def align_si(self, fmllr = True):
-        if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
-            model_directory = self.tri_fmllr_directory
-            output_directory = self.tri_fmllr_ali_directory
-            config = self.tri_fmllr_config
-        elif os.path.exists(self.tri_final_model_path):
-            model_directory = self.tri_directory
-            output_directory = self.tri_ali_directory
-            config = self.tri_config
-        elif os.path.exists(self.mono_final_model_path):
-            model_directory = self.mono_directory
-            output_directory = self.mono_ali_directory
-            config = self.mono_config
-
-        optional_silence = self.dictionary.optional_silence_csl
-        oov = self.dictionary.oov_int
-
-        log_dir = os.path.join(output_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
-        self.corpus.setup_splits(self.dictionary)
-
-        shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
-        shutil.copy(os.path.join(model_directory, 'final.mdl'),
-                                    os.path.join(output_directory, '0.mdl'))
-        shutil.copy(os.path.join(model_directory, 'final.occs'),
-                            os.path.join(output_directory, '0.occs'))
-
-        feat_type = 'delta'
-
-        compile_train_graphs(output_directory, self.dictionary.output_directory,
-                            self.corpus.split_directory, self.num_jobs)
-        align(0, output_directory, self.corpus.split_directory,
-                    optional_silence, self.num_jobs, config)
-        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
-        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
-
-    def align_fmllr(self):
+    def _align_fmllr(self):
+        '''
+        Align the dataset using speaker-adapted transforms
+        '''
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
         self.align_si(fmllr = False)
@@ -185,7 +185,7 @@ class BaseAligner(object):
         align(-1, output_directory, self.corpus.split_directory,
                     optional_silence, self.num_jobs, self.tri_fmllr_config)
 
-    def init_tri(self, fmllr = False):
+    def _init_tri(self, fmllr = False):
         if fmllr:
             config = self.tri_fmllr_config
             directory = self.tri_fmllr_directory
@@ -261,19 +261,22 @@ class BaseAligner(object):
                         os.path.join(directory, 'trans.{}'.format(i)))
 
     def train_tri_fmllr(self):
+        '''
+        Perform speaker-adapted triphone training
+        '''
         if os.path.exists(self.tri_fmllr_final_model_path):
             print('Triphone FMLLR training already done, using previous final.mdl')
             return
         if not os.path.exists(self.tri_ali_directory):
-            self.align_fmllr()
+            self._align_fmllr()
 
         os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
         self.corpus.setup_splits(self.dictionary)
-        self.init_tri(fmllr = True)
-        self.do_tri_fmllr_training()
+        self._init_tri(fmllr = True)
+        self._do_tri_fmllr_training()
         #convert_ali_to_textgrids(tri2_directory, lang_directory, split_directory, num_jobs)
 
-    def do_tri_fmllr_training(self):
+    def _do_tri_fmllr_training(self):
         self.call_back('Beginning speaker-adapted triphone training...')
         self._do_training(self.tri_fmllr_directory, self.tri_fmllr_config)
 

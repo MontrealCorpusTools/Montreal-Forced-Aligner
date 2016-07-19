@@ -17,6 +17,7 @@ Contents:
    aligning.rst
    example.rst
    commonerrors.rst
+   apireference.rst
 
 
 Indices and tables

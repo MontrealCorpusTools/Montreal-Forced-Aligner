@@ -3,6 +3,25 @@ import os
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
 class PretrainedAligner(BaseAligner):
+    '''
+    Class for aligning a dataset using a pretrained acoustic model
+
+    Parameters
+    ----------
+    archive : :class:`~aligner.archive.Archive`
+        Archive containing the acoustic model and pronunciation dictionary
+    corpus : :class:`~aligner.corpus.Corpus`
+        Corpus object for the dataset
+    output_directory : str
+        Path to directory to save TextGrids
+    temp_directory : str, optional
+        Specifies the temporary directory root to save files need for Kaldi.
+        If not specified, it will be set to ``~/Documents/MFA``
+    num_jobs : int, optional
+        Number of processes to use, defaults to 3
+    call_back : callable, optional
+        Specifies a call back function for alignment
+    '''
     def __init__(self, archive, corpus, output_directory,
                     temp_directory = None, num_jobs = 3, call_back = None):
 
@@ -31,4 +50,7 @@ class PretrainedAligner(BaseAligner):
         self.tri_config = TriphoneConfig()
 
     def do_align(self):
+        '''
+        Perform alignment while calculating speaker transforms (fMLLR estimation)
+        '''
         self.train_tri_fmllr()

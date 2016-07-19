@@ -19,7 +19,7 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import aligner
 
 # -- General configuration ------------------------------------------------
@@ -42,6 +42,7 @@ extensions = [
 ]
 autosummary_generate = True
 autodoc_default_flags = ['members']
+numpydoc_show_class_members = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
