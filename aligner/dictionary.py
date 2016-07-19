@@ -16,14 +16,38 @@ def compile_graphemes(graphemes):
     return re.compile(base.format(string))
 
 class Dictionary(object):
+    '''
+    Class containing information about a pronunciation dictionary
+
+    Parameters
+    ----------
+    input_path : str
+        Path to an input pronunciation dictionary
+    output_directory : str
+        Path to a directory to store files for Kaldi
+    oov_code : str, optional
+        What to label words not in the dictionary, defaults to ``'<unk>'``
+    position_dependent_phones : bool, optional
+        Specifies whether phones should be represented as dependent on their
+        position in the word (beginning, middle or end), defaults to True
+    num_sil_states : int, optional
+        Number of states to use for silence phones, defaults to 5
+    num_nonsil_states : int, optional
+        Number of states to use for non-silence phones, defaults to 3
+    shared_silence_phones : bool, optional
+        Specify whether to share states across all silence phones, defaults
+        to False
+    pronunciation probabilities : bool, optional
+        Specifies whether to model different pronunciation probabilities
+        or to treat each entry as a separate word, defaults to True
+    sil_prob : float, optional
+        Probability of optional silences following words, defaults to 0.5
+    '''
     topo_template = '<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>'
     topo_sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
     topo_transition_template = '<Transition> {} {}'
     positions = ["_B", "_E", "_I", "_S"]
     clitic_markers = ["'", '-']
-    @staticmethod
-    def read(filename):
-        pass
 
     def __init__(self, input_path, output_directory, oov_code = '<unk>',
                     position_dependent_phones = True, num_sil_states = 5,
@@ -96,6 +120,9 @@ class Dictionary(object):
         self.oovs_found = set()
 
     def to_int(self, item):
+        '''
+        Convert a given word into its integer id
+        '''
         m = self.word_pattern.match(item)
         if m is None:
             return None
@@ -106,6 +133,14 @@ class Dictionary(object):
         return self.words_mapping[item]
 
     def save_oovs_found(self, directory):
+        '''
+        Save all out of vocabulary items to a file in the specified directory
+
+        Parameters
+        ----------
+        directory : str
+            Path to directory to save ``oovs_found.txt``
+        '''
         with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding = 'utf8') as f:
             for oov in sorted(self.oovs_found):
                 f.write(oov + '\n')
@@ -174,6 +209,9 @@ class Dictionary(object):
 
     @property
     def reversed_word_mapping(self):
+        '''
+        A mapping of integer ids to words
+        '''
         mapping = {}
         for k,v in self.words_mapping.items():
             mapping[v] = k
@@ -181,6 +219,9 @@ class Dictionary(object):
 
     @property
     def reversed_phone_mapping(self):
+        '''
+        A mapping of integer ids to phones
+        '''
         mapping = {}
         for k,v in self.phone_mapping.items():
             mapping[v] = k
@@ -188,10 +229,16 @@ class Dictionary(object):
 
     @property
     def oov_int(self):
+        '''
+        The integer id for out of vocabulary items
+        '''
         return self.words_mapping[self.oov_code]
 
     @property
     def positional_sil_phones(self):
+        '''
+        List of silence phones with positions
+        '''
         sil_phones = []
         for p in sorted(self.sil_phones):
             sil_phones.append(p)
@@ -201,6 +248,9 @@ class Dictionary(object):
 
     @property
     def positional_nonsil_phones(self):
+        '''
+        List of non-silence phones with positions
+        '''
         nonsil_phones = []
         for p in sorted(self.nonsil_phones):
             for pos in self.positions:
@@ -209,10 +259,16 @@ class Dictionary(object):
 
     @property
     def optional_silence_csl(self):
+        '''
+        Phone id of the optional silence phone
+        '''
         return '{}'.format(self.phone_mapping[self.optional_silence])
 
     @property
     def silence_csl(self):
+        '''
+        A colon-separated list (as a string) of silence phone ids
+        '''
         if self.position_dependent_phones:
             return ':'.join(map(str,(self.phone_mapping[x] for x in self.positional_sil_phones)))
         else:
@@ -220,13 +276,22 @@ class Dictionary(object):
 
     @property
     def phones_dir(self):
+        '''
+        Directory to store information Kaldi needs about phones
+        '''
         return os.path.join(self.output_directory, 'phones')
 
     @property
     def phones(self):
+        '''
+        The set of all phones (silence and non-silence)
+        '''
         return self.sil_phones & self.nonsil_phones
 
     def write(self):
+        '''
+        Write the files necessary for Kaldi
+        '''
         print('Creating dictionary information...')
         if not os.path.exists(self.phones_dir):
             os.makedirs(self.phones_dir, exist_ok = True)
@@ -243,8 +308,12 @@ class Dictionary(object):
         self._write_word_file()
         self._write_fst_text()
         self._write_fst_binary()
+        self.cleanup()
 
     def cleanup(self):
+        '''
+        Clean up temporary files in the output directory
+        '''
         os.remove(os.path.join(self.output_directory, 'temp.fst'))
         os.remove(os.path.join(self.output_directory, 'lexicon.text.fst'))
 

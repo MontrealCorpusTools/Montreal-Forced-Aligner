@@ -16,7 +16,8 @@ class Archive(object):
     Class representing data in a directory or archive file (zip, tar,
     tar.gz/tgz)
 
-    Largely duplicated from the prosodylab-aligner archive class.
+    Largely duplicated from the prosodylab-aligner
+    (https://github.com/prosodylab/Prosodylab-Aligner) archive class.
     """
 
     def __init__(self, source, is_tmpdir=False):

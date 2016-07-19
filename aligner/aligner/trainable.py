@@ -18,7 +18,40 @@ from .base import BaseAligner
 from ..archive import Archive
 
 class TrainableAligner(BaseAligner):
+    '''
+    Aligner that aligns and trains acoustics models on a large dataset
+
+    Parameters
+    ----------
+    corpus : :class:`~aligner.corpus.Corpus`
+        Corpus object for the dataset
+    dictionary : :class:`~aligner.dictionary.Dictionary`
+        Dictionary object for the pronunciation dictionary
+    output_directory : str
+        Path to export aligned TextGrids
+    temp_directory : str, optional
+        Specifies the temporary directory root to save files need for Kaldi.
+        If not specified, it will be set to ``~/Documents/MFA``
+    num_jobs : int, optional
+        Number of processes to use, defaults to 3
+    call_back : callable, optional
+        Specifies a call back function for alignment
+    mono_params : :class:`~aligner.config.MonophoneConfig`, optional
+        Monophone training parameters to use, if different from defaults
+    tri_params : :class:`~aligner.config.TriphoneConfig`, optional
+        Triphone training parameters to use, if different from defaults
+    tri_fmllr_params : :class:`~aligner.config.TriphoneFmllrConfig`, optional
+        Speaker-adapted triphone training parameters to use, if different from defaults
+    '''
     def save(self, path):
+        '''
+        Output an acoustic model and dictionary to the specified path
+
+        Parameters
+        ----------
+        path : str
+            Path to save acoustic model and dictionary
+        '''
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
         archive = Archive.empty(basename)
@@ -29,24 +62,69 @@ class TrainableAligner(BaseAligner):
         archive.dump(basename)
         print('Saved model to {}'.format(path))
 
-    def do_tri_training(self):
+    def _do_tri_training(self):
         self.call_back('Beginning triphone training...')
         self._do_training(self.tri_directory, self.tri_config)
 
+    def align_si(self, fmllr = True):
+        '''
+        Generate an alignment of the dataset
+        '''
+        if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
+            model_directory = self.tri_fmllr_directory
+            output_directory = self.tri_fmllr_ali_directory
+            config = self.tri_fmllr_config
+        elif os.path.exists(self.tri_final_model_path):
+            model_directory = self.tri_directory
+            output_directory = self.tri_ali_directory
+            config = self.tri_config
+        elif os.path.exists(self.mono_final_model_path):
+            model_directory = self.mono_directory
+            output_directory = self.mono_ali_directory
+            config = self.mono_config
+
+        optional_silence = self.dictionary.optional_silence_csl
+        oov = self.dictionary.oov_int
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
+        self.corpus.setup_splits(self.dictionary)
+
+        shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
+        shutil.copy(os.path.join(model_directory, 'final.mdl'),
+                                    os.path.join(output_directory, '0.mdl'))
+        shutil.copy(os.path.join(model_directory, 'final.occs'),
+                            os.path.join(output_directory, '0.occs'))
+
+        feat_type = 'delta'
+
+        compile_train_graphs(output_directory, self.dictionary.output_directory,
+                            self.corpus.split_directory, self.num_jobs)
+        align(0, output_directory, self.corpus.split_directory,
+                    optional_silence, self.num_jobs, config)
+        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
+        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
+
     def train_tri(self):
+        '''
+        Perform triphone training
+        '''
         if os.path.exists(self.tri_final_model_path):
             print('Triphone training already done, using previous final.mdl')
             return
         if not os.path.exists(self.mono_ali_directory):
-            self.align_si()
+            self._align_si()
 
         os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok = True)
         self.corpus.setup_splits(self.dictionary)
-        self.init_tri(fmllr = False)
-        self.do_tri_training()
+        self._init_tri(fmllr = False)
+        self._do_tri_training()
         #convert_ali_to_textgrids(tri_directory, lang_directory, split_directory, num_jobs)
 
-    def init_mono(self):
+    def _init_mono(self):
+        '''
+        Initialize monophone training
+        '''
         log_dir = os.path.join(self.mono_directory, 'log')
         os.makedirs(log_dir, exist_ok =True)
         tree_path = os.path.join(self.mono_directory,'tree')
@@ -84,12 +162,15 @@ class TrainableAligner(BaseAligner):
                     stderr = logf)
             est_proc.communicate()
 
-    def do_mono_training(self):
+    def _do_mono_training(self):
         self.mono_config.num_gauss = self.get_num_gauss_mono()
         self.call_back('Beginning monophone training...')
         self._do_training(self.mono_directory, self.mono_config)
 
     def train_mono(self):
+        '''
+        Perform monophone training
+        '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
         split_directory = self.corpus.split_directory
         if os.path.exists(final_mdl):
@@ -99,6 +180,6 @@ class TrainableAligner(BaseAligner):
         if not os.path.exists(split_directory):
             self.corpus.setup_splits(self.dictionary)
 
-        self.init_mono()
-        self.do_mono_training()
+        self._init_mono()
+        self._do_mono_training()
         #self.convert_ali_to_textgrids(mono_directory, lang_directory, split_directory, num_jobs)
