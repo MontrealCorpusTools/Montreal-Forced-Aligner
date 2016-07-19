@@ -7,24 +7,24 @@ __version__ = "%d.%d.%d" % __ver_tuple__
 __all__ = ['aligner', 'command_line', 'archive', 'corpus', 'config', 'dictionary', 'exceptions',
             'helper', 'multiprocessing', 'textgrid', 'utils']
 
-import .aligner as aligner
+import aligner.aligner as aligner
 
-import .command_line as command_line
+import aligner.command_line as command_line
 
-import .archive as archive
+import aligner.archive as archive
 
-import .corpus as corpus
+import aligner.corpus as corpus
 
-import .dictionary as dictionary
+import aligner.dictionary as dictionary
 
-import .exceptions as exceptions
+import aligner.exceptions as exceptions
 
-import .helper as helper
+import aligner.helper as helper
 
-import .config as config
+import aligner.config as config
 
-import .multiprocessing as multiprocessing
+import aligner.multiprocessing as multiprocessing
 
-import .textgrid as textgrid
+import aligner.textgrid as textgrid
 
-import .utils as utils
+import aligner.utils as utils
