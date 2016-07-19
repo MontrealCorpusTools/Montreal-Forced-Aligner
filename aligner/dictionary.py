@@ -112,6 +112,23 @@ class Dictionary(object):
         self.oovs_found = set()
 
     def separate_clitics(self, item):
+        """Separates words with apostrophes or hyphens if the subparts are in the lexicon.
+
+        Checks whether the text on either side of an apostrophe or hyphen is in the dictionary. If so, 
+        splits the word. If neither part is in the dictionary, returns the word without splitting it.
+
+        Parameters
+        ----------
+        item : string
+            Lexical item
+
+        Returns
+        -------
+        vocab_items: list
+            List containing all words after any splits due to apostrophes or hyphens
+
+        """
+
         vocab = []
         chars = list(item)
         count = 0
