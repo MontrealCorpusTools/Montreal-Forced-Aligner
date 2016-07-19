@@ -70,7 +70,7 @@ class TrainableAligner(BaseAligner):
         num_gauss = self.get_num_gauss_mono()
         compile_train_graphs(self.mono_directory, self.dictionary.output_directory,
                                 self.corpus.split_directory, self.num_jobs)
-        mono_align_equal(self.mono_directory, self.dictionary.output_directory,
+        mono_align_equal(self.mono_directory,
                                 self.corpus.split_directory, self.num_jobs)
         log_path = os.path.join(self.mono_directory, 'log', 'update.0.log')
         with open(log_path, 'w') as logf:
