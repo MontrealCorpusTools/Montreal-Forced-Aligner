@@ -284,7 +284,7 @@ class Corpus(object):
 
 
         if len(self.speak_utt_mapping) < self.num_jobs:
-            self.num_jobs = len(self.utt_wav_mapping)
+            self.num_jobs = len(self.speak_utt_mapping)
         self.groups = self.find_best_groupings()
         self.speaker_groups = []
         for g in self.groups:
@@ -616,6 +616,7 @@ class Corpus(object):
     def setup_splits(self, dictionary):
         split_dir = self.split_directory
         if not os.path.exists(split_dir):
+            print('Setting up training data...')
             os.makedirs(split_dir)
             self._split_wavs(split_dir)
             self._split_utt2spk(split_dir)
