@@ -66,45 +66,6 @@ class TrainableAligner(BaseAligner):
         self.call_back('Beginning triphone training...')
         self._do_training(self.tri_directory, self.tri_config)
 
-    def align_si(self, fmllr = True):
-        '''
-        Generate an alignment of the dataset
-        '''
-        if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
-            model_directory = self.tri_fmllr_directory
-            output_directory = self.tri_fmllr_ali_directory
-            config = self.tri_fmllr_config
-        elif os.path.exists(self.tri_final_model_path):
-            model_directory = self.tri_directory
-            output_directory = self.tri_ali_directory
-            config = self.tri_config
-        elif os.path.exists(self.mono_final_model_path):
-            model_directory = self.mono_directory
-            output_directory = self.mono_ali_directory
-            config = self.mono_config
-
-        optional_silence = self.dictionary.optional_silence_csl
-        oov = self.dictionary.oov_int
-
-        log_dir = os.path.join(output_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
-        self.corpus.setup_splits(self.dictionary)
-
-        shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
-        shutil.copy(os.path.join(model_directory, 'final.mdl'),
-                                    os.path.join(output_directory, '0.mdl'))
-        shutil.copy(os.path.join(model_directory, 'final.occs'),
-                            os.path.join(output_directory, '0.occs'))
-
-        feat_type = 'delta'
-
-        compile_train_graphs(output_directory, self.dictionary.output_directory,
-                            self.corpus.split_directory, self.num_jobs)
-        align(0, output_directory, self.corpus.split_directory,
-                    optional_silence, self.num_jobs, config)
-        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
-        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
-
     def train_tri(self):
         '''
         Perform triphone training
