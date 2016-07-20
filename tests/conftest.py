@@ -6,6 +6,10 @@ from aligner.corpus import Corpus
 from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 
+def pytest_addoption(parser):
+    parser.addoption("--skiplarge", action="store_true",
+        help="skip large dataset tests")
+
 @pytest.fixture(scope='session')
 def test_dir():
     return os.path.abspath('tests/data')
@@ -126,4 +130,24 @@ def sick_corpus(sick_dict, basic_dir, generated_dir):
     corpus.setup_splits(sick_dict)
     return corpus
 
+@pytest.fixture(scope='session')
+def large_dataset_directory():
+    if os.environ.get('TRAVIS', False):
+        directory = os.path.expanduser('~/tools/mfa_test_data')
+    else:
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_dir = os.path.dirname(test_dir)
+        root_dir = os.path.dirname(repo_dir)
+        directory = os.path.join(root_dir, 'mfa_test_data')
+    if not os.path.exists(directory):
+        pytest.skip('Couldn\'t find the mfa_test_data directory')
+    else:
+        return directory
 
+@pytest.fixture(scope='session')
+def large_prosodylab_format_directory(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'prosodylab_format')
+
+@pytest.fixture(scope='session')
+def prosodylab_output_directory():
+    return os.path.expanduser('~/prosodylab_output')
