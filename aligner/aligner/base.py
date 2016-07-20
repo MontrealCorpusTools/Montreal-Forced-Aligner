@@ -135,6 +135,45 @@ class BaseAligner(object):
             num = int(matches.groups()[0])
         return num
 
+    def align_si(self, fmllr = True):
+        '''
+        Generate an alignment of the dataset
+        '''
+        if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
+            model_directory = self.tri_fmllr_directory
+            output_directory = self.tri_fmllr_ali_directory
+            config = self.tri_fmllr_config
+        elif os.path.exists(self.tri_final_model_path):
+            model_directory = self.tri_directory
+            output_directory = self.tri_ali_directory
+            config = self.tri_config
+        elif os.path.exists(self.mono_final_model_path):
+            model_directory = self.mono_directory
+            output_directory = self.mono_ali_directory
+            config = self.mono_config
+
+        optional_silence = self.dictionary.optional_silence_csl
+        oov = self.dictionary.oov_int
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
+        self.corpus.setup_splits(self.dictionary)
+
+        shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
+        shutil.copy(os.path.join(model_directory, 'final.mdl'),
+                                    os.path.join(output_directory, '0.mdl'))
+        shutil.copy(os.path.join(model_directory, 'final.occs'),
+                            os.path.join(output_directory, '0.occs'))
+
+        feat_type = 'delta'
+
+        compile_train_graphs(output_directory, self.dictionary.output_directory,
+                            self.corpus.split_directory, self.num_jobs)
+        align(0, output_directory, self.corpus.split_directory,
+                    optional_silence, self.num_jobs, config)
+        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
+        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
+
     def parse_log_directory(self, directory, iteration):
         '''
         Parse error files and relate relevant information about unaligned files
@@ -182,7 +221,7 @@ class BaseAligner(object):
         calc_fmllr(output_directory, self.corpus.split_directory,
                     sil_phones, self.num_jobs, self.tri_fmllr_config, initial = True)
         optional_silence = self.dictionary.optional_silence_csl
-        align(-1, output_directory, self.corpus.split_directory,
+        align(0, output_directory, self.corpus.split_directory,
                     optional_silence, self.num_jobs, self.tri_fmllr_config)
 
     def _init_tri(self, fmllr = False):
@@ -196,6 +235,10 @@ class BaseAligner(object):
             align_directory = self.mono_ali_directory
         if os.path.exists(os.path.join(directory, '1.mdl')):
             return
+        if fmllr:
+            print('Initializing speaker-adapted triphone training...')
+        else:
+            print('Initializing triphone training...')
         context_opts = []
         ci_phones = self.dictionary.silence_csl
 
@@ -255,7 +298,7 @@ class BaseAligner(object):
 
         convert_alignments(directory, align_directory, self.num_jobs)
 
-        if os.path.exists(os.path.join(align_directory, 'trans.1')):
+        if os.path.exists(os.path.join(align_directory, 'trans.0')):
             for i in range(self.num_jobs):
                 shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
                         os.path.join(directory, 'trans.{}'.format(i)))
@@ -274,7 +317,6 @@ class BaseAligner(object):
         self.corpus.setup_splits(self.dictionary)
         self._init_tri(fmllr = True)
         self._do_tri_fmllr_training()
-        #convert_ali_to_textgrids(tri2_directory, lang_directory, split_directory, num_jobs)
 
     def _do_tri_fmllr_training(self):
         self.call_back('Beginning speaker-adapted triphone training...')
