@@ -15,6 +15,9 @@ All releases for the Montreal Forced Aligner are available on
 Mac
 ===
 
+.. note::
+   Montreal Forced Aligner currently only works on Mac OS X 10.11
+
 1. Download the zip archive for Mac and unzip the folder to any directory
 2. Open a terminal window
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
@@ -22,6 +25,10 @@ Mac
 
 Windows
 =======
+
+.. note::
+   Montreal Forced Aligner has only been tested on Windows 10, but should
+   work on Windows 7 and 8
 
 1. Download the zip archive for Windows and unzip the folder to any directory
 2. Open a command window (open the Start menu and search for ``cmd``)

@@ -1,9 +1,9 @@
 import sys
 import shutil, os
 import argparse
+import multiprocessing as mp
 
 from aligner.corpus import Corpus
-from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 from aligner.aligner import PretrainedAligner
 from aligner.archive import Archive
@@ -12,17 +12,23 @@ PRETRAINED_LANGUAGES = ['english']
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose):
-    os.makedirs(output_directory, exist_ok = True)
+def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose, clean):
+
     corpus_name = os.path.basename(corpus_dir)
-    c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
-    corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)
+    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    if clean:
+        shutil.rmtree(data_directory, ignore_errors = True)
+        shutil.rmtree(output_directory, ignore_errors = True)
+
+    os.makedirs(data_directory, exist_ok = True)
+    os.makedirs(output_directory, exist_ok = True)
+    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
     archive = Archive(model_path)
     a = PretrainedAligner(archive, corpus, output_directory,
-                        temp_directory = os.path.join(TEMP_DIR, corpus_name), num_jobs = num_jobs)
+                        temp_directory = data_directory, num_jobs = num_jobs)
     a.verbose = verbose
     corpus.setup_splits(a.dictionary)
     utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
@@ -34,7 +40,8 @@ def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, 
     a.do_align()
     a.export_textgrids()
 
-def align_included_model(language, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose):
+def align_included_model(language, corpus_dir,  output_directory,
+                        speaker_characters, num_jobs, verbose, clean):
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
 
@@ -45,9 +52,10 @@ def align_included_model(language, corpus_dir,  output_directory, speaker_charac
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
-    align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose)
+    align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose, clean)
 
-if __name__ == '__main__':
+if __name__ == '__main__': # pragma: no cover
+    mp.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument('model_path', nargs = '?', help = 'Full path to the archive containing pre-trained model', default = '')
     parser.add_argument('corpus_dir', help = 'Full path to the directory to align')
@@ -59,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', help = "Output debug messages about alignment", action = 'store_true')
     parser.add_argument('--language', type = str, default = '',
                     help = 'Specify whether to use an included pretrained model (english, french)')
+    parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = args.corpus_dir
     model_path = args.model_path
@@ -70,8 +79,8 @@ if __name__ == '__main__':
         raise(Exception('Both language and model_path cannot be specified'))
     if model_path != '':
         align_corpus(model_path, corpus_dir, output_dir,
-            args.speaker_characters, args.num_jobs, args.verbose)
+            args.speaker_characters, args.num_jobs, args.verbose, args.clean)
     else:
         align_included_model(language, corpus_dir, output_dir,
-            args.speaker_characters, args.num_jobs, args.verbose)
+            args.speaker_characters, args.num_jobs, args.verbose, args.clean)
 
