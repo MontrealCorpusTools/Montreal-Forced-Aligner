@@ -135,7 +135,7 @@ class BaseAligner(object):
             num = int(matches.groups()[0])
         return num
 
-    def align_si(self, fmllr = True):
+    def _align_si(self, fmllr = True):
         '''
         Generate an alignment of the dataset
         '''
@@ -212,7 +212,7 @@ class BaseAligner(object):
         '''
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
-        self.align_si(fmllr = False)
+        self._align_si(fmllr = False)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')

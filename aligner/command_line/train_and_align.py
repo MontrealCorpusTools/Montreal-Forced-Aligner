@@ -1,9 +1,9 @@
 import sys
 import shutil, os
 import argparse
+import multiprocessing as mp
 
 from aligner.corpus import Corpus
-from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 from aligner.aligner import TrainableAligner
 from aligner.utils import no_dictionary
@@ -11,12 +11,19 @@ from aligner.utils import no_dictionary
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
-            output_model_path, num_jobs, verbose):
+            output_model_path, num_jobs, verbose, clean):
     corpus_name = os.path.basename(corpus_dir)
-    dictionary = Dictionary(dict_path, os.path.join(TEMP_DIR, corpus_name))
+    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    if clean:
+        shutil.rmtree(data_directory, ignore_errors = True)
+        shutil.rmtree(output_directory, ignore_errors = True)
+
+    os.makedirs(data_directory, exist_ok = True)
+    os.makedirs(output_directory, exist_ok = True)
+
+    dictionary = Dictionary(dict_path, data_directory)
     dictionary.write()
-    c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
-    corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
@@ -31,7 +38,7 @@ def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, f
     tri_params = {'align_often': not fast}
     tri_fmllr_params = {'align_often': not fast}
     a = TrainableAligner(corpus, dictionary, output_directory,
-                        temp_directory = os.path.join(TEMP_DIR, corpus_name),
+                        temp_directory = data_directory,
                         mono_params = mono_params, tri_params = tri_params,
                         tri_fmllr_params = tri_fmllr_params, num_jobs = num_jobs)
     a.verbose = verbose
@@ -45,12 +52,19 @@ def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, f
         a.save(output_model_path)
 
 def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
-        output_model_path, num_jobs, verbose):
+        output_model_path, num_jobs, verbose, clean):
     corpus_name = os.path.basename(corpus_dir)
-    c = MfccConfig(os.path.join(TEMP_DIR, corpus_name))
-    corpus = Corpus(corpus_dir, os.path.join(TEMP_DIR, corpus_name), c, speaker_characters, num_jobs = num_jobs)
+    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    if clean:
+        shutil.rmtree(data_directory, ignore_errors = True)
+        shutil.rmtree(output_directory, ignore_errors = True)
+
+    os.makedirs(data_directory, exist_ok = True)
+    os.makedirs(output_directory, exist_ok = True)
+
+    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
     print(corpus.speaker_utterance_info())
-    dictionary = no_dictionary(corpus, os.path.join(TEMP_DIR, corpus_name))
+    dictionary = no_dictionary(corpus, data_directory)
     dictionary.write()
     corpus.write()
     corpus.create_mfccs()
@@ -59,7 +73,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
     tri_params = {'align_often': not fast}
     tri_fmllr_params = {'align_often': not fast}
     a = TrainableAligner(corpus, dictionary, output_directory,
-                        temp_directory = os.path.join(TEMP_DIR, corpus_name),
+                        temp_directory = data_directory,
                         mono_params = mono_params, tri_params = tri_params,
                         tri_fmllr_params = tri_fmllr_params, num_jobs = num_jobs)
     a.verbose = verbose
@@ -73,7 +87,8 @@ def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
         a.save(output_model_path)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__': # pragma: no cover
+    mp.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_dir', help = 'Full path to the source directory to align')
     parser.add_argument('dict_path', help = 'Full path to the pronunciation dictionary to use', nargs='?', default = '')
@@ -86,6 +101,7 @@ if __name__ == '__main__':
                     help = 'Number of cores to use while aligning')
     parser.add_argument('-v', '--verbose', help = "Output debug messages about alignment", action = 'store_true')
     parser.add_argument('--nodict', help = "Create a dictionary based on the orthography", action = 'store_true')
+    parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = args.corpus_dir
     dict_path = args.dict_path
@@ -100,9 +116,9 @@ if __name__ == '__main__':
     elif args.nodict == True:
         align_corpus_no_dict(corpus_dir, output_dir, args.speaker_characters,
                     args.fast,
-                    output_model_path, args.num_jobs, args.verbose)
+                    output_model_path, args.num_jobs, args.verbose, args.clean)
     elif args.nodict == False:
         align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters,
                     args.fast,
-                    output_model_path, args.num_jobs, args.verbose)
+                    output_model_path, args.num_jobs, args.verbose, args.clean)
 

@@ -3,7 +3,6 @@ import os
 import pytest
 
 from aligner.corpus import Corpus
-from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 
 def pytest_addoption(parser):
@@ -123,8 +122,7 @@ def sick_dict(sick_dict_path, generated_dir):
 @pytest.fixture(scope='session')
 def sick_corpus(sick_dict, basic_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
-    c = MfccConfig(output_directory)
-    corpus = Corpus(basic_dir, output_directory, c, num_jobs = 2)
+    corpus = Corpus(basic_dir, output_directory, num_jobs = 2)
     corpus.write()
     corpus.create_mfccs()
     corpus.setup_splits(sick_dict)
@@ -145,9 +143,37 @@ def large_dataset_directory():
         return directory
 
 @pytest.fixture(scope='session')
+def large_dataset_dictionary(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'librispeech-lexicon.txt')
+
+@pytest.fixture(scope='session')
 def large_prosodylab_format_directory(large_dataset_directory):
     return os.path.join(large_dataset_directory, 'prosodylab_format')
 
 @pytest.fixture(scope='session')
+def large_textgrid_format_directory(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'textgrid_format')
+
+@pytest.fixture(scope='session')
 def prosodylab_output_directory():
     return os.path.expanduser('~/prosodylab_output')
+
+@pytest.fixture(scope='session')
+def textgrid_output_directory():
+    return os.path.expanduser('~/textgrid_output')
+
+@pytest.fixture(scope='session')
+def single_speaker_prosodylab_format_directory(large_prosodylab_format_directory):
+    return os.path.join(large_prosodylab_format_directory, '61')
+
+@pytest.fixture(scope='session')
+def single_speaker_textgrid_format_directory(large_textgrid_format_directory):
+    return os.path.join(large_textgrid_format_directory, '61')
+
+@pytest.fixture(scope='session')
+def prosodylab_output_model_path():
+    return os.path.expanduser('~/prosodylab_output_model.zip')
+
+@pytest.fixture(scope='session')
+def textgrid_output_model_path():
+    return os.path.expanduser('~/textgrid_output_model.zip')
