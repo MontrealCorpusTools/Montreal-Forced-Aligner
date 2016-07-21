@@ -44,7 +44,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     output_directory = prosodylab_output_directory
     output_model_path = prosodylab_output_model_path
     speaker_characters = 0
-    num_jobs = 3
+    num_jobs = 2
     fast = True
     verbose = False
     clean = True
@@ -63,7 +63,7 @@ def test_align_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     output_directory = prosodylab_output_directory
     output_model_path = prosodylab_output_model_path
     speaker_characters = 0
-    num_jobs = 3
+    num_jobs = 2
     fast = True
     verbose = False
     clean = True
@@ -95,7 +95,7 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     output_directory = textgrid_output_directory
     output_model_path = textgrid_output_model_path
     speaker_characters = 0
-    num_jobs = 3
+    num_jobs = 2
     fast = True
     verbose = False
     clean = True
@@ -112,7 +112,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     output_directory = textgrid_output_directory
     output_model_path = textgrid_output_model_path
     speaker_characters = 0
-    num_jobs = 3
+    num_jobs = 2
     fast = True
     verbose = True
     clean = True

@@ -17,6 +17,7 @@ Contents:
    aligning.rst
    example.rst
    commonerrors.rst
+   changelog.rst
    apireference.rst
 
 
