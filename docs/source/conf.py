@@ -150,9 +150,9 @@ html_theme = 'sphinx_rtd_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-html_theme_options = {
-    'page_width': 'auto',
-}
+#html_theme_options = {
+#    'page_width': 'auto',
+#}
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []
