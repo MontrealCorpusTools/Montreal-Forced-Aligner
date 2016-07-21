@@ -213,9 +213,10 @@ class MfccConfig(object):
     config_dict : dict
         Dictionary of configuration parameters
     '''
-    def __init__(self, output_directory, kwargs = None):
+    def __init__(self, output_directory, job = None, kwargs = None):
         if kwargs is None:
             kwargs = {}
+        self.job = job
         self.config_dict = {'use-energy':False}
         self.config_dict.update(kwargs)
         self.output_directory = output_directory
@@ -241,7 +242,11 @@ class MfccConfig(object):
 
     @property
     def path(self):
-        return os.path.join(self.config_directory, 'mfcc.conf')
+        if self.job is None:
+            f = 'mfcc.conf'
+        else:
+            f = 'mfcc.{}.conf'.format(self.job)
+        return os.path.join(self.config_directory, f)
 
     def write(self):
         '''

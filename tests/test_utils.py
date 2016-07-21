@@ -10,12 +10,11 @@ def test_acoustic(basic_dict_path, basic_dir, generated_dir, output_directory):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'acoustic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'acoustic')
-    c = MfccConfig(output_directory)
-    d = Corpus(basic_dir, output_directory, c)
+    d = Corpus(basic_dir, output_directory)
     d.write()
     d.create_mfccs()
     d.setup_splits(dictionary)
     n = no_dictionary(d, output_directory)
-    assert n.words['should'] == ['s h o u l d']
+    assert n.words['should'] == [['s', 'h', 'o', 'u', 'l', 'd']]
     assert '<vocnoise>' not in n.words
-    assert n.words['here\'s'] == ['h e r e s']
+    assert n.words['here\'s'] == [['h', 'e', 'r', 'e', 's']]

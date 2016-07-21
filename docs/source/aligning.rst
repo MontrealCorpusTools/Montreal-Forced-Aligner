@@ -27,6 +27,13 @@ Common options for both aligner executables
 
   The aligner will print out more debugging information if present
 
+.. cmdoption:: -c
+               --clean
+
+  Temporary files in ``~/Documents/MFA`` and the output directory will be
+  removed prior to aligning.  This is good to use when aligning a new dataset,
+  but it shares a name with a previously aligned dataset.
+
 .. cmdoption:: -h
                --help
 

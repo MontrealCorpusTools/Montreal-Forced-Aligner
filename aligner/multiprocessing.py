@@ -41,7 +41,7 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path): # prag
             stdin = comp_proc.stdout, stderr = f)
         copy_proc.wait()
 
-def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
+def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_configs):
     '''
     Multiprocessing function that converts wav files into MFCCs
 
@@ -69,7 +69,7 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_config):
         If the files per speaker exceeds the number of files that are
         allowed to be open on the computer (for Unix-based systems)
     '''
-    jobs = [ (mfcc_directory, log_directory, x, mfcc_config.path)
+    jobs = [ (mfcc_directory, log_directory, x, mfcc_configs[x].path)
                 for x in range(num_jobs)]
     with mp.Pool(processes = num_jobs) as pool:
         r = False
