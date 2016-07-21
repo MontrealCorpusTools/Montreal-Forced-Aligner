@@ -3,7 +3,7 @@ import pytest
 
 from aligner.command_line.align import align_corpus, align_included_model
 
-from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus
+from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus, align_corpus_no_dict
 
 
 large = pytest.mark.skipif(
@@ -100,6 +100,23 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     verbose = False
     clean = True
     train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+            output_model_path, num_jobs, verbose, clean)
+    #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
+    assert(os.path.exists(output_model_path))
+
+@large
+def test_train_large_textgrid_nodict(large_textgrid_format_directory,
+                    textgrid_output_directory,
+                    textgrid_output_model_path):
+    corpus_dir = large_textgrid_format_directory
+    output_directory = textgrid_output_directory
+    output_model_path = textgrid_output_model_path
+    speaker_characters = 0
+    num_jobs = 3
+    fast = True
+    verbose = True
+    clean = True
+    align_corpus_no_dict(corpus_dir,  output_directory, speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(output_model_path))
