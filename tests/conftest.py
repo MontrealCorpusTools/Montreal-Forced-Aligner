@@ -3,8 +3,11 @@ import os
 import pytest
 
 from aligner.corpus import Corpus
-from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
+
+def pytest_addoption(parser):
+    parser.addoption("--skiplarge", action="store_true",
+        help="skip large dataset tests")
 
 @pytest.fixture(scope='session')
 def test_dir():
@@ -119,11 +122,58 @@ def sick_dict(sick_dict_path, generated_dir):
 @pytest.fixture(scope='session')
 def sick_corpus(sick_dict, basic_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
-    c = MfccConfig(output_directory)
-    corpus = Corpus(basic_dir, output_directory, c, num_jobs = 2)
+    corpus = Corpus(basic_dir, output_directory, num_jobs = 2)
     corpus.write()
     corpus.create_mfccs()
     corpus.setup_splits(sick_dict)
     return corpus
 
+@pytest.fixture(scope='session')
+def large_dataset_directory():
+    if os.environ.get('TRAVIS', False):
+        directory = os.path.expanduser('~/tools/mfa_test_data')
+    else:
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_dir = os.path.dirname(test_dir)
+        root_dir = os.path.dirname(repo_dir)
+        directory = os.path.join(root_dir, 'mfa_test_data')
+    if not os.path.exists(directory):
+        pytest.skip('Couldn\'t find the mfa_test_data directory')
+    else:
+        return directory
 
+@pytest.fixture(scope='session')
+def large_dataset_dictionary(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'librispeech-lexicon.txt')
+
+@pytest.fixture(scope='session')
+def large_prosodylab_format_directory(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'prosodylab_format')
+
+@pytest.fixture(scope='session')
+def large_textgrid_format_directory(large_dataset_directory):
+    return os.path.join(large_dataset_directory, 'textgrid_format')
+
+@pytest.fixture(scope='session')
+def prosodylab_output_directory():
+    return os.path.expanduser('~/prosodylab_output')
+
+@pytest.fixture(scope='session')
+def textgrid_output_directory():
+    return os.path.expanduser('~/textgrid_output')
+
+@pytest.fixture(scope='session')
+def single_speaker_prosodylab_format_directory(large_prosodylab_format_directory):
+    return os.path.join(large_prosodylab_format_directory, '61')
+
+@pytest.fixture(scope='session')
+def single_speaker_textgrid_format_directory(large_textgrid_format_directory):
+    return os.path.join(large_textgrid_format_directory, '61')
+
+@pytest.fixture(scope='session')
+def prosodylab_output_model_path():
+    return os.path.expanduser('~/prosodylab_output_model.zip')
+
+@pytest.fixture(scope='session')
+def textgrid_output_model_path():
+    return os.path.expanduser('~/textgrid_output_model.zip')

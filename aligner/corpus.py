@@ -12,6 +12,8 @@ from .multiprocessing import mfcc
 
 from .exceptions import SampleRateError, CorpusError
 
+from .config import MfccConfig
+
 def output_mapping(mapping, path):
     with open(path, 'w', encoding = 'utf8') as f:
         for k in sorted(mapping.keys()):
@@ -128,6 +130,11 @@ def get_n_channels(file_path):
         n_channels = soundf.getnchannels()
     return n_channels
 
+def get_sample_rate(file_path):
+    with wave.open(file_path,'rb') as soundf:
+        sr = soundf.getframerate()
+    return sr
+
 def extract_temp_channel(wav_path, channel, temp_directory):
     '''
     Extract a single channel from a stereo file to a new mono wav file
@@ -187,7 +194,7 @@ class Corpus(object):
         Raised if the wav files in the dataset do not share a consistent sample rate
 
     '''
-    def __init__(self, directory, output_directory, mfcc_config,
+    def __init__(self, directory, output_directory,
                 speaker_characters = 0,
                 num_jobs = 3):
         if not os.path.exists(directory):
@@ -196,13 +203,10 @@ class Corpus(object):
             num_jobs = 1
         print('Setting up corpus information...')
         self.directory = directory
-        sample_rate = self.get_sample_rate()
-        mfcc_config.update({'sample-frequency': sample_rate})
         self.output_directory = os.path.join(output_directory, 'train')
         self.temp_directory = os.path.join(self.output_directory, 'temp')
         os.makedirs(self.temp_directory, exist_ok = True)
         self.num_jobs = num_jobs
-        self.mfcc_config = mfcc_config
 
         # Set up mapping dictionaries
 
@@ -218,6 +222,7 @@ class Corpus(object):
             self.speaker_directories = False
         else:
             self.speaker_directories = True
+        self.sample_rates = defaultdict(set)
         for root, dirs, files in os.walk(self.directory, followlinks = True):
             for f in sorted(files):
                 file_name, ext  = os.path.splitext(f)
@@ -235,6 +240,7 @@ class Corpus(object):
                         speaker_id = f[:speaker_characters]
                     self.speak_utt_mapping[speaker_id].append(utt_name)
                     self.utt_wav_mapping[utt_name] = wav_path
+                    self.sample_rates[get_sample_rate(wav_path)].add(speaker_id)
                     self.utt_speak_mapping[utt_name] = speaker_id
                 else:
                     tg_name = find_textgrid(f, files)
@@ -259,6 +265,7 @@ class Corpus(object):
                         if not isinstance(ti, IntervalTier):
                             continue
                         speaker_name = ti.name
+                        self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             label = interval.mark.lower().strip()
                             if label == '':
@@ -282,19 +289,56 @@ class Corpus(object):
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
 
+        bad_speakers = []
+        for speaker in self.speak_utt_mapping.keys():
+            count = 0
+            for k, v in self.sample_rates.items():
+                if speaker in v:
+                    count += 1
+            if count > 1:
+                bad_speakers.append(speaker)
+        if bad_speakers:
+            raise(SampleRateError('The following speakers had multiple speaking rates: {}.  Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))))
 
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.speak_utt_mapping)
-        self.groups = self.find_best_groupings()
+        if self.num_jobs < len(self.sample_rates.keys()):
+            self.num_jobs = len(self.sample_rates.keys())
+            print('The number of jobs was set to {}, due to the different sample rates in the dataset.  If you would like to use fewer parallel jobs, please resample all wav files to the same sample rate.'.format(self.num_jobs))
+        self.find_best_groupings()
+
+    def find_best_groupings(self):
+        num_sample_rates = len(self.sample_rates.keys())
+        jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
+        remaining_jobs = self.num_jobs - num_sample_rates
+        while remaining_jobs > 0:
+            min_num = min(jobs_per_sample_rate.values())
+            addable = sorted([k for k,v  in jobs_per_sample_rate.items() if v == min_num],
+                            key = lambda x: -1 * len(self.sample_rates[x]))
+            jobs_per_sample_rate[addable[0]] += 1
+            remaining_jobs -= 1
+
         self.speaker_groups = []
-        for g in self.groups:
-            speaker_mapping = {}
-            for k in sorted(g):
-                v = self.utt_speak_mapping[k]
-                if v not in speaker_mapping:
-                    speaker_mapping[v] = []
-                speaker_mapping[v].append(k)
-            self.speaker_groups.append(speaker_mapping)
+        self.mfcc_configs = []
+        for k,v in jobs_per_sample_rate.items():
+            step_size = int(len(self.sample_rates[k]) / v)
+            speakers = sorted(self.sample_rates[k])
+            for x in range(0, len(speakers), step_size):
+                self.speaker_groups.append(speakers[x:x+step_size])
+                c = MfccConfig(self.mfcc_directory, job = len(self.mfcc_configs))
+
+                c.update({'sample-frequency': k,
+                                    'low-freq':20,
+                                    'high-freq':7800})
+                self.mfcc_configs.append(c)
+
+        self.groups = []
+        for x in self.speaker_groups:
+            g = []
+            for s in x:
+                g.extend(self.speak_utt_mapping[s])
+            self.groups.append(g)
+
 
     def speaker_utterance_info(self):
         num_speakers = len(self.speak_utt_mapping.keys())
@@ -404,7 +448,7 @@ class Corpus(object):
         try:
             for g in self.speaker_groups:
                 output_g = []
-                for s in sorted(g.keys()):
+                for s in sorted(g):
                     output_g.append([s, self.cmvn_mapping[s]])
                 output.append(output_g)
         except KeyError:
@@ -436,7 +480,7 @@ class Corpus(object):
         output = []
         for g in self.speaker_groups:
             output_g = []
-            for s in sorted(g.keys()):
+            for s in sorted(g):
                 output_g.append([s, sorted(self.speak_utt_mapping[s])])
             output.append(output_g)
         return output
@@ -534,38 +578,6 @@ class Corpus(object):
         pattern = 'cmvn.{}.scp'
         save_groups(self.grouped_cmvn, directory, pattern)
 
-    def find_best_groupings(self):
-        scp = list(self.utt_scp)
-        num_utt = len(scp)
-        interval = int(num_utt / self.num_jobs)
-        groups = []
-        current_ind = 0
-        for i in range(self.num_jobs):
-            if i == self.num_jobs - 1:
-                end_ind = num_utt
-            else:
-                end_ind = current_ind + interval
-                utt = scp[end_ind][0]
-                spk = scp[end_ind][1]
-                for j in range(end_ind, num_utt):
-                    if scp[j][1] != spk:
-                        j -= 1
-                        break
-                else:
-                    j = num_utt - 1
-                if j - end_ind < i - end_ind:
-                    end_ind = j
-                else:
-                    k = end_ind
-                    for k in range(end_ind, 0, -1):
-                        if scp[k][1] != spk:
-                            k += 1
-                            break
-                    end_ind = k
-            groups.append(sorted([x[0] for x in scp[current_ind:end_ind]]))
-            current_ind = end_ind
-        return groups
-
     def create_mfccs(self):
         log_directory = self.mfcc_log_directory
         os.makedirs(log_directory, exist_ok = True)
@@ -575,7 +587,7 @@ class Corpus(object):
         print('Calculating MFCCs...')
         self._split_wavs(self.mfcc_log_directory)
         self._split_segments(self.mfcc_log_directory)
-        mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_config)
+        mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_configs)
         self.parse_mfcc_logs()
         self._combine_feats()
         print('Calculating CMVN...')
@@ -670,18 +682,3 @@ class Corpus(object):
             stdout, stderr = dim_proc.communicate()
             feats = stdout.decode('utf8').strip()
         return feats
-
-    def get_sample_rate(self):
-        sample_rates = set([])
-        for root, dirs, files in os.walk(self.directory, followlinks = True):
-            for f in files:
-                if not f.lower().endswith('.wav'):
-                    continue
-
-                with wave.open(os.path.join(root, f),'rb') as soundf:
-                    sr = soundf.getframerate()
-                    sample_rates.add(sr)
-                    n_channels = soundf.getnchannels()
-        if len(sample_rates) > 1:
-            raise(SampleRateError('All files must have the same sample rate, but the following sample rates were found: {}. Resample?'.format(sorted(sample_rates))))
-        return list(sample_rates)[0]
