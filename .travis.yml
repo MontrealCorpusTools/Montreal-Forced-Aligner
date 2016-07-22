@@ -37,7 +37,7 @@ before_script:
 
 # Run test
 script:
-  - "coverage run --source=aligner setup.py test"
+  - travis_wait 30 "coverage run --source=aligner setup.py test"
 
 # Calculate coverage
 after_success:
