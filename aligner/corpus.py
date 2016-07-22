@@ -320,7 +320,8 @@ class Corpus(object):
         self.speaker_groups = []
         self.mfcc_configs = []
         for k,v in jobs_per_sample_rate.items():
-            step_size = int(len(self.sample_rates[k]) / v) + 1
+
+            step_size = int(round(len(self.sample_rates[k]) / v))
             speakers = sorted(self.sample_rates[k])
             for x in range(0, len(speakers), step_size):
                 self.speaker_groups.append(speakers[x:x+step_size])
@@ -330,6 +331,9 @@ class Corpus(object):
                                     'low-freq':20,
                                     'high-freq':7800})
                 self.mfcc_configs.append(c)
+            for s in speakers:
+                if not any(s in x for x in self.speaker_groups):
+                    self.speaker_groups[-1][-1].append(s)
         self.groups = []
         for x in self.speaker_groups:
             g = []
