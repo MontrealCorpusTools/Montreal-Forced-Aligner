@@ -2,6 +2,8 @@ import os
 
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
+from ..dictionary import Dictionary
+
 class PretrainedAligner(BaseAligner):
     '''
     Class for aligning a dataset using a pretrained acoustic model
@@ -31,9 +33,8 @@ class PretrainedAligner(BaseAligner):
         self.output_directory = output_directory
         self.corpus = corpus
 
-        self.dictionary = archive.load_dictionary()
+        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'))
 
-        self.dictionary.output_directory = os.path.join(temp_directory, 'dictionary')
         self.dictionary.write()
         archive.export_triphone_model(self.tri_directory)
 
