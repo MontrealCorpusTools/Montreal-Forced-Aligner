@@ -69,15 +69,11 @@ class Archive(object):
         copy(os.path.join(self.dirname, 'tree'), destination)
 
     def add_dictionary(self, source):
-        with open(os.path.join(self.dirname, 'dictionary'), 'wb') as f:
-            pickle.dump(source, f)
+        source.export_lexicon(self.dictionary_path)
 
-    def load_dictionary(self):
-        dict_path = os.path.join(self.dirname, 'dictionary')
-        if not os.path.exists(dict_path):
-            return None
-        with open(dict_path, 'rb') as f:
-            return pickle.load(f)
+    @property
+    def dictionary_path(self):
+        return os.path.join(self.dirname, 'dictionary')
 
     def __repr__(self):
         return "{}(dirname={!r})".format(self.__class__.__name__,

@@ -45,10 +45,10 @@ def align_included_model(language, corpus_dir,  output_directory,
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
 
-    path = os.path.abspath(__file__)
     if getattr(sys, 'frozen', False):
-        root_dir = os.path.dirname(os.path.dirname(path))
+        root_dir = os.path.dirname(os.path.dirname(sys.executable))
     else:
+        path = os.path.abspath(__file__)
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
@@ -69,9 +69,9 @@ if __name__ == '__main__': # pragma: no cover
                     help = 'Specify whether to use an included pretrained model (english, french)')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     args = parser.parse_args()
-    corpus_dir = args.corpus_dir
-    model_path = args.model_path
-    output_dir = args.output_dir
+    corpus_dir = os.path.expanduser(args.corpus_dir)
+    model_path = os.path.expanduser(args.model_path)
+    output_dir = os.path.expanduser(args.output_dir)
     language = args.language.lower()
     if language == '' and model_path == '':
         raise(Exception('Both language and model_path cannot be unspecified'))

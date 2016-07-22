@@ -12,6 +12,9 @@ Not yet released
 - Added support for multiple sampling rates in a single dataset
 - Fix some bugs relating to using a single process
 - Fixed a bug where spaces were being inserted into transcriptions when using ``--nodict``
+- Fixed a bug where having no out-of-vocabulary items would cause a crash at the end of aligning
+- Fixed a bug where the frozen executable could not find the included pretrained models
+- Fixed an issue where dictionaries in model outputs were binary files rather than editable text files
 - Added docstrings to main classes
 
 0.5.0

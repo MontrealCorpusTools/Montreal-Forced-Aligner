@@ -149,7 +149,7 @@ class Dictionary(object):
     def separate_clitics(self, item):
         """Separates words with apostrophes or hyphens if the subparts are in the lexicon.
 
-        Checks whether the text on either side of an apostrophe or hyphen is in the dictionary. If so, 
+        Checks whether the text on either side of an apostrophe or hyphen is in the dictionary. If so,
         splits the word. If neither part is in the dictionary, returns the word without splitting it.
 
         Parameters
@@ -322,6 +322,13 @@ class Dictionary(object):
         with open(outfile, 'w', encoding = 'utf8') as f:
             for char in sorted(self.graphemes):
                 f.write(char + '\n')
+
+    def export_lexicon(self, path):
+        with open(path, 'w', encoding = 'utf8') as f:
+            for w in sorted(self.words.keys()):
+                for p in sorted(self.words[w]):
+                    phones = ' '.join(p)
+                    f.write('{}\t{}\n'.format(w, phones))
 
     def _write_lexicon(self):
         outfile = os.path.join(self.output_directory, 'lexicon.txt')

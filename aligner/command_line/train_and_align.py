@@ -103,10 +103,10 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('--nodict', help = "Create a dictionary based on the orthography", action = 'store_true')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     args = parser.parse_args()
-    corpus_dir = args.corpus_dir
-    dict_path = args.dict_path
-    output_dir = args.output_dir
-    output_model_path = args.output_model_path
+    corpus_dir = os.path.expanduser(args.corpus_dir)
+    dict_path = os.path.expanduser(args.dict_path)
+    output_dir = os.path.expanduser(args.output_dir)
+    output_model_path = os.path.expanduser(args.output_model_path)
     if not output_model_path:
         output_model_path = None
     if args.nodict == False and dict_path == '':
