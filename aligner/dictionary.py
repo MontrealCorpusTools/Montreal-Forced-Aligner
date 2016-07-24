@@ -286,7 +286,7 @@ class Dictionary(object):
         '''
         The set of all phones (silence and non-silence)
         '''
-        return self.sil_phones & self.nonsil_phones
+        return self.sil_phones | self.nonsil_phones
 
     def write(self):
         '''
@@ -295,8 +295,6 @@ class Dictionary(object):
         print('Creating dictionary information...')
         if not os.path.exists(self.phones_dir):
             os.makedirs(self.phones_dir, exist_ok = True)
-        #self._write_lexicon()
-        #self._write_lexiconp()
 
         self._write_graphemes()
         self._write_phone_map_file()
@@ -329,47 +327,6 @@ class Dictionary(object):
                 for p in sorted(self.words[w]):
                     phones = ' '.join(p)
                     f.write('{}\t{}\n'.format(w, phones))
-
-    def _write_lexicon(self):
-        outfile = os.path.join(self.output_directory, 'lexicon.txt')
-        with open(outfile, 'w', encoding = 'utf8') as f:
-            for w in sorted(self.words.keys()):
-                for p in sorted(self.words[w]):
-                    phones = [x for x in p]
-                    if self.position_dependent_phones:
-                        if len(phones) == 1:
-                            phones[0] += '_S'
-                        else:
-                            for i in range(len(phones)):
-                                if i == 0:
-                                    phones[i] += '_B'
-                                elif i == len(phones) - 1:
-                                    phones[i] += '_E'
-                                else:
-                                    phones[i] += '_I'
-                    phones = ' '.join(phones)
-                    f.write('{}\t{}\n'.format(w, phones))
-
-    def _write_lexiconp(self):
-        outfile = os.path.join(self.output_directory, 'lexiconp.txt')
-        with open(outfile, 'w', encoding = 'utf8') as f:
-            for w in sorted(self.words.keys()):
-                for p in sorted(self.words[w]):
-                    phones = [x for x in p]
-                    if self.position_dependent_phones:
-                        if len(phones) == 1:
-                            phones[0] += '_S'
-                        else:
-                            for i in range(len(phones)):
-                                if i == 0:
-                                    phones[i] += '_B'
-                                elif i == len(phones) - 1:
-                                    phones[i] += '_E'
-                                else:
-                                    phones[i] += '_I'
-                    phones = ' '.join(phones)
-                    p = 1.0
-                    f.write('{}\t{}\t{}\n'.format(w, p, phones))
 
     def _write_phone_map_file(self):
         outfile = os.path.join(self.output_directory, 'phone_map.txt')
@@ -538,15 +495,15 @@ class Dictionary(object):
                 nonsils = sorted(self.nonsil_phones)
             outf.write(' '.join(nonsils) + '\n')
             intf.write(' '.join(map(str, (self.phone_mapping[x] for x in nonsils))) + '\n')
-
-            for p in self.positions:
-                line = [x + p for x in sorted(self.nonsil_phones)]
-                outf.write(' '.join(line) + '\n')
-                intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
-            for p in [''] + self.positions:
-                line = [x + p for x in sorted(self.sil_phones)]
-                outf.write(' '.join(line) + '\n')
-                intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
+            if self.position_dependent_phones:
+                for p in self.positions:
+                    line = [x + p for x in sorted(self.nonsil_phones)]
+                    outf.write(' '.join(line) + '\n')
+                    intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
+                for p in [''] + self.positions:
+                    line = [x + p for x in sorted(self.sil_phones)]
+                    outf.write(' '.join(line) + '\n')
+                    intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
 
     def _write_fst_binary(self):
 
