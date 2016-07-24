@@ -129,8 +129,8 @@ def sick_corpus(sick_dict, basic_dir, generated_dir):
     return corpus
 
 @pytest.fixture(scope='session')
-def textgrid_directory(basic_dir):
-    return os.path.join(basic_dir, 'textgrid')
+def textgrid_directory(test_dir):
+    return os.path.join(test_dir, 'textgrid')
 
 @pytest.fixture(scope='session')
 def large_dataset_directory():
