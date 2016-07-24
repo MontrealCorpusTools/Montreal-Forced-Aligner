@@ -35,23 +35,23 @@ def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_ou
                             speaker_characters, num_jobs, verbose, clean)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
 
-#@large
-#def test_train_large_prosodylab(large_prosodylab_format_directory,
-                    #large_dataset_dictionary, prosodylab_output_directory,
-                    #prosodylab_output_model_path):
-    #corpus_dir = large_prosodylab_format_directory
-    #dict_path = large_dataset_dictionary
-    #output_directory = prosodylab_output_directory
-    #output_model_path = prosodylab_output_model_path
-    #speaker_characters = 0
-    #num_jobs = 2
-    #fast = True
-    #verbose = False
-    #clean = True
-    #train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
-            #output_model_path, num_jobs, verbose, clean)
-    ##assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
-    #assert(os.path.exists(output_model_path))
+@large
+def test_train_large_prosodylab(large_prosodylab_format_directory,
+                    large_dataset_dictionary, prosodylab_output_directory,
+                    prosodylab_output_model_path):
+    corpus_dir = large_prosodylab_format_directory
+    dict_path = large_dataset_dictionary
+    output_directory = prosodylab_output_directory
+    output_model_path = prosodylab_output_model_path
+    speaker_characters = 0
+    num_jobs = 2
+    fast = True
+    verbose = False
+    clean = True
+    train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+            output_model_path, num_jobs, verbose, clean)
+    #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
+    assert(os.path.exists(output_model_path))
 
 @large
 def test_align_single_speaker_prosodylab(single_speaker_prosodylab_format_directory,
