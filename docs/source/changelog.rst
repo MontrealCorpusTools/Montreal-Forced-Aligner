@@ -3,10 +3,8 @@
 Changelog
 =========
 
-0.5.1
+0.6.0
 -----
-
-Not yet released
 
 - Added commandline argument ``--clean`` to remove temporary files
 - Added support for multiple sampling rates in a single dataset
