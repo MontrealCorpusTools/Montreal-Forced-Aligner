@@ -14,6 +14,7 @@ Changelog
 - Fixed a bug where the frozen executable could not find the included pretrained models
 - Fixed an issue where dictionaries in model outputs were binary files rather than editable text files
 - Added docstrings to main classes
+- Updated built in model ``english`` for the full 1000-hour LibriSpeech corpus
 
 0.5.0
 -----
