@@ -16,6 +16,17 @@ def test_basic(basic_dict_path, basic_dir, generated_dir):
     d.setup_splits(dictionary)
     assert(d.get_feat_dim() == '39')
 
+
+def test_stereo(basic_dict_path, textgrid_directory, generated_dir):
+    temp = os.path.join(generated_dir, 'stereo')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = Corpus(textgrid_directory, temp)
+    d.write()
+    d.create_mfccs()
+    d.setup_splits(dictionary)
+    assert(d.get_feat_dim() == '39')
+
 def test_speaker_groupings(large_prosodylab_format_directory, generated_dir):
     output_directory = os.path.join(generated_dir, 'large')
     shutil.rmtree(output_directory, ignore_errors = True)
