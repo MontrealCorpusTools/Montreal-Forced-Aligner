@@ -16,6 +16,15 @@ def ListLines(path):
 def test_basic(basic_dict_path, generated_dir):
     d = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     x = d.write()
+    assert(set(d.phones) == set(['sil','spn', 'phonea','phoneb','phonec']))
+    assert(set(d.positional_nonsil_phones) == set(['phonea_B','phonea_I','phonea_E', 'phonea_S',
+                                                    'phoneb_B','phoneb_I','phoneb_E','phoneb_S',
+                                                    'phonec_B','phonec_I','phonec_E','phonec_S']))
+
+def test_basic_noposition(basic_dict_path, generated_dir):
+    d = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'), position_dependent_phones = False)
+    x = d.write()
+    assert(set(d.phones) == set(['sil','spn', 'phonea','phoneb','phonec']))
 
 def test_frclitics(frclitics_dict_path, generated_dir):
     d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, 'frclitics'))
