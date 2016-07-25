@@ -13,6 +13,9 @@ TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean):
     corpus_name = os.path.basename(corpus_dir)
+    if corpus_name == '':
+        corpus_dir = os.path.dirname(corpus_dir)
+        corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(TEMP_DIR, corpus_name)
     if clean:
         shutil.rmtree(data_directory, ignore_errors = True)
