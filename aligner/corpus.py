@@ -359,22 +359,6 @@ class Corpus(object):
         return os.path.join(self.mfcc_directory, 'log')
 
     @property
-    def wav_scp(self):
-        for k in sorted(self.utt_wav_mapping.keys()):
-            v = self.utt_wav_mapping[k]
-            if isinstance(v, list):
-                v = ' '.join(v)
-            yield [k, v]
-
-    @property
-    def utt_scp(self):
-        output = []
-        for k,v in sorted(self.utt_speak_mapping.items(), key = lambda x: (x[1], x[0])):
-            if isinstance(v, list):
-                v = ' '.join(v)
-            yield [k, v]
-
-    @property
     def grouped_wav(self):
         output = []
         done = set()
