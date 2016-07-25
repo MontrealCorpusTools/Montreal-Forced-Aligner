@@ -3,7 +3,7 @@ import multiprocessing as mp
 import subprocess
 import os
 
-from .helper import make_path_safe, load_text, load_word_to_int, load_phone_to_int, reverse_mapping, thirdparty_binary
+from .helper import make_path_safe, thirdparty_binary
 
 from .textgrid import ctm_to_textgrid, parse_ctm
 
