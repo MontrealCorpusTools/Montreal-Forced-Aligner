@@ -6,6 +6,7 @@ import re
 
 if sys.platform == 'win32':
     exe_ext = '.exe'
+    lib_ext = '.dll'
 elif sys.platform == 'darwin':
     exe_ext = ''
     lib_ext = ['.dylib']
@@ -28,7 +29,7 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                 'cluster-phones', 'compile-questions', 'build-tree','gmm-init-model',
                 'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'compute-cmvn-stats',
                 'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
-                'extract-segments']
+                'extract-segments', 'openblas', 'openfst64']
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -56,15 +57,21 @@ def CollectBinaries(directory):
                             continue
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
-    for name in os.listdir(fstlib_dir):
-        c = False
-        for le in lib_ext:
-            if name.endswith(le):
-                c = True
-        if c:
-            shutil.copy(os.path.join(fstlib_dir, name), bin_out)
-
-    src_dir = os.path.join(directory, 'src')
+        elif sys.platform == 'win32' and name == 'openfst64.dll':
+            shutil.copy(os.path.join(fstbin_dir, name), bin_out)
+    if sys.platform != 'win32':
+        for name in os.listdir(fstlib_dir):
+            c = False
+            for le in lib_ext:
+                if name.endswith(le):
+                    c = True
+            if c:
+                shutil.copy(os.path.join(fstlib_dir, name), bin_out)
+    if sys.platform == 'win32':
+        src_dir = os.path.join(directory, 'bin')
+        shutil.copy(os.path.join(directory, 'tools','OpenBLAS', 'bin', 'libopenblas.dll'), bin_out)
+    else:
+        src_dir = os.path.join(directory, 'src')
     for root, dirs, files in os.walk(src_dir, followlinks = True):
         cur_dir = os.path.basename(root)
         if not (cur_dir == 'lib' or cur_dir.endswith('bin')):
