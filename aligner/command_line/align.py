@@ -1,5 +1,31 @@
 import sys
 import shutil, os
+
+
+def fix_path():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+        if sys.platform == 'win32':
+            thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
+        else:
+            thirdparty_dir = os.path.dirname(base_dir, 'lib', 'thirdparty','bin')
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+        thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
+    if sys.platform == 'win32':
+        os.environ['PATH'] = thirdparty_dir + ';' + os.environ['PATH']
+    else:
+        os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
+
+def unfix_path():
+    if sys.platform == 'win32':
+        sep = ';'
+    else:
+        sep = ':'
+
+    os.environ['PATH'] = sep.join(os.environ['PATH'].split(sep)[1:])
+
+fix_path()
 import argparse
 import multiprocessing as mp
 
@@ -59,6 +85,7 @@ def align_included_model(language, corpus_dir,  output_directory,
 
 if __name__ == '__main__': # pragma: no cover
     mp.freeze_support()
+
     parser = argparse.ArgumentParser()
     parser.add_argument('model_path', nargs = '?', help = 'Full path to the archive containing pre-trained model', default = '')
     parser.add_argument('corpus_dir', help = 'Full path to the directory to align')
@@ -86,4 +113,4 @@ if __name__ == '__main__': # pragma: no cover
     else:
         align_included_model(language, corpus_dir, output_dir,
             args.speaker_characters, args.num_jobs, args.verbose, args.clean)
-
+    unfix_path()

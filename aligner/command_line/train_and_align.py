@@ -1,4 +1,5 @@
 import sys
+from aligner.command_line.align import unfix_path
 import shutil, os
 import argparse
 import multiprocessing as mp
@@ -124,4 +125,4 @@ if __name__ == '__main__': # pragma: no cover
         align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters,
                     args.fast,
                     output_model_path, args.num_jobs, args.verbose, args.clean)
-
+    unfix_path()
