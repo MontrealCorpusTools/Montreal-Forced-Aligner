@@ -123,10 +123,9 @@ class Dictionary(object):
         '''
         Convert a given word into its integer id
         '''
-        m = self.word_pattern.match(item)
-        if m is None:
+        if item == '':
             return None
-        item = m.groups()[0]
+        item = self._lookup(item)
         if item not in self.words_mapping:
             self.oovs_found.add(item)
             return self.oov_int
@@ -145,6 +144,15 @@ class Dictionary(object):
             for oov in sorted(self.oovs_found):
                 f.write(oov + '\n')
         self.oovs_found = set()
+
+    def _lookup(self, item):
+        if item in self.words_mapping:
+            return item
+        sanitized = re.sub(r'^\W+', '', item)
+        sanitized = re.sub(r'\W+$', '', sanitized)
+        if sanitized in self.words_mapping:
+            return sanitized
+        return item
 
     def separate_clitics(self, item):
         """Separates words with apostrophes or hyphens if the subparts are in the lexicon.
@@ -306,7 +314,7 @@ class Dictionary(object):
         self._write_word_file()
         self._write_fst_text()
         self._write_fst_binary()
-        self.cleanup()
+        #self.cleanup()
 
     def cleanup(self):
         '''
