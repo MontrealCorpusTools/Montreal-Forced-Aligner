@@ -1,4 +1,6 @@
 
+rmdir dist
+
 pyinstaller --clean -y ^
 --additional-hooks-dir=freezing/hooks ^
 --exclude-module tkinter ^

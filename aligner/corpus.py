@@ -320,7 +320,6 @@ class Corpus(object):
         self.speaker_groups = []
         self.mfcc_configs = []
         for k,v in jobs_per_sample_rate.items():
-
             step_size = int(round(len(self.sample_rates[k]) / v))
             speakers = sorted(self.sample_rates[k])
             for x in range(0, len(speakers), step_size):
@@ -331,9 +330,14 @@ class Corpus(object):
                                     'low-freq':20,
                                     'high-freq':7800})
                 self.mfcc_configs.append(c)
+
             for s in speakers:
                 if not any(s in x for x in self.speaker_groups):
                     self.speaker_groups[-1][-1].append(s)
+        if len(self.speaker_groups) > self.num_jobs: # Hack, need a better splitting algorithm
+            self.speaker_groups[-2].extend(self.speaker_groups[-1])
+            self.speaker_groups = self.speaker_groups[:-1]
+            self.mfcc_configs = self.mfcc_configs[:-1]
         self.groups = []
         for x in self.speaker_groups:
             g = []
@@ -399,7 +403,7 @@ class Corpus(object):
                         lookup = dictionary.separate_clitics(t)
                         if lookup is None:
                             continue
-                        new_text.extend(lookup)
+                        new_text.extend(x for x in lookup if x != '')
                 output_g.append([u, new_text])
             output.append(output_g)
         return output
