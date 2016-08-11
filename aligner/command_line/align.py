@@ -8,7 +8,7 @@ def fix_path():
         if sys.platform == 'win32':
             thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
         else:
-            thirdparty_dir = os.path.dirname(base_dir, 'lib', 'thirdparty','bin')
+            thirdparty_dir = os.path.join(base_dir, 'lib', 'thirdparty','bin')
     else:
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
