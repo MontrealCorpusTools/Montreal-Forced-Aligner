@@ -37,45 +37,42 @@ def CollectBinaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok = True)
-    fstbin_dir = os.path.join(directory, 'tools','openfst', 'bin')
-    fstlib_dir = os.path.join(directory, 'tools','openfst', 'lib')
-    for name in os.listdir(fstbin_dir):
-        ext = os.path.splitext(name)
-        (key, value) = ext
-        if value == exe_ext and key in included_filenames:
-            bin_name = os.path.join(bin_out, name)
-            if not os.path.exists(bin_name):
-                shutil.copy(os.path.join(fstbin_dir, name), bin_out)
-                if sys.platform == 'darwin':
-                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    output, err = p.communicate()
-                    rc = p.returncode
-                    output = output.decode()
-                    libs = dylib_pattern.findall(output)
-                    for l in libs:
-                        if l.startswith('/usr'):
-                            continue
-                        lib = os.path.basename(l)
-                        subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
-        elif sys.platform == 'win32' and name == 'openfst64.dll':
-            shutil.copy(os.path.join(fstbin_dir, name), bin_out)
-    if sys.platform != 'win32':
-        for name in os.listdir(fstlib_dir):
-            c = False
-            for le in lib_ext:
-                if name.endswith(le):
-                    c = True
-            if c:
-                shutil.copy(os.path.join(fstlib_dir, name), bin_out)
+    tools_dir = os.path.join(directory, 'tools')
+    for root, dirs, files in os.walk(tools_dir):
+        for name in files:
+            ext = os.path.splitext(name)
+            (key, value) = ext
+            if value == exe_ext and key in included_filenames:
+                bin_name = os.path.join(bin_out, name)
+                if not os.path.exists(bin_name):
+                    shutil.copy(os.path.join(root, name), bin_out)
+                    if sys.platform == 'darwin':
+                        p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        output, err = p.communicate()
+                        rc = p.returncode
+                        output = output.decode()
+                        libs = dylib_pattern.findall(output)
+                        for l in libs:
+                            if l.startswith('/usr'):
+                                continue
+                            lib = os.path.basename(l)
+                            subprocess.call(['install_name_tool','-change',l, '@loader_path/'+lib, bin_name])
+            elif sys.platform == 'win32' and name in ['openfst64.dll','libopenblas.dll']:
+                shutil.copy(os.path.join(root, name), bin_out)
+            elif sys.platform != 'win32':
+                c = False
+                for le in lib_ext:
+                    if name.endswith(le):
+                        c = True
+                if c:
+                    shutil.copy(os.path.join(root, name), bin_out)
+
     if sys.platform == 'win32':
-        src_dir = os.path.join(directory, 'bin')
-        shutil.copy(os.path.join(directory, 'tools','OpenBLAS', 'bin', 'libopenblas.dll'), bin_out)
+        src_dir = directory
     else:
         src_dir = os.path.join(directory, 'src')
     for root, dirs, files in os.walk(src_dir, followlinks = True):
         cur_dir = os.path.basename(root)
-        if not (cur_dir == 'lib' or cur_dir.endswith('bin')):
-            continue
         for name in files:
             ext = os.path.splitext(name)
             (key, value) = ext
