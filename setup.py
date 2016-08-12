@@ -42,7 +42,6 @@ if __name__ == '__main__':
                     'aligner.gui'],
           install_requires=[
               'textgrid',
-              'scipy',
               'tqdm',
           ],
         cmdclass={'test': PyTest},
