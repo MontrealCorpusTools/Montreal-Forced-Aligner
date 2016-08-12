@@ -1,5 +1,5 @@
 
-rmdir dist
+rmdir /s /q dist
 
 pyinstaller --clean -y ^
 --additional-hooks-dir=freezing/hooks ^
