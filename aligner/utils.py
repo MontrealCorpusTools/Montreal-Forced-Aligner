@@ -31,7 +31,7 @@ def no_dictionary(corpus_object, output_directory):
     for i in text:
         split = text[i].split(' ')
         for word in split:
-            updated = re.sub('[^a-z]', '', word)
+            updated = re.sub('\W', '', word)
             pronunciation = list(updated)
             if list(word)[0] != '[' and list(word)[0] != '{' and list(word)[0] != '<':
                 transcription = pronunciation

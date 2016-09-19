@@ -11,13 +11,17 @@ from aligner.utils import no_dictionary
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean):
+    if temp_dir == '':
+        temp_dir = TEMP_DIR
+    else:
+        temp_dir = os.path.expanduser(temp_dir)
     corpus_name = os.path.basename(corpus_dir)
     if corpus_name == '':
         corpus_dir = os.path.dirname(corpus_dir)
         corpus_name = os.path.basename(corpus_dir)
-    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    data_directory = os.path.join(temp_dir, corpus_name)
     if clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
@@ -55,10 +59,14 @@ def align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, f
     if output_model_path is not None:
         a.save(output_model_path)
 
-def align_corpus_no_dict(corpus_dir, output_directory, speaker_characters, fast,
+def align_corpus_no_dict(corpus_dir, output_directory, temp_dir, speaker_characters, fast,
         output_model_path, num_jobs, verbose, clean):
+    if temp_dir == '':
+        temp_dir = TEMP_DIR
+    else:
+        temp_dir = os.path.expanduser(temp_dir)
     corpus_name = os.path.basename(corpus_dir)
-    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    data_directory = os.path.join(temp_dir, corpus_name)
     if clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
@@ -100,6 +108,8 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('-o', '--output_model_path', type = str, default = '', help = 'Full path to save resulting acoustic and dictionary model')
     parser.add_argument('-s', '--speaker_characters', type = int, default = 0,
                     help = 'Number of characters of filenames to use for determining speaker, default is to use directory names')
+    parser.add_argument('-t', '--temp_directory', type = str, default = '',
+                    help = 'Temporary directory root to use for aligning, default is ~/Documents/MFA')
     parser.add_argument('-f', '--fast', help = "Perform a quick alignment with half the number of alignment iterations", action = 'store_true')
     parser.add_argument('-j','--num_jobs', type = int, default = 3,
                     help = 'Number of cores to use while aligning')
@@ -111,6 +121,7 @@ if __name__ == '__main__': # pragma: no cover
     dict_path = os.path.expanduser(args.dict_path)
     output_dir = os.path.expanduser(args.output_dir)
     output_model_path = os.path.expanduser(args.output_model_path)
+    temp_dir = args.temp_directory
     if not output_model_path:
         output_model_path = None
     if args.nodict == False and dict_path == '':
@@ -118,11 +129,11 @@ if __name__ == '__main__': # pragma: no cover
     if args.nodict == True and dict_path != '':
         raise(Exception('Dict_path cannot be specified with nodict option'))
     elif args.nodict == True:
-        align_corpus_no_dict(corpus_dir, output_dir, args.speaker_characters,
+        align_corpus_no_dict(corpus_dir, output_dir, temp_dir, args.speaker_characters,
                     args.fast,
                     output_model_path, args.num_jobs, args.verbose, args.clean)
     elif args.nodict == False:
-        align_corpus(corpus_dir,dict_path, output_dir, args.speaker_characters,
+        align_corpus(corpus_dir,dict_path, output_dir, temp_dir, args.speaker_characters,
                     args.fast,
                     output_model_path, args.num_jobs, args.verbose, args.clean)
     unfix_path()
