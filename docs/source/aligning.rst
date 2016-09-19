@@ -16,6 +16,11 @@ Common options for both aligner executables
    the aligner assumes that the directory name is the identifier for the
    speaker
 
+.. cmdoption:: -t DIRECTORY
+               --temp_directory DIRECTORY
+
+   Temporary directory root to use for aligning, default is ``~/Documents/MFA``
+
 .. cmdoption:: -j NUMBER
                --num_jobs NUMBER
 
