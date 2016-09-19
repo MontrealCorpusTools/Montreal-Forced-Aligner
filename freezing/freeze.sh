@@ -8,6 +8,8 @@ pyinstaller --clean -y \
 --exclude-module matplotlib \
 --exclude-module pytz \
 --exclude-module sphinx \
+--exclude-module numpy \
+--exclude-module scipy \
  aligner/command_line/train_and_align.py
 
 pyinstaller --clean -y \
@@ -16,6 +18,8 @@ pyinstaller --clean -y \
 --exclude-module matplotlib \
 --exclude-module pytz \
 --exclude-module sphinx \
+--exclude-module numpy \
+--exclude-module scipy \
 aligner/command_line/align.py
 
 cd dist
