@@ -168,11 +168,11 @@ def textgrid_output_directory():
 
 @pytest.fixture(scope='session')
 def single_speaker_prosodylab_format_directory(large_prosodylab_format_directory):
-    return os.path.join(large_prosodylab_format_directory, '61')
+    return os.path.join(large_prosodylab_format_directory, '121')
 
 @pytest.fixture(scope='session')
 def single_speaker_textgrid_format_directory(large_textgrid_format_directory):
-    return os.path.join(large_textgrid_format_directory, '61')
+    return os.path.join(large_textgrid_format_directory, '121')
 
 @pytest.fixture(scope='session')
 def prosodylab_output_model_path():
