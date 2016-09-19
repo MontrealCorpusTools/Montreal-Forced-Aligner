@@ -13,7 +13,7 @@ class PyTest(TestCommand):
         if os.environ.get('TRAVIS', False):
             self.test_args = ['-x', '--strict', '--verbose', '--tb=long', 'tests']
         else:
-            self.test_args = ['-x', '--strict', '--verbose', '--tb=long', 'tests']
+            self.test_args = ['-x', '--strict', '--verbose', '--tb=long', '--skiplarge', 'tests']
         self.test_suite = True
 
     def run_tests(self):
@@ -24,7 +24,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='0.6.2',
+          version='0.7.0',
           description='',
           long_description='',
           classifiers=[
