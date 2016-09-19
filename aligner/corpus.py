@@ -240,6 +240,10 @@ class Corpus(object):
         self.segments = {}
         self.feat_mapping = {}
         self.cmvn_mapping = {}
+        self.ignored_utterances = []
+        feat_path = os.path.join(self.output_directory, 'feats.scp')
+        if os.path.exists(feat_path):
+            self.feat_mapping = load_scp(feat_path)
 
         if speaker_characters > 0:
             self.speaker_directories = False
@@ -255,6 +259,9 @@ class Corpus(object):
                 wav_path = os.path.join(root, f)
                 if lab_name is not None:
                     utt_name = file_name
+                    if self.feat_mapping and utt_name not in self.feat_mapping:
+                        self.ignored_utterances.append(utt_name)
+                        continue
                     lab_path = os.path.join(root, lab_name)
                     self.text_mapping[utt_name] = load_text(lab_path)
                     if self.speaker_directories:
@@ -296,15 +303,25 @@ class Corpus(object):
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.replace('.','_')
                             if n_channels == 1:
+
+                                if self.feat_mapping and utt_name not in self.feat_mapping:
+                                    self.ignored_utterances.append(utt_name)
+                                    continue
                                 self.segments[utt_name] = '{} {} {}'.format(file_name, begin, end)
                                 self.utt_wav_mapping[file_name] = wav_path
                             else:
                                 if i < num_tiers / 2:
                                     utt_name += '_A'
+                                    if self.feat_mapping and utt_name not in self.feat_mapping:
+                                        self.ignored_utterances.append(utt_name)
+                                        continue
                                     self.segments[utt_name] = '{} {} {}'.format(A_name, begin, end)
                                     self.utt_wav_mapping[A_name] = A_path
                                 else:
-                                    utt_name += 'B'
+                                    utt_name += '_B'
+                                    if self.feat_mapping and utt_name not in self.feat_mapping:
+                                        self.ignored_utterances.append(utt_name)
+                                        continue
                                     self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
                                     self.utt_wav_mapping[B_name] = B_path
                             self.text_mapping[utt_name] = label
@@ -322,8 +339,10 @@ class Corpus(object):
         if bad_speakers:
             raise(SampleRateError('The following speakers had multiple speaking rates: {}.  Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))))
 
+        print(self.num_jobs)
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.speak_utt_mapping)
+        print(self.num_jobs)
         if self.num_jobs < len(self.sample_rates.keys()):
             self.num_jobs = len(self.sample_rates.keys())
             print('The number of jobs was set to {}, due to the different sample rates in the dataset.  If you would like to use fewer parallel jobs, please resample all wav files to the same sample rate.'.format(self.num_jobs))
@@ -620,6 +639,20 @@ class Corpus(object):
                         self.feat_mapping[f[0]] = f[1]
                         outf.write(line + '\n')
                 os.remove(path)
+        if len(self.feat_mapping.keys()) != len(self.utt_speak_mapping.keys()):
+            for k in self.utt_speak_mapping.keys():
+                if k not in self.feat_mapping:
+                    self.ignored_utterances.append(k)
+            for k in self.ignored_utterances:
+                del self.utt_speak_mapping[k]
+                try:
+                    del self.utt_wav_mapping[k]
+                except KeyError:
+                    pass
+                del self.segments[k]
+                del self.text_mapping[k]
+            for k, v in self.speak_utt_mapping.items():
+                self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
 
     def _calc_cmvn(self):
         spk2utt = os.path.join(self.output_directory, 'spk2utt')
@@ -690,7 +723,8 @@ class Corpus(object):
                                         'ark,s,cs:-', '-'],
                                         stdin = f,
                                         stdout = subprocess.PIPE,
-                                        stderr = devnull)
+                                        stderr = subprocess.PIPE)
             stdout, stderr = dim_proc.communicate()
+            print(stderr)
             feats = stdout.decode('utf8').strip()
         return feats
