@@ -3,6 +3,34 @@
 Changelog
 =========
 
+0.7.0
+-----
+
+- Fixed an issue with unicode characters not being correctly parsed when using ``--nodict``
+- Fixed an issue where short intervals in TextGrid were not being properly ignored
+- Added a command line option ``--temp_directory`` to allow for user specification of the
+  temporary directory that MFA stores all files during alignment, with the
+  default of ``~/Documents/MFA``
+- Added logging directory and some logging for when utterances are ignored
+
+0.6.3
+-----
+
+- Improved memory and time efficiency of extracting channels from stereo
+  files, particularly for long sound files
+
+0.6.2
+-----
+
+- Fixed an issue where pretrained models were not being bundled with the source code
+
+0.6.1
+-----
+
+- Fixed an issue with Linux binaries not finding Kaldi binaries
+- English models now use all of LibriSpeech dataset and not just clean
+  subset (increased number of accents being the primary difference between the two)
+
 0.6.0
 -----
 
