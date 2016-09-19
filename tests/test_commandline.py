@@ -31,7 +31,7 @@ def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_ou
     num_jobs = 0
     verbose = False
     clean = True
-    align_included_model(language, corpus_dir,  output_directory,
+    align_included_model(language, corpus_dir,  output_directory, '',
                             speaker_characters, num_jobs, verbose, clean)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
 
@@ -48,7 +48,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     fast = True
     verbose = False
     clean = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '', speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
     assert(os.path.exists(output_model_path))
@@ -67,7 +67,7 @@ def test_align_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     fast = True
     verbose = False
     clean = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '', speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean)
     #assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
 
@@ -82,7 +82,7 @@ def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_d
     num_jobs = 0
     verbose = False
     clean = True
-    align_included_model(language, corpus_dir,  output_directory,
+    align_included_model(language, corpus_dir,  output_directory, '',
                             speaker_characters, num_jobs, verbose, clean)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
 
@@ -99,7 +99,7 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     fast = True
     verbose = False
     clean = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, speaker_characters, fast,
+    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '', speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(output_model_path))
@@ -116,7 +116,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     fast = True
     verbose = True
     clean = True
-    align_corpus_no_dict(corpus_dir,  output_directory, speaker_characters, fast,
+    align_corpus_no_dict(corpus_dir,  output_directory, '', speaker_characters, fast,
             output_model_path, num_jobs, verbose, clean)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(output_model_path))
