@@ -10,7 +10,10 @@ def readme():
 class PyTest(TestCommand):
     def finalize_options(self):
         TestCommand.finalize_options(self)
-        self.test_args = ['-x', '--strict', '--verbose', '--tb=long', '--skiplarge', 'tests']
+        if os.environ.get('TRAVIS', False):
+            self.test_args = ['-x', '--strict', '--verbose', '--tb=long', 'tests']
+        else:
+            self.test_args = ['-x', '--strict', '--verbose', '--tb=long', '--skiplarge', 'tests']
         self.test_suite = True
 
     def run_tests(self):
