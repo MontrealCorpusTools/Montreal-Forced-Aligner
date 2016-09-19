@@ -4,6 +4,7 @@ import subprocess
 import shutil
 import struct
 import wave
+import logging
 from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
@@ -220,11 +221,16 @@ class Corpus(object):
     def __init__(self, directory, output_directory,
                 speaker_characters = 0,
                 num_jobs = 3):
+        log_dir = os.path.join(output_directory, 'logging')
+        os.makedirs(log_dir, exist_ok = True)
+        self.log_file = os.path.join(log_dir, 'corpus.log')
+        logging.basicConfig(filename = self.log_file, level = logging.INFO)
         if not os.path.exists(directory):
             raise(CorpusError('The directory \'{}\' does not exist.'.format(directory)))
         if num_jobs < 1:
             num_jobs = 1
         print('Setting up corpus information...')
+        logging.info('Setting up corpus information...')
         self.directory = directory
         self.output_directory = os.path.join(output_directory, 'train')
         self.temp_directory = os.path.join(self.output_directory, 'temp')
@@ -327,7 +333,9 @@ class Corpus(object):
                             self.text_mapping[utt_name] = label
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
-
+        if len(self.ignored_utterances) > 0:
+            print('Some utterances were ignored due to lack of features, please see {} for more information.'.format(self.log_file))
+            logging.warning('The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
             count = 0
@@ -337,15 +345,17 @@ class Corpus(object):
             if count > 1:
                 bad_speakers.append(speaker)
         if bad_speakers:
-            raise(SampleRateError('The following speakers had multiple speaking rates: {}.  Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))))
+            msg = 'The following speakers had multiple speaking rates: {}.  Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))
+            logging.error(msg)
+            raise(SampleRateError(msg))
 
-        print(self.num_jobs)
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.speak_utt_mapping)
-        print(self.num_jobs)
         if self.num_jobs < len(self.sample_rates.keys()):
             self.num_jobs = len(self.sample_rates.keys())
-            print('The number of jobs was set to {}, due to the different sample rates in the dataset.  If you would like to use fewer parallel jobs, please resample all wav files to the same sample rate.'.format(self.num_jobs))
+            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset.  If you would like to use fewer parallel jobs, please resample all wav files to the same sample rate.'.format(self.num_jobs)
+            print(msg)
+            logging.warning(msg)
         self.find_best_groupings()
 
     def find_best_groupings(self):
@@ -390,7 +400,9 @@ class Corpus(object):
     def speaker_utterance_info(self):
         num_speakers = len(self.speak_utt_mapping.keys())
         average_utterances = sum(len(x) for x in self.speak_utt_mapping.values())/ num_speakers
-        return 'Number of speakers in corpus: {}, average number of utterances per speaker: {}'.format(num_speakers, average_utterances)
+        msg = 'Number of speakers in corpus: {}, average number of utterances per speaker: {}'.format(num_speakers, average_utterances)
+        logging.info(msg)
+        return msg
 
     def parse_mfcc_logs(self):
         pass
@@ -643,6 +655,8 @@ class Corpus(object):
             for k in self.utt_speak_mapping.keys():
                 if k not in self.feat_mapping:
                     self.ignored_utterances.append(k)
+            print('Some utterances were ignored due to lack of features, please see {} for more information.'.format(self.log_file))
+            logging.warning('The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
             for k in self.ignored_utterances:
                 del self.utt_speak_mapping[k]
                 try:
@@ -673,6 +687,7 @@ class Corpus(object):
     def setup_splits(self, dictionary):
         split_dir = self.split_directory
         if not os.path.exists(split_dir):
+            logging.info('Setting up training data...')
             print('Setting up training data...')
             os.makedirs(split_dir)
             self._split_wavs(split_dir)
@@ -723,8 +738,7 @@ class Corpus(object):
                                         'ark,s,cs:-', '-'],
                                         stdin = f,
                                         stdout = subprocess.PIPE,
-                                        stderr = subprocess.PIPE)
+                                        stderr = devnull)
             stdout, stderr = dim_proc.communicate()
-            print(stderr)
             feats = stdout.decode('utf8').strip()
         return feats
