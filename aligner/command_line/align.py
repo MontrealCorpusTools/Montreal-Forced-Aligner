@@ -39,13 +39,17 @@ PRETRAINED_LANGUAGES = ['english']
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose, clean):
-
+def align_corpus(model_path, corpus_dir,  output_directory, temp_dir,
+                    speaker_characters, num_jobs, verbose, clean):
+    if temp_dir == '':
+        temp_dir = TEMP_DIR
+    else:
+        temp_dir = os.path.expanduser(temp_dir)
     corpus_name = os.path.basename(corpus_dir)
     if corpus_name == '':
         corpus_dir = os.path.dirname(corpus_dir)
         corpus_name = os.path.basename(corpus_dir)
-    data_directory = os.path.join(TEMP_DIR, corpus_name)
+    data_directory = os.path.join(temp_dir, corpus_name)
     if clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
@@ -70,7 +74,7 @@ def align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, 
     a.do_align()
     a.export_textgrids()
 
-def align_included_model(language, corpus_dir,  output_directory,
+def align_included_model(language, corpus_dir,  output_directory, temp_dir,
                         speaker_characters, num_jobs, verbose, clean):
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
@@ -82,7 +86,7 @@ def align_included_model(language, corpus_dir,  output_directory,
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
-    align_corpus(model_path, corpus_dir,  output_directory, speaker_characters, num_jobs, verbose, clean)
+    align_corpus(model_path, corpus_dir,  output_directory, temp_dir, speaker_characters, num_jobs, verbose, clean)
 
 if __name__ == '__main__': # pragma: no cover
     mp.freeze_support()
@@ -93,6 +97,8 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('output_dir', help = 'Full path to output directory, will be created if it doesn\'t exist')
     parser.add_argument('-s', '--speaker_characters', type = int, default = 0,
                     help = 'Number of characters of filenames to use for determining speaker, default is to use directory names')
+    parser.add_argument('-t', '--temp_directory', type = str, default = '',
+                    help = 'Temporary directory root to use for aligning, default is ~/Documents/MFA')
     parser.add_argument('-j','--num_jobs', type = int, default = 3,
                     help = 'Number of cores to use while aligning')
     parser.add_argument('-v', '--verbose', help = "Output debug messages about alignment", action = 'store_true')
@@ -104,14 +110,15 @@ if __name__ == '__main__': # pragma: no cover
     model_path = os.path.expanduser(args.model_path)
     output_dir = os.path.expanduser(args.output_dir)
     language = args.language.lower()
+    temp_dir = args.temp_directory
     if language == '' and model_path == '':
         raise(Exception('Both language and model_path cannot be unspecified'))
     elif language != '' and model_path != '':
         raise(Exception('Both language and model_path cannot be specified'))
     if model_path != '':
-        align_corpus(model_path, corpus_dir, output_dir,
+        align_corpus(model_path, corpus_dir, output_dir, temp_dir,
             args.speaker_characters, args.num_jobs, args.verbose, args.clean)
     else:
-        align_included_model(language, corpus_dir, output_dir,
+        align_included_model(language, corpus_dir, output_dir, temp_dir,
             args.speaker_characters, args.num_jobs, args.verbose, args.clean)
     unfix_path()
