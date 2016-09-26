@@ -363,7 +363,7 @@ class BaseAligner(object):
                         stderr = logf)
                 est_proc.communicate()
             self.parse_log_directory(log_directory, i)
-            if i < max_iter_inc:
+            if i < config.max_iter_inc:
                 num_gauss += inc_gauss
         shutil.copy(os.path.join(directory,'{}.mdl'.format(config.num_iters)),
                         os.path.join(directory,'final.mdl'))
