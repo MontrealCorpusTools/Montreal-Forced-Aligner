@@ -75,7 +75,7 @@ class MonophoneConfig(object):
 
     @property
     def inc_gauss_count(self):
-        return int((config.max_gauss_count - config.initial_gauss_count) / config.max_iter_inc)
+        return int((self.max_gauss_count - self.initial_gauss_count) / self.max_iter_inc)
 
 class TriphoneConfig(MonophoneConfig):
     '''
