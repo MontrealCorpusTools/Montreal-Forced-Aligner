@@ -271,7 +271,7 @@ class BaseAligner(object):
         log_path = os.path.join(directory, 'log', 'build_tree.log')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('build-tree')] + context_opts +
-                ['--verbose=1', '--max-leaves={}'.format(config.num_states),
+                ['--verbose=1', '--max-leaves={}'.format(config.initial_gauss_count),
                 '--cluster-thresh={}'.format(config.cluster_threshold),
                  treeacc_path, roots_int_path, questions_qst_path,
                  topo_path, tree_path], stderr = logf)
@@ -287,7 +287,7 @@ class BaseAligner(object):
         log_path = os.path.join(directory, 'log', 'mixup.log')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('gmm-mixup'),
-                    '--mix-up={}'.format(config.num_gauss),
+                    '--mix-up={}'.format(config.initial_gauss_count),
              mdl_path, occs_path, mdl_path], stderr = logf)
         os.remove(treeacc_path)
 
