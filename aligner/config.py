@@ -54,8 +54,7 @@ class MonophoneConfig(object):
                         '--self-loop-scale=0.1']
         self.beam = 10
         self.retry_beam = 40
-        self.max_iter_inc = 30
-        self.totgauss = 1000
+        self.max_gauss_count = 1000
         self.boost_silence = 1.0
         if kwargs.get('align_often', False):
             self.realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
@@ -69,6 +68,14 @@ class MonophoneConfig(object):
 
         for k,v in kwargs.items():
             setattr(self, k, v)
+
+    @property
+    def max_iter_inc(self):
+        return self.num_iters - 10
+
+    @property
+    def inc_gauss_count(self):
+        return int((config.max_gauss_count - config.initial_gauss_count) / config.max_iter_inc)
 
 class TriphoneConfig(MonophoneConfig):
     '''
@@ -119,8 +126,8 @@ class TriphoneConfig(MonophoneConfig):
     '''
     def __init__(self, **kwargs):
         defaults = {'num_iters': 35,
-        'num_states': 3100,
-        'num_gauss': 50000,
+        'initial_gauss_count': 3100,
+        'max_gauss_count': 50000,
         'cluster_threshold': 100}
         defaults.update(kwargs)
         super(TriphoneConfig, self).__init__(**defaults)

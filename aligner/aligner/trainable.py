@@ -124,7 +124,7 @@ class TrainableAligner(BaseAligner):
             est_proc.communicate()
 
     def _do_mono_training(self):
-        self.mono_config.num_gauss = self.get_num_gauss_mono()
+        self.mono_config.initial_gauss_count = self.get_num_gauss_mono()
         self.call_back('Beginning monophone training...')
         self._do_training(self.mono_directory, self.mono_config)
 
