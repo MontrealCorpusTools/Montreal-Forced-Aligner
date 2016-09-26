@@ -325,10 +325,9 @@ class BaseAligner(object):
     def _do_training(self, directory, config):
         if config.realign_iters is None:
             config.realign_iters = list(range(0, config.num_iters, 10))
-        num_gauss = config.num_gauss
+        num_gauss = config.initial_gauss_count
         sil_phones = self.dictionary.silence_csl
-        max_iter_inc = config.num_iters - 10
-        inc_gauss = int((config.totgauss - config.num_gauss) / config.max_iter_inc)
+        inc_gauss = config.inc_gauss_count
         if self.call_back == print:
             iters = tqdm(range(1, config.num_iters))
         else:
