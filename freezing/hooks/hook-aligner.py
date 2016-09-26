@@ -11,7 +11,7 @@ hiddenimports=['six','packaging', 'packaging.version', 'packaging.specifiers',
 thirdparty_dir = os.path.abspath(os.path.join('thirdparty','bin'))
 binaries = [( os.path.join(thirdparty_dir, x), 'thirdparty/bin')
             for x in os.listdir(thirdparty_dir)
-            if not x.endswith('dylib')
+            if not x.endswith('dylib') and not x.endswith('dll')
     ]
 
 
