@@ -6,6 +6,10 @@
 Running the aligner
 *******************
 
+.. note::
+
+   We assume Unix-style slashes in paths here.  If you're using Windows, change the slashes to backslashes ``\``.
+
 Common options for both aligner executables
 -------------------------------------------
 
