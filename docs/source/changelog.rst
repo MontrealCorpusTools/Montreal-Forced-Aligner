@@ -3,6 +3,16 @@
 Changelog
 =========
 
+0.7.2
+-----
+
+- Fixed an issue where speaker character flags were being ignored when parsing TextGrid files
+
+0.7.1
+-----
+
+- Fixed an issue where the number of gaussians was set too low for triphone training
+
 0.7.0
 -----
 
