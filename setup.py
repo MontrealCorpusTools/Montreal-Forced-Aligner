@@ -24,7 +24,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='0.7.0',
+          version='0.7.2',
           description='',
           long_description='',
           classifiers=[
