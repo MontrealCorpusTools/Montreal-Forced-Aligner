@@ -426,9 +426,15 @@ class Corpus(object):
             output_g = []
             for u in g:
                 if not self.segments:
-                    output_g.append([u, self.utt_wav_mapping[u]])
+                    try:
+                        output_g.append([u, self.utt_wav_mapping[u]])
+                    except KeyError:
+                        pass
                 else:
-                    r = self.segments[u].split(' ')[0]
+                    try:
+                        r = self.segments[u].split(' ')[0]
+                    except KeyError:
+                        continue
                     if r not in done:
                         output_g.append([r, self.utt_wav_mapping[r]])
                         done.add(r)
@@ -441,7 +447,10 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in g:
-                output_g.append([u, self.feat_mapping[u]])
+                try:
+                    output_g.append([u, self.feat_mapping[u]])
+                except KeyError:
+                    pass
             output.append(output_g)
         return output
 
@@ -451,9 +460,15 @@ class Corpus(object):
             output_g = []
             for u in g:
                 if dictionary is None:
-                    text = self.text_mapping[u]
+                    try:
+                        text = self.text_mapping[u]
+                    except KeyError:
+                        continue
                 else:
-                    text = self.text_mapping[u].split()
+                    try:
+                        text = self.text_mapping[u].split()
+                    except KeyError:
+                        continue
                     new_text = []
                     for t in text:
                         lookup = dictionary.separate_clitics(t)
@@ -495,7 +510,10 @@ class Corpus(object):
             for g in self.speaker_groups:
                 output_g = []
                 for s in sorted(g):
-                    output_g.append([s, self.cmvn_mapping[s]])
+                    try:
+                        output_g.append([s, self.cmvn_mapping[s]])
+                    except KeyError:
+                        pass
                 output.append(output_g)
         except KeyError:
             raise(CorpusError('Something went wrong while setting up the corpus. Please delete the {} folder and try again.'.format(self.output_directory)))
@@ -507,7 +525,10 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in sorted(g):
-                output_g.append([u, self.utt_speak_mapping[u]])
+                try:
+                    output_g.append([u, self.utt_speak_mapping[u]])
+                except KeyError:
+                    pass
             output.append(output_g)
         return output
 
@@ -517,7 +538,10 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in g:
-                output_g.append([u, self.segments[u]])
+                try:
+                    output_g.append([u, self.segments[u]])
+                except KeyError:
+                    pass
             output.append(output_g)
         return output
 
@@ -527,7 +551,10 @@ class Corpus(object):
         for g in self.speaker_groups:
             output_g = []
             for s in sorted(g):
-                output_g.append([s, sorted(self.speak_utt_mapping[s])])
+                try:
+                    output_g.append([s, sorted(self.speak_utt_mapping[s])])
+                except KeyError:
+                    pass
             output.append(output_g)
         return output
 
