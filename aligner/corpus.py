@@ -294,12 +294,15 @@ class Corpus(object):
                         A_path, B_path = extract_temp_channels(wav_path, self.temp_directory)
                     elif n_channels > 2:
                         raise(Exception('More than two channels'))
+                    if not self.speaker_directories:
+                        speaker_name = f[:speaker_characters]
                     for i, ti in enumerate(tg.tiers):
                         if ti.name.lower() == 'notes':
                             continue
                         if not isinstance(ti, IntervalTier):
                             continue
-                        speaker_name = ti.name
+                        if self.speaker_directories:
+                            speaker_name = ti.name
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             label = interval.mark.lower().strip()
