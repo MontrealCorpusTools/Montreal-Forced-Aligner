@@ -35,7 +35,7 @@ Windows
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd C:\path\to\montreal-forced-aligner``;
    you can copy its path by holding Shift and right clicking on the folder, then
    selecting "Copy as path" and pasting it into the command prompt)
-4. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align`` (these should print usage messages about the commands)
+4. Test the commands ``bin\mfa_align`` and ``bin\mfa_train_and_align`` (these should print usage messages about the commands)
 
 Linux
 =====
