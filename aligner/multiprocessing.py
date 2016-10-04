@@ -226,12 +226,14 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path): # pragma
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w') as logf, \
+        open(ali_path,'w') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')]+ config.scale_opts +
             ['--beam={}'.format(config.beam),
             '--retry-beam={}'.format(config.beam * 4), '--careful=false', mdl,
-        "ark:"+fst_path, "ark:"+feat_path, "ark,t:"+ ali_path],
-        stderr = logf)
+        "ark:"+fst_path, "ark:"+feat_path, "ark,t:-"],
+        stderr = logf,
+        stdout = outf)
         align_proc.communicate()
 
 def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
