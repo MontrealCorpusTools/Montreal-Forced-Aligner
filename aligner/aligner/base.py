@@ -160,9 +160,10 @@ class BaseAligner(object):
         self.corpus.setup_splits(self.dictionary)
 
         shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
-        shutil.copy(os.path.join(model_directory, 'final.mdl'),
+        shutil.copyfile(os.path.join(model_directory, 'final.mdl'),
                                     os.path.join(output_directory, '0.mdl'))
-        shutil.copy(os.path.join(model_directory, 'final.occs'),
+
+        shutil.copyfile(os.path.join(model_directory, 'final.occs'),
                             os.path.join(output_directory, '0.occs'))
 
         feat_type = 'delta'
@@ -171,8 +172,8 @@ class BaseAligner(object):
                             self.corpus.split_directory, self.num_jobs)
         align(0, output_directory, self.corpus.split_directory,
                     optional_silence, self.num_jobs, config)
-        os.rename(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
-        os.rename(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
+        shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
+        shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
 
     def parse_log_directory(self, directory, iteration):
         '''
