@@ -15,7 +15,6 @@ file containing the text transcription of that .wav file.  The .wav and
 its transcription should be in ``givrep_1027_2_1.lab`` (which is just a
 text file with the .lab extension).
 
-
 .. note:: If you have transcriptions in a
    tab-separated text file (or an Excel file, which can be saved as one),
    you can generate .lab files from it using the relabel function of relabel_clean.py.
@@ -46,23 +45,35 @@ The other main format that is supported is long sound files accompanied
 by TextGrids that specify orthographic transcriptions for short intervals
 of speech.
 
-<<PICTURE OF EXAMPLE INPUT - ALA LIBRISPEECH CHAPTER CORPUS>>
 
-Each tier corresponds to a speaker, so it is possible to
+    .. figure:: _static/librispeech_textgrid.png
+        :align: center
+        :alt: Image cannot be displayed in your browser
+
+If the ``-s`` flag is specified, the tier names will not be used as speaker names, and instead the first X characters
+specified by the flag will be used as the speaker name.
+
+By default, each tier corresponds to a speaker (speaker "237" in the above example), so it is possible to
 align speech for multiple speakers per sound file using this format.
 
-<<PICTURE OF MULTIPLE SPEAKER INPUT - ALA SOME OTHER CORPUS>>
+
+    .. figure:: _static/multiple_speakers_textgrid.png
+        :align: center
+        :alt: Image cannot be displayed in your browser
 
 Stereo files are supported as well, where it assumes that if there are
 multiple talkers, the first half of speaker tiers are associated with the first
 channel, and the second half of speaker tiers are associated with the second channel.
 
-<<PICTURE OF STEREO INPUT FILE TEXTGRID - ALA SOME OTHER CORPUS>>
-
 The output from aligning will be a TextGrid with word and phone tiers for
 each speaker.
 
-<<PICTURE OF OUTPUT TEXTGRID >>
+    .. figure:: _static/multiple_speakers_output_textgrid.png
+        :align: center
+        :alt: Image cannot be displayed in your browser
+
+.. note::
+   Intervals in the TextGrid less than 100 milliseconds will not be aligned.
 
 Transcription normalization and dictionary lookup
 =================================================
