@@ -24,17 +24,11 @@ In terms of directory structure, the default configuration assumes that
 files are separated into subdirectories based on their speaker (with one
 speaker per file).
 
-<<PICTURE OF SPEAKER-SUBDIRECTORY STRUCTURE - ALA LIBRISPEECH CORPUS>>
-
 An alternative way to specify which speaker says which
 segment is to use the ``-s`` flag with some number of characters of the file name as the speaker identifier.
 
-<<PICTURE OF SPEAKER_UTTERANCE STRUCTURE - ALA PROSODYLAB EXPERIMENTS>>
-
 The output from aligning this format of data will be TextGrids that have a tier
 for words and a tier for phones.
-
-<<PICTURE OF OUTPUT TEXTGRID - ALA A LIBRISPEECH UTTERANCE>>
 
 .. _textgrid_format:
 
@@ -72,7 +66,7 @@ each speaker.
         :align: center
         :alt: Image cannot be displayed in your browser
 
-.. note::
+.. note ::
    Intervals in the TextGrid less than 100 milliseconds will not be aligned.
 
 Transcription normalization and dictionary lookup
