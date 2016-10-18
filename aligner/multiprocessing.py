@@ -184,15 +184,18 @@ def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path):
     mdl_path = os.path.join(mono_directory,'0.mdl')
     directory = os.path.join(split_directory, str(job_name))
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
-    with open(log_path, 'w') as logf:
+    ali_path = os.path.join(mono_directory,'0.{}.acc'.format(job_name))
+    with open(log_path, 'w') as logf, \
+        open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "ark:"+fst_path,
                     'ark:'+feat_path, 'ark,t:-'],stdout = subprocess.PIPE,
                     stderr = logf)
         stats_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), '--binary=true',
-                mdl_path, 'ark:'+feat_path, 'ark:-',
-                os.path.join(mono_directory,'0.{}.acc'.format(job_name))],
-                stdin = align_proc.stdout,
-                stderr = logf)
+                                        mdl_path, 'ark:'+feat_path, 'ark:-',
+                                        '-'],
+                                        stdin = align_proc.stdout,
+                                        stderr = logf,
+                                        stdout = outf)
         stats_proc.communicate()
 
 def mono_align_equal(mono_directory, split_directory, num_jobs):
