@@ -256,6 +256,8 @@ class Corpus(object):
         else:
             self.speaker_directories = True
         self.sample_rates = defaultdict(set)
+        no_transcription_files = []
+        unsupported_sample_rate = []
         for root, dirs, files in os.walk(self.directory, followlinks = True):
             for f in sorted(files):
                 file_name, ext  = os.path.splitext(f)
@@ -263,6 +265,10 @@ class Corpus(object):
                     continue
                 lab_name = find_lab(f, files)
                 wav_path = os.path.join(root, f)
+                sr = get_sample_rate(wav_path)
+                if sr < 16000:
+                    unsupported_sample_rate.append(wav_path)
+                    continue
                 if lab_name is not None:
                     utt_name = file_name
                     if self.feat_mapping and utt_name not in self.feat_mapping:
@@ -281,6 +287,7 @@ class Corpus(object):
                 else:
                     tg_name = find_textgrid(f, files)
                     if tg_name is None:
+                        no_transcription_files.append(wav_path)
                         continue
                     tg_path = os.path.join(root, tg_name)
                     tg = TextGrid()
@@ -337,8 +344,14 @@ class Corpus(object):
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
         if len(self.ignored_utterances) > 0:
-            print('Some utterances were ignored due to lack of features, please see {} for more information.'.format(self.log_file))
+            print('{} utterance(s) were ignored due to lack of features, please see {} for more information.'.format(len(self.ignored_utterances), self.log_file))
             logging.warning('The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
+        if len(no_transcription_files) > 0:
+            print('{} wav file(s) were ignored because neither a .lab file or a .TextGrid file could be found, please see {} for more information'.format(len(no_transcription_files), self.log_file))
+            logging.warning('The following wav files were ignored due to lack of of a .lab or a .TextGrid file: {}.'.format(', '.join(no_transcription_files)))
+        if len(unsupported_sample_rate) > 0:
+            print('{} wav file(s) were ignored because they had a sample rate less than 16000, which is not currently supported, please see {} for more information'.format(len(unsupported_sample_rate), self.log_file))
+            logging.warning('The following wav files were ignored due to a sample rate lower than 16000: {}.'.format(', '.join(unsupported_sample_rate)))
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
             count = 0
