@@ -3,6 +3,12 @@
 Changelog
 =========
 
+0.7.3
+-----
+
+- Added warning messages and log output when wav files are ignored because they have too low of a sampling rate or
+  no .lab or .TextGrid file associated with them
+
 0.7.2
 -----
 
