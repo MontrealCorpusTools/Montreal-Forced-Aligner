@@ -3,6 +3,13 @@
 Changelog
 =========
 
+0.8.0
+-----
+
+- Fixed an issue where aligning using pretrained models was improperly updating the original model with sparser data
+- Added a flag to turn off speaker adaptation when aligning using a pretrained model
+- Optimized training graph generation when aligning using a pretrained model
+
 0.7.3
 -----
 

@@ -20,7 +20,7 @@ def parse_ctm(ctm_path, dictionary, mode = 'word'):
             filename = line[0]
             begin = float(line[2])
             duration = float(line[3])
-            end = round(begin + duration, 2)
+            end = round(begin + duration, 3)
             label = line[4]
             try:
                 label = mapping[int(label)]
