@@ -224,7 +224,7 @@ class MfccConfig(object):
         if kwargs is None:
             kwargs = {}
         self.job = job
-        self.config_dict = {'use-energy':False}
+        self.config_dict = {'use-energy':False, 'frame-shift':10}
         self.config_dict.update(kwargs)
         self.output_directory = output_directory
         self.write()
