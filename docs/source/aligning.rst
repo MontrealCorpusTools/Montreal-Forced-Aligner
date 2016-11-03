@@ -70,6 +70,11 @@ Extra options (in addition to the common ones listed above):
 
   Specify the language of the pretrained models distributed with the aligner
 
+.. cmdoption:: -n
+               --no_speaker_adaptation
+
+   Flag to disable using speaker adaptation, useful if aligning a small dataset or if speed is more important
+
 .. note::
 
    The arguments ``model_path`` and ``language`` are mutually exclusive
