@@ -1,5 +1,4 @@
 import os
-import shutil
 import math
 import subprocess
 import re
@@ -53,7 +52,7 @@ class Dictionary(object):
                     position_dependent_phones = True, num_sil_states = 5,
                     num_nonsil_states = 3, shared_silence_phones = False,
                     pronunciation_probabilities = True,
-                    sil_prob = 0.5):
+                    sil_prob = 0.5, word_set = None):
         self.output_directory = os.path.join(output_directory, 'dictionary')
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
@@ -80,8 +79,10 @@ class Dictionary(object):
                     continue
                 self.graphemes.update(word)
                 pron = line
-                self.words[word].append(pron)
                 self.nonsil_phones.update(pron)
+                if word_set is not None and word not in word_set:
+                    continue
+                self.words[word].append(pron)
         self.word_pattern = compile_graphemes(self.graphemes)
         self.words['!SIL'].append(['sil'])
         self.words[self.oov_code].append(['spn'])
@@ -303,7 +304,6 @@ class Dictionary(object):
         print('Creating dictionary information...')
         if not os.path.exists(self.phones_dir):
             os.makedirs(self.phones_dir, exist_ok = True)
-
         self._write_graphemes()
         self._write_phone_map_file()
         self._write_phone_sets()

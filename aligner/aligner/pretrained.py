@@ -1,8 +1,13 @@
 import os
+import shutil
+from tqdm import tqdm
+import time
 
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
 from ..dictionary import Dictionary
+
+from ..multiprocessing import (align, calc_fmllr, make_path_safe,thirdparty_binary, subprocess,convert_ali_to_textgrids)
 
 class PretrainedAligner(BaseAligner):
     '''
@@ -25,15 +30,16 @@ class PretrainedAligner(BaseAligner):
         Specifies a call back function for alignment
     '''
     def __init__(self, archive, corpus, output_directory,
-                    temp_directory = None, num_jobs = 3, call_back = None):
+                    temp_directory = None, num_jobs = 3, speaker_independent = False,
+                    call_back = None):
 
         if temp_directory is None:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
         self.output_directory = output_directory
         self.corpus = corpus
-
-        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'))
+        self.speaker_independent = speaker_independent
+        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'), word_set=corpus.word_set)
 
         self.dictionary.write()
         archive.export_triphone_model(self.tri_directory)
@@ -47,11 +53,63 @@ class PretrainedAligner(BaseAligner):
         self.verbose = False
         self.tri_fmllr_config = TriphoneFmllrConfig(**{'realign_iters': [1, 2],
                                                         'fmllr_iters': [1],
-                                                        'num_iters': 3})
+                                                        'num_iters': 3,
+                                                       #'boost_silence': 0
+                                                       })
         self.tri_config = TriphoneConfig()
 
     def do_align(self):
         '''
         Perform alignment while calculating speaker transforms (fMLLR estimation)
         '''
-        self.train_tri_fmllr()
+        self._init_tri()
+        if not self.speaker_independent:
+            self.train_tri_fmllr()
+
+    def _init_tri(self):
+        if not os.path.exists(self.tri_ali_directory):
+            self._align_fmllr()
+        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
+        begin = time.time()
+        self.corpus.setup_splits(self.dictionary)
+        shutil.copy(os.path.join(self.tri_directory,'final.mdl'),
+                        os.path.join(self.tri_fmllr_directory,'1.mdl'))
+        for i in range(self.num_jobs):
+            shutil.copy(os.path.join(self.tri_ali_directory, 'fsts.{}'.format(i)),
+                        os.path.join(self.tri_fmllr_directory, 'fsts.{}'.format(i)))
+            shutil.copy(os.path.join(self.tri_ali_directory, 'trans.{}'.format(i)),
+                        os.path.join(self.tri_fmllr_directory, 'trans.{}'.format(i)))
+
+    def train_tri_fmllr(self):
+        directory = self.tri_fmllr_directory
+        sil_phones = self.dictionary.silence_csl
+        if self.call_back == print:
+            iters = tqdm(range(1, self.tri_fmllr_config.num_iters))
+        else:
+            iters = range(1, self.tri_fmllr_config.num_iters)
+        log_directory = os.path.join(directory, 'log')
+        for i in iters:
+            model_path = os.path.join(directory,'{}.mdl'.format(i))
+            occs_path = os.path.join(directory, '{}.occs'.format(i+1))
+            next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
+            if os.path.exists(next_model_path):
+                continue
+            align(i, directory, self.corpus.split_directory,
+                            self.dictionary.optional_silence_csl,
+                            self.num_jobs, self.tri_fmllr_config)
+            calc_fmllr(directory, self.corpus.split_directory, sil_phones,
+                        self.num_jobs, self.tri_fmllr_config, initial = False, iteration = i)
+            os.rename(model_path, next_model_path)
+            self.parse_log_directory(log_directory, i)
+        os.rename(next_model_path, os.path.join(directory,'final.mdl'))
+
+    def export_textgrids(self):
+        '''
+        Export a TextGrid file for every sound file in the dataset
+        '''
+        if self.speaker_independent:
+            model_directory = self.tri_ali_directory
+        else:
+            model_directory = self.tri_fmllr_directory
+        convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
+                            self.corpus, self.num_jobs)

@@ -230,11 +230,11 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path): # pragma
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     with open(log_path, 'w') as logf, \
-        open(ali_path,'w') as outf:
+        open(ali_path,'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')]+ config.scale_opts +
             ['--beam={}'.format(config.beam),
             '--retry-beam={}'.format(config.beam * 4), '--careful=false', mdl,
-        "ark:"+fst_path, "ark:"+feat_path, "ark,t:-"],
+        "ark:"+fst_path, "ark:"+feat_path, "ark:-"],
         stderr = logf,
         stdout = outf)
         align_proc.communicate()
@@ -300,12 +300,12 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
                         stdin = lin_proc.stdout, stderr = logf)
         align_proc.communicate()
 
-        subprocess.call([thirdparty_binary('nbest-to-ctm'), 'ark:'+aligned_path,
+        subprocess.call([thirdparty_binary('nbest-to-ctm'), '--frame-shift={}'.format(corpus.mfcc_configs[0].config_dict['frame-shift']/1000), 'ark:'+aligned_path,
                                 word_ctm_path], stderr = logf)
         phone_proc = subprocess.Popen([thirdparty_binary('lattice-to-phone-lattice'), model_path,
                     'ark:'+aligned_path, "ark:-"], stdout = subprocess.PIPE,
                     stderr = logf)
-        nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'), "ark:-", phone_ctm_path],
+        nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'), '--frame-shift={}'.format(corpus.mfcc_configs[0].config_dict['frame-shift']/1000), "ark:-", phone_ctm_path],
                         stdin = phone_proc.stdout, stderr = logf)
         nbest_proc.communicate()
 
