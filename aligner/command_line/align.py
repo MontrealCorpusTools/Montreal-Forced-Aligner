@@ -1,5 +1,6 @@
 import sys
 import shutil, os
+import time
 
 
 def fix_path():
@@ -39,8 +40,8 @@ PRETRAINED_LANGUAGES = ['english']
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(model_path, corpus_dir,  output_directory, temp_dir,
-                    speaker_characters, num_jobs, verbose, clean):
+def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debug = False):
+    all_begin = time.time()
     if temp_dir == '':
         temp_dir = TEMP_DIR
     else:
@@ -50,32 +51,50 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir,
         corpus_dir = os.path.dirname(corpus_dir)
         corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
-    if clean:
+    if args.clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
 
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
-    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
+    begin = time.time()
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
+    if debug:
+        print('Wrote corpus information in {} seconds'.format(time.time() - begin))
+    begin = time.time()
     corpus.create_mfccs()
+    if debug:
+        print('Calculated mfccs in {} seconds'.format(time.time() - begin))
     archive = Archive(model_path)
+    begin = time.time()
     a = PretrainedAligner(archive, corpus, output_directory,
-                        temp_directory = data_directory, num_jobs = num_jobs)
-    a.verbose = verbose
+                        temp_directory = data_directory, num_jobs = args.num_jobs, speaker_independent = args.no_speaker_adaptation)
+    if debug:
+        print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
+    a.verbose = args.verbose
+    begin = time.time()
     corpus.setup_splits(a.dictionary)
+    if debug:
+        print('Setup splits in {} seconds'.format(time.time() - begin))
     utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
     if os.path.exists(utt_oov_path):
         shutil.copy(utt_oov_path, output_directory)
     oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
     if os.path.exists(oov_path):
         shutil.copy(oov_path, output_directory)
+    begin = time.time()
     a.do_align()
+    if debug:
+        print('Performed alignment in {} seconds'.format(time.time() - begin))
+    begin = time.time()
     a.export_textgrids()
+    if debug:
+        print('Exported textgrids in {} seconds'.format(time.time() - begin))
+    print('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
-def align_included_model(language, corpus_dir,  output_directory, temp_dir,
-                        speaker_characters, num_jobs, verbose, clean):
+def align_included_model(language, corpus_dir,  output_directory, temp_dir,args):
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
 
@@ -86,7 +105,7 @@ def align_included_model(language, corpus_dir,  output_directory, temp_dir,
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
-    align_corpus(model_path, corpus_dir,  output_directory, temp_dir, speaker_characters, num_jobs, verbose, clean)
+    align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args)
 
 if __name__ == '__main__': # pragma: no cover
     mp.freeze_support()
@@ -104,6 +123,7 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('-v', '--verbose', help = "Output debug messages about alignment", action = 'store_true')
     parser.add_argument('--language', type = str, default = '',
                     help = 'Specify whether to use an included pretrained model (english, french)')
+    parser.add_argument('-n', '--no_speaker_adaptation', help = "Only use speaker independent models, with no speaker adaptation", action = 'store_true')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = os.path.expanduser(args.corpus_dir)
@@ -117,8 +137,8 @@ if __name__ == '__main__': # pragma: no cover
         raise(Exception('Both language and model_path cannot be specified'))
     if model_path != '':
         align_corpus(model_path, corpus_dir, output_dir, temp_dir,
-            args.speaker_characters, args.num_jobs, args.verbose, args.clean)
+            args)
     else:
         align_included_model(language, corpus_dir, output_dir, temp_dir,
-            args.speaker_characters, args.num_jobs, args.verbose, args.clean)
+            args)
     unfix_path()

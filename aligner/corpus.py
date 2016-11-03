@@ -247,6 +247,7 @@ class Corpus(object):
         self.feat_mapping = {}
         self.cmvn_mapping = {}
         self.ignored_utterances = []
+        self.word_set = set()
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -276,6 +277,7 @@ class Corpus(object):
                         continue
                     lab_path = os.path.join(root, lab_name)
                     self.text_mapping[utt_name] = load_text(lab_path)
+                    self.word_set.update(self.text_mapping[utt_name].split())
                     if self.speaker_directories:
                         speaker_id = os.path.basename(root)
                     else:
@@ -341,6 +343,7 @@ class Corpus(object):
                                     self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
                                     self.utt_wav_mapping[B_name] = B_path
                             self.text_mapping[utt_name] = label
+                            self.word_set.update(label.split())
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
         if len(self.ignored_utterances) > 0:
