@@ -11,8 +11,8 @@ from aligner.utils import no_dictionary
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_characters, fast,
-            output_model_path, num_jobs, verbose, clean):
+def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir,
+            output_model_path, args):
     if temp_dir == '':
         temp_dir = TEMP_DIR
     else:
@@ -22,7 +22,7 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_cha
         corpus_dir = os.path.dirname(corpus_dir)
         corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
-    if clean:
+    if args.clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
 
@@ -31,7 +31,7 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_cha
 
     dictionary = Dictionary(dict_path, data_directory)
     dictionary.write()
-    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
@@ -42,14 +42,14 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_cha
     oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
     if os.path.exists(oov_path):
         shutil.copy(oov_path, output_directory)
-    mono_params = {'align_often': not fast}
-    tri_params = {'align_often': not fast}
-    tri_fmllr_params = {'align_often': not fast}
+    mono_params = {'align_often': not args.fast}
+    tri_params = {'align_often': not args.fast}
+    tri_fmllr_params = {'align_often': not args.fast}
     a = TrainableAligner(corpus, dictionary, output_directory,
                         temp_directory = data_directory,
                         mono_params = mono_params, tri_params = tri_params,
-                        tri_fmllr_params = tri_fmllr_params, num_jobs = num_jobs)
-    a.verbose = verbose
+                        tri_fmllr_params = tri_fmllr_params, num_jobs = args.num_jobs)
+    a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
     a.train_tri()
@@ -59,36 +59,36 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir, speaker_cha
     if output_model_path is not None:
         a.save(output_model_path)
 
-def align_corpus_no_dict(corpus_dir, output_directory, temp_dir, speaker_characters, fast,
-        output_model_path, num_jobs, verbose, clean):
+def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
+        output_model_path, args):
     if temp_dir == '':
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(temp_dir)
     corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
-    if clean:
+    if args.clean:
         shutil.rmtree(data_directory, ignore_errors = True)
         shutil.rmtree(output_directory, ignore_errors = True)
 
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
 
-    corpus = Corpus(corpus_dir, data_directory, speaker_characters, num_jobs = num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
     print(corpus.speaker_utterance_info())
     dictionary = no_dictionary(corpus, data_directory)
     dictionary.write()
     corpus.write()
     corpus.create_mfccs()
     corpus.setup_splits(dictionary)
-    mono_params = {'align_often': not fast}
-    tri_params = {'align_often': not fast}
-    tri_fmllr_params = {'align_often': not fast}
+    mono_params = {'align_often': not args.fast}
+    tri_params = {'align_often': not args.fast}
+    tri_fmllr_params = {'align_often': not args.fast}
     a = TrainableAligner(corpus, dictionary, output_directory,
                         temp_directory = data_directory,
                         mono_params = mono_params, tri_params = tri_params,
-                        tri_fmllr_params = tri_fmllr_params, num_jobs = num_jobs)
-    a.verbose = verbose
+                        tri_fmllr_params = tri_fmllr_params, num_jobs = args.num_jobs)
+    a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
     a.train_tri()
@@ -129,11 +129,9 @@ if __name__ == '__main__': # pragma: no cover
     if args.nodict == True and dict_path != '':
         raise(Exception('Dict_path cannot be specified with nodict option'))
     elif args.nodict == True:
-        align_corpus_no_dict(corpus_dir, output_dir, temp_dir, args.speaker_characters,
-                    args.fast,
-                    output_model_path, args.num_jobs, args.verbose, args.clean)
+        align_corpus_no_dict(corpus_dir, output_dir, temp_dir,
+                    output_model_path, args)
     elif args.nodict == False:
-        align_corpus(corpus_dir,dict_path, output_dir, temp_dir, args.speaker_characters,
-                    args.fast,
-                    output_model_path, args.num_jobs, args.verbose, args.clean)
+        align_corpus(corpus_dir,dict_path, output_dir, temp_dir,
+                    output_model_path, args)
     unfix_path()
