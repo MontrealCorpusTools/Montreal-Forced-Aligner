@@ -193,19 +193,22 @@ class BaseAligner(object):
                 continue
             with open(path, 'r') as f:
                 error_files.extend(error_regex.findall(f.read()))
-        with open(os.path.join(directory, 'update.{}.log'.format(iteration)), 'r') as f:
-            data = f.read()
-            m = log_like_regex.search(data)
-            if m is not None:
-                log_like, tot_frames = m.groups()
-                if log_like == 'nan':
-                    raise(NoSuccessfulAlignments('Could not align any files.  Too little data?'))
-                self.call_back('log-likelihood', float(log_like))
-            skipped_transitions = skipped_transition_regex.search(data)
-            self.call_back('skipped transitions', *skipped_transitions.groups())
-            num_too_little_data = len(too_little_data_regex.findall(data))
-            self.call_back('missing data gaussians', num_too_little_data)
-        self.call_back('could not align', error_files)
+        update_path = os.path.join(directory, 'update.{}.log'.format(iteration))
+        if os.path.exists(update_path):
+            with open(update_path, 'r') as f:
+                data = f.read()
+                m = log_like_regex.search(data)
+                if m is not None:
+                    log_like, tot_frames = m.groups()
+                    if log_like == 'nan':
+                        raise(NoSuccessfulAlignments('Could not align any files.  Too little data?'))
+                    self.call_back('log-likelihood', float(log_like))
+                skipped_transitions = skipped_transition_regex.search(data)
+                self.call_back('skipped transitions', *skipped_transitions.groups())
+                num_too_little_data = len(too_little_data_regex.findall(data))
+                self.call_back('missing data gaussians', num_too_little_data)
+        if error_files:
+            self.call_back('could not align', error_files)
 
     def _align_fmllr(self):
         '''
