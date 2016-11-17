@@ -94,7 +94,7 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
         print('Exported textgrids in {} seconds'.format(time.time() - begin))
     print('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
-def align_included_model(language, corpus_dir,  output_directory, temp_dir,args):
+def align_included_model(language, corpus_dir,  output_directory, temp_dir, args):
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
 
