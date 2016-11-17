@@ -66,9 +66,29 @@ class PretrainedAligner(BaseAligner):
         if not self.speaker_independent:
             self.train_tri_fmllr()
 
+    def _align_fmllr(self):
+        '''
+        Align the dataset using speaker-adapted transforms
+        '''
+        model_directory = self.tri_directory
+        output_directory = self.tri_ali_directory
+        self._align_si(fmllr = False)
+        sil_phones = self.dictionary.silence_csl
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
+        if not self.speaker_independent:
+            calc_fmllr(output_directory, self.corpus.split_directory,
+                        sil_phones, self.num_jobs, self.tri_fmllr_config, initial = True)
+            optional_silence = self.dictionary.optional_silence_csl
+            align(0, output_directory, self.corpus.split_directory,
+                        optional_silence, self.num_jobs, self.tri_fmllr_config)
+
     def _init_tri(self):
         if not os.path.exists(self.tri_ali_directory):
             self._align_fmllr()
+        if self.speaker_independent:
+           return
         os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
         begin = time.time()
         self.corpus.setup_splits(self.dictionary)
