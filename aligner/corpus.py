@@ -389,25 +389,22 @@ class Corpus(object):
             remaining_jobs -= 1
         self.speaker_groups = []
         self.mfcc_configs = []
+        job_num = 0
         for k,v in jobs_per_sample_rate.items():
-            step_size = int(round(len(self.sample_rates[k]) / v))
             speakers = sorted(self.sample_rates[k])
-            for x in range(0, len(speakers), step_size):
-                self.speaker_groups.append(speakers[x:x+step_size])
-                c = MfccConfig(self.mfcc_directory, job = len(self.mfcc_configs))
+            groups = [[] for x in range(v)]
+            configs = [MfccConfig(self.mfcc_directory, job = job_num + x) for x in range(v)]
+            ind = 0
+            while speakers:
+                s = speakers.pop(0)
+                groups[ind].append(s)
+                ind += 1
+                if ind >= v:
+                    ind = 0
 
-                c.update({'sample-frequency': k,
-                                    'low-freq':20,
-                                    'high-freq':7800})
-                self.mfcc_configs.append(c)
-
-            for s in speakers:
-                if not any(s in x for x in self.speaker_groups):
-                    self.speaker_groups[-1][-1].append(s)
-        if len(self.speaker_groups) > self.num_jobs: # Hack, need a better splitting algorithm
-            self.speaker_groups[-2].extend(self.speaker_groups[-1])
-            self.speaker_groups = self.speaker_groups[:-1]
-            self.mfcc_configs = self.mfcc_configs[:-1]
+            job_num += v
+            self.speaker_groups.extend(groups)
+            self.mfcc_configs.extend(configs)
         self.groups = []
         for x in self.speaker_groups:
             g = []
@@ -634,6 +631,8 @@ class Corpus(object):
     def _split_wavs(self, directory):
         if not self.segments:
             pattern = 'wav.{}.scp'
+            print('grouped_wav length', len(self.grouped_wav))
+            print('grouped_utt length', len(self.grouped_utt2spk))
             save_groups(self.grouped_wav, directory, pattern)
         else:
             wavscp = os.path.join(directory, 'wav.scp')
