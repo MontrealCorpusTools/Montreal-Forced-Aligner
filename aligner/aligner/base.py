@@ -46,7 +46,7 @@ class BaseAligner(object):
     def __init__(self, corpus, dictionary, output_directory,
                     temp_directory = None, num_jobs = 3, call_back = None,
                     mono_params = None, tri_params = None,
-                    tri_fmllr_params = None):
+                    tri_fmllr_params = None, debug = False):
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
@@ -69,6 +69,7 @@ class BaseAligner(object):
         if self.call_back is None:
             self.call_back = print
         self.verbose = False
+        self.debug = debug
 
     @property
     def mono_directory(self):

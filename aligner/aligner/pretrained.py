@@ -2,12 +2,36 @@ import os
 import shutil
 from tqdm import tqdm
 import time
+import re
 
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
 from ..dictionary import Dictionary
 
 from ..multiprocessing import (align, calc_fmllr, make_path_safe,thirdparty_binary, subprocess,convert_ali_to_textgrids)
+
+
+def parse_transitions(path, phones_path):
+    state_extract_pattern = re.compile(r'Transition-state (\d+): phone = (\w+)')
+    id_extract_pattern = re.compile(r'Transition-id = (\d+)')
+    cur_phone = None
+    current = 0
+    with open(path, encoding='utf8') as f, open(phones_path, 'w', encoding='utf8') as outf:
+        outf.write('{} {}\n'.format('<eps>', 0))
+        for line in f:
+            line = line.strip()
+            if line.startswith('Transition-state'):
+                m = state_extract_pattern.match(line)
+                _, phone = m.groups()
+                if phone != cur_phone:
+                    current = 0
+                    cur_phone = phone
+            else:
+                m = id_extract_pattern.match(line)
+                id = m.groups()[0]
+                outf.write('{}_{} {}\n'.format(phone, current, id))
+                current += 1
+
 
 class PretrainedAligner(BaseAligner):
     '''
@@ -31,8 +55,8 @@ class PretrainedAligner(BaseAligner):
     '''
     def __init__(self, archive, corpus, output_directory,
                     temp_directory = None, num_jobs = 3, speaker_independent = False,
-                    call_back = None):
-
+                    call_back = None, debug = False):
+        self.debug = debug
         if temp_directory is None:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
@@ -43,6 +67,8 @@ class PretrainedAligner(BaseAligner):
 
         self.dictionary.write()
         archive.export_triphone_model(self.tri_directory)
+        log_dir = os.path.join(self.tri_directory, 'log')
+        os.makedirs(log_dir, exist_ok = True)
 
         if self.corpus.num_jobs != num_jobs:
             num_jobs = self.corpus.num_jobs
@@ -57,6 +83,27 @@ class PretrainedAligner(BaseAligner):
                                                        #'boost_silence': 0
                                                        })
         self.tri_config = TriphoneConfig()
+        if self.debug:
+            mdl_path = os.path.join(self.tri_directory,'final.mdl')
+            tree_path = os.path.join(self.tri_directory,'tree')
+            occs_path = os.path.join(self.tri_directory,'final.occs')
+            log_path = os.path.join(self.tri_directory, 'log', 'show_transition.log')
+            transition_path = os.path.join(self.tri_directory, 'transitions.txt')
+            tree_pdf_path = os.path.join(self.tri_directory, 'tree.pdf')
+            tree_dot_path = os.path.join(self.tri_directory, 'tree.dot')
+            phones_path = os.path.join(self.dictionary.output_directory, 'phones.txt')
+            triphones_path = os.path.join(self.tri_directory, 'triphones.txt')
+            with open(log_path, 'w') as logf:
+                with open(transition_path, 'w', encoding='utf8') as f:
+                    subprocess.call([thirdparty_binary('show-transitions'), phones_path, mdl_path, occs_path], stdout=f, stderr=logf)
+                parse_transitions(transition_path, triphones_path)
+                with open(tree_dot_path, 'wb') as treef:
+                    draw_tree_proc = subprocess.Popen([thirdparty_binary('draw-tree'), phones_path, tree_path], stdout=treef, stderr=logf)
+                    draw_tree_proc.communicate()
+                with open(tree_dot_path, 'rb') as treeinf, open(tree_pdf_path, 'wb') as treef:
+                    dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-Gsize=8,10.5'], stdin=treeinf, stdout=treef, stderr=logf)
+                    dot_proc.communicate()
+
 
     def do_align(self):
         '''
@@ -72,6 +119,9 @@ class PretrainedAligner(BaseAligner):
         '''
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
+        os.makedirs(output_directory, exist_ok=True)
+        shutil.copyfile(os.path.join(self.tri_directory,'triphones.txt'),
+                        os.path.join(self.tri_ali_directory,'triphones.txt'))
         self._align_si(fmllr = False)
         sil_phones = self.dictionary.silence_csl
 
@@ -92,8 +142,10 @@ class PretrainedAligner(BaseAligner):
         os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
         begin = time.time()
         self.corpus.setup_splits(self.dictionary)
+
         shutil.copy(os.path.join(self.tri_directory,'final.mdl'),
                         os.path.join(self.tri_fmllr_directory,'1.mdl'))
+
         for i in range(self.num_jobs):
             shutil.copy(os.path.join(self.tri_ali_directory, 'fsts.{}'.format(i)),
                         os.path.join(self.tri_fmllr_directory, 'fsts.{}'.format(i)))
