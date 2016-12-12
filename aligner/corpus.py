@@ -378,6 +378,14 @@ class Corpus(object):
         self.find_best_groupings()
 
     def find_best_groupings(self):
+        if self.segments:
+            ratio = len(self.segments.keys()) / len(self.utt_speak_mapping.keys())
+            segment_job_num = int(ratio * self.num_jobs)
+            if segment_job_num == 0:
+                segment_job_num = 1
+        else:
+            segment_job_num = 0
+        full_wav_job_num = self.num_jobs - segment_job_num
         num_sample_rates = len(self.sample_rates.keys())
         jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
         remaining_jobs = self.num_jobs - num_sample_rates
@@ -393,7 +401,10 @@ class Corpus(object):
         for k,v in jobs_per_sample_rate.items():
             speakers = sorted(self.sample_rates[k])
             groups = [[] for x in range(v)]
-            configs = [MfccConfig(self.mfcc_directory, job = job_num + x) for x in range(v)]
+
+            configs = [MfccConfig(self.mfcc_directory, job = job_num + x, kwargs={'sample-frequency': k,
+                      'low-freq': 20,
+                      'high-freq': 7800}) for x in range(v)]
             ind = 0
             while speakers:
                 s = speakers.pop(0)
@@ -629,14 +640,10 @@ class Corpus(object):
         save_groups(self.grouped_spk2utt, directory, pattern)
 
     def _split_wavs(self, directory):
-        if not self.segments:
-            pattern = 'wav.{}.scp'
-            print('grouped_wav length', len(self.grouped_wav))
-            print('grouped_utt length', len(self.grouped_utt2spk))
-            save_groups(self.grouped_wav, directory, pattern)
-        else:
-            wavscp = os.path.join(directory, 'wav.scp')
-            output_mapping(self.utt_wav_mapping, wavscp)
+        pattern = 'wav.{}.scp'
+        print('grouped_wav length', len(self.grouped_wav))
+        print('grouped_utt length', len(self.grouped_utt2spk))
+        save_groups(self.grouped_wav, directory, pattern)
 
 
     def _split_feats(self, directory):

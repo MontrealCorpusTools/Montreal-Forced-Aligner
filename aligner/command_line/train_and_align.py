@@ -11,6 +11,7 @@ from aligner.utils import no_dictionary
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
+
 def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir,
             output_model_path, args):
     if temp_dir == '':
@@ -29,12 +30,12 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir,
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
 
-    dictionary = Dictionary(dict_path, data_directory)
-    dictionary.write()
     corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
+    dictionary = Dictionary(dict_path, data_directory, word_set=corpus.word_set)
+    dictionary.write()
     corpus.setup_splits(dictionary)
     utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
     if os.path.exists(utt_oov_path):
@@ -59,9 +60,10 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir,
     if output_model_path is not None:
         a.save(output_model_path)
 
+
 def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
         output_model_path, args):
-    if temp_dir == '':
+    if not temp_dir:
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(temp_dir)
