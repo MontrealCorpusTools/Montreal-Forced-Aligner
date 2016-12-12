@@ -14,8 +14,9 @@ def compile_graphemes(graphemes):
     string = ''.join(x for x in graphemes if x != '-')
     return re.compile(base.format(string))
 
+
 class Dictionary(object):
-    '''
+    """
     Class containing information about a pronunciation dictionary
 
     Parameters
@@ -35,24 +36,25 @@ class Dictionary(object):
         Number of states to use for non-silence phones, defaults to 3
     shared_silence_phones : bool, optional
         Specify whether to share states across all silence phones, defaults
-        to False
+        to True
     pronunciation probabilities : bool, optional
         Specifies whether to model different pronunciation probabilities
         or to treat each entry as a separate word, defaults to True
     sil_prob : float, optional
         Probability of optional silences following words, defaults to 0.5
-    '''
+    """
+
     topo_template = '<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>'
     topo_sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
     topo_transition_template = '<Transition> {} {}'
     positions = ["_B", "_E", "_I", "_S"]
     clitic_markers = ["'", '-']
 
-    def __init__(self, input_path, output_directory, oov_code = '<unk>',
-                    position_dependent_phones = True, num_sil_states = 5,
-                    num_nonsil_states = 3, shared_silence_phones = False,
-                    pronunciation_probabilities = True,
-                    sil_prob = 0.5, word_set = None):
+    def __init__(self, input_path, output_directory, oov_code='<unk>',
+                 position_dependent_phones=True, num_sil_states=5,
+                 num_nonsil_states=3, shared_silence_phones=True,
+                 pronunciation_probabilities=True,
+                 sil_prob=0.25, word_set=None):
         self.output_directory = os.path.join(output_directory, 'dictionary')
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
@@ -64,11 +66,12 @@ class Dictionary(object):
 
         self.words = defaultdict(list)
         self.nonsil_phones = set()
-        self.sil_phones = set(['sil', 'spn'])
-        self.optional_silence = 'sil'
+        self.sil_phones = {'sp', 'spn', 'sil'}
+        self.optional_silence = 'sp'
+        self.nonoptional_silence = 'sil'
         self.disambig = set()
         self.graphemes = set()
-        with open(input_path, 'r', encoding = 'utf8') as inf:
+        with open(input_path, 'r', encoding='utf8') as inf:
             for line in inf:
                 line = line.strip()
                 if not line:
@@ -79,12 +82,13 @@ class Dictionary(object):
                     continue
                 self.graphemes.update(word)
                 pron = line
-                self.nonsil_phones.update(pron)
+                if not any(x in self.sil_phones for x in pron):
+                    self.nonsil_phones.update(pron)
                 if word_set is not None and word not in word_set:
                     continue
                 self.words[word].append(pron)
         self.word_pattern = compile_graphemes(self.graphemes)
-        self.words['!SIL'].append(['sil'])
+        self.words['!sil'].append(['sp'])
         self.words[self.oov_code].append(['spn'])
         self.phone_mapping = {}
         i = 0
@@ -104,6 +108,7 @@ class Dictionary(object):
                 i += 1
                 self.phone_mapping[p] = i
         for p in sorted(self.disambig):
+            print(p)
             i += 1
             self.phone_mapping[p] = i
 
@@ -121,9 +126,9 @@ class Dictionary(object):
         self.oovs_found = set()
 
     def to_int(self, item):
-        '''
+        """
         Convert a given word into its integer id
-        '''
+        """
         if item == '':
             return None
         item = self._lookup(item)
@@ -133,15 +138,15 @@ class Dictionary(object):
         return self.words_mapping[item]
 
     def save_oovs_found(self, directory):
-        '''
+        """
         Save all out of vocabulary items to a file in the specified directory
 
         Parameters
         ----------
         directory : str
             Path to directory to save ``oovs_found.txt``
-        '''
-        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding = 'utf8') as f:
+        """
+        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding='utf8') as f:
             for oov in sorted(self.oovs_found):
                 f.write(oov + '\n')
         self.oovs_found = set()
@@ -178,7 +183,7 @@ class Dictionary(object):
         count = 0
         for i in chars:
             if i in self.clitic_markers:
-                count = count + 1
+                count += 1
         if item not in self.words:
             for i in range(count):
                 for punc in chars:
@@ -205,9 +210,9 @@ class Dictionary(object):
                         chars = list(option2nopunc)
         else:
             return [item]
-        if vocab == []:
+        if not vocab:
             return [item]
-        elif len(vocab) > 0:
+        else:
             unk = []
             for i in vocab:
                 if i not in self.words:
@@ -218,36 +223,36 @@ class Dictionary(object):
 
     @property
     def reversed_word_mapping(self):
-        '''
+        """
         A mapping of integer ids to words
-        '''
+        """
         mapping = {}
-        for k,v in self.words_mapping.items():
+        for k, v in self.words_mapping.items():
             mapping[v] = k
         return mapping
 
     @property
     def reversed_phone_mapping(self):
-        '''
+        """
         A mapping of integer ids to phones
-        '''
+        """
         mapping = {}
-        for k,v in self.phone_mapping.items():
+        for k, v in self.phone_mapping.items():
             mapping[v] = k
         return mapping
 
     @property
     def oov_int(self):
-        '''
+        """
         The integer id for out of vocabulary items
-        '''
+        """
         return self.words_mapping[self.oov_code]
 
     @property
     def positional_sil_phones(self):
-        '''
+        """
         List of silence phones with positions
-        '''
+        """
         sil_phones = []
         for p in sorted(self.sil_phones):
             sil_phones.append(p)
@@ -257,9 +262,9 @@ class Dictionary(object):
 
     @property
     def positional_nonsil_phones(self):
-        '''
+        """
         List of non-silence phones with positions
-        '''
+        """
         nonsil_phones = []
         for p in sorted(self.nonsil_phones):
             for pos in self.positions:
@@ -268,42 +273,42 @@ class Dictionary(object):
 
     @property
     def optional_silence_csl(self):
-        '''
+        """
         Phone id of the optional silence phone
-        '''
+        """
         return '{}'.format(self.phone_mapping[self.optional_silence])
 
     @property
     def silence_csl(self):
-        '''
+        """
         A colon-separated list (as a string) of silence phone ids
-        '''
+        """
         if self.position_dependent_phones:
-            return ':'.join(map(str,(self.phone_mapping[x] for x in self.positional_sil_phones)))
+            return ':'.join(map(str, (self.phone_mapping[x] for x in self.positional_sil_phones)))
         else:
-            return ':'.join(map(str,(self.phone_mapping[x] for x in self.sil_phones)))
+            return ':'.join(map(str, (self.phone_mapping[x] for x in self.sil_phones)))
 
     @property
     def phones_dir(self):
-        '''
+        """
         Directory to store information Kaldi needs about phones
-        '''
+        """
         return os.path.join(self.output_directory, 'phones')
 
     @property
     def phones(self):
-        '''
+        """
         The set of all phones (silence and non-silence)
-        '''
+        """
         return self.sil_phones | self.nonsil_phones
 
     def write(self):
-        '''
+        """
         Write the files necessary for Kaldi
-        '''
+        """
         print('Creating dictionary information...')
         if not os.path.exists(self.phones_dir):
-            os.makedirs(self.phones_dir, exist_ok = True)
+            os.makedirs(self.phones_dir, exist_ok=True)
         self._write_graphemes()
         self._write_phone_map_file()
         self._write_phone_sets()
@@ -314,23 +319,23 @@ class Dictionary(object):
         self._write_word_file()
         self._write_fst_text()
         self._write_fst_binary()
-        #self.cleanup()
+        # self.cleanup()
 
     def cleanup(self):
-        '''
+        """
         Clean up temporary files in the output directory
-        '''
+        """
         os.remove(os.path.join(self.output_directory, 'temp.fst'))
         os.remove(os.path.join(self.output_directory, 'lexicon.text.fst'))
 
     def _write_graphemes(self):
         outfile = os.path.join(self.output_directory, 'graphemes.txt')
-        with open(outfile, 'w', encoding = 'utf8') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
             for char in sorted(self.graphemes):
                 f.write(char + '\n')
 
     def export_lexicon(self, path):
-        with open(path, 'w', encoding = 'utf8') as f:
+        with open(path, 'w', encoding='utf8') as f:
             for w in sorted(self.words.keys()):
                 for p in sorted(self.words[w]):
                     phones = ' '.join(p)
@@ -338,7 +343,7 @@ class Dictionary(object):
 
     def _write_phone_map_file(self):
         outfile = os.path.join(self.output_directory, 'phone_map.txt')
-        with open(outfile, 'w', encoding = 'utf8') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
             for sp in self.sil_phones:
                 if self.position_dependent_phones:
                     new_phones = [sp+x for x in ['', ''] + self.positions]
@@ -354,18 +359,17 @@ class Dictionary(object):
 
     def _write_phone_symbol_table(self):
         outfile = os.path.join(self.output_directory, 'phones.txt')
-        with open(outfile, 'w', encoding = 'utf8') as f:
-            for p, i in sorted(self.phone_mapping.items(), key = lambda x: x[1]):
+        with open(outfile, 'w', encoding='utf8') as f:
+            for p, i in sorted(self.phone_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(p, i))
 
     def _write_word_boundaries(self):
         boundary_path = os.path.join(self.output_directory, 'phones', 'word_boundary.txt')
         boundary_int_path = os.path.join(self.output_directory, 'phones', 'word_boundary.int')
-        with open(boundary_path, 'w', encoding = 'utf8') as f, \
-            open(boundary_int_path, 'w', encoding ='utf8') as intf:
+        with open(boundary_path, 'w', encoding='utf8') as f,\
+                open(boundary_int_path, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
-                for p in sorted(self.phone_mapping.keys(),
-                            key = lambda x: self.phone_mapping[x]):
+                for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
                     if p == '<eps>':
                         continue
                     cat = 'nonword'
@@ -384,19 +388,18 @@ class Dictionary(object):
         words_path = os.path.join(self.output_directory, 'words.txt')
 
         with open(words_path, 'w', encoding = 'utf8') as f:
-            for w, i in sorted(self.words_mapping.items(), key = lambda x: x[1]):
+            for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(w, i))
 
     def _write_topo(self):
         filepath = os.path.join(self.output_directory, 'topo')
         sil_transp = 1 / (self.num_sil_states - 1)
-        sil_transp = 1 / (self.num_sil_states - 1)
         initial_transition = [self.topo_transition_template.format(x, sil_transp)
-                                for x in range(self.num_sil_states - 1)]
+                              for x in range(self.num_sil_states - 1)]
         middle_transition = [self.topo_transition_template.format(x, sil_transp)
-                                for x in range(1, self.num_sil_states)]
+                             for x in range(1, self.num_sil_states)]
         final_transition = [self.topo_transition_template.format(self.num_sil_states - 1, 0.75),
-                                self.topo_transition_template.format(self.num_sil_states, 0.25)]
+                            self.topo_transition_template.format(self.num_sil_states, 0.25)]
         with open(filepath, 'w') as f:
             f.write('<Topology>\n')
             f.write("<TopologyEntry>\n")
@@ -407,8 +410,8 @@ class Dictionary(object):
                 phones = sorted(self.nonsil_phones)
             f.write("{}\n".format(' '.join(str(self.phone_mapping[x]) for x in phones)))
             f.write("</ForPhones>\n")
-            states = [self.topo_template.format(cur_state = x, next_state = x + 1)
-                        for x in range(self.num_nonsil_states)]
+            states = [self.topo_template.format(cur_state=x, next_state=x + 1)
+                      for x in range(self.num_nonsil_states)]
             f.write('\n'.join(states))
             f.write("\n<State> {} </State>\n".format(self.num_nonsil_states))
             f.write("</TopologyEntry>\n")
@@ -429,8 +432,7 @@ class Dictionary(object):
                     transition = ' '.join(final_transition)
                 else:
                     transition = ' '.join(middle_transition)
-                states.append(self.topo_sil_template.format(cur_state = i,
-                                                transitions = transition))
+                states.append(self.topo_sil_template.format(cur_state=i, transitions=transition))
             f.write('\n'.join(states))
             f.write("\n<State> {} </State>\n".format(self.num_sil_states))
             f.write("</TopologyEntry>\n")
@@ -438,7 +440,7 @@ class Dictionary(object):
 
     def _write_phone_sets(self):
         sharesplit = ['shared', 'split']
-        if self.shared_silence_phones:
+        if not self.shared_silence_phones:
             sil_sharesplit = ['not-shared', 'not-split']
         else:
             sil_sharesplit = sharesplit
@@ -449,13 +451,12 @@ class Dictionary(object):
         sets_int_file = os.path.join(self.output_directory, 'phones', 'sets.int')
         roots_int_file = os.path.join(self.output_directory, 'phones', 'roots.int')
 
+        with open(sets_file, 'w', encoding='utf8') as setf,\
+                open(roots_file, 'w', encoding='utf8') as rootf,\
+                open(sets_int_file, 'w', encoding='utf8') as setintf,\
+                open(roots_int_file, 'w', encoding='utf8') as rootintf:
 
-        with open(sets_file, 'w', encoding = 'utf8') as setf, \
-                    open(roots_file, 'w', encoding = 'utf8') as rootf,\
-                    open(sets_int_file, 'w', encoding = 'utf8') as setintf, \
-                    open(roots_int_file, 'w', encoding = 'utf8') as rootintf:
-
-            #process silence phones
+            # process silence phones
             for i, sp in enumerate(self.sil_phones):
                 if self.position_dependent_phones:
                     mapped = [sp+x for x in [''] + self.positions]
@@ -472,10 +473,10 @@ class Dictionary(object):
                 rootf.write(' '.join(line) + '\n')
                 rootintf.write(' '.join(map(str, lineint)) + '\n')
 
-            #process nonsilence phones
+            # process nonsilence phones
             for nsp in sorted(self.nonsil_phones):
                 if self.position_dependent_phones:
-                    mapped = [nsp+x for x in  self.positions]
+                    mapped = [nsp+x for x in self.positions]
                 else:
                     mapped = [nsp]
                 setf.write(' '.join(mapped) + '\n')
@@ -488,8 +489,8 @@ class Dictionary(object):
     def _write_extra_questions(self):
         phone_extra = os.path.join(self.phones_dir, 'extra_questions.txt')
         phone_extra_int = os.path.join(self.phones_dir, 'extra_questions.int')
-        with open(phone_extra, 'w', encoding = 'utf8') as outf, \
-            open(phone_extra_int, 'w', encoding = 'utf8') as intf:
+        with open(phone_extra, 'w', encoding='utf8') as outf,\
+                open(phone_extra_int, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
                 sils = sorted(self.positional_sil_phones)
             else:
@@ -520,7 +521,7 @@ class Dictionary(object):
         phones_file_path = os.path.join(self.output_directory, 'phones.txt')
         words_file_path = os.path.join(self.output_directory, 'words.txt')
 
-
+        log_path = os.path.join(self.output_directory, 'fst.log')
         output_fst = os.path.join(self.output_directory, 'L.fst')
         temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
         subprocess.call([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
@@ -531,13 +532,25 @@ class Dictionary(object):
         subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
                     temp_fst_path, output_fst])
 
+        dot_path = os.path.join(self.output_directory, 'L.dot')
+        with open(log_path, 'w') as logf:
+            draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'),  '--portrait=true',
+                                          '--isymbols={}'.format(phones_file_path),
+                                          '--osymbols={}'.format(words_file_path), output_fst, dot_path],
+                                         stderr=logf)
+            draw_proc.communicate()
+            dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path], stderr=logf)
+            dot_proc.communicate()
+
     def _write_fst_text(self):
         lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
         if self.sil_prob != 0:
             silphone = self.optional_silence
+            nonoptsil = self.nonoptional_silence
+
             def is_sil(element):
-                return element == silphone
-            silcost = -1 * math.log(self.sil_prob);
+                return element in [silphone, silphone + '_S']
+            silcost = -1 * math.log(self.sil_prob)
             nosilcost = -1 * math.log(1.0 - self.sil_prob)
             startstate = 0
             loopstate = 1
@@ -546,13 +559,13 @@ class Dictionary(object):
             loopstate = 0
             nextstate = 1
 
-        with open(lexicon_fst_path, 'w', encoding = 'utf8') as outf:
-            if self.sil_prob > 0:
+        with open(lexicon_fst_path, 'w', encoding='utf8') as outf:
+            if self.sil_prob != 0:
 
-                outf.write('\t'.join(map(str,[startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
+                outf.write('\t'.join(map(str, [startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
 
-                outf.write('\t'.join(map(str,[startstate, loopstate, silphone, '<eps>',silcost]))+"\n")
-                outf.write('\t'.join(map(str,[silstate, loopstate, silphone, '<eps>']))+"\n")
+                outf.write('\t'.join(map(str, [startstate, loopstate, nonoptsil, '<eps>',silcost]))+"\n")
+                outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>']))+"\n")
                 nextstate = 3
             for w in sorted(self.words.keys()):
                 for phones in sorted(self.words[w]):
@@ -585,35 +598,45 @@ class Dictionary(object):
                         if len(phones) > 0:
                             ns = nextstate
                             nextstate += 1
-                            outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                            outf.write('\t'.join(map(str, [s, ns, p, word_or_eps])) + pron_cost_string + '\n')
                             word_or_eps = '<eps>'
                             pron_cost_string = ""
                             pron_cost = 0.0
                             s = ns
                         elif self.sil_prob == 0:
                             ns = loopstate
-                            outf.write('\t'.join(map(str,[s, ns, p, word_or_eps])) + pron_cost_string + '\n')
+                            outf.write('\t'.join(map(str, [s, ns, p, word_or_eps])) + pron_cost_string + '\n')
                             word_or_eps = '<eps>'
                             pron_cost_string = ""
                             s = ns
                         else:
                             if not is_sil(p):
                                 local_nosilcost = nosilcost + pron_cost
-                                local_silcost = silcost + pron_cost;
-                                outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
-                                outf.write('\t'.join(map(str,[s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                                local_silcost = silcost + pron_cost
+                                outf.write('\t'.join(map(str, [s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
+                                outf.write('\t'.join(map(str, [s, silstate, p, word_or_eps, local_silcost]))+"\n")
                             else:
-                                outf.write('\t'.join(map(str,[s, loopstate, p, word_or_eps]))+pron_cost_string+"\n")
+                                local_nosilcost = nosilcost + pron_cost
+                                local_silcost = silcost + pron_cost
+                                if w == '!sil':
+                                    outf.write('\t'.join(map(str, [s, loopstate, silphone, word_or_eps])) +
+                                               pron_cost_string+"\n")
+                                else:
+                                    # outf.write('\t'.join(map(str,[s, loopstate, nonoptsil, word_or_eps]))+pron_cost_string+"\n")
+                                    outf.write('\t'.join(map(str, [s, loopstate, nonoptsil, word_or_eps, local_nosilcost])) +
+                                               "\n")
+                                    outf.write('\t'.join(map(str, [s, silstate, nonoptsil, word_or_eps, local_silcost])) +
+                                               "\n")
             outf.write("{}\t{}\n".format(loopstate, 0))
 
 
 class OrthographicDictionary(Dictionary):
 
-    def __init__(self, input_dict, output_directory, oov_code = '<unk>',
-                    position_dependent_phones = True, num_sil_states = 5,
-                    num_nonsil_states = 3, shared_silence_phones = False,
-                    pronunciation_probabilities = True,
-                    sil_prob = 0.5):
+    def __init__(self, input_dict, output_directory, oov_code='<unk>',
+                 position_dependent_phones=True, num_sil_states=5,
+                 num_nonsil_states=3, shared_silence_phones=False,
+                 pronunciation_probabilities=True,
+                 sil_prob=0.5):
         self.output_directory = os.path.join(output_directory, 'dictionary')
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
