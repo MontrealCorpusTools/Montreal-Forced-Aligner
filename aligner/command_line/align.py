@@ -19,6 +19,7 @@ def fix_path():
         os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
         os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 
+
 def unfix_path():
     if sys.platform == 'win32':
         sep = ';'
@@ -32,7 +33,6 @@ import argparse
 import multiprocessing as mp
 
 from aligner.corpus import Corpus
-from aligner.dictionary import Dictionary
 from aligner.aligner import PretrainedAligner
 from aligner.archive import Archive
 
@@ -40,7 +40,8 @@ PRETRAINED_LANGUAGES = ['english']
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debug = False):
+
+def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debug=False):
     all_begin = time.time()
     if temp_dir == '':
         temp_dir = TEMP_DIR
@@ -52,13 +53,13 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
         corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.clean:
-        shutil.rmtree(data_directory, ignore_errors = True)
-        shutil.rmtree(output_directory, ignore_errors = True)
+        shutil.rmtree(data_directory, ignore_errors=True)
+        shutil.rmtree(output_directory, ignore_errors=True)
 
-    os.makedirs(data_directory, exist_ok = True)
-    os.makedirs(output_directory, exist_ok = True)
+    os.makedirs(data_directory, exist_ok=True)
+    os.makedirs(output_directory, exist_ok=True)
     begin = time.time()
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs=args.num_jobs)
     print(corpus.speaker_utterance_info())
     corpus.write()
     if debug:
@@ -69,8 +70,8 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
         print('Calculated mfccs in {} seconds'.format(time.time() - begin))
     archive = Archive(model_path)
     begin = time.time()
-    a = PretrainedAligner(archive, corpus, output_directory,
-                        temp_directory = data_directory, num_jobs = args.num_jobs, speaker_independent = args.no_speaker_adaptation)
+    a = PretrainedAligner(archive, corpus, output_directory, temp_directory=data_directory,
+                          num_jobs = args.num_jobs, speaker_independent=args.no_speaker_adaptation)
     if debug:
         print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
     a.verbose = args.verbose
@@ -94,6 +95,7 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
         print('Exported textgrids in {} seconds'.format(time.time() - begin))
     print('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
+
 def align_included_model(language, corpus_dir,  output_directory, temp_dir, args):
     if language not in PRETRAINED_LANGUAGES:
         raise(Exception('The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(language, ', '.join(PRETRAINED_LANGUAGES))))
@@ -107,7 +109,8 @@ def align_included_model(language, corpus_dir,  output_directory, temp_dir, args
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
     align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args)
 
-if __name__ == '__main__': # pragma: no cover
+
+if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
 
     parser = argparse.ArgumentParser()

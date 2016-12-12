@@ -6,6 +6,7 @@ from aligner.corpus import Corpus
 from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 
+
 def test_basic(basic_dict_path, basic_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
@@ -17,6 +18,15 @@ def test_basic(basic_dict_path, basic_dir, generated_dir):
     assert(d.get_feat_dim() == '39')
 
 
+def test_extra(sick_dict, extra_dir, generated_dir):
+    output_directory = os.path.join(generated_dir, 'extra')
+    corpus = Corpus(extra_dir, output_directory, num_jobs = 2)
+    corpus.write()
+    corpus.create_mfccs()
+    corpus.setup_splits(sick_dict)
+
+
+
 def test_stereo(basic_dict_path, textgrid_directory, generated_dir):
     temp = os.path.join(generated_dir, 'stereo')
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
@@ -26,6 +36,7 @@ def test_stereo(basic_dict_path, textgrid_directory, generated_dir):
     d.create_mfccs()
     d.setup_splits(dictionary)
     assert(d.get_feat_dim() == '39')
+
 
 def test_short_segments(textgrid_directory, generated_dir):
     temp = os.path.join(generated_dir, 'short_segments')
@@ -39,6 +50,7 @@ def test_short_segments(textgrid_directory, generated_dir):
     assert(len(corpus.utt_wav_mapping.keys()) == 1)
     assert(len(corpus.segments.keys()) == 2)
     assert(len(corpus.ignored_utterances) == 1)
+
 
 def test_speaker_groupings(large_prosodylab_format_directory, generated_dir):
     output_directory = os.path.join(generated_dir, 'large')
