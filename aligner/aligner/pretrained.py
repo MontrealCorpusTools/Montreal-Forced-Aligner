@@ -120,7 +120,8 @@ class PretrainedAligner(BaseAligner):
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
         os.makedirs(output_directory, exist_ok=True)
-        shutil.copyfile(os.path.join(self.tri_directory,'triphones.txt'),
+        if self.debug:
+            shutil.copyfile(os.path.join(self.tri_directory,'triphones.txt'),
                         os.path.join(self.tri_ali_directory,'triphones.txt'))
         self._align_si(fmllr = False)
         sil_phones = self.dictionary.silence_csl
