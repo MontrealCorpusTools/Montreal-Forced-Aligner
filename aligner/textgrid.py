@@ -33,20 +33,23 @@ def parse_ctm(ctm_path, dictionary, mode = 'word'):
             file_dict[filename].append([begin, end, label])
     return file_dict
 
-def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
-
+def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, frameshift=0.01):
     if not os.path.exists(out_directory):
         os.makedirs(out_directory, exist_ok=True)
     if not corpus.segments:
-        for i,(k,v) in enumerate(word_ctm.items()):
+        for i,(k,v) in enumerate(sorted(word_ctm.items())):
             maxtime = corpus.get_wav_duration(k)
             try:
                 tg = TextGrid(maxTime = maxtime)
                 wordtier = IntervalTier(name = 'words', maxTime = maxtime)
                 phonetier = IntervalTier(name = 'phones', maxTime = maxtime)
                 for interval in v:
+                    if maxtime - interval[1] < frameshift:  # Fix rounding issues
+                        interval[1] = maxtime
                     wordtier.add(*interval)
                 for interval in phone_ctm[k]:
+                    if maxtime - interval[1] < frameshift:
+                        interval[1] = maxtime
                     phonetier.add(*interval)
                 tg.append(wordtier)
                 tg.append(phonetier)
@@ -58,11 +61,11 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
                 outpath = os.path.join(speaker_directory, k + '.TextGrid')
                 tg.write(outpath)
             except ValueError as e:
-                print('Could not write textgrid for {}'.format(k))
-                print(e)
+                print('There was an error writing the TextGrid for {}, please see below:'.format(k))
+                raise
     else:
         tgs = {}
-        for i,(k,v) in enumerate(word_ctm.items()):
+        for i,(k,v) in enumerate(sorted(word_ctm.items())):
             rec = corpus.segments[k]
             rec, begin, end = rec.split(' ')
             maxtime = corpus.get_wav_duration(k)
@@ -83,16 +86,20 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus):
                 tg.append(phonetier)
             for interval in v:
                 interval = interval[0] + begin, interval[1] + begin, interval[2]
+                if maxtime - interval[1] < frameshift:
+                    interval[1] = maxtime
                 wordtier.add(*interval)
             for interval in phone_ctm[k]:
                 interval = interval[0] + begin, interval[1] + begin, interval[2]
+                if maxtime - interval[1] < frameshift:
+                    interval[1] = maxtime
                 phonetier.add(*interval)
         for k,v in tgs.items():
             outpath = os.path.join(out_directory, k + '.TextGrid')
             try:
                 v.write(outpath)
             except ValueError as e:
-                print('Could not write textgrid for {}'.format(k))
-                print(e)
+                print('There was an error writing the TextGrid for {}, please see below:'.format(k))
+                raise
 
 
