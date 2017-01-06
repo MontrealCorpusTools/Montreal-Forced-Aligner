@@ -1,5 +1,5 @@
 textgrid
 six
 packaging
-pyinstaller
+https://github.com/pyinstaller/pyinstaller/archive/develop.zip
 tqdm
