@@ -2,9 +2,10 @@ import os
 import math
 import subprocess
 import re
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from .helper import thirdparty_binary
+
 
 def compile_graphemes(graphemes):
     if '-' in graphemes:
@@ -14,6 +15,11 @@ def compile_graphemes(graphemes):
     string = ''.join(x for x in graphemes if x != '-')
     return re.compile(base.format(string))
 
+
+def sanitize(item):
+    sanitized = re.sub(r'^\W+', '', item)
+    sanitized = re.sub(r'\W+$', '', sanitized)
+    return sanitized
 
 class Dictionary(object):
     """
@@ -54,8 +60,9 @@ class Dictionary(object):
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
                  pronunciation_probabilities=True,
-                 sil_prob=0.25, word_set=None):
-        self.debug = False
+                 sil_prob=0.5, word_set=None, debug=False):
+        self.input_path = input_path
+        self.debug = debug
         self.output_directory = os.path.join(output_directory, 'dictionary')
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
@@ -70,8 +77,11 @@ class Dictionary(object):
         self.sil_phones = {'sp', 'spn', 'sil'}
         self.optional_silence = 'sp'
         self.nonoptional_silence = 'sil'
-        self.disambig = set()
         self.graphemes = set()
+        if word_set is not None:
+            word_set = {sanitize(x) for x in word_set}
+        self.words['!sil'].append((('sp',), 1))
+        self.words[self.oov_code].append((('spn',), 1))
         with open(input_path, 'r', encoding='utf8') as inf:
             for line in inf:
                 line = line.strip()
@@ -82,15 +92,20 @@ class Dictionary(object):
                 if word in ['!sil', oov_code]:
                     continue
                 self.graphemes.update(word)
-                pron = line
+                try:
+                    prob = float(line[0])
+                    line = line[1:]
+                except ValueError:
+                    prob = None
+                pron = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     self.nonsil_phones.update(pron)
-                if word_set is not None and word not in word_set:
+                if word_set is not None and sanitize(word) not in word_set:
                     continue
-                self.words[word].append(pron)
+                if word in self.words and pron in set(x[0] for x in self.words[word]):
+                    continue
+                self.words[word].append((pron, prob))
         self.word_pattern = compile_graphemes(self.graphemes)
-        self.words['!sil'].append(['sp'])
-        self.words[self.oov_code].append(['spn'])
         self.phone_mapping = {}
         i = 0
         self.phone_mapping['<eps>'] = i
@@ -108,10 +123,6 @@ class Dictionary(object):
             for p in sorted(self.nonsil_phones):
                 i += 1
                 self.phone_mapping[p] = i
-        for p in sorted(self.disambig):
-            print(p)
-            i += 1
-            self.phone_mapping[p] = i
 
         self.words_mapping = {}
         i = 0
@@ -125,6 +136,52 @@ class Dictionary(object):
         self.words_mapping['</s>'] = i + 3
 
         self.oovs_found = set()
+        self.add_disambiguation()
+
+    def add_disambiguation(self):
+        subsequences = set()
+        pronunciation_counts = defaultdict(int)
+
+        for w, prons in self.words.items():
+            for p in prons:
+                pronunciation_counts[p[0]] += 1
+                pron = [x for x in p[0]][:-1]
+                while pron:
+                    subsequences.add(tuple(p))
+                    pron = pron[:-1]
+        last_used = defaultdict(int)
+        for w, prons in sorted(self.words.items()):
+            new_prons = []
+            for p in prons:
+                if pronunciation_counts[p[0]] == 1 and not p[0] in subsequences:
+                    disambig = None
+                else:
+                    pron = p[0]
+                    last_used[pron] += 1
+                    disambig = last_used[pron]
+                new_prons.append((p[0], p[1], disambig))
+            self.words[w] = new_prons
+        if last_used:
+            self.max_disambig = max(last_used.values())
+        else:
+            self.max_disambig = 0
+        self.disambig = set('#{}'.format(x) for x in range(self.max_disambig + 1))
+        i = max(self.phone_mapping.values())
+        for p in sorted(self.disambig):
+            i += 1
+            self.phone_mapping[p] = i
+
+    def create_utterance_fst(self, text, frequent_words):
+        num_words = len(text)
+        word_probs = Counter(text)
+        word_probs = {k: v / num_words for k, v in word_probs.items()}
+        word_probs.update(frequent_words)
+        text = ''
+        for k, v in word_probs.items():
+            cost = -1 * math.log(v)
+            text += '0 0 {w} {w} {cost}\n'.format(w=self.to_int(k), cost=cost)
+        text += '0 {}\n'.format(-1 * math.log(1/num_words))
+        return text
 
     def to_int(self, item):
         """
@@ -155,8 +212,7 @@ class Dictionary(object):
     def _lookup(self, item):
         if item in self.words_mapping:
             return item
-        sanitized = re.sub(r'^\W+', '', item)
-        sanitized = re.sub(r'\W+$', '', sanitized)
+        sanitized = sanitize(item)
         if sanitized in self.words_mapping:
             return sanitized
         return item
@@ -314,12 +370,15 @@ class Dictionary(object):
         self._write_phone_map_file()
         self._write_phone_sets()
         self._write_phone_symbol_table()
+        self._write_disambig()
         self._write_topo()
         self._write_word_boundaries()
         self._write_extra_questions()
         self._write_word_file()
         self._write_fst_text()
+        self._write_fst_text(disambig=True)
         self._write_fst_binary()
+        self._write_fst_binary(disambig=True)
         # self.cleanup()
 
     def cleanup(self):
@@ -335,12 +394,17 @@ class Dictionary(object):
             for char in sorted(self.graphemes):
                 f.write(char + '\n')
 
-    def export_lexicon(self, path):
+    def export_lexicon(self, path, disambig = False, probability = False):
         with open(path, 'w', encoding='utf8') as f:
             for w in sorted(self.words.keys()):
                 for p in sorted(self.words[w]):
-                    phones = ' '.join(p)
-                    f.write('{}\t{}\n'.format(w, phones))
+                    phones = ' '.join(p[0])
+                    if disambig and p[2] is not None:
+                        phones += ' #{}'.format(p[2])
+                    if probability:
+                        f.write('{}\t{}\t{}\n'.format(w,p[1], phones))
+                    else:
+                        f.write('{}\t{}\n'.format(w, phones))
 
     def _write_phone_map_file(self):
         outfile = os.path.join(self.output_directory, 'phone_map.txt')
@@ -515,15 +579,27 @@ class Dictionary(object):
                     outf.write(' '.join(line) + '\n')
                     intf.write(' '.join(map(str, (self.phone_mapping[x] for x in line))) + '\n')
 
-    def _write_fst_binary(self):
+    def _write_disambig(self):
+        disambig = os.path.join(self.phones_dir, 'disambig.txt')
+        disambig_int = os.path.join(self.phones_dir, 'disambig.int')
+        with open(disambig, 'w', encoding='utf8') as outf,\
+                open(disambig_int, 'w', encoding='utf8') as intf:
+            for d in sorted(self.disambig):
+                outf.write('{}\n'.format(d))
+                intf.write('{}\n'.format(self.phone_mapping[d]))
 
-        lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+    def _write_fst_binary(self, disambig=False):
+        if disambig:
+            lexicon_fst_path = os.path.join(self.output_directory, 'lexicon_disambig.text.fst')
+            output_fst = os.path.join(self.output_directory, 'L_disambig.fst')
+        else:
+            lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+            output_fst = os.path.join(self.output_directory, 'L.fst')
 
         phones_file_path = os.path.join(self.output_directory, 'phones.txt')
         words_file_path = os.path.join(self.output_directory, 'words.txt')
 
         log_path = os.path.join(self.output_directory, 'fst.log')
-        output_fst = os.path.join(self.output_directory, 'L.fst')
         temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
         subprocess.call([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
                         '--osymbols={}'.format(words_file_path),
@@ -543,8 +619,11 @@ class Dictionary(object):
                 dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path], stderr=logf)
                 dot_proc.communicate()
 
-    def _write_fst_text(self):
-        lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+    def _write_fst_text(self, disambig=False):
+        if disambig:
+            lexicon_fst_path = os.path.join(self.output_directory, 'lexicon_disambig.text.fst')
+        else:
+            lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
         if self.sil_prob != 0:
             silphone = self.optional_silence
             nonoptsil = self.nonoptional_silence
@@ -569,7 +648,7 @@ class Dictionary(object):
                 outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>']))+"\n")
                 nextstate = 3
             for w in sorted(self.words.keys()):
-                for phones in sorted(self.words[w]):
+                for phones, prob, disambig_symbol in sorted(self.words[w]):
                     phones = [x for x in phones]
                     if self.position_dependent_phones:
                         if len(phones) == 1:
@@ -585,18 +664,21 @@ class Dictionary(object):
                     if not self.pronunciation_probabilities:
                         pron_cost = 0
                     else:
-                        p = 1.0
-                        pron_cost = -1 * math.log(p)
+                        if prob is None:
+                            prob = 1.0
+                        pron_cost = -1 * math.log(prob)
 
                     pron_cost_string = ''
                     if pron_cost != 0:
-                        pron_cost_string = '\t{}'.pron_cost
+                        pron_cost_string = '\t{}'.format(pron_cost)
 
                     s = loopstate
                     word_or_eps = w
+                    local_nosilcost = nosilcost + pron_cost
+                    local_silcost = silcost + pron_cost
                     while len(phones) > 0:
                         p = phones.pop(0)
-                        if len(phones) > 0:
+                        if len(phones) > 0 or (disambig and disambig_symbol is not None):
                             ns = nextstate
                             nextstate += 1
                             outf.write('\t'.join(map(str, [s, ns, p, word_or_eps])) + pron_cost_string + '\n')
@@ -611,23 +693,12 @@ class Dictionary(object):
                             pron_cost_string = ""
                             s = ns
                         else:
-                            if not is_sil(p):
-                                local_nosilcost = nosilcost + pron_cost
-                                local_silcost = silcost + pron_cost
-                                outf.write('\t'.join(map(str, [s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
-                                outf.write('\t'.join(map(str, [s, silstate, p, word_or_eps, local_silcost]))+"\n")
-                            else:
-                                local_nosilcost = nosilcost + pron_cost
-                                local_silcost = silcost + pron_cost
-                                if w == '!sil':
-                                    outf.write('\t'.join(map(str, [s, loopstate, silphone, word_or_eps])) +
-                                               pron_cost_string+"\n")
-                                else:
-                                    # outf.write('\t'.join(map(str,[s, loopstate, nonoptsil, word_or_eps]))+pron_cost_string+"\n")
-                                    outf.write('\t'.join(map(str, [s, loopstate, nonoptsil, word_or_eps, local_nosilcost])) +
-                                               "\n")
-                                    outf.write('\t'.join(map(str, [s, silstate, nonoptsil, word_or_eps, local_silcost])) +
-                                               "\n")
+                            outf.write('\t'.join(map(str, [s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
+                            outf.write('\t'.join(map(str, [s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                    if disambig and disambig_symbol is not None:
+                        outf.write('\t'.join(map(str, [s, loopstate, '#{}'.format(disambig_symbol), word_or_eps, local_nosilcost]))+"\n")
+                        outf.write('\t'.join(map(str, [s, silstate, '#{}'.format(disambig_symbol), word_or_eps, local_silcost]))+"\n")
+
             outf.write("{}\t{}\n".format(loopstate, 0))
 
 
