@@ -170,7 +170,7 @@ class BaseAligner(object):
         feat_type = 'delta'
 
         compile_train_graphs(output_directory, self.dictionary.output_directory,
-                            self.corpus.split_directory, self.num_jobs)
+                            self.corpus.split_directory, self.num_jobs, debug=self.debug)
         align(0, output_directory, self.corpus.split_directory,
                     optional_silence, self.num_jobs, config)
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))

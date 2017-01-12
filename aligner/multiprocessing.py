@@ -158,7 +158,7 @@ def parse_transitions(path, phones_path):
                 current += 1
 
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug = False):  # pragma: no cover
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):  # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(directory, 'tree')
     mdl_path = os.path.join(directory, '0.mdl')
@@ -168,11 +168,12 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
     phones_file_path = os.path.join(lang_directory, 'phones.txt')
 
     triphones_file_path = os.path.join(directory, 'triphones.txt')
-    with open(log_path, 'w') as logf:
-        with open(transition_path, 'w', encoding='utf8') as f:
-            subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
-                            stdout=f, stderr=logf)
-        parse_transitions(transition_path, triphones_file_path)
+    if debug:
+        with open(log_path, 'w') as logf:
+            with open(transition_path, 'w', encoding='utf8') as f:
+                subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
+                                stdout=f, stderr=logf)
+            parse_transitions(transition_path, triphones_file_path)
     log_path = os.path.join(directory, 'log', 'compile-graphs.0.{}.log'.format(job_name))
 
     if os.path.exists(triphones_file_path):
@@ -230,7 +231,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                     dot_proc.communicate()
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug = False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -253,7 +254,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs):
         The number of processes to use
     """
     os.makedirs(os.path.join(directory, 'log'), exist_ok=True)
-    jobs = [(directory, lang_directory, split_directory, x)
+    jobs = [(directory, lang_directory, split_directory, x, debug)
             for x in range(num_jobs)]
 
     with mp.Pool(processes=num_jobs) as pool:
@@ -304,6 +305,142 @@ def mono_align_equal(mono_directory, split_directory, num_jobs):
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(mono_align_equal_func, args=i) for i in jobs]
         output = [p.get() for p in results]
+
+
+def compile_utterance_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):
+    disambig_int_path = os.path.join(lang_directory, 'phones', 'disambig.int')
+    tree_path = os.path.join(directory, 'tree')
+    mdl_path = os.path.join(directory, 'final.mdl')
+    lexicon_fst_path = os.path.join(lang_directory, 'L_disambig.fst')
+    fsts_path = os.path.join(split_directory, 'utt2fst.{}'.format(job_name))
+    graphs_path = os.path.join(directory, 'utterance_graphs.{}.fst'.format(job_name))
+
+    log_path = os.path.join(directory, 'log', 'compile-graphs-fst.0.{}.log'.format(job_name))
+
+    with open(log_path, 'w') as logf, open(fsts_path, 'r', encoding='utf8') as f:
+        proc = subprocess.Popen([thirdparty_binary('compile-train-graphs-fsts'),
+                                 '--transition-scale=1.0', '--self-loop-scale=0.1',
+                                 '--read-disambig-syms={}'.format(disambig_int_path),
+                                 tree_path, mdl_path,
+                                 lexicon_fst_path,
+                                 "ark:-", "ark:"+graphs_path],
+                                stdin=subprocess.PIPE, stderr=logf)
+        group = []
+        for line in f:
+            group.append(line)
+            if line.strip() == '':
+                for l in group:
+                    proc.stdin.write(l.encode('utf8'))
+                group = []
+                proc.stdin.flush()
+
+        proc.communicate()
+
+
+def test_utterances_func(directory, lang_directory, split_directory, job_name):
+    log_path = os.path.join(directory, 'log', 'decode.0.{}.log'.format(job_name))
+    words_path = os.path.join(lang_directory, 'words.txt')
+    mdl_path = os.path.join(directory, 'final.mdl')
+    feat_path = os.path.join(split_directory, 'cmvndeltafeats.{}'.format(job_name))
+    graphs_path = os.path.join(directory, 'utterance_graphs.{}.fst'.format(job_name))
+
+    text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
+    edits_path = os.path.join(directory, 'edits.{}.txt'.format(job_name))
+    out_int_path = os.path.join(directory, 'aligned.{}.int'.format(job_name))
+    acoustic_scale = 0.1
+    beam = 15.0
+    lattice_beam = 8.0
+    max_active = 750
+    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    with open(log_path, 'w') as logf:
+        latgen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster',),
+                                        '--acoustic-scale={}'.format(acoustic_scale),
+                                        '--beam={}'.format(beam),
+      '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
+      '--word-symbol-table=' + words_path,
+     mdl_path, 'ark:' + graphs_path, 'ark:' + feat_path, 'ark:' + lat_path],
+                                       stderr=logf)
+        latgen_proc.communicate()
+
+        oracle_proc = subprocess.Popen([thirdparty_binary('lattice-oracle'),
+                                        'ark:'+ lat_path, 'ark,t:'+text_int_path,
+                                        'ark,t:'+out_int_path, 'ark,t:'+edits_path],
+                                       stderr=logf)
+        oracle_proc.communicate()
+
+
+def test_utterances(aligner):
+    print('Checking utterance transcriptions...')
+    from alignment.sequence import Sequence
+    from alignment.vocabulary import Vocabulary
+    from alignment.sequencealigner import SimpleScoring, GlobalSequenceAligner
+
+    from .corpus import load_scp
+
+    split_directory = aligner.corpus.split_directory
+    model_directory = aligner.tri_directory
+    lang_directory = aligner.dictionary.output_directory
+    with mp.Pool(processes=aligner.num_jobs) as pool:
+        jobs = [(model_directory, lang_directory, split_directory, x)
+            for x in range(aligner.num_jobs)]
+        results = [pool.apply_async(compile_utterance_train_graphs_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+        print('Utterance FSTs compiled!')
+        print('Decoding utterances (this will take some time)...')
+        results = [pool.apply_async(test_utterances_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+        print('Finished decoding utterances!')
+
+    word_mapping = aligner.dictionary.reversed_word_mapping
+    v = Vocabulary()
+    errors = {}
+
+    for job in range(aligner.num_jobs):
+        text_path = os.path.join(split_directory, 'text.{}'.format(job))
+        texts = load_scp(text_path)
+        aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
+        with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
+            for utt, line in sorted(aligned_int.items()):
+                text = []
+                for t in line:
+                    text.append(word_mapping[int(t)])
+                outf.write('{} {}\n'.format(utt, ' '.join(text)))
+                ref_text = texts[utt]
+                if len(text) < len(ref_text) - 7:
+                    insertions = [x for x in text if x not in ref_text]
+                    deletions = [x for x in ref_text if x not in text]
+                else:
+                    aligned_seq = Sequence(text)
+                    ref_seq = Sequence(ref_text)
+
+                    alignedEncoded = v.encodeSequence(aligned_seq)
+                    refEncoded = v.encodeSequence(ref_seq)
+                    scoring = SimpleScoring(2, -1)
+                    a = GlobalSequenceAligner(scoring, -2)
+                    score, encodeds = a.align(refEncoded, alignedEncoded, backtrace=True)
+                    insertions = []
+                    deletions = []
+                    for encoded in encodeds:
+                        alignment = v.decodeSequenceAlignment(encoded)
+                        for i, f in enumerate(alignment.first):
+                            s = alignment.second[i]
+                            if f == '-':
+                                insertions.append(s)
+                            if s == '-':
+                                deletions.append(f)
+                if insertions or deletions:
+                    errors[utt] = (insertions, deletions, ref_text, text)
+    if not errors:
+        print('There were no utterances with transcription issues.')
+        return True
+    out_path = os.path.join(aligner.output_directory, 'transcription_problems.txt')
+    with open(out_path, 'w') as problemf:
+        problemf.write('Utterance\tInsertions\tDeletions\tReference\tDecoded\n')
+        for utt, (insertions, deletions, ref_text, text) in sorted(errors.items(), key = lambda x: -1*(len(x[1][1]) + len(x[1][2]))):
+            problemf.write('{}\t{}\t{}\t{}\t{}\n'.format(utt, ', '.join(insertions), ', '.join(deletions),
+                                                             ' '.join(ref_text), ' '.join(text)))
+    print('There were {} of {} utterances with at least one transcription issue. Please see the outputted csv file {}.'.format(len(errors), aligner.corpus.num_utterances, out_path))
+    return False
 
 
 def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragma: no cover
@@ -451,7 +588,7 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
             results = [pool.apply_async(ali_to_textgrid_func, args=i) for i in jobs]
             output = [p.get() for p in results]
         except OSError as e:
-            if e.errorno == 24:
+            if hasattr(e, 'errno') and e.errorno == 24:
                 r = True
             else:
                 raise
