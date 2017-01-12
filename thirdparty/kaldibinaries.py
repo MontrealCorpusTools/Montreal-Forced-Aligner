@@ -20,16 +20,17 @@ ignored_filenames = ['.DS_Store', 'configure' , 'Doxyfile' ,
                 'log', 'makefile', 'packImageTarFile']
 
 included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
-                'compile-train-graphs','align-equal-compiled', 'gmm-acc-stats-ali',
-                'gmm-align-compiled', 'gmm-boost-silence', 'linear-to-nbest',
-                'lattice-align-words', 'nbest-to-ctm','lattice-to-phone-lattice',
-                'acc-tree-stats', 'sum-tree-stats', 'convert-ali','ali-to-post',
-                'weight-silence-post', 'gmm-est-fmllr', 'compose-transforms',
-                'transform-feats', 'gmm-est', 'gmm-sum-accs', 'gmm-init-mono',
-                'cluster-phones', 'compile-questions', 'build-tree','gmm-init-model',
-                'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'compute-cmvn-stats',
-                'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
-                'extract-segments', 'openblas', 'openfst64']
+                    'compile-train-graphs', 'compile-train-graphs-fsts','align-equal-compiled', 'gmm-acc-stats-ali',
+                    'gmm-align-compiled', 'gmm-boost-silence', 'linear-to-nbest',
+                    'lattice-align-words', 'nbest-to-ctm','lattice-to-phone-lattice',
+                    'acc-tree-stats', 'sum-tree-stats', 'convert-ali',
+                    'weight-silence-post', 'gmm-est-fmllr', 'compose-transforms',
+                    'transform-feats', 'gmm-est', 'gmm-sum-accs', 'gmm-init-mono',
+                    'cluster-phones', 'compile-questions', 'build-tree','gmm-init-model',
+                    'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'fstcopy', 'dot', 'compute-cmvn-stats',
+                    'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
+                    'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
+                      'draw-tree','fstdraw', 'show-transitions']
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 

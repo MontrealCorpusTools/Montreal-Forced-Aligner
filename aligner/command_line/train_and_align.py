@@ -76,7 +76,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
 
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs, debug=args.debug)
     print(corpus.speaker_utterance_info())
     dictionary = no_dictionary(corpus, data_directory)
     dictionary.write()
@@ -89,7 +89,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
     a = TrainableAligner(corpus, dictionary, output_directory,
                         temp_directory = data_directory,
                         mono_params = mono_params, tri_params = tri_params,
-                        tri_fmllr_params = tri_fmllr_params, num_jobs = args.num_jobs)
+                        tri_fmllr_params = tri_fmllr_params, num_jobs = args.num_jobs, debug=args.debug)
     a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
@@ -118,6 +118,7 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('-v', '--verbose', help = "Output debug messages about alignment", action = 'store_true')
     parser.add_argument('--nodict', help = "Create a dictionary based on the orthography", action = 'store_true')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
+    parser.add_argument('-d', '--debug', help = "Debug the aligner", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = os.path.expanduser(args.corpus_dir)
     dict_path = os.path.expanduser(args.dict_path)
