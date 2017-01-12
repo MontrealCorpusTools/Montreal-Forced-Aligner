@@ -75,6 +75,11 @@ Extra options (in addition to the common ones listed above):
 
    Flag to disable using speaker adaptation, useful if aligning a small dataset or if speed is more important
 
+.. cmdoption:: -e
+               --errors
+
+   Flag for whether utterance transcriptions should be checked for errors prior to aligning
+
 .. note::
 
    The arguments ``model_path`` and ``language`` are mutually exclusive
