@@ -52,14 +52,18 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
         corpus_dir = os.path.dirname(corpus_dir)
         corpus_name = os.path.basename(corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
-    if args.clean:
+    if getattr(args,'clean',False):
         shutil.rmtree(data_directory, ignore_errors=True)
         shutil.rmtree(output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(output_directory, exist_ok=True)
     begin = time.time()
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs=args.num_jobs)
+    use_speaker_info = not args.no_speaker_adaptation
+    corpus = Corpus(corpus_dir, data_directory,
+                    speaker_characters=args.speaker_characters,
+                    num_jobs=args.num_jobs,
+                    use_speaker_information=use_speaker_info)
     print(corpus.speaker_utterance_info())
     corpus.write()
     if debug:
@@ -71,7 +75,15 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
     archive = Archive(model_path)
     begin = time.time()
     a = PretrainedAligner(archive, corpus, output_directory, temp_directory=data_directory,
-                          num_jobs = args.num_jobs, speaker_independent=args.no_speaker_adaptation)
+                          num_jobs = getattr(args, 'num_jobs',3), speaker_independent=getattr(args, 'no_speaker_adaptation',False),
+                          debug=getattr(args, 'debug', False))
+    if getattr(args, 'errors', False):
+
+        check = a.test_utterance_transcriptions()
+        if not check:
+            user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
+            if user_input.lower() == 'y':
+                return
     if debug:
         print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
     a.verbose = args.verbose
@@ -128,6 +140,8 @@ if __name__ == '__main__':  # pragma: no cover
                     help = 'Specify whether to use an included pretrained model (english, french)')
     parser.add_argument('-n', '--no_speaker_adaptation', help = "Only use speaker independent models, with no speaker adaptation", action = 'store_true')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
+    parser.add_argument('-d', '--debug', help = "Debug the aligner", action = 'store_true')
+    parser.add_argument('-e', '--errors', help = "Test for transcription errors in files to be aligned", action = 'store_true')
     args = parser.parse_args()
     corpus_dir = os.path.expanduser(args.corpus_dir)
     model_path = os.path.expanduser(args.model_path)

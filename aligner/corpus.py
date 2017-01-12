@@ -5,7 +5,7 @@ import shutil
 import struct
 import wave
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 from textgrid import TextGrid, IntervalTier
 
 from .helper import thirdparty_binary, load_text, make_safe
@@ -23,15 +23,20 @@ def output_mapping(mapping, path):
                 v = ' '.join(v)
             f.write('{} {}\n'.format(k, v))
 
-def save_scp(scp, path):
+def save_scp(scp, path, sort=True, multiline=False):
     with open(path, 'w', encoding = 'utf8') as f:
-        for line in sorted(scp):
-            f.write('{}\n'.format(' '.join(map(make_safe,line))))
+        if sort:
+            scp = sorted(scp)
+        for line in scp:
+            if multiline:
+                f.write('{}\n{}\n'.format(make_safe(line[0]), make_safe(line[1])))
+            else:
+                f.write('{}\n'.format(' '.join(map(make_safe,line))))
 
-def save_groups(groups, seg_dir, pattern):
+def save_groups(groups, seg_dir, pattern, multiline = False):
     for i, g in enumerate(groups):
         path = os.path.join(seg_dir, pattern.format(i))
-        save_scp(g, path)
+        save_scp(g, path, multiline=multiline)
 
 def load_scp(path):
     '''
@@ -219,8 +224,10 @@ class Corpus(object):
 
     '''
     def __init__(self, directory, output_directory,
-                speaker_characters = 0,
-                num_jobs = 3):
+                 use_speaker_information=True,
+                 speaker_characters=0,
+                 num_jobs=3, debug=False):
+        self.debug = debug
         log_dir = os.path.join(output_directory, 'logging')
         os.makedirs(log_dir, exist_ok = True)
         self.log_file = os.path.join(log_dir, 'corpus.log')
@@ -243,11 +250,11 @@ class Corpus(object):
         self.utt_speak_mapping = {}
         self.utt_wav_mapping = {}
         self.text_mapping = {}
+        self.word_counts = Counter()
         self.segments = {}
         self.feat_mapping = {}
         self.cmvn_mapping = {}
         self.ignored_utterances = []
-        self.word_set = set()
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -277,7 +284,8 @@ class Corpus(object):
                         continue
                     lab_path = os.path.join(root, lab_name)
                     self.text_mapping[utt_name] = load_text(lab_path)
-                    self.word_set.update(self.text_mapping[utt_name].split())
+                    words = self.text_mapping[utt_name].split()
+                    self.word_counts.update(words)
                     if self.speaker_directories:
                         speaker_id = os.path.basename(root)
                     else:
@@ -343,7 +351,7 @@ class Corpus(object):
                                     self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
                                     self.utt_wav_mapping[B_name] = B_path
                             self.text_mapping[utt_name] = label
-                            self.word_set.update(label.split())
+                            self.word_counts.update(label.split())
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
         if len(self.ignored_utterances) > 0:
@@ -376,6 +384,10 @@ class Corpus(object):
             print(msg)
             logging.warning(msg)
         self.find_best_groupings()
+
+    @property
+    def word_set(self):
+        return set(self.word_counts)
 
     def find_best_groupings(self):
         if self.segments:
@@ -433,6 +445,10 @@ class Corpus(object):
 
     def parse_mfcc_logs(self):
         pass
+
+    @property
+    def num_utterances(self):
+        return len(self.utt_speak_mapping)
 
     @property
     def mfcc_directory(self):
@@ -504,7 +520,7 @@ class Corpus(object):
         return output
 
     def grouped_text_int(self, dictionary):
-        oov_code = str(dictionary.oov_int)
+        oov_code = dictionary.oov_int
         all_oovs = []
         output = []
         grouped_texts = self.grouped_text(dictionary)
@@ -553,6 +569,42 @@ class Corpus(object):
                     output_g.append([u, self.utt_speak_mapping[u]])
                 except KeyError:
                     pass
+            output.append(output_g)
+        return output
+
+    def get_word_frquency(self, dictionary):
+        word_counts = Counter()
+        for u, text in self.text_mapping.items():
+            new_text = []
+            text = text.split()
+            for t in text:
+                lookup = dictionary.separate_clitics(t)
+                if lookup is None:
+                    continue
+                new_text.extend(x for x in lookup if x != '')
+            word_counts.update(new_text)
+        return {k: v / sum(word_counts.values()) for k,v in word_counts.items()}
+
+    def grouped_utt2fst(self, dictionary, num_frequent_words = 10):
+        word_frequencies = self.get_word_frquency(dictionary)
+        most_frequent = sorted(word_frequencies.items(), key = lambda x: -x[1])[:num_frequent_words]
+
+        output = []
+        for g in self.groups:
+            output_g = []
+            for u in g:
+                try:
+                    text = self.text_mapping[u].split()
+                except KeyError:
+                    continue
+                new_text = []
+                for t in text:
+                    lookup = dictionary.separate_clitics(t)
+                    if lookup is None:
+                        continue
+                    new_text.extend(x for x in lookup if x != '')
+                fst_text = dictionary.create_utterance_fst(new_text, most_frequent)
+                output_g.append([u, fst_text])
             output.append(output_g)
         return output
 
@@ -629,6 +681,10 @@ class Corpus(object):
         pattern = 'utt2spk.{}'
         save_groups(self.grouped_utt2spk, directory, pattern)
 
+    def _split_utt2fst(self, directory, dictionary):
+        pattern = 'utt2fst.{}'
+        save_groups(self.grouped_utt2fst(dictionary), directory, pattern, multiline=True)
+
     def _split_segments(self, directory):
         if not self.segments:
             return
@@ -641,10 +697,7 @@ class Corpus(object):
 
     def _split_wavs(self, directory):
         pattern = 'wav.{}.scp'
-        print('grouped_wav length', len(self.grouped_wav))
-        print('grouped_utt length', len(self.grouped_utt2spk))
         save_groups(self.grouped_wav, directory, pattern)
-
 
     def _split_feats(self, directory):
         if not self.feat_mapping:
@@ -748,7 +801,8 @@ class Corpus(object):
             self._split_feats(split_dir)
             self._split_cmvns(split_dir)
             self._split_and_norm_feats()
-        self._split_texts(split_dir, dictionary)
+            self._split_texts(split_dir, dictionary)
+            self._split_utt2fst(split_dir, dictionary)
 
     def _split_and_norm_feats(self):
         split_dir = self.split_directory
