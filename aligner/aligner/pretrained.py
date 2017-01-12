@@ -7,8 +7,9 @@ import re
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
 from ..dictionary import Dictionary
+from ..corpus import load_scp,save_scp
 
-from ..multiprocessing import (align, calc_fmllr, make_path_safe,thirdparty_binary, subprocess,convert_ali_to_textgrids)
+from ..multiprocessing import (align, calc_fmllr, test_utterances,thirdparty_binary, subprocess,convert_ali_to_textgrids)
 
 
 def parse_transitions(path, phones_path):
@@ -63,7 +64,8 @@ class PretrainedAligner(BaseAligner):
         self.output_directory = output_directory
         self.corpus = corpus
         self.speaker_independent = speaker_independent
-        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'), word_set=corpus.word_set)
+        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'),
+                                     word_set=corpus.word_set, debug=debug)
 
         self.dictionary.write()
         archive.export_triphone_model(self.tri_directory)
@@ -97,13 +99,18 @@ class PretrainedAligner(BaseAligner):
                 with open(transition_path, 'w', encoding='utf8') as f:
                     subprocess.call([thirdparty_binary('show-transitions'), phones_path, mdl_path, occs_path], stdout=f, stderr=logf)
                 parse_transitions(transition_path, triphones_path)
-                with open(tree_dot_path, 'wb') as treef:
-                    draw_tree_proc = subprocess.Popen([thirdparty_binary('draw-tree'), phones_path, tree_path], stdout=treef, stderr=logf)
-                    draw_tree_proc.communicate()
-                with open(tree_dot_path, 'rb') as treeinf, open(tree_pdf_path, 'wb') as treef:
-                    dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-Gsize=8,10.5'], stdin=treeinf, stdout=treef, stderr=logf)
-                    dot_proc.communicate()
+                if False:
+                    with open(tree_dot_path, 'wb') as treef:
+                        draw_tree_proc = subprocess.Popen([thirdparty_binary('draw-tree'), phones_path, tree_path], stdout=treef, stderr=logf)
+                        draw_tree_proc.communicate()
+                    with open(tree_dot_path, 'rb') as treeinf, open(tree_pdf_path, 'wb') as treef:
+                        dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-Gsize=8,10.5'], stdin=treeinf, stdout=treef, stderr=logf)
+                        dot_proc.communicate()
+        print('Done with setup.')
 
+    def test_utterance_transcriptions(self):
+        self.corpus.setup_splits(self.dictionary)
+        return test_utterances(self)
 
     def do_align(self):
         '''
