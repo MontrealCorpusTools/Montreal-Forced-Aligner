@@ -708,7 +708,8 @@ class OrthographicDictionary(Dictionary):
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=False,
                  pronunciation_probabilities=True,
-                 sil_prob=0.5):
+                 sil_prob=0.5, debug=False):
+        self.debug = debug
         self.output_directory = os.path.join(output_directory, 'dictionary')
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
@@ -720,18 +721,18 @@ class OrthographicDictionary(Dictionary):
 
         self.words = defaultdict(list)
         self.nonsil_phones = set()
-        self.sil_phones = set(['sil', 'spn'])
-        self.optional_silence = 'sil'
-        self.disambig = set()
+        self.sil_phones = {'sp', 'spn', 'sil'}
+        self.optional_silence = 'sp'
+        self.nonoptional_silence = 'sil'
         self.graphemes = set()
         for w in input_dict:
             self.graphemes.update(w)
-            pron = input_dict[w]
-            self.words[w].append(pron)
+            pron = tuple(input_dict[w])
+            self.words[w].append((pron, None))
             self.nonsil_phones.update(pron)
         self.word_pattern = compile_graphemes(self.graphemes)
-        self.words['!SIL'].append(['sil'])
-        self.words[self.oov_code].append(['spn'])
+        self.words['!SIL'].append((('sil',), None))
+        self.words[self.oov_code].append((('spn',), None))
         self.phone_mapping = {}
         i = 0
         self.phone_mapping['<eps>'] = i
@@ -749,9 +750,6 @@ class OrthographicDictionary(Dictionary):
             for p in sorted(self.nonsil_phones):
                 i += 1
                 self.phone_mapping[p] = i
-        for p in sorted(self.disambig):
-            i += 1
-            self.phone_mapping[p] = i
 
         self.words_mapping = {}
         i = 0
@@ -765,3 +763,4 @@ class OrthographicDictionary(Dictionary):
         self.words_mapping['</s>'] = i + 3
 
         self.oovs_found = set()
+        self.add_disambiguation()
