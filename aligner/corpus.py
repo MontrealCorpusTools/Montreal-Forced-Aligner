@@ -226,7 +226,8 @@ class Corpus(object):
     def __init__(self, directory, output_directory,
                  use_speaker_information=True,
                  speaker_characters=0,
-                 num_jobs=3, debug=False):
+                 num_jobs=3, debug=False,
+                 ignore_exceptions=False):
         self.debug = debug
         log_dir = os.path.join(output_directory, 'logging')
         os.makedirs(log_dir, exist_ok = True)
@@ -266,6 +267,7 @@ class Corpus(object):
         self.sample_rates = defaultdict(set)
         no_transcription_files = []
         unsupported_sample_rate = []
+        ignored_duplicates = False
         for root, dirs, files in os.walk(self.directory, followlinks = True):
             for f in sorted(files):
                 file_name, ext  = os.path.splitext(f)
@@ -279,6 +281,18 @@ class Corpus(object):
                     continue
                 if lab_name is not None:
                     utt_name = file_name
+                    if utt_name in self.utt_wav_mapping:
+                        if not ignore_exceptions:
+                            prev_wav = self.utt_wav_mapping[utt_name]
+                            raise CorpusError('Files with the same file name are not permitted. Files with the same name are: {}, {}.'.format(prev_wav, wav_path))
+                        else:
+                            ignored_duplicates = True
+                            ind = 0
+                            fixed_utt_name = utt_name
+                            while fixed_utt_name not in self.utt_wav_mapping:
+                                ind += 1
+                                fixed_utt_name = utt_name + '_{}'.format(ind)
+                            utt_name = fixed_utt_name
                     if self.feat_mapping and utt_name not in self.feat_mapping:
                         self.ignored_utterances.append(utt_name)
                         continue
@@ -354,6 +368,8 @@ class Corpus(object):
                             self.word_counts.update(label.split())
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
+        if ignored_duplicates:
+            print('At least one duplicate wav file name was found and treated as a different utterance.')
         if len(self.ignored_utterances) > 0:
             print('{} utterance(s) were ignored due to lack of features, please see {} for more information.'.format(len(self.ignored_utterances), self.log_file))
             logging.warning('The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
