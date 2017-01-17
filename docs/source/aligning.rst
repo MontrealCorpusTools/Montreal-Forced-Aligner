@@ -48,6 +48,12 @@ Common options for both aligner executables
 
   Display help message for the executable
 
+.. cmdoption:: -i
+               --ignore_exceptions
+
+  Ignore exceptions in loading the corpus. An error will be thrown if two files share the same name, adding this flag will
+  ensure utterance names will be unique by appending numbers to the ends of the file names.
+
 Align using pretrained models
 -----------------------------
 
