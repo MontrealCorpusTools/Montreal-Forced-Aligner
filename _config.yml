@@ -1,0 +1,8 @@
+title: Montreal-forced-aligner
+description: Command line utility for forced alignment using Kaldi
+google_analytics: 
+show_downloads: true
+theme: jekyll-theme-dinky
+
+gems:
+  - jekyll-mentions
