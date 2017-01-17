@@ -99,13 +99,21 @@ Contributors
 * Michaela Socolof
 * Sarah Mihuc
 * Michael Wagner
+* Morgan Sonderegger
 
 Citation
 ========
 
-McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, and Michael Wagner (2016).
-Montreal Forced Aligner [Computer program]. Version 0.5,
-retrieved 13 July 2016 from http://montrealcorpustools.github.io/Montreal-Forced-Aligner/.
+McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
+Montreal Forced Aligner [Computer program]. Version 0.9.0,
+retrieved 17 January 2017 from http://montrealcorpustools.github.io/Montreal-Forced-Aligner/.
+
+Or:
+
+McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
+Montreal Forced Aligner: an accurate and trainable aligner using Kaldi. Presented at the 91st Annual Meeting of the
+Linguistic Society of America, Austin, TX. :download:`Poster PDF <_static/MFA_poster_LSA2017.pdf>`
+
 
 Funding
 =======
