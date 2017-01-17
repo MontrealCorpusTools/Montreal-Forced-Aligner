@@ -4,7 +4,7 @@ import os
 import pickle
 
 from tempfile import mkdtemp
-from shutil import copy, rmtree, make_archive, unpack_archive
+from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 
 # default format for output
 FORMAT = "zip"
@@ -55,11 +55,28 @@ class Archive(object):
         """
         Add file into archive
         """
+        copyfile(os.path.join(source, 'final.mdl'), os.path.join(self.dirname, 'ali-final.mdl'))
+        copyfile(os.path.join(source, 'final.occs'), os.path.join(self.dirname, 'ali-final.occs'))
+        copyfile(os.path.join(source, 'tree'), os.path.join(self.dirname, 'ali-tree'))
+
+    def add_triphone_fmllr_model(self, source):
+        """
+        Add file into archive
+        """
         copy(os.path.join(source, 'final.mdl'), self.dirname)
         copy(os.path.join(source, 'final.occs'), self.dirname)
         copy(os.path.join(source, 'tree'), self.dirname)
 
     def export_triphone_model(self, destination):
+        """
+        Add file into archive
+        """
+        os.makedirs(destination, exist_ok = True)
+        copy(os.path.join(self.dirname, 'ali-final.mdl'), destination)
+        copy(os.path.join(self.dirname, 'ali-final.occs'), destination)
+        copy(os.path.join(self.dirname, 'ali-tree'), destination)
+
+    def export_triphone_fmllr_model(self, destination):
         """
         Add file into archive
         """
