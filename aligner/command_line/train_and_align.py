@@ -30,7 +30,10 @@ def align_corpus(corpus_dir, dict_path,  output_directory, temp_dir,
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
 
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters,
+                    num_jobs = getattr(args,'num_jobs', 3),
+                    debug=getattr(args,'debug', False),
+                    ignore_exceptions = getattr(args,'ignore_exceptions', False))
     print(corpus.speaker_utterance_info())
     corpus.write()
     corpus.create_mfccs()
@@ -76,7 +79,10 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
     os.makedirs(data_directory, exist_ok = True)
     os.makedirs(output_directory, exist_ok = True)
 
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters, num_jobs = args.num_jobs, debug=args.debug)
+    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters,
+                    num_jobs = getattr(args,'num_jobs', 3),
+                    debug=getattr(args,'debug', False),
+                    ignore_exceptions = getattr(args,'ignore_exceptions', False))
     print(corpus.speaker_utterance_info())
     dictionary = no_dictionary(corpus, data_directory)
     dictionary.write()
@@ -119,6 +125,7 @@ if __name__ == '__main__': # pragma: no cover
     parser.add_argument('--nodict', help = "Create a dictionary based on the orthography", action = 'store_true')
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     parser.add_argument('-d', '--debug', help = "Debug the aligner", action = 'store_true')
+    parser.add_argument('-i', '--ignore_exceptions', help = 'Ignore exceptions raised when parsing data', action = 'store_true')
     args = parser.parse_args()
     corpus_dir = os.path.expanduser(args.corpus_dir)
     dict_path = os.path.expanduser(args.dict_path)
