@@ -63,7 +63,8 @@ def align_corpus(model_path, corpus_dir,  output_directory, temp_dir, args, debu
     corpus = Corpus(corpus_dir, data_directory,
                     speaker_characters=args.speaker_characters,
                     num_jobs=args.num_jobs,
-                    use_speaker_information=use_speaker_info)
+                    use_speaker_information=use_speaker_info,
+                    ignore_exceptions = getattr(args,'ignore_exceptions', False))
     print(corpus.speaker_utterance_info())
     corpus.write()
     if debug:
@@ -142,6 +143,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-c', '--clean', help = "Remove files from previous runs", action = 'store_true')
     parser.add_argument('-d', '--debug', help = "Debug the aligner", action = 'store_true')
     parser.add_argument('-e', '--errors', help = "Test for transcription errors in files to be aligned", action = 'store_true')
+    parser.add_argument('-i', '--ignore_exceptions', help = 'Ignore exceptions raised when parsing data', action = 'store_true')
     args = parser.parse_args()
     corpus_dir = os.path.expanduser(args.corpus_dir)
     model_path = os.path.expanduser(args.model_path)
