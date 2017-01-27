@@ -72,9 +72,15 @@ class Archive(object):
         Add file into archive
         """
         os.makedirs(destination, exist_ok = True)
-        copy(os.path.join(self.dirname, 'ali-final.mdl'), destination)
-        copy(os.path.join(self.dirname, 'ali-final.occs'), destination)
-        copy(os.path.join(self.dirname, 'ali-tree'), destination)
+        ali_model_path = os.path.join(self.dirname, 'ali-final.mdl')
+        if os.path.exists(ali_model_path):
+            copyfile(ali_model_path, os.path.join(destination, 'final.mdl'))
+            copyfile(os.path.join(self.dirname, 'ali-final.occs'), os.path.join(destination, 'final.occs'))
+            copyfile(os.path.join(self.dirname, 'ali-tree'), os.path.join(destination, 'tree'))
+        else:
+            copyfile(os.path.join(self.dirname, 'final.mdl'),  os.path.join(destination, 'final.mdl'))
+            copyfile(os.path.join(self.dirname, 'final.occs'), os.path.join(destination, 'final.occs'))
+            copyfile(os.path.join(self.dirname, 'tree'),  os.path.join(destination, 'tree'))
 
     def export_triphone_fmllr_model(self, destination):
         """
