@@ -11,6 +11,7 @@ if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   conda update -q conda
   conda info -a
   conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytest setuptools
+  conda create -q -n kaldi-environment python=2
   source activate test-environment
   which python
   pip install -q coveralls coverage textgrid tqdm
@@ -19,6 +20,7 @@ else
 fi
 
 if [ ! -d "$HOME/tools/kaldi" ]; then
+  source activate kaldi-environment
   mkdir -p $HOME/downloads
   cd $HOME/downloads
   git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
