@@ -42,7 +42,7 @@ PRETRAINED_LANGUAGES = ['english']
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
-def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug=False):
+def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug=False, skip_input=False):
     all_begin = time.time()
     if temp_dir == '':
         temp_dir = TEMP_DIR
@@ -76,7 +76,7 @@ def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug
     if getattr(args, 'errors', False):
 
         check = a.test_utterance_transcriptions()
-        if not check:
+        if not skip_input and not check:
             user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
             if user_input.lower() == 'y':
                 return
@@ -89,7 +89,7 @@ def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug
     oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
     if os.path.exists(oov_path):
         shutil.copy(oov_path, output_directory)
-    if a.dictionary.oovs_found:
+    if not skip_input and a.dictionary.oovs_found:
         user_input = input('There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
         if user_input.lower() == 'y':
             return
@@ -104,7 +104,7 @@ def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug
     print('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
 
-def align_included_model(language, corpus_dir, output_directory, temp_dir, args):
+def align_included_model(language, corpus_dir, output_directory, temp_dir, args, skip_input=False):
     if language not in PRETRAINED_LANGUAGES:
         raise (Exception(
             'The language \'{}\' is not currently included in the distribution, please align via training or specify one of the following language names: {}.'.format(
@@ -117,7 +117,7 @@ def align_included_model(language, corpus_dir, output_directory, temp_dir, args)
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     model_path = os.path.join(pretrained_dir, '{}.zip'.format(language))
-    align_corpus(model_path, corpus_dir, output_directory, temp_dir, args)
+    align_corpus(model_path, corpus_dir, output_directory, temp_dir, args,skip_input=skip_input)
 
 
 if __name__ == '__main__':  # pragma: no cover
