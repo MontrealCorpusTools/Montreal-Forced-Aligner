@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import subprocess
@@ -8,14 +7,15 @@ from tqdm import tqdm
 from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
-                            acc_stats, tree_stats, convert_alignments,
-                             convert_ali_to_textgrids, calc_fmllr)
+                               acc_stats, tree_stats, convert_alignments,
+                               convert_ali_to_textgrids, calc_fmllr)
 
 from ..exceptions import NoSuccessfulAlignments
 
 from .base import BaseAligner
 
 from ..archive import Archive
+
 
 class TrainableAligner(BaseAligner):
     '''
@@ -43,6 +43,7 @@ class TrainableAligner(BaseAligner):
     tri_fmllr_params : :class:`~aligner.config.TriphoneFmllrConfig`, optional
         Speaker-adapted triphone training parameters to use, if different from defaults
     '''
+
     def save(self, path):
         '''
         Output an acoustic model and dictionary to the specified path
@@ -58,7 +59,7 @@ class TrainableAligner(BaseAligner):
         archive.add_triphone_model(self.tri_fmllr_directory)
         archive.add_triphone_fmllr_model(self.tri_fmllr_directory)
         archive.add_dictionary(self.dictionary)
-        os.makedirs(directory, exist_ok = True)
+        os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
         archive.dump(basename)
         print('Saved model to {}'.format(path))
@@ -77,20 +78,19 @@ class TrainableAligner(BaseAligner):
         if not os.path.exists(self.mono_ali_directory):
             self._align_si()
 
-        os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok = True)
-        self.corpus.setup_splits(self.dictionary)
-        self._init_tri(fmllr = False)
+        os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok=True)
+
+        self._init_tri(fmllr=False)
         self._do_tri_training()
-        #convert_ali_to_textgrids(tri_directory, lang_directory, split_directory, num_jobs)
 
     def _init_mono(self):
         '''
         Initialize monophone training
         '''
         log_dir = os.path.join(self.mono_directory, 'log')
-        os.makedirs(log_dir, exist_ok =True)
-        tree_path = os.path.join(self.mono_directory,'tree')
-        mdl_path = os.path.join(self.mono_directory,'0.mdl')
+        os.makedirs(log_dir, exist_ok=True)
+        tree_path = os.path.join(self.mono_directory, 'tree')
+        mdl_path = os.path.join(self.mono_directory, '0.mdl')
 
         directory = self.corpus.split_directory
         feat_dim = self.corpus.get_feat_dim()
@@ -99,29 +99,29 @@ class TrainableAligner(BaseAligner):
         shared_phones_opt = "--shared-phones=" + os.path.join(self.dictionary.phones_dir, 'sets.int')
         log_path = os.path.join(log_dir, 'log')
         with open(path, 'rb') as f, open(log_path, 'w') as logf:
-            subprocess.call([thirdparty_binary('gmm-init-mono'),shared_phones_opt,
-                            "--train-feats=ark:-",
-                            os.path.join(self.dictionary.output_directory,'topo'),
-                            feat_dim,
-                            mdl_path,
-                            tree_path],
-                            stdin = f,
-                            stderr = logf)
+            subprocess.call([thirdparty_binary('gmm-init-mono'), shared_phones_opt,
+                             "--train-feats=ark:-",
+                             os.path.join(self.dictionary.output_directory, 'topo'),
+                             feat_dim,
+                             mdl_path,
+                             tree_path],
+                            stdin=f,
+                            stderr=logf)
         num_gauss = self.get_num_gauss_mono()
         compile_train_graphs(self.mono_directory, self.dictionary.output_directory,
-                                self.corpus.split_directory, self.num_jobs)
+                             self.corpus.split_directory, self.num_jobs)
         mono_align_equal(self.mono_directory,
-                                self.corpus.split_directory, self.num_jobs)
+                         self.corpus.split_directory, self.num_jobs)
         log_path = os.path.join(self.mono_directory, 'log', 'update.0.log')
         with open(log_path, 'w') as logf:
             acc_files = [os.path.join(self.mono_directory, '0.{}.acc'.format(x)) for x in range(self.num_jobs)]
             est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
-                    '--min-gaussian-occupancy=3',
-                    '--mix-up={}'.format(num_gauss), '--power={}'.format(self.mono_config.power),
-                    mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                            ' '.join(map(make_path_safe, acc_files))),
-                    os.path.join(self.mono_directory,'1.mdl')],
-                    stderr = logf)
+                                         '--min-gaussian-occupancy=3',
+                                         '--mix-up={}'.format(num_gauss), '--power={}'.format(self.mono_config.power),
+                                         mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                                                     ' '.join(map(make_path_safe, acc_files))),
+                                         os.path.join(self.mono_directory, '1.mdl')],
+                                        stderr=logf)
             est_proc.communicate()
 
     def _do_mono_training(self):
@@ -134,14 +134,10 @@ class TrainableAligner(BaseAligner):
         Perform monophone training
         '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
-        split_directory = self.corpus.split_directory
         if os.path.exists(final_mdl):
             print('Monophone training already done, using previous final.mdl')
             return
-        os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok = True)
-        if not os.path.exists(split_directory):
-            self.corpus.setup_splits(self.dictionary)
+        os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok=True)
 
         self._init_mono()
         self._do_mono_training()
-        #self.convert_ali_to_textgrids(mono_directory, lang_directory, split_directory, num_jobs)

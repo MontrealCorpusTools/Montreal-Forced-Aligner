@@ -162,12 +162,9 @@ def sick_dict(sick_dict_path, generated_dir):
 
 
 @pytest.fixture(scope='session')
-def sick_corpus(sick_dict, basic_dir, generated_dir):
+def sick_corpus(basic_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
     corpus = Corpus(basic_dir, output_directory, num_jobs = 2)
-    corpus.write()
-    corpus.create_mfccs()
-    corpus.setup_splits(sick_dict)
     return corpus
 
 

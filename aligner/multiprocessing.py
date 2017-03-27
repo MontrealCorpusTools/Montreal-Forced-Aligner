@@ -1,4 +1,3 @@
-
 import multiprocessing as mp
 import subprocess
 import os
@@ -83,18 +82,19 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_configs):
             else:
                 raise
     if r:
-        raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
+        raise (CorpusError(
+            'There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
 
 
 def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cover
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
     model_path = os.path.join(directory, '{}.mdl'.format(iteration))
-    next_model_path = os.path.join(directory, '{}.mdl'.format(iteration+1))
+    next_model_path = os.path.join(directory, '{}.mdl'.format(iteration + 1))
     acc_path = os.path.join(directory, '{}.{}.acc'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     with open(log_path, 'w') as logf:
         acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), model_path,
-                                     "ark:"+feat_path, "ark,t:" + ali_path, acc_path],
+                                     "ark:" + feat_path, "ark,t:" + ali_path, acc_path],
                                     stderr=logf)
         acc_proc.communicate()
 
@@ -180,10 +180,12 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
         phones_file_path = triphones_file_path
     words_file_path = os.path.join(lang_directory, 'words.txt')
 
-    with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r') as inf,\
-            open(fst_path, 'wb') as outf,\
+    with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r') as inf, \
+            open(fst_path, 'wb') as outf, \
             open(log_path, 'w') as logf:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
+                                 '--read-disambig-syms={}'.format(
+                                     os.path.join(lang_directory, 'phones', 'disambig.int')),
                                  tree_path, mdl_path,
                                  os.path.join(lang_directory, 'L.fst'),
                                  "ark:-", "ark:-"],
@@ -210,7 +212,6 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
             temp_fst_path = os.path.join(directory, 'temp.fst.{}'.format(job_name))
 
             with open(fst_scp_path, 'r') as f:
-
                 for line in f:
                     line = line.strip()
                     utt = line.split()[0]
@@ -222,7 +223,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                                                 stdin=subprocess.PIPE, stderr=logf)
                     fst_proc.communicate(input=line.encode())
 
-                    draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'),  '--portrait=true',
+                    draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'), '--portrait=true',
                                                   '--isymbols={}'.format(phones_file_path),
                                                   '--osymbols={}'.format(words_file_path), temp_fst_path, dot_path],
                                                  stderr=logf)
@@ -231,7 +232,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                     dot_proc.communicate()
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug = False):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -269,13 +270,13 @@ def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path):
     directory = os.path.join(split_directory, str(job_name))
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
     ali_path = os.path.join(mono_directory, '0.{}.acc'.format(job_name))
-    with open(log_path, 'w') as logf,\
+    with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "ark:" + fst_path,
                                        'ark:' + feat_path, 'ark,t:-'],
                                       stdout=subprocess.PIPE, stderr=logf)
         stats_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), '--binary=true',
-                                       mdl_path, 'ark:' + feat_path, 'ark:-',  '-'],
+                                       mdl_path, 'ark:' + feat_path, 'ark:-', '-'],
                                       stdin=align_proc.stdout, stderr=logf, stdout=outf)
         stats_proc.communicate()
 
@@ -323,7 +324,7 @@ def compile_utterance_train_graphs_func(directory, lang_directory, split_directo
                                  '--read-disambig-syms={}'.format(disambig_int_path),
                                  tree_path, mdl_path,
                                  lexicon_fst_path,
-                                 "ark:-", "ark:"+graphs_path],
+                                 "ark:-", "ark:" + graphs_path],
                                 stdin=subprocess.PIPE, stderr=logf)
         group = []
         for line in f:
@@ -353,18 +354,18 @@ def test_utterances_func(directory, lang_directory, split_directory, job_name):
     max_active = 750
     lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
     with open(log_path, 'w') as logf:
-        latgen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster',),
+        latgen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster', ),
                                         '--acoustic-scale={}'.format(acoustic_scale),
                                         '--beam={}'.format(beam),
-      '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
-      '--word-symbol-table=' + words_path,
-     mdl_path, 'ark:' + graphs_path, 'ark:' + feat_path, 'ark:' + lat_path],
+                                        '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
+                                        '--word-symbol-table=' + words_path,
+                                        mdl_path, 'ark:' + graphs_path, 'ark:' + feat_path, 'ark:' + lat_path],
                                        stderr=logf)
         latgen_proc.communicate()
 
         oracle_proc = subprocess.Popen([thirdparty_binary('lattice-oracle'),
-                                        'ark:'+ lat_path, 'ark,t:'+text_int_path,
-                                        'ark,t:'+out_int_path, 'ark,t:'+edits_path],
+                                        'ark:' + lat_path, 'ark,t:' + text_int_path,
+                                        'ark,t:' + out_int_path, 'ark,t:' + edits_path],
                                        stderr=logf)
         oracle_proc.communicate()
 
@@ -382,7 +383,7 @@ def test_utterances(aligner):
     lang_directory = aligner.dictionary.output_directory
     with mp.Pool(processes=aligner.num_jobs) as pool:
         jobs = [(model_directory, lang_directory, split_directory, x)
-            for x in range(aligner.num_jobs)]
+                for x in range(aligner.num_jobs)]
         results = [pool.apply_async(compile_utterance_train_graphs_func, args=i) for i in jobs]
         output = [p.get() for p in results]
         print('Utterance FSTs compiled!')
@@ -436,10 +437,13 @@ def test_utterances(aligner):
     out_path = os.path.join(aligner.output_directory, 'transcription_problems.txt')
     with open(out_path, 'w') as problemf:
         problemf.write('Utterance\tInsertions\tDeletions\tReference\tDecoded\n')
-        for utt, (insertions, deletions, ref_text, text) in sorted(errors.items(), key = lambda x: -1*(len(x[1][1]) + len(x[1][2]))):
+        for utt, (insertions, deletions, ref_text, text) in sorted(errors.items(),
+                                                                   key=lambda x: -1 * (len(x[1][1]) + len(x[1][2]))):
             problemf.write('{}\t{}\t{}\t{}\t{}\n'.format(utt, ', '.join(insertions), ', '.join(deletions),
-                                                             ' '.join(ref_text), ' '.join(text)))
-    print('There were {} of {} utterances with at least one transcription issue. Please see the outputted csv file {}.'.format(len(errors), aligner.corpus.num_utterances, out_path))
+                                                         ' '.join(ref_text), ' '.join(text)))
+    print(
+        'There were {} of {} utterances with at least one transcription issue. Please see the outputted csv file {}.'.format(
+            len(errors), aligner.corpus.num_utterances, out_path))
     return False
 
 
@@ -447,7 +451,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    with open(log_path, 'w') as logf,\
+    with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
                                       ['--beam={}'.format(config.beam),
@@ -512,7 +516,7 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
 
-    frame_shift = corpus.mfcc_configs[0].config_dict['frame-shift']/1000
+    frame_shift = corpus.mfcc_configs[0].config_dict['frame-shift'] / 1000
     with open(log_path, 'w') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
@@ -593,7 +597,8 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
             else:
                 raise
     if r:
-        raise(CorpusError('There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
+        raise (CorpusError(
+            'There were too many files per speaker to process based on your OS settings.  Please try to split your data into more speakers.'))
     word_ctm = {}
     phone_ctm = {}
     for i in range(num_jobs):
@@ -601,9 +606,19 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
         phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
         if not os.path.exists(word_ctm_path):
             continue
-        word_ctm.update(parse_ctm(word_ctm_path, dictionary, mode='word'))
-        phone_ctm.update(parse_ctm(phone_ctm_path, dictionary, mode='phone'))
-    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus)
+        parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
+        for k, v in parsed.items():
+            if k not in word_ctm:
+                word_ctm[k] = v
+            else:
+                word_ctm[k].update(v)
+        parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
+        for k, v in parsed.items():
+            if k not in phone_ctm:
+                phone_ctm[k] = v
+            else:
+                phone_ctm[k].update(v)
+    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary)
 
 
 def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  # pragma: no cover
@@ -613,7 +628,7 @@ def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  
     treeacc_path = os.path.join(directory, '{}.treeacc'.format(job_name))
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
-                        ['--ci-phones='+ci_phones, mdl, "ark:" + feat_path,
+                        ['--ci-phones=' + ci_phones, mdl, "ark:" + feat_path,
                          "ark:" + ali_path,
                          treeacc_path], stderr=logf)
 
@@ -731,7 +746,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
 
         subprocess.call([thirdparty_binary('weight-silence-post'), '0.0',
                          sil_phones, mdl_path, 'ark:' + post_path,
-                         'ark:'+weight_path], stderr=logf)
+                         'ark:' + weight_path], stderr=logf)
 
         subprocess.call([thirdparty_binary('gmm-est-fmllr'),
                          '--verbose=4',
