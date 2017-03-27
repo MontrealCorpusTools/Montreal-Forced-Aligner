@@ -285,10 +285,10 @@ class Corpus(object):
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
 
-        if speaker_characters > 0:
-            self.speaker_directories = False
-        else:
+        if speaker_characters == 0:
             self.speaker_directories = True
+        else:
+            self.speaker_directories = False
         self.sample_rates = defaultdict(set)
         no_transcription_files = []
         unsupported_sample_rate = []
@@ -334,7 +334,10 @@ class Corpus(object):
                     if self.speaker_directories:
                         speaker_id = os.path.basename(root)
                     else:
-                        speaker_id = f[:speaker_characters]
+                        if isinstance(speaker_characters, int):
+                            speaker_id = f[:speaker_characters]
+                        elif speaker_characters == 'prosodylab':
+                            speaker_id = f.split('_')[1]
                     self.speak_utt_mapping[speaker_id].append(utt_name)
                     self.utt_wav_mapping[utt_name] = wav_path
                     self.sample_rates[get_sample_rate(wav_path)].add(speaker_id)
@@ -359,7 +362,10 @@ class Corpus(object):
                     elif n_channels > 2:
                         raise (Exception('More than two channels'))
                     if not self.speaker_directories:
-                        speaker_name = f[:speaker_characters]
+                        if isinstance(speaker_characters, int):
+                            speaker_id = f[:speaker_characters]
+                        elif speaker_characters == 'prosodylab':
+                            speaker_id = f.split('_')[1]
                     for i, ti in enumerate(tg.tiers):
                         if ti.name.lower() == 'notes':
                             continue

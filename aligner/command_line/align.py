@@ -74,7 +74,6 @@ def align_corpus(model_path, corpus_dir, output_directory, temp_dir, args, debug
                           speaker_independent=getattr(args, 'no_speaker_adaptation', False),
                           debug=getattr(args, 'debug', False))
     if getattr(args, 'errors', False):
-
         check = a.test_utterance_transcriptions()
         if not skip_input and not check:
             user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
@@ -128,7 +127,7 @@ if __name__ == '__main__':  # pragma: no cover
                         default='')
     parser.add_argument('corpus_dir', help='Full path to the directory to align')
     parser.add_argument('output_dir', help='Full path to output directory, will be created if it doesn\'t exist')
-    parser.add_argument('-s', '--speaker_characters', type=int, default=0,
+    parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                         help='Number of characters of filenames to use for determining speaker, default is to use directory names')
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
@@ -146,6 +145,10 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
     args = parser.parse_args()
+    try:
+        args.speaker_characters = int(args.speaker_characters)
+    except ValueError:
+        pass
     corpus_dir = os.path.expanduser(args.corpus_dir)
     model_path = os.path.expanduser(args.model_path)
     output_dir = os.path.expanduser(args.output_dir)
