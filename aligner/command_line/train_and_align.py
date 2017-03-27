@@ -30,7 +30,7 @@ def align_corpus(corpus_dir, dict_path, output_directory, temp_dir,
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(output_directory, exist_ok=True)
 
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters,
+    corpus = Corpus(corpus_dir, data_directory, speaker_characters=args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3),
                     debug=getattr(args, 'debug', False),
                     ignore_exceptions=getattr(args, 'ignore_exceptions', False))
@@ -80,10 +80,6 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
                     ignore_exceptions=getattr(args, 'ignore_exceptions', False))
     print(corpus.speaker_utterance_info())
     dictionary = no_dictionary(corpus, data_directory)
-    dictionary.write()
-    corpus.write()
-    corpus.create_mfccs()
-    corpus.setup_splits(dictionary)
     mono_params = {'align_often': not args.fast}
     tri_params = {'align_often': not args.fast}
     tri_fmllr_params = {'align_often': not args.fast}
@@ -110,7 +106,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('output_dir', help='Full path to output directory, will be created if it doesn\'t exist')
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')
-    parser.add_argument('-s', '--speaker_characters', type=int, default=0,
+    parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                         help='Number of characters of filenames to use for determining speaker, default is to use directory names')
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
@@ -125,6 +121,10 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
     args = parser.parse_args()
+    try:
+        args.speaker_characters = int(args.speaker_characters)
+    except ValueError:
+        pass
     corpus_dir = os.path.expanduser(args.corpus_dir)
     dict_path = os.path.expanduser(args.dict_path)
     output_dir = os.path.expanduser(args.output_dir)
