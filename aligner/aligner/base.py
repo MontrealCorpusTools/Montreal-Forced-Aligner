@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import subprocess
@@ -10,12 +9,13 @@ from ..helper import thirdparty_binary, make_path_safe
 from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
-                            acc_stats, tree_stats, convert_alignments,
-                             convert_ali_to_textgrids, calc_fmllr)
+                               acc_stats, tree_stats, convert_alignments,
+                               convert_ali_to_textgrids, calc_fmllr)
 
 from ..exceptions import NoSuccessfulAlignments
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+
 
 class BaseAligner(object):
     '''
@@ -43,10 +43,11 @@ class BaseAligner(object):
     tri_fmllr_params : :class:`~aligner.config.TriphoneFmllrConfig`, optional
         Speaker-adapted triphone training parameters to use, if different from defaults
     '''
+
     def __init__(self, corpus, dictionary, output_directory,
-                    temp_directory = None, num_jobs = 3, call_back = None,
-                    mono_params = None, tri_params = None,
-                    tri_fmllr_params = None, debug = False):
+                 temp_directory=None, num_jobs=3, call_back=None,
+                 mono_params=None, tri_params=None,
+                 tri_fmllr_params=None, debug=False):
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
@@ -70,6 +71,12 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = False
         self.debug = debug
+        self.setup()
+
+    def setup(self):
+        self.dictionary.write()
+        self.corpus.initialize_corpus(self.dictionary)
+        print(self.corpus.speaker_utterance_info())
 
     @property
     def mono_directory(self):
@@ -117,8 +124,9 @@ class BaseAligner(object):
             model_directory = self.tri_directory
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
+        print('hello')
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
-                            self.corpus, self.num_jobs)
+                                 self.corpus, self.num_jobs)
 
     def get_num_gauss_mono(self):
         '''
@@ -126,17 +134,17 @@ class BaseAligner(object):
         '''
         with open(os.devnull, 'w') as devnull:
             proc = subprocess.Popen([thirdparty_binary('gmm-info'),
-                        '--print-args=false',
-                        os.path.join(self.mono_directory, '0.mdl')],
-                        stderr = devnull,
-                        stdout = subprocess.PIPE)
+                                     '--print-args=false',
+                                     os.path.join(self.mono_directory, '0.mdl')],
+                                    stderr=devnull,
+                                    stdout=subprocess.PIPE)
             stdout, stderr = proc.communicate()
             num = stdout.decode('utf8')
             matches = re.search(r'gaussians (\d+)', num)
             num = int(matches.groups()[0])
         return num
 
-    def _align_si(self, fmllr = True):
+    def _align_si(self, fmllr=True):
         '''
         Generate an alignment of the dataset
         '''
@@ -157,22 +165,21 @@ class BaseAligner(object):
         oov = self.dictionary.oov_int
 
         log_dir = os.path.join(output_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
-        self.corpus.setup_splits(self.dictionary)
+        os.makedirs(log_dir, exist_ok=True)
 
         shutil.copy(os.path.join(model_directory, 'tree'), output_directory)
         shutil.copyfile(os.path.join(model_directory, 'final.mdl'),
-                                    os.path.join(output_directory, '0.mdl'))
+                        os.path.join(output_directory, '0.mdl'))
 
         shutil.copyfile(os.path.join(model_directory, 'final.occs'),
-                            os.path.join(output_directory, '0.occs'))
+                        os.path.join(output_directory, '0.occs'))
 
         feat_type = 'delta'
 
         compile_train_graphs(output_directory, self.dictionary.output_directory,
-                            self.corpus.split_directory, self.num_jobs, debug=self.debug)
+                             self.corpus.split_directory, self.num_jobs, debug=self.debug)
         align(0, output_directory, self.corpus.split_directory,
-                    optional_silence, self.num_jobs, config)
+              optional_silence, self.num_jobs, config)
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
         shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
 
@@ -183,7 +190,8 @@ class BaseAligner(object):
         if not self.verbose:
             return
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
-        too_little_data_regex = re.compile(r'Gaussian has too little data but not removing it because it is the last Gaussian')
+        too_little_data_regex = re.compile(
+            r'Gaussian has too little data but not removing it because it is the last Gaussian')
         skipped_transition_regex = re.compile(r'(\d+) out of (\d+) transition-states skipped due to insuffient data')
 
         log_like_regex = re.compile(r'Overall avg like per frame = ([-0-9.]+|nan) over (\d+) frames')
@@ -202,7 +210,7 @@ class BaseAligner(object):
                 if m is not None:
                     log_like, tot_frames = m.groups()
                     if log_like == 'nan':
-                        raise(NoSuccessfulAlignments('Could not align any files.  Too little data?'))
+                        raise (NoSuccessfulAlignments('Could not align any files.  Too little data?'))
                     self.call_back('log-likelihood', float(log_like))
                 skipped_transitions = skipped_transition_regex.search(data)
                 self.call_back('skipped transitions', *skipped_transitions.groups())
@@ -217,19 +225,19 @@ class BaseAligner(object):
         '''
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
-        self._align_si(fmllr = False)
+        self._align_si(fmllr=False)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
+        os.makedirs(log_dir, exist_ok=True)
 
         calc_fmllr(output_directory, self.corpus.split_directory,
-                    sil_phones, self.num_jobs, self.tri_fmllr_config, initial = True)
+                   sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
         align(0, output_directory, self.corpus.split_directory,
-                    optional_silence, self.num_jobs, self.tri_fmllr_config)
+              optional_silence, self.num_jobs, self.tri_fmllr_config)
 
-    def _init_tri(self, fmllr = False):
+    def _init_tri(self, fmllr=False):
         if fmllr:
             config = self.tri_fmllr_config
             directory = self.tri_fmllr_directory
@@ -248,7 +256,7 @@ class BaseAligner(object):
         ci_phones = self.dictionary.silence_csl
 
         tree_stats(directory, align_directory,
-                    self.corpus.split_directory, ci_phones, self.num_jobs)
+                   self.corpus.split_directory, ci_phones, self.num_jobs)
         log_path = os.path.join(directory, 'log', 'questions.log')
         tree_path = os.path.join(directory, 'tree')
         treeacc_path = os.path.join(directory, 'treeacc')
@@ -260,44 +268,44 @@ class BaseAligner(object):
         questions_qst_path = os.path.join(directory, 'questions.qst')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('cluster-phones')] + context_opts +
-            [treeacc_path, sets_int_path, questions_path], stderr = logf)
+                            [treeacc_path, sets_int_path, questions_path], stderr=logf)
 
         with open(extra_question_int_path, 'r') as inf, \
-            open(questions_path, 'a') as outf:
-                for line in inf:
-                    outf.write(line)
+                open(questions_path, 'a') as outf:
+            for line in inf:
+                outf.write(line)
 
         log_path = os.path.join(directory, 'log', 'compile_questions.log')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('compile-questions')] + context_opts +
-                    [topo_path, questions_path, questions_qst_path],
-                    stderr = logf)
+                            [topo_path, questions_path, questions_qst_path],
+                            stderr=logf)
 
         log_path = os.path.join(directory, 'log', 'build_tree.log')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('build-tree')] + context_opts +
-                ['--verbose=1', '--max-leaves={}'.format(config.initial_gauss_count),
-                '--cluster-thresh={}'.format(config.cluster_threshold),
-                 treeacc_path, roots_int_path, questions_qst_path,
-                 topo_path, tree_path], stderr = logf)
+                            ['--verbose=1', '--max-leaves={}'.format(config.initial_gauss_count),
+                             '--cluster-thresh={}'.format(config.cluster_threshold),
+                             treeacc_path, roots_int_path, questions_qst_path,
+                             topo_path, tree_path], stderr=logf)
 
         log_path = os.path.join(directory, 'log', 'init_model.log')
         occs_path = os.path.join(directory, '0.occs')
         mdl_path = os.path.join(directory, '0.mdl')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('gmm-init-model'),
-            '--write-occs='+occs_path, tree_path, treeacc_path,
-            topo_path, mdl_path], stderr = logf)
+                             '--write-occs=' + occs_path, tree_path, treeacc_path,
+                             topo_path, mdl_path], stderr=logf)
 
         log_path = os.path.join(directory, 'log', 'mixup.log')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('gmm-mixup'),
-                    '--mix-up={}'.format(config.initial_gauss_count),
-             mdl_path, occs_path, mdl_path], stderr = logf)
+                             '--mix-up={}'.format(config.initial_gauss_count),
+                             mdl_path, occs_path, mdl_path], stderr=logf)
         os.remove(treeacc_path)
 
         compile_train_graphs(directory, self.dictionary.output_directory,
-                                self.corpus.split_directory, self.num_jobs)
+                             self.corpus.split_directory, self.num_jobs)
         os.rename(occs_path, os.path.join(directory, '1.occs'))
         os.rename(mdl_path, os.path.join(directory, '1.mdl'))
 
@@ -306,7 +314,7 @@ class BaseAligner(object):
         if os.path.exists(os.path.join(align_directory, 'trans.0')):
             for i in range(self.num_jobs):
                 shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
-                        os.path.join(directory, 'trans.{}'.format(i)))
+                            os.path.join(directory, 'trans.{}'.format(i)))
 
     def train_tri_fmllr(self):
         '''
@@ -318,9 +326,8 @@ class BaseAligner(object):
         if not os.path.exists(self.tri_ali_directory):
             self._align_fmllr()
 
-        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
-        self.corpus.setup_splits(self.dictionary)
-        self._init_tri(fmllr = True)
+        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok=True)
+        self._init_tri(fmllr=True)
         self._do_tri_fmllr_training()
 
     def _do_tri_fmllr_training(self):
@@ -339,38 +346,38 @@ class BaseAligner(object):
             iters = range(1, config.num_iters)
         log_directory = os.path.join(directory, 'log')
         for i in iters:
-            model_path = os.path.join(directory,'{}.mdl'.format(i))
-            occs_path = os.path.join(directory, '{}.occs'.format(i+1))
-            next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
+            model_path = os.path.join(directory, '{}.mdl'.format(i))
+            occs_path = os.path.join(directory, '{}.occs'.format(i + 1))
+            next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
             if os.path.exists(next_model_path):
                 continue
             if i in config.realign_iters:
                 align(i, directory, self.corpus.split_directory,
-                            self.dictionary.optional_silence_csl,
-                            self.num_jobs, config)
+                      self.dictionary.optional_silence_csl,
+                      self.num_jobs, config)
             if config.do_fmllr and i in config.fmllr_iters:
                 calc_fmllr(directory, self.corpus.split_directory, sil_phones,
-                        self.num_jobs, config, initial = False, iteration = i)
+                           self.num_jobs, config, initial=False, iteration=i)
 
             acc_stats(i, directory, self.corpus.split_directory, self.num_jobs,
-                        config.do_fmllr)
+                      config.do_fmllr)
             log_path = os.path.join(log_directory, 'update.{}.log'.format(i))
             with open(log_path, 'w') as logf:
                 acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))
-                                                for x in range(self.num_jobs)]
+                             for x in range(self.num_jobs)]
                 est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
-                        '--write-occs='+occs_path,
-                        '--mix-up='+str(num_gauss), '--power='+str(config.power),
-                        model_path,
-                        "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                        ' '.join(map(make_path_safe, acc_files))),
-                        next_model_path],
-                        stderr = logf)
+                                             '--write-occs=' + occs_path,
+                                             '--mix-up=' + str(num_gauss), '--power=' + str(config.power),
+                                             model_path,
+                                             "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                                               ' '.join(map(make_path_safe, acc_files))),
+                                             next_model_path],
+                                            stderr=logf)
                 est_proc.communicate()
             self.parse_log_directory(log_directory, i)
             if i < config.max_iter_inc:
                 num_gauss += inc_gauss
-        shutil.copy(os.path.join(directory,'{}.mdl'.format(config.num_iters)),
-                        os.path.join(directory,'final.mdl'))
-        shutil.copy(os.path.join(directory,'{}.occs'.format(config.num_iters)),
-                        os.path.join(directory,'final.occs'))
+        shutil.copy(os.path.join(directory, '{}.mdl'.format(config.num_iters)),
+                    os.path.join(directory, 'final.mdl'))
+        shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),
+                    os.path.join(directory, 'final.occs'))

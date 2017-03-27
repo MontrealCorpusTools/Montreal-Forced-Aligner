@@ -1,9 +1,11 @@
 import os
 
+
 def make_safe(value):
     if isinstance(value, bool):
         return str(value).lower()
     return str(value)
+
 
 class MonophoneConfig(object):
     '''
@@ -46,19 +48,20 @@ class MonophoneConfig(object):
     do_fmllr : bool
         Specifies whether to do speaker adaptation, defaults to False
     '''
+
     def __init__(self, **kwargs):
         self.num_iters = 40
 
         self.scale_opts = ['--transition-scale=1.0',
-                        '--acoustic-scale=0.1',
-                        '--self-loop-scale=0.1']
+                           '--acoustic-scale=0.1',
+                           '--self-loop-scale=0.1']
         self.beam = 10
         self.retry_beam = 40
         self.max_gauss_count = 1000
         self.boost_silence = 1.0
         if kwargs.get('align_often', False):
             self.realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
-                                    16, 18, 20, 23, 26, 29, 32, 35, 38]
+                                  16, 18, 20, 23, 26, 29, 32, 35, 38]
         else:
             self.realign_iters = [1, 5, 10, 15, 20, 25, 30, 35, 38]
         self.stage = -4
@@ -66,7 +69,7 @@ class MonophoneConfig(object):
 
         self.do_fmllr = False
 
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
             setattr(self, k, v)
 
     @property
@@ -76,6 +79,7 @@ class MonophoneConfig(object):
     @property
     def inc_gauss_count(self):
         return int((self.max_gauss_count - self.initial_gauss_count) / self.max_iter_inc)
+
 
 class TriphoneConfig(MonophoneConfig):
     '''
@@ -124,13 +128,15 @@ class TriphoneConfig(MonophoneConfig):
     cluster_threshold : int
         For build-tree control final bottom-up clustering of leaves, defaults to 100
     '''
+
     def __init__(self, **kwargs):
         defaults = {'num_iters': 35,
-        'initial_gauss_count': 3100,
-        'max_gauss_count': 50000,
-        'cluster_threshold': 100}
+                    'initial_gauss_count': 3100,
+                    'max_gauss_count': 50000,
+                    'cluster_threshold': 100}
         defaults.update(kwargs)
         super(TriphoneConfig, self).__init__(**defaults)
+
 
 class TriphoneFmllrConfig(TriphoneConfig):
     '''
@@ -191,12 +197,13 @@ class TriphoneFmllrConfig(TriphoneConfig):
     silence_weight : float
         Weight on silence in fMLLR estimation
     '''
-    def __init__(self, align_often = True, **kwargs):
+
+    def __init__(self, align_often=True, **kwargs):
         defaults = {'do_fmllr': True,
-        'fmllr_update_type': 'full',
-        'fmllr_iters': [2, 4, 6, 12],
-        'fmllr_power': 0.2,
-        'silence_weight': 0.0}
+                    'fmllr_update_type': 'full',
+                    'fmllr_iters': [2, 4, 6, 12],
+                    'fmllr_power': 0.2,
+                    'silence_weight': 0.0}
         defaults.update(kwargs)
         super(TriphoneFmllrConfig, self).__init__(**defaults)
 
@@ -220,11 +227,12 @@ class MfccConfig(object):
     config_dict : dict
         Dictionary of configuration parameters
     '''
-    def __init__(self, output_directory, job = None, kwargs = None):
+
+    def __init__(self, output_directory, job=None, kwargs=None):
         if kwargs is None:
             kwargs = {}
         self.job = job
-        self.config_dict = {'use-energy':False, 'frame-shift':10}
+        self.config_dict = {'use-energy': False, 'frame-shift': 10}
         self.config_dict.update(kwargs)
         self.output_directory = output_directory
         self.write()
@@ -244,7 +252,7 @@ class MfccConfig(object):
     @property
     def config_directory(self):
         path = os.path.join(self.output_directory, 'config')
-        os.makedirs(path, exist_ok = True)
+        os.makedirs(path, exist_ok=True)
         return path
 
     @property
@@ -259,6 +267,6 @@ class MfccConfig(object):
         '''
         Write configuration dictionary to a file for use in Kaldi binaries
         '''
-        with open(self.path, 'w', encoding = 'utf8') as f:
-            for k,v in self.config_dict.items():
+        with open(self.path, 'w', encoding='utf8') as f:
+            for k, v in self.config_dict.items():
                 f.write('--{}={}\n'.format(k, make_safe(v)))

@@ -7,9 +7,10 @@ import re
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
 from ..dictionary import Dictionary
-from ..corpus import load_scp,save_scp
+from ..corpus import load_scp, save_scp
 
-from ..multiprocessing import (align, calc_fmllr, test_utterances,thirdparty_binary, subprocess,convert_ali_to_textgrids)
+from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
+                               convert_ali_to_textgrids)
 
 
 def parse_transitions(path, phones_path):
@@ -54,9 +55,10 @@ class PretrainedAligner(BaseAligner):
     call_back : callable, optional
         Specifies a call back function for alignment
     '''
+
     def __init__(self, archive, corpus, output_directory,
-                    temp_directory = None, num_jobs = 3, speaker_independent = False,
-                    call_back = None, debug = False):
+                 temp_directory=None, num_jobs=3, speaker_independent=False,
+                 call_back=None, debug=False):
         self.debug = debug
         if temp_directory is None:
             temp_directory = TEMP_DIR
@@ -67,10 +69,10 @@ class PretrainedAligner(BaseAligner):
         self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'),
                                      word_set=corpus.word_set, debug=debug)
 
-        self.dictionary.write()
+        self.setup()
         archive.export_triphone_model(self.tri_directory)
         log_dir = os.path.join(self.tri_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
+        os.makedirs(log_dir, exist_ok=True)
 
         if self.corpus.num_jobs != num_jobs:
             num_jobs = self.corpus.num_jobs
@@ -80,15 +82,15 @@ class PretrainedAligner(BaseAligner):
             self.call_back = print
         self.verbose = False
         self.tri_fmllr_config = TriphoneFmllrConfig(**{'realign_iters': [1, 2],
-                                                        'fmllr_iters': [1],
-                                                        'num_iters': 3,
-                                                       #'boost_silence': 0
+                                                       'fmllr_iters': [1],
+                                                       'num_iters': 3,
+                                                       # 'boost_silence': 0
                                                        })
         self.tri_config = TriphoneConfig()
         if self.debug:
-            mdl_path = os.path.join(self.tri_directory,'final.mdl')
-            tree_path = os.path.join(self.tri_directory,'tree')
-            occs_path = os.path.join(self.tri_directory,'final.occs')
+            mdl_path = os.path.join(self.tri_directory, 'final.mdl')
+            tree_path = os.path.join(self.tri_directory, 'tree')
+            occs_path = os.path.join(self.tri_directory, 'final.occs')
             log_path = os.path.join(self.tri_directory, 'log', 'show_transition.log')
             transition_path = os.path.join(self.tri_directory, 'transitions.txt')
             tree_pdf_path = os.path.join(self.tri_directory, 'tree.pdf')
@@ -97,19 +99,21 @@ class PretrainedAligner(BaseAligner):
             triphones_path = os.path.join(self.tri_directory, 'triphones.txt')
             with open(log_path, 'w') as logf:
                 with open(transition_path, 'w', encoding='utf8') as f:
-                    subprocess.call([thirdparty_binary('show-transitions'), phones_path, mdl_path, occs_path], stdout=f, stderr=logf)
+                    subprocess.call([thirdparty_binary('show-transitions'), phones_path, mdl_path, occs_path], stdout=f,
+                                    stderr=logf)
                 parse_transitions(transition_path, triphones_path)
                 if False:
                     with open(tree_dot_path, 'wb') as treef:
-                        draw_tree_proc = subprocess.Popen([thirdparty_binary('draw-tree'), phones_path, tree_path], stdout=treef, stderr=logf)
+                        draw_tree_proc = subprocess.Popen([thirdparty_binary('draw-tree'), phones_path, tree_path],
+                                                          stdout=treef, stderr=logf)
                         draw_tree_proc.communicate()
                     with open(tree_dot_path, 'rb') as treeinf, open(tree_pdf_path, 'wb') as treef:
-                        dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-Gsize=8,10.5'], stdin=treeinf, stdout=treef, stderr=logf)
+                        dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-Gsize=8,10.5'], stdin=treeinf,
+                                                    stdout=treef, stderr=logf)
                         dot_proc.communicate()
         print('Done with setup.')
 
     def test_utterance_transcriptions(self):
-        self.corpus.setup_splits(self.dictionary)
         return test_utterances(self)
 
     def do_align(self):
@@ -128,31 +132,29 @@ class PretrainedAligner(BaseAligner):
         output_directory = self.tri_ali_directory
         os.makedirs(output_directory, exist_ok=True)
         if self.debug:
-            shutil.copyfile(os.path.join(self.tri_directory,'triphones.txt'),
-                        os.path.join(self.tri_ali_directory,'triphones.txt'))
-        self._align_si(fmllr = False)
+            shutil.copyfile(os.path.join(self.tri_directory, 'triphones.txt'),
+                            os.path.join(self.tri_ali_directory, 'triphones.txt'))
+        self._align_si(fmllr=False)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')
-        os.makedirs(log_dir, exist_ok = True)
+        os.makedirs(log_dir, exist_ok=True)
         if not self.speaker_independent:
             calc_fmllr(output_directory, self.corpus.split_directory,
-                        sil_phones, self.num_jobs, self.tri_fmllr_config, initial = True)
+                       sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
             optional_silence = self.dictionary.optional_silence_csl
             align(0, output_directory, self.corpus.split_directory,
-                        optional_silence, self.num_jobs, self.tri_fmllr_config)
+                  optional_silence, self.num_jobs, self.tri_fmllr_config)
 
     def _init_tri(self):
         if not os.path.exists(self.tri_ali_directory):
             self._align_fmllr()
         if self.speaker_independent:
-           return
-        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok = True)
-        begin = time.time()
-        self.corpus.setup_splits(self.dictionary)
+            return
+        os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok=True)
 
-        shutil.copy(os.path.join(self.tri_directory,'final.mdl'),
-                        os.path.join(self.tri_fmllr_directory,'1.mdl'))
+        shutil.copy(os.path.join(self.tri_directory, 'final.mdl'),
+                    os.path.join(self.tri_fmllr_directory, '1.mdl'))
 
         for i in range(self.num_jobs):
             shutil.copy(os.path.join(self.tri_ali_directory, 'fsts.{}'.format(i)),
@@ -169,19 +171,19 @@ class PretrainedAligner(BaseAligner):
             iters = range(1, self.tri_fmllr_config.num_iters)
         log_directory = os.path.join(directory, 'log')
         for i in iters:
-            model_path = os.path.join(directory,'{}.mdl'.format(i))
-            occs_path = os.path.join(directory, '{}.occs'.format(i+1))
-            next_model_path = os.path.join(directory,'{}.mdl'.format(i+1))
+            model_path = os.path.join(directory, '{}.mdl'.format(i))
+            occs_path = os.path.join(directory, '{}.occs'.format(i + 1))
+            next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
             if os.path.exists(next_model_path):
                 continue
             align(i, directory, self.corpus.split_directory,
-                            self.dictionary.optional_silence_csl,
-                            self.num_jobs, self.tri_fmllr_config)
+                  self.dictionary.optional_silence_csl,
+                  self.num_jobs, self.tri_fmllr_config)
             calc_fmllr(directory, self.corpus.split_directory, sil_phones,
-                        self.num_jobs, self.tri_fmllr_config, initial = False, iteration = i)
+                       self.num_jobs, self.tri_fmllr_config, initial=False, iteration=i)
             os.rename(model_path, next_model_path)
             self.parse_log_directory(log_directory, i)
-        os.rename(next_model_path, os.path.join(directory,'final.mdl'))
+        os.rename(next_model_path, os.path.join(directory, 'final.mdl'))
 
     def export_textgrids(self):
         '''
@@ -192,4 +194,4 @@ class PretrainedAligner(BaseAligner):
         else:
             model_directory = self.tri_fmllr_directory
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
-                            self.corpus, self.num_jobs)
+                                 self.corpus, self.num_jobs)

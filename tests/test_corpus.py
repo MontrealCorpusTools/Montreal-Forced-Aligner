@@ -12,18 +12,14 @@ def test_basic(basic_dict_path, basic_dir, generated_dir):
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
     d = Corpus(basic_dir, output_directory)
-    d.write()
-    d.create_mfccs()
-    d.setup_splits(dictionary)
+    d.initialize_corpus(dictionary)
     assert(d.get_feat_dim() == '39')
 
 
 def test_extra(sick_dict, extra_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
     corpus = Corpus(extra_dir, output_directory, num_jobs = 2)
-    corpus.write()
-    corpus.create_mfccs()
-    corpus.setup_splits(sick_dict)
+    corpus.initialize_corpus(sick_dict)
 
 
 
@@ -32,17 +28,16 @@ def test_stereo(basic_dict_path, textgrid_directory, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = Corpus(os.path.join(textgrid_directory, 'stereo'), temp)
-    d.write()
-    d.create_mfccs()
-    d.setup_splits(dictionary)
+    d.initialize_corpus(dictionary)
     assert(d.get_feat_dim() == '39')
 
 
-def test_short_segments(textgrid_directory, generated_dir):
+def test_short_segments(basic_dict_path, textgrid_directory, generated_dir):
+    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'short_segments'))
+    dictionary.write()
     temp = os.path.join(generated_dir, 'short_segments')
     corpus = Corpus(os.path.join(textgrid_directory, 'short_segments'), temp)
-    corpus.write()
-    corpus.create_mfccs()
+    corpus.initialize_corpus(dictionary)
     assert(len(corpus.feat_mapping.keys()) == 2)
     assert(len(corpus.utt_speak_mapping.keys()) == 2)
     assert(len(corpus.speak_utt_mapping.keys()) == 1)

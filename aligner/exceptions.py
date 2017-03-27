@@ -1,10 +1,9 @@
-
-
 class MFAError(Exception):
     '''
     Base exception class
     '''
     pass
+
 
 ## Dictionary Errors
 
@@ -14,6 +13,7 @@ class DictionaryError(MFAError):
     '''
     pass
 
+
 ## Corpus Errors
 
 class CorpusError(MFAError):
@@ -22,11 +22,13 @@ class CorpusError(MFAError):
     '''
     pass
 
+
 class SampleRateError(CorpusError):
     '''
     Class for errors in different sample rates
     '''
     pass
+
 
 ## Aligner Errors
 
@@ -35,6 +37,7 @@ class AlignerError(MFAError):
     Class for errors during alignment
     '''
     pass
+
 
 class NoSuccessfulAlignments(AlignerError):
     '''
