@@ -40,7 +40,7 @@ def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_ou
     output_directory = prosodylab_output_directory
     args = DummyArgs()
     align_included_model(language, corpus_dir,  output_directory, '',
-                            args)
+                            args, skip_input=True)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
 
 @large
@@ -55,7 +55,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     args.num_jobs = 2
     args.fast = True
     train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args)
+            output_model_path, args, skip_input=True)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
     assert(os.path.exists(output_model_path))
 
@@ -72,7 +72,7 @@ def test_align_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     args.num_jobs = 2
     args.fast = True
     train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args)
+            output_model_path, args, skip_input=True)
     #assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
 
 ## TEXTGRID
@@ -84,7 +84,7 @@ def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_d
     output_directory = textgrid_output_directory
     args = DummyArgs()
     align_included_model(language, corpus_dir,  output_directory, '',
-                            args)
+                            args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
 
 @large
@@ -99,7 +99,7 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     args.num_jobs = 2
     args.fast = True
     train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args)
+            output_model_path, args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(output_model_path))
 
@@ -114,6 +114,6 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     args.num_jobs = 2
     args.fast = True
     align_corpus_no_dict(corpus_dir,  output_directory, '',
-            output_model_path, args)
+            output_model_path, args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(output_model_path))
