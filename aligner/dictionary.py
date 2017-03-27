@@ -17,8 +17,15 @@ def compile_graphemes(graphemes):
 
 
 def sanitize(item):
-    sanitized = re.sub(r'^\W+', '', item)
-    sanitized = re.sub(r'\W+$', '', sanitized)
+    # Clitic markers are "-" and "'"
+    sanitized = re.sub(r"^[^-\w']+", '', item)
+    sanitized = re.sub(r"[^-\w']+$", '', sanitized)
+    return sanitized
+
+def sanitize_clitics(item):
+    # Clitic markers are "-" and "'"
+    sanitized = re.sub(r"^\W+", '', item)
+    sanitized = re.sub(r"\W+$", '', sanitized)
     return sanitized
 
 class Dictionary(object):
@@ -100,8 +107,8 @@ class Dictionary(object):
                 pron = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     self.nonsil_phones.update(pron)
-                if word_set is not None and sanitize(word) not in word_set:
-                    continue
+                #if word_set is not None and sanitize(word) not in word_set:
+                #    continue
                 if word in self.words and pron in set(x[0] for x in self.words[word]):
                     continue
                 self.words[word].append((pron, prob))
@@ -215,6 +222,9 @@ class Dictionary(object):
         sanitized = sanitize(item)
         if sanitized in self.words_mapping:
             return sanitized
+        sanitized = sanitize_clitics(item)
+        if sanitized in self.words_mapping:
+            return sanitized
         return item
 
     def separate_clitics(self, item):
@@ -234,14 +244,19 @@ class Dictionary(object):
             List containing all words after any splits due to apostrophes or hyphens
 
         """
+        unit_re = re.compile(r'^(\[.*\]|\{.*\}|<.*>)$')
+        if unit_re.match(item) is not None:
+            return [item]
+        lookup = self._lookup(item)
 
-        vocab = []
-        chars = list(item)
-        count = 0
-        for i in chars:
-            if i in self.clitic_markers:
-                count += 1
-        if item not in self.words:
+        if lookup not in self.words_mapping:
+            item = sanitize(item)
+            vocab = []
+            chars = list(item)
+            count = 0
+            for i in chars:
+                if i in self.clitic_markers:
+                    count += 1
             for i in range(count):
                 for punc in chars:
                     if punc in self.clitic_markers:
@@ -266,16 +281,16 @@ class Dictionary(object):
                                 vocab.append(option2nopunc)
                         chars = list(option2nopunc)
         else:
-            return [item]
+            return [lookup]
         if not vocab:
-            return [item]
+            return [lookup]
         else:
             unk = []
             for i in vocab:
                 if i not in self.words:
                     unk.append(i)
             if len(unk) == count + 1:
-                return [item]
+                return [lookup]
             return vocab
 
     @property

@@ -6,6 +6,7 @@ from aligner.dictionary import OrthographicDictionary
 def check_tools():
     pass
 
+
 def no_dictionary(corpus_object, output_directory):
     """Creates a dictionary based on the orthography.
 
@@ -38,5 +39,3 @@ def no_dictionary(corpus_object, output_directory):
                 created_dict[word] = transcription
     d = OrthographicDictionary(created_dict, output_directory)
     return d
-
-
