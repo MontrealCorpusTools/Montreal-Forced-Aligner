@@ -28,3 +28,5 @@ import aligner.multiprocessing as multiprocessing
 import aligner.textgrid as textgrid
 
 import aligner.utils as utils
+
+import aligner.dictmaker as dictmaker
