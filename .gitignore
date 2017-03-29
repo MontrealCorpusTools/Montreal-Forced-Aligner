@@ -67,3 +67,5 @@ docs/build/
 
 # PyBuilder
 target/
+
+dict_models/*
