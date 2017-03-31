@@ -28,7 +28,7 @@ class DictMaker(object):
 
         with open(TEMP_FILE[1], 'w') as f1:
             words = corpus.word_set
-            print(words)
+            print("lenghth of words: ", len(words))
             for word in words:
                 f1.write(word.strip() + '\n')
 
@@ -42,21 +42,17 @@ class DictMaker(object):
         self.execute()
 
     def execute(self):
-        print("writing file 1")
+
         with open(self.outfile,"w") as f3:
-            print("{} --model={} --wordlist={}".format(self.path_to_phon, 
-                os.path.join(self.path_to_models, "full.fst"), self.wordlist))
             result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
                 os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, shell=True).wait()
-            print("result " , result)
-        print("reading file 1")
+
         with open(self.outfile) as f4:
             lines = f4.readlines()
-        print("writing file 2")
+
         with open(self.outfile, "w") as f5:
             for line in lines:
                 splitline = line.split("\t")
-                print(splitline, "splitline")
                 f5.write(splitline[0] + "\t" + splitline[2])
 
     def get_path_to_models(self):
