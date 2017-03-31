@@ -5,7 +5,6 @@ from aligner.command_line.align import align_corpus, align_included_model
 
 from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus, align_corpus_no_dict
 
-
 class DummyArgs(object):
     def __init__(self):
         self.speaker_characters = 0
@@ -15,7 +14,6 @@ class DummyArgs(object):
         self.no_speaker_adaptation = False
         self.debug = False
         self.errors = False
-
 
 large = pytest.mark.skipif(
     pytest.config.getoption("--skiplarge"),

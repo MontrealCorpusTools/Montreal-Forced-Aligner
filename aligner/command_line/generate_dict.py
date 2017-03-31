@@ -2,6 +2,15 @@ import argparse
 from aligner.dictmaker.makedict import DictMaker
 
 
+def generate_dict(language, input_dir, outfile, KO = None):
+    input_dir = os.path.expanduser(input_dir)
+    # corpus = Corpus(input_dir, input_dir, 0)
+    # word_list = corpus.word_set()
+
+
+
+    D = DictMaker(language, input_dir, outfile, KO)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = "create a dictionary from pre-built models for any of the following languages:")
 
@@ -18,4 +27,5 @@ if __name__ == '__main__':
 
     args  = parser.parse_args()
 
-    D = DictMaker(args)
+    generate_dict(args.language, args.input_dir, args.outfile, args.KO)
+    

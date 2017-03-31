@@ -1,2 +1,0 @@
-# from .compare import compare
-
