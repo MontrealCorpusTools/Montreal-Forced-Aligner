@@ -2,9 +2,11 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from pathlib import Path
-from aligner.dictmaker.inspect import BaseInspector
+from aligner.corpus import Corpus
+
 
 class DictMaker(object):
     """loads arguments and creates a Dictionary from a g2pfst model
@@ -13,41 +15,48 @@ class DictMaker(object):
     ----------
         args : arguments from command line: language, input_dir, [outfile]
     """
-    def __init__(self, args):
+    def __init__(self, language, input_dir,  outfile, KO=None):
         super(DictMaker, self).__init__()
-        self.KO = args.KO
-        self.args = args
+        self.KO = KO
         
-        self.language = args.language
-        self.input_dir = args.input_dir
+        self.language = language
+
+        self.input_dir = input_dir
+        corpus = Corpus(input_dir, input_dir, 0)
+        TEMP_FILE = tempfile.mkstemp()
+        self.wordlist = TEMP_FILE[1]
+
+        with open(TEMP_FILE[1], 'w') as f1:
+            words = corpus.word_set
+            print(words)
+            for word in words:
+                f1.write(word.strip() + '\n')
 
         self.path_to_models = self.get_path_to_models()
         self.path_to_phon = self.get_path_to_phonetisaurus()
 
-        BI =  BaseInspector(self.input_dir, self.KO)
-        self.wordlist = BI.output_path
-
-        self.outfile = args.outfile
+        self.outfile = outfile
         if self.outfile == None:
             self.outfile = "_".join([self.language, 'dict.txt'])
-
-
-
-
 
         self.execute()
 
     def execute(self):
+        print("writing file 1")
         with open(self.outfile,"w") as f3:
+            print("{} --model={} --wordlist={}".format(self.path_to_phon, 
+                os.path.join(self.path_to_models, "full.fst"), self.wordlist))
             result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
                 os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, shell=True).wait()
-
+            print("result " , result)
+        print("reading file 1")
         with open(self.outfile) as f4:
             lines = f4.readlines()
-
+        print("writing file 2")
         with open(self.outfile, "w") as f5:
             for line in lines:
                 splitline = line.split("\t")
+                print(splitline, "splitline")
                 f5.write(splitline[0] + "\t" + splitline[2])
 
     def get_path_to_models(self):
