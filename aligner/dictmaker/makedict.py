@@ -9,11 +9,18 @@ from aligner.corpus import Corpus
 
 
 class DictMaker(object):
-    """loads arguments and creates a Dictionary from a g2pfst model
+    """creates a Dictionary from a g2pfst model
 
     Parameters
     ----------
-        args : arguments from command line: language, input_dir, [outfile]
+        language: str
+            language of the model
+        input dir: str
+            location of .lab files
+        outfile: str
+            destination for the dictionary
+        K0:bool
+            default to None, to be used if using a Korean corpus in Hangul
     """
     def __init__(self, language, input_dir,  outfile, KO=None):
         super(DictMaker, self).__init__()
@@ -28,7 +35,6 @@ class DictMaker(object):
 
         with open(TEMP_FILE[1], 'w') as f1:
             words = corpus.word_set
-            print("lenghth of words: ", len(words))
             for word in words:
                 f1.write(word.strip() + '\n')
 
@@ -39,13 +45,36 @@ class DictMaker(object):
         if self.outfile == None:
             self.outfile = "_".join([self.language, 'dict.txt'])
 
+        self.stderr = tempfile.mkstemp()[1]
         self.execute()
 
     def execute(self):
+        """
+        runs the phonetisaurus-g2pfst binary with the language and all the words in the corpus
+        """
 
         with open(self.outfile,"w") as f3:
-            result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
-                os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, shell=True).wait()
+            with open(self.stderr,'w') as f4:
+                result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
+                    os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, stderr=f4, shell=True).wait()
+
+        with open(self.stderr) as f3:
+            syms = []
+            sym_count =0
+            lineregex = re.compile("Symbol: '.*' not found in input symbols table")
+            symbolregex = re.compile("(?<=').(?=')")
+            lines = f3.readlines()
+            for line in lines:
+                if lineregex.match(line) is not None:
+                    syms.append(symbolregex.match(line).group(0) if symbolregex.match(line) is not None else "")
+                    sym_count +=1 
+
+            print("There were {} unmatched symbols in your transcriptions.".format(sym_count))
+        with open("unknown_syms","w") as f5:
+            for sym in syms:
+                if sym != "":
+                    f5.write(sym + "\n")
+
 
         with open(self.outfile) as f4:
             lines = f4.readlines()
@@ -56,12 +85,18 @@ class DictMaker(object):
                 f5.write(splitline[0] + "\t" + splitline[2])
 
     def get_path_to_models(self):
+        """
+        returns a path to pre-generated dictionary models
+        """
         path_to_file = os.path.dirname(__file__)
         path_to_models = os.path.join(str(Path(path_to_file).parent.parent), 'dict_models', self.language)
 
         return path_to_models
 
     def get_path_to_phonetisaurus(self):
+        """
+        returns a path to the phonetisaurus-g2pfst binary
+        """
         path_to_file = os.path.dirname(__file__)
         path_to_phon = os.path.join(str(Path(path_to_file).parent.parent), 'thirdparty' , 'phonetisaurus-g2pfst')
 

@@ -1,5 +1,9 @@
 .. _dict_generating:
 
+.. _`THCHS-30`: http://www.openslr.org/18/
+
+
+
 ***********************
 Generating a Dictionary
 ***********************
@@ -39,17 +43,22 @@ Use
 
 To reconstruct a pronunication dictionary from your .lab or .TextGrid files, simply input: 
 
-```python main.py --language=<DESIRED_LANGUAGE_CODE> --input_dir=<LOCATION_OF_FILES>```
+```bin/generate_dict --language=<DESIRED_LANGUAGE_CODE> --input_dir=<LOCATION_OF_FILES>```
 
-Other options include specififying an output directory and whether the text should be decomposed (to be used if you are working with a Korean dataset, in which case decomposing the Hangul greatly increases the accuracy). All options, as well as language codes, can be viewed by inputting ```final_code_here```.  
+Other options include specififying an output directory and whether the text should be decomposed (to be used if you are working with a Korean dataset, in which case decomposing the Hangul greatly increases the accuracy). All options, as well as language codes, can be viewed by inputting ```bin/generate_dict --help```.  
 
 
 Example
 =============
-In ```MontrealForcedAligner/examples/example_labs``` you will find several sample .lab files from the `THCHS-30 corpus <http://www.openslr.org/18/>`_. These are organized much as they would be for any alignment task. The dictionary reconstructor will read each one of these files, creating a word list, and will be able to build a pronunciation dictionary with a transcription for each one of these words.
+In ```MontrealForcedAligner/examples/example_labs``` you will find several sample .lab files from the `THCHS-30`_ corpus. These are organized much as they would be for any alignment task. The dictionary reconstructor will read each one of these files, creating a word list, and will be able to build a pronunciation dictionary with a transcription for each one of these words. Let's start by running the reconstructor, as before: 
 
+```bin/generate_dict --language=CH --input_dir=Montreal-Forced-Aligner/examples/CH --outfile=Montreal-Forced-Aligner/examples/chinese_dict.txt```
 
+This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy of the transcription should be near 100%. You can now use this to align your mini corpus:
 
+```bin/mfa_train_and_align Montreal-Forced-Aligner/examples/CH  Montreal-Forced-Aligner/examples/chinese_dict.txt Montreal-Forced-Aligner/examples/```
+
+Since there are very few files, the alignment will almost certainly be suboptimal. This example is intended more to give a sense of the pipeline for generating a dictionary and using it for alignment. 
 
 
 
