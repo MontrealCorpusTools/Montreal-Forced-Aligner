@@ -1,4 +1,5 @@
 import argparse
+import os
 from aligner.dictmaker.makedict import DictMaker
 
 
