@@ -69,3 +69,5 @@ docs/build/
 target/
 
 dict_models/*
+examples/chinese_dict.txt
+
