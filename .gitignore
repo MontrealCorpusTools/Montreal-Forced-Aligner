@@ -10,9 +10,11 @@ __pycache__/
 tests/data/generated
 docs/source/generated
 
-thirdparty
+thirdparty/*
+!thirdparty/phonetisaurus-g2pfst
 !thirdparty/*.md
 !thirdparty/*.py
+
 
 # C extensions
 *.so
