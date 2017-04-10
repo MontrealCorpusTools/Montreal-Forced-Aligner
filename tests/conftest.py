@@ -257,3 +257,15 @@ def example_output_directory():
 @pytest.fixture(scope='session')
 def example_output_model_path():
     return os.path.expanduser('~/example_output_model.zip')
+
+
+@pytest.fixture(scope='session')
+def KO_path():
+    return os.path.expanduser('~/Montreal-Forced-Aligner/tests')
+
+@pytest.fixture(scope='session')
+def KO_dict(KO_path):
+    return os.path.join(KO_path, "data","dictionaries","KO_dict.txt")
+
+
+
