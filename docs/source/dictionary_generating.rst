@@ -45,7 +45,7 @@ To reconstruct a pronunication dictionary from your .lab or .TextGrid files, sim
 
 ```bin/generate_dict --path_to_models=<LOCATION_OF_MODEL> --input_dir=<LOCATION_OF_FILES>```
 
-Other options include specififying an output directory and whether the text should be decomposed (to be used if you are working with a Korean dataset, in which case decomposing the Hangul greatly increases the accuracy). All options, as well as language codes, can be viewed by inputting ```bin/generate_dict --help```.  
+Other options include specififying an output directory and whether the text should be decomposed (to be used if you are working with a Korean dataset, in which case decomposing the Hangul greatly increases the accuracy). All options can be viewed by inputting ```bin/generate_dict --help```.  
 
 
 Example
