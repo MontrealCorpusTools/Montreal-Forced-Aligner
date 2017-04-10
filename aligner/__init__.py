@@ -30,3 +30,6 @@ import aligner.textgrid as textgrid
 import aligner.utils as utils
 
 import aligner.g2p_trainer as trainer
+
+import aligner.dictmaker as dictmaker
+
