@@ -13,8 +13,8 @@ class DictMaker(object):
 
     Parameters
     ----------
-        language: str
-            language of the model
+        path_to_models: str
+            path to the models
         input dir: str
             location of .lab files
         outfile: str
@@ -22,11 +22,11 @@ class DictMaker(object):
         K0:bool
             default to None, to be used if using a Korean corpus in Hangul
     """
-    def __init__(self, language, input_dir,  outfile, KO=None):
+    def __init__(self, path_to_models, input_dir,  outfile, KO=None):
         super(DictMaker, self).__init__()
         self.KO = KO
         
-        self.language = language
+        self.path_to_models = path_to_models
 
         self.input_dir = input_dir
         corpus = Corpus(input_dir, input_dir, 0)
@@ -38,12 +38,12 @@ class DictMaker(object):
             for word in words:
                 f1.write(word.strip() + '\n')
 
-        self.path_to_models = self.get_path_to_models()
+
         self.path_to_phon = self.get_path_to_phonetisaurus()
 
         self.outfile = outfile
         if self.outfile == None:
-            self.outfile = "_".join([self.language, 'dict.txt'])
+            self.outfile = os.path.join(self.path_to_models, 'generated_dict.txt')
 
         self.stderr = tempfile.mkstemp()[1]
         self.execute()
@@ -79,19 +79,12 @@ class DictMaker(object):
         with open(self.outfile) as f4:
             lines = f4.readlines()
 
+        print(lines)
         with open(self.outfile, "w") as f5:
             for line in lines:
                 splitline = line.split("\t")
                 f5.write(splitline[0] + "\t" + splitline[2])
 
-    def get_path_to_models(self):
-        """
-        returns a path to pre-generated dictionary models
-        """
-        path_to_file = os.path.dirname(__file__)
-        path_to_models = os.path.join(str(Path(path_to_file).parent.parent), 'dict_models', self.language)
-
-        return path_to_models
 
     def get_path_to_phonetisaurus(self):
         """

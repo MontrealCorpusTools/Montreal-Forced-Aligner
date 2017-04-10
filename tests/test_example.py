@@ -16,13 +16,16 @@ class DummyArgs(object):
 
 
 
-def test_example_CH(dict_language, dict_input_directory, dict_output_path):
-    D = DictMaker(dict_language, dict_input_directory, dict_output_path)
+def test_example_CH(dict_model_path, dict_input_directory, dict_output_path):
+    D = DictMaker(dict_model_path, dict_input_directory, dict_output_path)
     assert(os.path.exists(dict_output_path))
     # accuracy = compare(os.path.join(path, "test_output"), "/Volumes/data/corpora/GP_for_MFA/CH/dict/CH_dictionary.txt")[0]
     # print(accuracy)
     # assert(accuracy > .95)
 
+
+def test_full_CH():
+    pass
 
 
 # def test_example_alignment(dict_input_directory,

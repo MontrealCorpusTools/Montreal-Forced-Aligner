@@ -118,7 +118,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     assert(os.path.exists(output_model_path))
 
 
-def test_generate_dict(dict_language, dict_input_directory, dict_output_path):
+def test_generate_dict(dict_model_path, dict_input_directory, dict_output_path):
 
-    generate_dict(dict_language, dict_input_directory, dict_output_path)
+    generate_dict(dict_model_path, dict_input_directory, dict_output_path)
     assert(os.path.exists(dict_output_path))

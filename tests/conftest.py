@@ -249,6 +249,12 @@ def dict_output_path():
     return os.path.join(repo_dir, "examples", "chinese_dict.txt", )
 
 @pytest.fixture(scope='session')
+def dict_model_path():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "dict_models", "CH")
+
+@pytest.fixture(scope='session')
 def example_output_directory():
     test_dir = os.path.dirname(os.path.abspath(__file__))
     repo_dir = os.path.dirname(test_dir)
