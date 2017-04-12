@@ -243,10 +243,8 @@ def dict_input_directory():
     return os.path.join(repo_dir, "examples", "CH")
 
 @pytest.fixture(scope='session')
-def dict_output_path():
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_dir = os.path.dirname(test_dir)
-    return os.path.join(repo_dir, "examples", "chinese_dict.txt", )
+def dict_output_path(test_dir):
+    return os.path.join(test_dir, "dictionaries", "chinese_dict.txt", )
 
 @pytest.fixture(scope='session')
 def dict_model_path():
@@ -270,8 +268,8 @@ def KO_path():
     return os.path.expanduser('~/Montreal-Forced-Aligner/tests')
 
 @pytest.fixture(scope='session')
-def KO_dict(KO_path):
-    return os.path.join(KO_path, "data","dictionaries","KO_dict.txt")
+def KO_dict(test_dir):
+    return os.path.join(test_dir,"dictionaries","KO_dict.txt")
 
 
 
