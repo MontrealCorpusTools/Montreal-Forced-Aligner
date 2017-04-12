@@ -25,10 +25,10 @@ def test_example_CH(dict_model_path, dict_input_directory, dict_output_path):
     # assert(accuracy > .95)
 
 
-def test_full_CH(dict_model_path, dict_input_directory, dict_output_path):
-    path_to_model = os.path.split(Trainer(dict_model_path, dict_output_path, False).get_path_to_model())[0]
-    D = DictMaker(path_to_model, dict_input_directory, dict_output_path)
-    assert(os.path.exists(dict_output_path))
+# def test_full_CH(dict_model_path, dict_input_directory, dict_output_path):
+#     path_to_model = os.path.split(Trainer(dict_model_path, dict_output_path, False).get_path_to_model())[0]
+#     D = DictMaker(path_to_model, dict_input_directory, dict_output_path)
+#     assert(os.path.exists(dict_output_path))
 
 # def test_example_alignment(dict_input_directory,
 #                     dict_output_path, example_output_directory,
