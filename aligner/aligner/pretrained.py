@@ -1,13 +1,11 @@
 import os
 import shutil
 from tqdm import tqdm
-import time
 import re
 
 from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
 
-from ..dictionary import Dictionary
-from ..corpus import load_scp, save_scp
+from ..exceptions import PronunciationAcousticMismatchError
 
 from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
                                convert_ali_to_textgrids)
@@ -41,10 +39,12 @@ class PretrainedAligner(BaseAligner):
 
     Parameters
     ----------
-    archive : :class:`~aligner.archive.Archive`
-        Archive containing the acoustic model and pronunciation dictionary
     corpus : :class:`~aligner.corpus.Corpus`
         Corpus object for the dataset
+    dictionary : :class:`~aligner.dictionary.Dictionary`
+        Dictionary object for the pronunciation dictionary
+    acoustic_model : :class:`~aligner.models.AcousticModel`
+        Archive containing the acoustic model and pronunciation dictionary
     output_directory : str
         Path to directory to save TextGrids
     temp_directory : str, optional
@@ -56,7 +56,7 @@ class PretrainedAligner(BaseAligner):
         Specifies a call back function for alignment
     '''
 
-    def __init__(self, archive, corpus, output_directory,
+    def __init__(self, corpus, dictionary, acoustic_model, output_directory,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
                  call_back=None, debug=False):
         self.debug = debug
@@ -66,11 +66,9 @@ class PretrainedAligner(BaseAligner):
         self.output_directory = output_directory
         self.corpus = corpus
         self.speaker_independent = speaker_independent
-        self.dictionary = Dictionary(archive.dictionary_path, os.path.join(temp_directory, 'dictionary'),
-                                     word_set=corpus.word_set, debug=debug)
-
+        self.dictionary = dictionary
         self.setup()
-        archive.export_triphone_model(self.tri_directory)
+        acoustic_model.export_triphone_model(self.tri_directory)
         log_dir = os.path.join(self.tri_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 

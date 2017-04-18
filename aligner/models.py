@@ -1,11 +1,14 @@
 import os
 import pickle
+import yaml
 
 from tempfile import mkdtemp
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 
 # default format for output
 FORMAT = "zip"
+
+from .exceptions import PronunciationAcousticMismatchError
 
 
 class Archive(object):
@@ -18,6 +21,7 @@ class Archive(object):
     """
 
     def __init__(self, source, is_tmpdir=False):
+        self._meta = {}
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
             self.is_tmpdir = is_tmpdir  # trust caller
@@ -47,6 +51,40 @@ class Archive(object):
         Add file into archive
         """
         copy(source, self.dirname)
+
+    def __repr__(self):
+        return "{}(dirname={!r})".format(self.__class__.__name__,
+                                         self.dirname)
+
+    def dump(self, sink, archive_fmt=FORMAT):
+        """
+        Write archive to disk, and return the name of final archive
+        """
+        return make_archive(sink, archive_fmt,
+                            *os.path.split(self.dirname))
+
+    def __del__(self):
+        if self.is_tmpdir:
+            rmtree(self.dirname)
+
+
+class AcousticModel(Archive):
+    def add_meta_file(self, aligner):
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w') as f:
+            yaml.dump(aligner.meta, f)
+
+    @property
+    def meta(self):
+        if not self._meta:
+            meta_path = os.path.join(self.dirname, 'meta.yaml')
+            if not os.path.exists(meta_path):
+                self._meta = {'version': '0.9.0',
+                              'architecture': 'gmm-hmm'}
+            else:
+                with open(meta_path, 'r') as f:
+                    self._meta = yaml.load(f)
+            self._meta['phones'] = set(self._meta.get('phones', []))
+        return self._meta
 
     def add_triphone_model(self, source):
         """
@@ -88,24 +126,10 @@ class Archive(object):
         copy(os.path.join(self.dirname, 'final.occs'), destination)
         copy(os.path.join(self.dirname, 'tree'), destination)
 
-    def add_dictionary(self, source):
-        source.export_lexicon(self.dictionary_path)
+    def validate(self, dictionary):
+        if self.meta['phones'] < dictionary.nonsil_phones:
+            raise (PronunciationAcousticMismatchError(self, dictionary))
 
-    @property
-    def dictionary_path(self):
-        return os.path.join(self.dirname, 'dictionary')
 
-    def __repr__(self):
-        return "{}(dirname={!r})".format(self.__class__.__name__,
-                                         self.dirname)
-
-    def dump(self, sink, archive_fmt=FORMAT):
-        """
-        Write archive to disk, and return the name of final archive
-        """
-        return make_archive(sink, archive_fmt,
-                            *os.path.split(self.dirname))
-
-    def __del__(self):
-        if self.is_tmpdir:
-            rmtree(self.dirname)
+class G2PModel(Archive):
+    pass

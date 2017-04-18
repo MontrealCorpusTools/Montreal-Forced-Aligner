@@ -1,46 +1,65 @@
 class MFAError(Exception):
-    '''
+    """
     Base exception class
-    '''
+    """
     pass
 
 
-## Dictionary Errors
+# Dictionary Errors
 
 class DictionaryError(MFAError):
-    '''
+    """
     Class for errors in creating Dictionary objects
-    '''
+    """
     pass
 
 
-## Corpus Errors
+class DictionaryPathError(DictionaryError):
+    """
+    Class for errors in locating paths for Dictionary objects
+    """
+
+    def __init__(self, input_path):
+        self.input_path = input_path
+        message = 'The specified path for the dictionary ({}) was not found.'.format(input_path)
+        super(DictionaryPathError, self).__init__(message)
+
+
+# Corpus Errors
 
 class CorpusError(MFAError):
-    '''
+    """
     Class for errors in creating Corpus objects
-    '''
+    """
     pass
 
 
 class SampleRateError(CorpusError):
-    '''
+    """
     Class for errors in different sample rates
-    '''
+    """
     pass
 
 
-## Aligner Errors
+# Aligner Errors
 
 class AlignerError(MFAError):
-    '''
+    """
     Class for errors during alignment
-    '''
+    """
     pass
 
 
 class NoSuccessfulAlignments(AlignerError):
-    '''
+    """
     Class for errors where nothing could be aligned
-    '''
+    """
     pass
+
+
+class PronunciationAcousticMismatchError(AlignerError):
+    def __init__(self, acoustic_model, dictionary):
+        missing_phones = dictionary.nonsil_phones - set(acoustic_model.meta['phones'])
+        message = 'There were phones in the dictionary that do not have acoustic models: '.format(
+            ', '.join(sorted(missing_phones)))
+        super(PronunciationAcousticMismatchError, self).__init__(message)

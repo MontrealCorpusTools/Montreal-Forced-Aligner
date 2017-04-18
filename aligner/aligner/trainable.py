@@ -14,7 +14,7 @@ from ..exceptions import NoSuccessfulAlignments
 
 from .base import BaseAligner
 
-from ..archive import Archive
+from ..models import AcousticModel
 
 
 class TrainableAligner(BaseAligner):
@@ -55,13 +55,13 @@ class TrainableAligner(BaseAligner):
         '''
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
-        archive = Archive.empty(basename)
-        archive.add_triphone_model(self.tri_fmllr_directory)
-        archive.add_triphone_fmllr_model(self.tri_fmllr_directory)
-        archive.add_dictionary(self.dictionary)
+        acoustic_model = AcousticModel.empty(basename)
+        acoustic_model.add_meta_file(self)
+        acoustic_model.add_triphone_model(self.tri_fmllr_directory)
+        acoustic_model.add_triphone_fmllr_model(self.tri_fmllr_directory)
         os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
-        archive.dump(basename)
+        acoustic_model.dump(basename)
         print('Saved model to {}'.format(path))
 
     def _do_tri_training(self):

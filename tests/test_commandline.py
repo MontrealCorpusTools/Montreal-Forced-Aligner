@@ -15,6 +15,7 @@ class DummyArgs(object):
         self.no_speaker_adaptation = False
         self.debug = False
         self.errors = False
+        self.temp_directory = ''
 
 
 large = pytest.mark.skipif(
@@ -34,86 +35,83 @@ def assert_export_exist(old_directory, new_directory):
             assert(os.path.exists(os.path.join(new_root, new_f)))
 
 @large
-def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_output_directory):
-    language = 'english'
-    corpus_dir = large_prosodylab_format_directory
-    output_directory = prosodylab_output_directory
+def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_output_directory, large_dataset_dictionary):
     args = DummyArgs()
-    align_included_model(language, corpus_dir,  output_directory, '',
-                            args, skip_input=True)
+    args.model_path = 'english'
+    args.corpus_dir = large_prosodylab_format_directory
+    args.dict_path = large_dataset_dictionary
+    args.output_directory = prosodylab_output_directory
+    align_included_model(args, skip_input=True)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
 
 @large
 def test_train_large_prosodylab(large_prosodylab_format_directory,
                     large_dataset_dictionary, prosodylab_output_directory,
                     prosodylab_output_model_path):
-    corpus_dir = large_prosodylab_format_directory
-    dict_path = large_dataset_dictionary
-    output_directory = prosodylab_output_directory
-    output_model_path = prosodylab_output_model_path
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args, skip_input=True)
+    args.corpus_dir = large_prosodylab_format_directory
+    args.dict_path = large_dataset_dictionary
+    args.output_directory = prosodylab_output_directory
+    args.output_model_path = prosodylab_output_model_path
+    train_and_align_corpus(args, skip_input=True)
     #assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
-    assert(os.path.exists(output_model_path))
+    assert(os.path.exists(args.output_model_path))
 
 @large
-def test_align_single_speaker_prosodylab(single_speaker_prosodylab_format_directory,
+def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_directory,
                                         large_dataset_dictionary,
                                         prosodylab_output_directory,
                                         prosodylab_output_model_path):
-    corpus_dir = single_speaker_prosodylab_format_directory
-    dict_path = large_dataset_dictionary
-    output_directory = prosodylab_output_directory
-    output_model_path = prosodylab_output_model_path
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args, skip_input=True)
+    args.corpus_dir = single_speaker_prosodylab_format_directory
+    args.dict_path = large_dataset_dictionary
+    args.output_directory = prosodylab_output_directory
+    args.output_model_path = prosodylab_output_model_path
+    train_and_align_corpus(args, skip_input=True)
     #assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
+    assert(os.path.exists(args.output_model_path))
 
 ## TEXTGRID
 
 @large
-def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory):
-    language = 'english'
-    corpus_dir = large_textgrid_format_directory
-    output_directory = textgrid_output_directory
+def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory, large_dataset_dictionary):
     args = DummyArgs()
-    align_included_model(language, corpus_dir,  output_directory, '',
-                            args, skip_input=True)
+    args.model_path = 'english'
+    args.corpus_dir = large_textgrid_format_directory
+    args.output_directory = textgrid_output_directory
+    args.dict_path = large_dataset_dictionary
+    align_included_model(args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
 
 @large
 def test_train_large_textgrid(large_textgrid_format_directory,
                     large_dataset_dictionary, textgrid_output_directory,
                     textgrid_output_model_path):
-    corpus_dir = large_textgrid_format_directory
-    dict_path = large_dataset_dictionary
-    output_directory = textgrid_output_directory
-    output_model_path = textgrid_output_model_path
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    train_and_align_corpus(corpus_dir, dict_path,  output_directory, '',
-            output_model_path, args, skip_input=True)
+    args.corpus_dir = large_textgrid_format_directory
+    args.dict_path = large_dataset_dictionary
+    args.output_directory = textgrid_output_directory
+    args.output_model_path = textgrid_output_model_path
+    train_and_align_corpus(args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
-    assert(os.path.exists(output_model_path))
+    assert(os.path.exists(args.output_model_path))
 
 @large
 def test_train_large_textgrid_nodict(large_textgrid_format_directory,
                     textgrid_output_directory,
                     textgrid_output_model_path):
-    corpus_dir = large_textgrid_format_directory
-    output_directory = textgrid_output_directory
-    output_model_path = textgrid_output_model_path
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    align_corpus_no_dict(corpus_dir,  output_directory, '',
-            output_model_path, args, skip_input=True)
+    args.corpus_dir = large_textgrid_format_directory
+    args.output_directory = textgrid_output_directory
+    args.output_model_path = textgrid_output_model_path
+    align_corpus_no_dict(args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
-    assert(os.path.exists(output_model_path))
+    assert(os.path.exists(args.output_model_path))
