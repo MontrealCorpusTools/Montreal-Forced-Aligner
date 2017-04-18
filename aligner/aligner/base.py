@@ -14,6 +14,8 @@ from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
 
 from ..exceptions import NoSuccessfulAlignments
 
+from .. import __version__
+
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
@@ -77,6 +79,15 @@ class BaseAligner(object):
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         print(self.corpus.speaker_utterance_info())
+
+    @property
+    def meta(self):
+        data = {'phones':sorted(self.dictionary.nonsil_phones),
+                'version': __version__,
+                'architecture':'gmm-hmm',
+                'features':'mfcc+deltas',
+                }
+        return data
 
     @property
     def mono_directory(self):

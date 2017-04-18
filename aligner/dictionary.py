@@ -5,7 +5,7 @@ import re
 from collections import defaultdict, Counter
 
 from .helper import thirdparty_binary
-
+from .exceptions import DictionaryPathError
 
 def compile_graphemes(graphemes):
     if '-' in graphemes:
@@ -68,6 +68,8 @@ class Dictionary(object):
                  num_nonsil_states=3, shared_silence_phones=True,
                  pronunciation_probabilities=True,
                  sil_prob=0.5, word_set=None, debug=False):
+        if not os.path.exists(input_path):
+            raise(DictionaryPathError(input_path))
         self.input_path = input_path
         self.debug = debug
         self.output_directory = os.path.join(output_directory, 'dictionary')

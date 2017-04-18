@@ -12,39 +12,38 @@ from aligner.utils import no_dictionary
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
-def align_corpus(corpus_dir, dict_path, output_directory, temp_dir,
-                 output_model_path, args, skip_input=False):
-    if temp_dir == '':
+def align_corpus(args, skip_input=False):
+    if args.temp_directory == '':
         temp_dir = TEMP_DIR
     else:
-        temp_dir = os.path.expanduser(temp_dir)
-    corpus_name = os.path.basename(corpus_dir)
+        temp_dir = os.path.expanduser(args.temp_directory)
+    corpus_name = os.path.basename(args.corpus_dir)
     if corpus_name == '':
-        corpus_dir = os.path.dirname(corpus_dir)
-        corpus_name = os.path.basename(corpus_dir)
+        args.corpus_dir = os.path.dirname(args.corpus_dir)
+        corpus_name = os.path.basename(args.corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.clean:
         shutil.rmtree(data_directory, ignore_errors=True)
-        shutil.rmtree(output_directory, ignore_errors=True)
+        shutil.rmtree(args.output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
-    os.makedirs(output_directory, exist_ok=True)
+    os.makedirs(args.output_directory, exist_ok=True)
 
-    corpus = Corpus(corpus_dir, data_directory, speaker_characters=args.speaker_characters,
+    corpus = Corpus(args.corpus_dir, data_directory, speaker_characters=args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3),
                     debug=getattr(args, 'debug', False),
                     ignore_exceptions=getattr(args, 'ignore_exceptions', False))
-    dictionary = Dictionary(dict_path, data_directory, word_set=corpus.word_set)
+    dictionary = Dictionary(args.dict_path, data_directory, word_set=corpus.word_set)
     utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
     if os.path.exists(utt_oov_path):
-        shutil.copy(utt_oov_path, output_directory)
+        shutil.copy(utt_oov_path, args.output_directory)
     oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
     if os.path.exists(oov_path):
-        shutil.copy(oov_path, output_directory)
+        shutil.copy(oov_path, args.output_directory)
     mono_params = {'align_often': not args.fast}
     tri_params = {'align_often': not args.fast}
     tri_fmllr_params = {'align_often': not args.fast}
-    a = TrainableAligner(corpus, dictionary, output_directory,
+    a = TrainableAligner(corpus, dictionary, args.output_directory,
                          temp_directory=data_directory,
                          mono_params=mono_params, tri_params=tri_params,
                          tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs)
@@ -55,26 +54,25 @@ def align_corpus(corpus_dir, dict_path, output_directory, temp_dir,
     a.export_textgrids()
     a.train_tri_fmllr()
     a.export_textgrids()
-    if output_model_path is not None:
-        a.save(output_model_path)
+    if args.output_model_path is not None:
+        a.save(args.output_model_path)
 
 
-def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
-                         output_model_path, args, skip_input=False):
-    if not temp_dir:
+def align_corpus_no_dict(args, skip_input=False):
+    if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
-        temp_dir = os.path.expanduser(temp_dir)
-    corpus_name = os.path.basename(corpus_dir)
+        temp_dir = os.path.expanduser(args.temp_directory)
+    corpus_name = os.path.basename(args.corpus_dir)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.clean:
         shutil.rmtree(data_directory, ignore_errors=True)
-        shutil.rmtree(output_directory, ignore_errors=True)
+        shutil.rmtree(args.output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
-    os.makedirs(output_directory, exist_ok=True)
+    os.makedirs(args.output_directory, exist_ok=True)
 
-    corpus = Corpus(corpus_dir, data_directory, args.speaker_characters,
+    corpus = Corpus(args.corpus_dir, data_directory, args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3),
                     debug=getattr(args, 'debug', False),
                     ignore_exceptions=getattr(args, 'ignore_exceptions', False))
@@ -83,7 +81,7 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
     mono_params = {'align_often': not args.fast}
     tri_params = {'align_often': not args.fast}
     tri_fmllr_params = {'align_often': not args.fast}
-    a = TrainableAligner(corpus, dictionary, output_directory,
+    a = TrainableAligner(corpus, dictionary, args.output_directory,
                          temp_directory=data_directory,
                          mono_params=mono_params, tri_params=tri_params,
                          tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug)
@@ -94,9 +92,14 @@ def align_corpus_no_dict(corpus_dir, output_directory, temp_dir,
     a.export_textgrids()
     a.train_tri_fmllr()
     a.export_textgrids()
-    if output_model_path is not None:
-        a.save(output_model_path)
+    if args.output_model_path is not None:
+        a.save(args.output_model_path)
 
+def validate_args(args):
+    if args.nodict == False and args.dict_path == '':
+        raise (Exception('Must specify dictionary or nodict option'))
+    if args.nodict and args.dict_path != '':
+        raise (Exception('Dict_path cannot be specified with nodict option'))
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
@@ -125,21 +128,12 @@ if __name__ == '__main__':  # pragma: no cover
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
-    corpus_dir = os.path.expanduser(args.corpus_dir)
-    dict_path = os.path.expanduser(args.dict_path)
-    output_dir = os.path.expanduser(args.output_dir)
-    output_model_path = os.path.expanduser(args.output_model_path)
+    validate_args(args)
+    if not args.output_model_path:
+        args.output_model_path = None
     temp_dir = args.temp_directory
-    if not output_model_path:
-        output_model_path = None
-    if args.nodict == False and dict_path == '':
-        raise (Exception('Must specify dictionary or nodict option'))
-    if args.nodict == True and dict_path != '':
-        raise (Exception('Dict_path cannot be specified with nodict option'))
-    elif args.nodict == True:
-        align_corpus_no_dict(corpus_dir, output_dir, temp_dir,
-                             output_model_path, args)
-    elif args.nodict == False:
-        align_corpus(corpus_dir, dict_path, output_dir, temp_dir,
-                     output_model_path, args)
+    if args.nodict:
+        align_corpus_no_dict(args)
+    else:
+        align_corpus(args)
     unfix_path()
