@@ -8,7 +8,8 @@ from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 # default format for output
 FORMAT = "zip"
 
-from .exceptions import PronunciationAcousticMismatchError
+from . import __version__
+from .exceptions import PronunciationAcousticMismatchError, PronunciationOrthographyMismatchError
 
 
 class Archive(object):
@@ -104,7 +105,6 @@ class AcousticModel(Archive):
 
     def export_triphone_model(self, destination):
         """
-        Add file into archive
         """
         os.makedirs(destination, exist_ok=True)
         ali_model_path = os.path.join(self.dirname, 'ali-final.mdl')
@@ -119,7 +119,6 @@ class AcousticModel(Archive):
 
     def export_triphone_fmllr_model(self, destination):
         """
-        Add file into archive
         """
         os.makedirs(destination, exist_ok=True)
         copy(os.path.join(self.dirname, 'final.mdl'), destination)
@@ -132,4 +131,38 @@ class AcousticModel(Archive):
 
 
 class G2PModel(Archive):
-    pass
+    def add_meta_file(self, dictionary):
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w') as f:
+            meta = {'phones': sorted(dictionary.nonsil_phones),
+                    'graphemes': sorted(dictionary.graphemes),
+                    'architecture': 'phonetisaurus',
+                    'version': __version__}
+            yaml.dump(meta, f)
+
+    @property
+    def meta(self):
+        if not self._meta:
+            meta_path = os.path.join(self.dirname, 'meta.yaml')
+            if not os.path.exists(meta_path):
+                self._meta = {'version': '0.9.0',
+                              'architecture': 'phonetisaurus'}
+            else:
+                with open(meta_path, 'r') as f:
+                    self._meta = yaml.load(f)
+            self._meta['phones'] = set(self._meta.get('phones', []))
+            self._meta['graphemes'] = set(self._meta.get('graphemes', []))
+        return self._meta
+
+    def add_fst_model(self, source):
+        """
+        Add file into archive
+        """
+        copy(os.path.join(source, 'model.fst'), self.dirname)
+
+    def export_fst_model(self, destination):
+        os.makedirs(destination, exist_ok=True)
+        copy(os.path.join(self.dirname, 'model.fst'), destination)
+
+    def validate(self, dictionary):
+        if self.meta['graphemes'] < dictionary.graphemes:
+            raise (PronunciationOrthographyMismatchError(self, dictionary))
