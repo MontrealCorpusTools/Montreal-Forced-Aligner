@@ -256,7 +256,6 @@ class Corpus(object):
         handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
         handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         root_logger.addHandler(handler)
-
         if not os.path.exists(directory):
             raise (CorpusError('The directory \'{}\' does not exist.'.format(directory)))
         if num_jobs < 1:

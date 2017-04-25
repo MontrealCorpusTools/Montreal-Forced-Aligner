@@ -30,4 +30,3 @@ import aligner.textgrid as textgrid
 import aligner.utils as utils
 
 import aligner.g2p as g2p
-

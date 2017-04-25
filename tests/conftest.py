@@ -2,6 +2,10 @@ from aligner.command_line.align import fix_path
 
 fix_path()
 
+from aligner.command_line.align import fix_path
+
+fix_path()
+
 import os
 import pytest
 
@@ -36,7 +40,6 @@ def basic_dir(test_dir):
 @pytest.fixture(scope='session')
 def extra_dir(test_dir):
     return os.path.join(test_dir, 'extra')
-
 
 @pytest.fixture(scope='session')
 def dict_dir(test_dir):

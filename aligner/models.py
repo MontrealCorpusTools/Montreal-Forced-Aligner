@@ -175,4 +175,4 @@ class G2PModel(Archive):
         copy(self.fst_path, destination)
 
     def validate(self, corpus):
-        return True # FIXME add actual validation
+        return True  # FIXME add actual validation

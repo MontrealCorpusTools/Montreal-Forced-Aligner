@@ -31,7 +31,6 @@ large = pytest.mark.skipif(
     reason="remove --skiplarge option to run"
 )
 
-
 def assert_export_exist(old_directory, new_directory):
     for root, dirs, files in os.walk(old_directory):
         new_root = root.replace(old_directory, new_directory)
@@ -87,7 +86,6 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
     assert (os.path.exists(args.output_model_path))
-
 
 ## TEXTGRID
 
