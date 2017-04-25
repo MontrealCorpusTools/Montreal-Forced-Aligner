@@ -1,6 +1,7 @@
 import argparse
 import os
-from aligner.dictmaker.makedict import DictMaker
+
+from aligner.g2p.create_dictionary import DictMaker
 
 
 def generate_dict(dict_model_path, input_dir, outfile, KO = None):
