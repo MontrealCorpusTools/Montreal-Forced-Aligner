@@ -1,19 +1,23 @@
 import argparse
 import os
-from aligner.g2p.train import Trainer
+from ..g2p.trainer import PhonetisaurusTrainer
+
+from ..dictionary import Dictionary
+from .. exceptions import ArgumentError
 
 
 def train_g2p(args):
-    t = Trainer(args.dictionary_path, args.path, korean = args.KO)
+    dictionary = Dictionary(args.dictionary_path, '')
+    t = PhonetisaurusTrainer(dictionary, args.path, temp_directory=args.temp_directory, korean=args.korean)
 
-    return path_to_model
+    t.train()
 
 
 def validate(args):
     if not os.path.exists(args.dictionary_path):
-        raise(FileNotFoundError('Could not find the dictionary file {}'.format(args.dictionary_path)))
+        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
     if not os.path.isfile(args.dictionary_path):
-        raise(Exception('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
+        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
 if __name__ == '__main__':
@@ -24,8 +28,10 @@ if __name__ == '__main__':
 
     parser.add_argument("--path",
                         required=True, help="Desired location of generated model")
+    parser.add_argument('-t', '--temp_directory', type=str, default='',
+                        help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
 
-    parser.add_argument("--KO", action='store_true',
+    parser.add_argument("--korean", action='store_true',
                         help="Set to true if dictionary is in Korean. "
                              "Decomposes Hangul into separate letters (jamo) and increases accuracy")
 

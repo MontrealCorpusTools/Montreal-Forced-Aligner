@@ -16,7 +16,7 @@ from ..exceptions import NoSuccessfulAlignments
 
 from .. import __version__
 
-TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+from ..config import TEMP_DIR
 
 
 class BaseAligner(object):
@@ -65,7 +65,7 @@ class BaseAligner(object):
         if self.corpus.num_jobs != num_jobs:
             num_jobs = self.corpus.num_jobs
         self.num_jobs = num_jobs
-        if temp_directory is None:
+        if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
         self.call_back = call_back

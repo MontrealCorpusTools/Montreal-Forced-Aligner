@@ -242,6 +242,13 @@ def training_dict_path(test_dir):
 def g2p_model_path(generated_dir):
     return os.path.join(generated_dir, 'pinyin_g2p.zip')
 
+@pytest.fixture(scope='session')
+def sick_g2p_model_path(generated_dir):
+    return os.path.join(generated_dir, 'sick_g2p.zip')
+
+@pytest.fixture(scope='session')
+def g2p_sick_output(generated_dir):
+    return os.path.join(generated_dir, 'g2p_sick.txt')
 
 @pytest.fixture(scope='session')
 def example_output_model_path(generated_dir):

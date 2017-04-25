@@ -252,10 +252,11 @@ class Corpus(object):
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, 'corpus.log')
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)  # or whatever
-        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')  # or whatever
-        handler.setFormatter = logging.Formatter('%(name)s %(message)s')  # or whatever
+        root_logger.setLevel(logging.INFO)
+        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+        handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         root_logger.addHandler(handler)
+
         if not os.path.exists(directory):
             raise (CorpusError('The directory \'{}\' does not exist.'.format(directory)))
         if num_jobs < 1:

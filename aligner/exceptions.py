@@ -58,8 +58,7 @@ class NoSuccessfulAlignments(AlignerError):
 
 
 class PronunciationAcousticMismatchError(AlignerError):
-    def __init__(self, acoustic_model, dictionary):
-        missing_phones = dictionary.nonsil_phones - set(acoustic_model.meta['phones'])
+    def __init__(self, missing_phones):
         message = 'There were phones in the dictionary that do not have acoustic models: '.format(
             ', '.join(sorted(missing_phones)))
         super(PronunciationAcousticMismatchError, self).__init__(message)
@@ -71,3 +70,9 @@ class PronunciationOrthographyMismatchError(AlignerError):
         message = 'There were graphemes in the corpus that are not covered by the G2P model: '.format(
             ', '.join(sorted(missing_graphs)))
         super(PronunciationOrthographyMismatchError, self).__init__(message)
+
+
+# Command line exceptions
+
+class ArgumentError(MFAError):
+    pass

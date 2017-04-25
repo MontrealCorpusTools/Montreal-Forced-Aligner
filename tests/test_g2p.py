@@ -1,14 +1,25 @@
 import pytest
 import os
-from aligner.g2p.train import Trainer
+from aligner.g2p.trainer import PhonetisaurusTrainer
 
-from aligner.g2p.create_dictionary import DictMaker
+from aligner.g2p.generator import PhonetisaurusDictionaryGenerator
+
+from aligner.models import G2PModel
+
+from aligner import __version__
 
 
-def test_training(training_dict_path, g2p_model_path):
-    trainer = Trainer(training_dict_path, g2p_model_path, korean=False)
+def test_training(sick_dict, sick_g2p_model_path):
+    trainer = PhonetisaurusTrainer(sick_dict, sick_g2p_model_path, korean=False)
+    trainer.train()
+    model = G2PModel(sick_g2p_model_path)
+    assert (model.meta['version'] == __version__)
+    assert (model.meta['architecture'] == 'phonetisaurus')
+    assert (model.meta['phones'] == sick_dict.nonsil_phones)
 
 
-def test_creation(dict_model_path, dict_input_directory, dict_output_path):
-    D = DictMaker(dict_model_path, dict_input_directory, dict_output_path)
-    assert (os.path.exists(dict_output_path))
+def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output):
+    model = G2PModel(sick_g2p_model_path)
+    gen = PhonetisaurusDictionaryGenerator(model, sick_corpus, g2p_sick_output)
+    gen.generate()
+    assert (os.path.exists(g2p_sick_output))

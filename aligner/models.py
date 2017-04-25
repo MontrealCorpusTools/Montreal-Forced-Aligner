@@ -23,6 +23,7 @@ class Archive(object):
 
     def __init__(self, source, is_tmpdir=False):
         self._meta = {}
+        self.name, _ = os.path.splitext(os.path.basename(source))
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
             self.is_tmpdir = is_tmpdir  # trust caller
@@ -126,8 +127,14 @@ class AcousticModel(Archive):
         copy(os.path.join(self.dirname, 'tree'), destination)
 
     def validate(self, dictionary):
-        if self.meta['phones'] < dictionary.nonsil_phones:
-            raise (PronunciationAcousticMismatchError(self, dictionary))
+        if isinstance(dictionary, G2PModel):
+            if self.meta['phones'] < dictionary.meta['phones']:
+                missing_phones = dictionary.meta['phones'] - set(self.meta['phones'])
+                raise (PronunciationAcousticMismatchError(missing_phones))
+        else:
+            if self.meta['phones'] < dictionary.nonsil_phones:
+                missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
+                raise (PronunciationAcousticMismatchError(missing_phones))
 
 
 class G2PModel(Archive):
@@ -153,16 +160,19 @@ class G2PModel(Archive):
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
         return self._meta
 
+    @property
+    def fst_path(self):
+        return os.path.join(self.dirname, 'model.fst')
+
     def add_fst_model(self, source):
         """
         Add file into archive
         """
-        copy(os.path.join(source, 'model.fst'), self.dirname)
+        copyfile(os.path.join(source, 'model.fst'), self.fst_path)
 
     def export_fst_model(self, destination):
         os.makedirs(destination, exist_ok=True)
-        copy(os.path.join(self.dirname, 'model.fst'), destination)
+        copy(self.fst_path, destination)
 
-    def validate(self, dictionary):
-        if self.meta['graphemes'] < dictionary.graphemes:
-            raise (PronunciationOrthographyMismatchError(self, dictionary))
+    def validate(self, corpus):
+        return True # FIXME add actual validation

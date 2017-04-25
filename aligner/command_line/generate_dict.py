@@ -1,33 +1,55 @@
 import argparse
 import os
 
-from aligner.g2p.create_dictionary import DictMaker
+from ..g2p.generator import PhonetisaurusDictionaryGenerator
+from ..corpus import Corpus
+from ..models import G2PModel
+
+from ..exceptions import ArgumentError
 
 
-def generate_dict(dict_model_path, input_dir, outfile, KO = None):
-    input_dir = os.path.expanduser(input_dir)
-    # corpus = Corpus(input_dir, input_dir, 0)
-    # word_list = corpus.word_set()
+def generate_dict(args):
+    input_dir = os.path.expanduser(args.corpus_directory)
+    corpus = Corpus(input_dir, "")
+
+    model = G2PModel(args.g2p_model_path)
+
+    gen = PhonetisaurusDictionaryGenerator(model, corpus, args.output_path, temp_directory=args.temp_directory,
+                                         korean=args.korean)
+    gen.generate()
 
 
+def validate(args):
+    if not os.path.exists(args.g2p_model_path):
+        raise (ArgumentError('Could not find the G2P model file {}.'.format(args.g2p_model_path)))
+    if not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip'):
+        raise (ArgumentError('The specified G2P model path ({}) is not a zip file.'.format(args.g2p_model_path)))
 
-    D = DictMaker(dict_model_path, input_dir, outfile, KO)
+    if not os.path.exists(args.corpus_directory):
+        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
+    if not os.path.isdir(args.corpus_directory):
+        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.g2p_model_path)))
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description = "create a dictionary from pre-built models for any of the following languages:")
+    parser = argparse.ArgumentParser(description="Create a dictionary from a G2P model")
 
-    parser.add_argument("--dict_model_path", dest='dict_model_path',
-     required=True, help="path to the existing models")
+    parser.add_argument("--g2p_model_path",
+                        required=True, help="Path to the trained G2P model")
 
-    parser.add_argument("--input_dir", dest='input_dir',
-        required=True, help="the location of your .lab files")
-    
-    parser.add_argument("--outfile", dest='outfile',
-        required=False, help="the name of the output file for your dictionary (generated_dict.txt by default)")
+    parser.add_argument("--corpus_directory",
+                        required=True, help="Corpus to base word list on")
 
-    parser.add_argument("--KO", dest="KO", required=False, help="add if your dictionary is in Korean. This will decompose the Hangul into separate phonemes and increase accuracy")
+    parser.add_argument("--output_path",
+                        help="Path to save output dictionary")
 
-    args  = parser.parse_args()
+    parser.add_argument('-t', '--temp_directory', type=str, default='',
+                        help='Temporary directory root to use for dictionary generation, default is ~/Documents/MFA')
 
-    generate_dict(args.language, args.input_dir, args.outfile, args.KO)
-    
+    parser.add_argument("--korean", action='store_true',
+                        help="Set to true if corpus is in Korean. "
+                             "Decomposes Hangul into separate letters (jamo) and increases accuracy")
+
+    args = parser.parse_args()
+    validate(args)
+    generate_dict(args)

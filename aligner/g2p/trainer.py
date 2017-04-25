@@ -6,10 +6,12 @@ from ..dictionary import Dictionary
 
 from ..helper import thirdparty_binary
 
-TEMP_DIR = os.path.expanduser('~/Documents/MFA/G2P')
+from ..config import TEMP_DIR
+
+from ..models import G2PModel
 
 
-class Trainer(object):
+class PhonetisaurusTrainer(object):
     """Train a g2p model from a pronunciation dictionary
 
     Parameters
@@ -21,18 +23,19 @@ class Trainer(object):
 
     """
 
-    def __init__(self, input_dict, model_path, temp_directory=None, korean=False, evaluate=False):
-        super(Trainer, self).__init__()
-        if temp_directory is None:
+    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False):
+        super(PhonetisaurusTrainer, self).__init__()
+        if not temp_directory:
             temp_directory = TEMP_DIR
+        self.temp_directory = os.path.join(temp_directory, 'G2P')
+
         self.name, _ = os.path.splitext(os.path.basename(model_path))
         self.temp_directory = os.path.join(temp_directory, self.name)
         os.makedirs(self.temp_directory, exist_ok=True)
         self.model_path = model_path
         self.korean = korean
         self.evaluate = evaluate
-        self.dictionary = Dictionary(input_dict, os.path.join(temp_directory, 'dictionary'))
-        self.path_to_model = self.train()
+        self.dictionary = dictionary
 
     def train(self, word_dict = None):
         if self.korean:
@@ -56,7 +59,7 @@ class Trainer(object):
         cnts_path = os.path.join(self.temp_directory, 'full.cnts')
         mod_path = os.path.join(self.temp_directory, 'full.mod')
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
-        fst_path = os.path.join(self.temp_directory, 'g2p.fst')
+        fst_path = os.path.join(self.temp_directory, 'model.fst')
 
         subprocess.call([thirdparty_binary('phonetisaurus-align.exe'),
                          '--input=' + input_path, '--ofile=' + corpus_path])
@@ -76,7 +79,15 @@ class Trainer(object):
         subprocess.call(
                 [thirdparty_binary('phonetisaurus-arpa2wfst.exe'), '--lm=' + arpa_path, '--ofile=' + fst_path])
 
-        return fst_path
+        directory, filename = os.path.split(self.model_path)
+        basename, _ = os.path.splitext(filename)
+        model = G2PModel.empty(basename)
+        model.add_meta_file(self.dictionary)
+        model.add_fst_model(self.temp_directory)
+        os.makedirs(directory, exist_ok=True)
+        basename, _ = os.path.splitext(self.model_path)
+        model.dump(basename)
+        print('Saved model to {}'.format(self.model_path))
 
     def validate(self):
         word_dict = self.dictionary.words
