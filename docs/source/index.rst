@@ -19,6 +19,8 @@ Contents:
    commonerrors.rst
    changelog.rst
    apireference.rst
+   model_training.rst
+   dictionary_generating.rst
 
 
 Indices and tables

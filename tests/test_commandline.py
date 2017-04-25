@@ -4,7 +4,7 @@ import pytest
 from aligner.command_line.align import align_corpus, align_included_model
 
 from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus, align_corpus_no_dict
-
+from aligner.command_line.generate_dict import generate_dict
 
 class DummyArgs(object):
     def __init__(self):
@@ -16,7 +16,6 @@ class DummyArgs(object):
         self.debug = False
         self.errors = False
         self.temp_directory = ''
-
 
 large = pytest.mark.skipif(
     pytest.config.getoption("--skiplarge"),
@@ -115,3 +114,9 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     align_corpus_no_dict(args, skip_input=True)
     #assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert(os.path.exists(args.output_model_path))
+
+
+def test_generate_dict(dict_model_path, dict_input_directory, dict_output_path):
+
+    generate_dict(dict_model_path, dict_input_directory, dict_output_path)
+    assert(os.path.exists(dict_output_path))
