@@ -4,7 +4,6 @@ import subprocess
 import sys
 import tempfile
 
-from pathlib import Path
 from aligner.corpus import Corpus
 
 
@@ -19,14 +18,14 @@ class DictMaker(object):
             location of .lab files
         outfile: str
             destination for the dictionary
-        K0:bool
-            default to None, to be used if using a Korean corpus in Hangul
+        korean:bool
+            default to False, to be used if using a Korean corpus in Hangul
     """
-    def __init__(self, path_to_models, input_dir,  outfile, KO=None):
+    def __init__(self, g2p_model, input_dir,  outfile, korean=False):
         super(DictMaker, self).__init__()
-        self.KO = KO
+        self.korean = korean
         
-        self.path_to_models = path_to_models
+        self.g2p_model = g2p_model
 
         self.input_dir = input_dir
         corpus = Corpus(input_dir, input_dir, 0)
@@ -37,9 +36,6 @@ class DictMaker(object):
             words = corpus.word_set
             for word in words:
                 f1.write(word.strip() + '\n')
-
-
-        self.path_to_phon = self.get_path_to_phonetisaurus()
 
         self.outfile = outfile
         if self.outfile == None:
@@ -84,13 +80,3 @@ class DictMaker(object):
             for line in lines:
                 splitline = line.split("\t")
                 f5.write(splitline[0] + "\t" + splitline[2])
-
-
-    def get_path_to_phonetisaurus(self):
-        """
-        returns a path to the phonetisaurus-g2pfst binary
-        """
-        path_to_file = os.path.dirname(__file__)
-        path_to_phon = os.path.join(str(Path(path_to_file).parent.parent), 'thirdparty' , 'phonetisaurus-g2pfst')
-
-        return path_to_phon

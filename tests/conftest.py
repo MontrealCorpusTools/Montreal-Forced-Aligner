@@ -1,4 +1,3 @@
-
 from aligner.command_line.align import fix_path
 
 fix_path()
@@ -12,7 +11,7 @@ from aligner.dictionary import Dictionary
 
 def pytest_addoption(parser):
     parser.addoption("--skiplarge", action="store_true",
-        help="skip large dataset tests")
+                     help="skip large dataset tests")
 
 
 @pytest.fixture(scope='session')
@@ -37,6 +36,7 @@ def basic_dir(test_dir):
 @pytest.fixture(scope='session')
 def extra_dir(test_dir):
     return os.path.join(test_dir, 'extra')
+
 
 @pytest.fixture(scope='session')
 def dict_dir(test_dir):
@@ -98,8 +98,8 @@ def basic_rootstxt_path(expected_dict_path):
     return os.path.join(expected_dict_path, 'roots.txt')
 
 
-#@pytest.fixture(scope='session')
-#def basic_roots_path(expected_dict_path):
+# @pytest.fixture(scope='session')
+# def basic_roots_path(expected_dict_path):
 #    return os.path.join(expected_dict_path, 'roots.txt')
 
 
@@ -164,7 +164,7 @@ def sick_dict(sick_dict_path, generated_dir):
 @pytest.fixture(scope='session')
 def sick_corpus(basic_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
-    corpus = Corpus(basic_dir, output_directory, num_jobs = 2)
+    corpus = Corpus(basic_dir, output_directory, num_jobs=2)
     return corpus
 
 
@@ -204,13 +204,13 @@ def large_textgrid_format_directory(large_dataset_directory):
 
 
 @pytest.fixture(scope='session')
-def prosodylab_output_directory():
-    return os.path.expanduser('~/prosodylab_output')
+def prosodylab_output_directory(generated_dir):
+    return os.path.join(generated_dir, 'prosodylab_output')
 
 
 @pytest.fixture(scope='session')
-def textgrid_output_directory():
-    return os.path.expanduser('~/textgrid_output')
+def textgrid_output_directory(generated_dir):
+    return os.path.join(generated_dir, 'textgrid_output')
 
 
 @pytest.fixture(scope='session')
@@ -224,52 +224,30 @@ def single_speaker_textgrid_format_directory(large_textgrid_format_directory):
 
 
 @pytest.fixture(scope='session')
-def prosodylab_output_model_path():
-    return os.path.expanduser('~/prosodylab_output_model.zip')
+def prosodylab_output_model_path(generated_dir):
+    return os.path.join(generated_dir, 'prosodylab_output_model.zip')
 
 
 @pytest.fixture(scope='session')
-def textgrid_output_model_path():
-    return os.path.expanduser('~/textgrid_output_model.zip')
+def textgrid_output_model_path(generated_dir):
+    return os.path.join(generated_dir, 'textgrid_output_model.zip')
+
 
 @pytest.fixture(scope='session')
-def dict_language():
-    return "CH"
-
-@pytest.fixture(scope='session')
-def dict_input_directory():
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_dir = os.path.dirname(test_dir)
-    return os.path.join(repo_dir, "examples", "CH")
-
-@pytest.fixture(scope='session')
-def dict_output_path(test_dir):
+def training_dict_path(test_dir):
     return os.path.join(test_dir, "dictionaries", "chinese_dict.txt", )
 
-@pytest.fixture(scope='session')
-def dict_model_path():
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_dir = os.path.dirname(test_dir)
-    return os.path.join(repo_dir, "dict_models", "CH")
 
 @pytest.fixture(scope='session')
-def example_output_directory():
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_dir = os.path.dirname(test_dir)
-    return os.path.join(repo_dir, "examples", "output")
-
-@pytest.fixture(scope='session')
-def example_output_model_path():
-    return os.path.expanduser('~/example_output_model.zip')
+def g2p_model_path(generated_dir):
+    return os.path.join(generated_dir, 'pinyin_g2p.zip')
 
 
 @pytest.fixture(scope='session')
-def KO_path():
-    return os.path.expanduser('~/Montreal-Forced-Aligner/tests')
+def example_output_model_path(generated_dir):
+    return os.path.join(generated_dir, 'example_output_model.zip')
+
 
 @pytest.fixture(scope='session')
 def KO_dict(test_dir):
-    return os.path.join(test_dir,"dictionaries","KO_dict.txt")
-
-
-
+    return os.path.join(test_dir, "dictionaries", "KO_dict.txt")
