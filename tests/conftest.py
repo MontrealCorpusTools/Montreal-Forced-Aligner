@@ -271,5 +271,20 @@ def KO_path():
 def KO_dict(test_dir):
     return os.path.join(test_dir,"dictionaries","KO_dict.txt")
 
+@pytest.fixture(scope='session')
+def dict_input_directory_char():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "examples", "CH_chars")
+
+@pytest.fixture(scope='session')
+def dict_output_path_char(test_dir):
+    return os.path.join(test_dir, "dictionaries", "chinese_dict_char.txt", )
+
+@pytest.fixture(scope='session')
+def dict_model_path_char():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "dict_models", "CH_chars")
 
 

@@ -1,6 +1,6 @@
 
 mkdir $LANGUAGE
-$PATH_TO_PHON/phonetisaurus-align --input=$TRAINING_FILE --ofile=$LANGUAGE/full.corpus;
+$PATH_TO_PHON/phonetisaurus-align --seq1_max=3 --seq2_max=3 --input=$TRAINING_FILE --ofile=$LANGUAGE/full.corpus;
 ngramsymbols < $LANGUAGE/full.corpus > $LANGUAGE/full.syms;
 farcompilestrings --symbols=$LANGUAGE/full.syms --keep_symbols=1  $LANGUAGE/full.corpus > $LANGUAGE/full.far;
 ngramcount --order=7 $LANGUAGE/full.far > $LANGUAGE/full.cnts;

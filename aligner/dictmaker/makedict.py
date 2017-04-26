@@ -30,10 +30,10 @@ class DictMaker(object):
 
         self.input_dir = input_dir
         corpus = Corpus(input_dir, input_dir, 0)
-        TEMP_FILE = tempfile.mkstemp()
-        self.wordlist = TEMP_FILE[1]
-
-        with open(TEMP_FILE[1], 'w') as f1:
+        # TEMP_FILE = tempfile.mkstemp()
+        # self.wordlist = TEMP_FILE[1]
+        self.wordlist = "/Users/elias/Montreal-Forced-Aligner/examples/wordlist"
+        with open(self.wordlist, 'w') as f1:
             words = corpus.word_set
             for word in words:
                 f1.write(word.strip() + '\n')
@@ -52,8 +52,9 @@ class DictMaker(object):
         """
         runs the phonetisaurus-g2pfst binary with the language and all the words in the corpus
         """
-
-        with open(self.outfile,"w") as f3:
+        print("{} --model={} --wordlist={}".format(self.path_to_phon, 
+                    os.path.join(self.path_to_models, "full.fst"), self.wordlist))
+        with open(self.outfile.strip(),"w") as f3:
             with open(self.stderr,'w') as f4:
                 result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
                     os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, stderr=f4, shell=True).wait()
@@ -71,7 +72,7 @@ class DictMaker(object):
 
             print("There were {} unmatched symbols in your transcriptions.".format(sym_count))
         with open("unknown_syms","w") as f5:
-            for sym in syms:
+            for sym in set(syms):
                 if sym != "":
                     f5.write(sym + "\n")
 
@@ -79,11 +80,14 @@ class DictMaker(object):
         with open(self.outfile) as f4:
             lines = f4.readlines()
 
-        print(lines)
-        with open(self.outfile, "w") as f5:
+
+        with open(self.outfile,"w") as f5:
             for line in lines:
                 splitline = line.split("\t")
-                f5.write(splitline[0] + "\t" + splitline[2])
+                try:
+                    f5.write(splitline[0] + "\t" + splitline[2])
+                except:
+                    print(line)
 
 
     def get_path_to_phonetisaurus(self):

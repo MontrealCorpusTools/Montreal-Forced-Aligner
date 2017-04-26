@@ -28,5 +28,5 @@ if __name__ == '__main__':
 
     args  = parser.parse_args()
 
-    generate_dict(args.language, args.input_dir, args.outfile, args.KO)
+    generate_dict(args.dict_model_path, args.input_dir, args.outfile, args.KO)
     
