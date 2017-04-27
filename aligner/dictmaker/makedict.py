@@ -38,7 +38,7 @@ class DictMaker(object):
             for word in words:
                 f1.write(word.strip() + '\n')
 
-
+        self.log_dir = str(Path(corpus.log_file).parent)
         self.path_to_phon = self.get_path_to_phonetisaurus()
 
         self.outfile = outfile
@@ -52,12 +52,10 @@ class DictMaker(object):
         """
         runs the phonetisaurus-g2pfst binary with the language and all the words in the corpus
         """
-        print("{} --model={} --wordlist={}".format(self.path_to_phon, 
-                    os.path.join(self.path_to_models, "full.fst"), self.wordlist))
         with open(self.outfile.strip(),"w") as f3:
             with open(self.stderr,'w') as f4:
                 result = subprocess.Popen("{} --model={} --wordlist={}".format(self.path_to_phon, 
-                    os.path.join(self.path_to_models, "full.fst"), self.wordlist), stdout=f3, stderr=f4, shell=True).wait()
+                    os.path.join(self.path_to_models, "full.fst"), self.wordlist),  stdout=f3, stderr=f4, shell=True).wait()
 
         with open(self.stderr) as f3:
             syms = []
@@ -67,14 +65,15 @@ class DictMaker(object):
             lines = f3.readlines()
             for line in lines:
                 if lineregex.match(line) is not None:
-                    syms.append(symbolregex.match(line).group(0) if symbolregex.match(line) is not None else "")
+                    syms.append(symbolregex.search(line).group(0) if symbolregex.search(line) is not None else "")
                     sym_count +=1 
 
-            print("There were {} unmatched symbols in your transcriptions.".format(sym_count))
-        with open("unknown_syms","w") as f5:
+            print("There were {} unmatched symbols in your transcriptions. See {} for a list of unknown symbols.".format(sym_count, os.path.join(self.log_dir, "unknown_syms")))
+
+        with open(os.path.join(self.log_dir, "unknown_syms"),"w") as f5:
+            f5.write("the following symbols were found in transcriptions but not in the dictionary:\n")
             for sym in set(syms):
-                if sym != "":
-                    f5.write(sym + "\n")
+                f5.write(sym + "\n")
 
 
         with open(self.outfile) as f4:

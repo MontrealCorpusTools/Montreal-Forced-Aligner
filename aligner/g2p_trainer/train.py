@@ -45,6 +45,10 @@ class Trainer(object):
     def train(self, dictionary):
         os.environ["LANGUAGE"] = self.path
 
+        temp_lang_dir = tempfile.gettempdir()
+
+        os.environ["TEMP_LANGUAGE"] = temp_lang_dir
+
         training_file = os.path.join(str(Path(__file__).parent), 'train.txt')
 
         os.environ["TRAINING_FILE"] = training_file
@@ -59,7 +63,7 @@ class Trainer(object):
 
         with open(stderr, "w") as f3:
             if self.CH_chars == "True":
-                proc = subprocess.Popen(os.path.join(os.path.split(__file__)[0], "execute_ch.sh"), stderr = f3, shell=True).wait()
+                proc = subprocess.Popen(os.path.join(os.path.split(__file__)[0], "execute_ch.sh"), stderr=f3, shell=True).wait()
             else:
                 proc = subprocess.Popen(os.path.join(os.path.split(__file__)[0], "execute.sh"), shell=True, stderr = f3).wait()
         
