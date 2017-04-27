@@ -7,8 +7,12 @@ from .. exceptions import ArgumentError
 
 
 def train_g2p(args):
+    if args.temp_directory:
+        temp_dir = TEMP_DIR
+    else:
+        temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = PhonetisaurusTrainer(dictionary, args.path, temp_directory=args.temp_directory, korean=args.korean)
+    t = PhonetisaurusTrainer(dictionary, args.path, temp_directory=temp_dir, korean=args.korean)
 
     t.train()
 

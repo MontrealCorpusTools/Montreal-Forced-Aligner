@@ -13,7 +13,7 @@ TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
 def align_corpus(args, skip_input=False):
-    if args.temp_directory == '':
+    if args.temp_directory:
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)

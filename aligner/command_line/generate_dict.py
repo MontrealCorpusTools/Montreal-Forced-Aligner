@@ -9,12 +9,16 @@ from ..exceptions import ArgumentError
 
 
 def generate_dict(args):
+    if args.temp_directory:
+        temp_dir = TEMP_DIR
+    else:
+        temp_dir = os.path.expanduser(args.temp_directory)
     input_dir = os.path.expanduser(args.corpus_directory)
     corpus = Corpus(input_dir, "")
 
     model = G2PModel(args.g2p_model_path)
 
-    gen = PhonetisaurusDictionaryGenerator(model, corpus, args.output_path, temp_directory=args.temp_directory,
+    gen = PhonetisaurusDictionaryGenerator(model, corpus, args.output_path, temp_directory=temp_dir,
                                          korean=args.korean)
     gen.generate()
 
