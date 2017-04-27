@@ -4,6 +4,7 @@ import sys
 from tqdm import tqdm
 from urllib.request import urlretrieve
 
+
 def tqdm_hook(t):
     last_b = [0]
 
@@ -16,7 +17,6 @@ def tqdm_hook(t):
     return inner
 
 
-
 def download():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     if sys.platform == 'darwin':
@@ -27,13 +27,22 @@ def download():
         plat = 'linux'
     print('Downloading precompiled binaries for {}...'.format(plat))
 
-    download_link = 'https://montrealcorpustools.github.io/Montreal-Forced-Aligner/thirdparty_precompiled/{}.zip'.format(plat)
+    download_link = 'https://montrealcorpustools.github.io/Montreal-Forced-Aligner/thirdparty_precompiled/{}.zip'.format(
+        plat)
     path = os.path.join(base_dir, '{}.zip'.format(plat))
     with tqdm(unit='B', unit_scale=True, miniters=1) as t:
         filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
     shutil.unpack_archive(filename, base_dir)
     os.remove(path)
+    if plat != 'win':
+        import stat
+        bin_dir = os.path.join(base_dir, 'bin')
+        for f in os.listdir(bin_dir):
+            if '.' in f:
+                continue
+            os.chmod(os.path.join(bin_dir, f), stat.S_IEXEC)
     return True
+
 
 if __name__ == '__main__':
     download()
