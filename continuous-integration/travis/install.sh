@@ -11,7 +11,6 @@ if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   conda update -q conda
   conda info -a
   conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytest setuptools
-  conda create -q -n kaldi-environment python=2
   source activate test-environment
   which python
   pip install -q coveralls coverage textgrid tqdm
@@ -19,25 +18,9 @@ else
   echo "Miniconda already installed."
 fi
 
-if [ ! -d "$HOME/tools/kaldi" ]; then
-  source activate kaldi-environment
-  mkdir -p $HOME/downloads
-  cd $HOME/downloads
-  git clone https://github.com/kaldi-asr/kaldi.git kaldi --origin upstream
-  cd kaldi/tools
-  extras/check_dependencies.sh
-  make -j 4
-  cd ../src
-  ./configure
-  make depend -j 4
-  make -j 4
-  cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
-  source activate test-environment
-  python thirdparty/kaldibinaries.py $HOME/downloads/kaldi
-  cp -R thirdparty/bin $HOME/tools/kaldi
-else
-  echo "Kaldi already installed."
-fi
+cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
+source activate test-environment
+python thirdparty/download_binaries.py
 
 if [ ! -d "$HOME/tools/mfa_test_data" ]; then
   cd $HOME/tools

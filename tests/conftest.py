@@ -2,10 +2,6 @@ from aligner.command_line.align import fix_path
 
 fix_path()
 
-from aligner.command_line.align import fix_path
-
-fix_path()
-
 import os
 import pytest
 

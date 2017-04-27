@@ -17,7 +17,7 @@ class PhonetisaurusTrainer(object):
     Parameters
     ----------
     language: str
-        the path and language code 
+        the path and language code
     input_dict : str
         path to the pronunciation dictionary
 
@@ -61,23 +61,23 @@ class PhonetisaurusTrainer(object):
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
-        subprocess.call([thirdparty_binary('phonetisaurus-align.exe'),
+        subprocess.call([thirdparty_binary('phonetisaurus-align'),
                          '--input=' + input_path, '--ofile=' + corpus_path])
 
-        subprocess.call([thirdparty_binary('ngramsymbols.exe'), corpus_path, sym_path])
+        subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
 
         subprocess.call(
-                [thirdparty_binary('farcompilestrings.exe'), '--symbols=' + sym_path, '--keep_symbols=1',
+                [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
                  corpus_path, far_path])
 
-        subprocess.call([thirdparty_binary('ngramcount.exe'), '--order=7', far_path, cnts_path])
+        subprocess.call([thirdparty_binary('ngramcount'), '--order=7', far_path, cnts_path])
 
-        subprocess.call([thirdparty_binary('ngrammake.exe'), '--method=kneser_ney', cnts_path, mod_path])
+        subprocess.call([thirdparty_binary('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
 
-        subprocess.call([thirdparty_binary('ngramprint.exe'), '--ARPA', mod_path, arpa_path])
+        subprocess.call([thirdparty_binary('ngramprint'), '--ARPA', mod_path, arpa_path])
 
         subprocess.call(
-                [thirdparty_binary('phonetisaurus-arpa2wfst.exe'), '--lm=' + arpa_path, '--ofile=' + fst_path])
+                [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
 
         directory, filename = os.path.split(self.model_path)
         basename, _ = os.path.splitext(filename)
