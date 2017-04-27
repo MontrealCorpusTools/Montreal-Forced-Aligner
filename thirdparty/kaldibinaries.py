@@ -32,7 +32,13 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
                       'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings']
 
-included_libraries = {'linux': ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2'],
+included_libraries = {'linux': ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
+                                'libfstscript.so.7', 'libfstfarscript.so.7',
+                                'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
+                                'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
+                                'libkaldi-feat.so','libkaldi-transform.so',
+                                'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
+                                'libkaldi-fstext.so'],
                     'win32': ['openfst64.dll', 'libopenblas.dll']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
@@ -45,6 +51,8 @@ def CollectBinaries(directory):
     tools_dir = os.path.join(directory, 'tools')
     for root, dirs, files in os.walk(tools_dir):
         for name in files:
+            if os.path.islink(os.path.join(root, name):
+                continue
             ext = os.path.splitext(name)
             (key, value) = ext
             if value == exe_ext and key in included_filenames:

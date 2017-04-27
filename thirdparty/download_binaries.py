@@ -40,7 +40,7 @@ def download():
         for f in os.listdir(bin_dir):
             if '.' in f:
                 continue
-            os.chmod(os.path.join(bin_dir, f), stat.S_IEXEC)
+            os.chmod(os.path.join(bin_dir, f), stat.S_IEXEC|stat.S_IWUSR|stat.S_IRUSR)
     return True
 
 
