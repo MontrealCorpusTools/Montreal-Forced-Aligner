@@ -30,7 +30,10 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'fstcopy', 'dot', 'compute-cmvn-stats',
                       'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
                       'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
-                      'draw-tree', 'fstdraw', 'show-transitions']
+                      'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings']
+
+included_libraries = {'linux': ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2'],
+                    'win32': ['openfst64.dll', 'libopenblas.dll']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -60,15 +63,16 @@ def CollectBinaries(directory):
                                 continue
                             lib = os.path.basename(l)
                             subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-            elif sys.platform == 'win32' and name in ['openfst64.dll', 'libopenblas.dll']:
+            elif sys.platform == 'win32' and name in included_libraries[sys.platform]:
                 shutil.copy(os.path.join(root, name), bin_out)
             elif sys.platform != 'win32':
                 c = False
-                for le in lib_ext:
-                    if name.endswith(le):
+                for l in included_libraries[sys.platform]:
+                    if name.startswith(l):
                         c = True
+                        new_name = included_libraries[sys.platform]
                 if c:
-                    shutil.copy(os.path.join(root, name), bin_out)
+                    shutil.copyfile(os.path.join(root, name), os.path.join(bin_out, new_name))
 
     if sys.platform == 'win32':
         src_dir = directory
