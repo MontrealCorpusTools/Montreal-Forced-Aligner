@@ -8,8 +8,7 @@ from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
 from aligner.aligner import TrainableAligner
 from aligner.utils import no_dictionary
-
-TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+from aligner.config import TEMP_DIR
 
 
 def align_corpus(args, skip_input=False):

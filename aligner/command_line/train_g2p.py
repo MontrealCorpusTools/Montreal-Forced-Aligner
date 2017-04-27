@@ -4,6 +4,7 @@ from ..g2p.trainer import PhonetisaurusTrainer
 
 from ..dictionary import Dictionary
 from .. exceptions import ArgumentError
+from ..config import TEMP_DIR
 
 
 def train_g2p(args):

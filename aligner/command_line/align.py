@@ -37,10 +37,9 @@ from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
 from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
+from aligner.config import TEMP_DIR
 
 PRETRAINED_LANGUAGES = ['english']
-
-TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
 def align_corpus(args, skip_input=False):

@@ -6,6 +6,7 @@ from ..corpus import Corpus
 from ..models import G2PModel
 
 from ..exceptions import ArgumentError
+from ..config import TEMP_DIR
 
 
 def generate_dict(args):
