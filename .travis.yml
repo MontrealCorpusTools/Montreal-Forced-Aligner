@@ -28,7 +28,6 @@ install:
   - source activate test-environment
   - which python
   - conda list
-  - pip install requirements.txt
 
 # Run test
 script:
