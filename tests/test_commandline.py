@@ -14,6 +14,7 @@ class DummyArgs(object):
         self.num_jobs = 0
         self.verbose = False
         self.clean = True
+        self.fast = True
         self.no_speaker_adaptation = False
         self.debug = False
         self.errors = False
