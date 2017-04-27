@@ -9,7 +9,7 @@ from ..exceptions import ArgumentError
 
 
 def generate_dict(args):
-    if args.temp_directory:
+    if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
