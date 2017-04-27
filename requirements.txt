@@ -5,3 +5,4 @@ https://github.com/pyinstaller/pyinstaller/archive/develop.zip
 numpy
 tqdm
 alignment
+pyyaml
