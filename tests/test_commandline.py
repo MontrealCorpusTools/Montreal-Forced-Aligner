@@ -68,6 +68,7 @@ def test_align_basic_errors(basic_corpus_dir, sick_dict_path, generated_dir):
     align_included_model(args, skip_input=True)
 
 
+@pytest.mark.xfail
 def test_align_basic_debug(basic_corpus_dir, sick_dict_path, generated_dir):
     args = DummyArgs()
     args.debug = True
