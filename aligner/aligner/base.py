@@ -135,7 +135,6 @@ class BaseAligner(object):
             model_directory = self.tri_directory
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
-        print('hello')
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
 

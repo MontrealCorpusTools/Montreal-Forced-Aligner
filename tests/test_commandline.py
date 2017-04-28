@@ -32,6 +32,7 @@ large = pytest.mark.skipif(
     reason="remove --skiplarge option to run"
 )
 
+
 def assert_export_exist(old_directory, new_directory):
     for root, dirs, files in os.walk(old_directory):
         new_root = root.replace(old_directory, new_directory)
@@ -42,6 +43,39 @@ def assert_export_exist(old_directory, new_directory):
                 continue
             new_f = f.replace('.wav', '.TextGrid')
             assert (os.path.exists(os.path.join(new_root, new_f)))
+
+
+def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir):
+    args = DummyArgs()
+    args.model_path = 'english'
+    args.corpus_dir = basic_corpus_dir
+    args.dict_path = sick_dict_path
+    args.output_directory = os.path.join(generated_dir, 'basic_output')
+    align_included_model(args, skip_input=True)
+
+    #args.clean = False
+    #args.model_path = 'english'
+    #align_included_model(args, skip_input=True)
+
+
+def test_align_basic_errors(basic_corpus_dir, sick_dict_path, generated_dir):
+    args = DummyArgs()
+    args.errors = True
+    args.model_path = 'english'
+    args.corpus_dir = basic_corpus_dir
+    args.dict_path = sick_dict_path
+    args.output_directory = os.path.join(generated_dir, 'basic_output')
+    align_included_model(args, skip_input=True)
+
+
+def test_align_basic_debug(basic_corpus_dir, sick_dict_path, generated_dir):
+    args = DummyArgs()
+    args.debug = True
+    args.model_path = 'english'
+    args.corpus_dir = basic_corpus_dir
+    args.dict_path = sick_dict_path
+    args.output_directory = os.path.join(generated_dir, 'basic_output')
+    align_included_model(args, skip_input=True)
 
 
 @large
@@ -59,7 +93,7 @@ def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_ou
 @large
 def test_train_large_prosodylab(large_prosodylab_format_directory,
                                 large_dataset_dictionary, prosodylab_output_directory,
-                                prosodylab_output_model_path):
+                                prosodylab_output_model_path, temp_dir):
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
@@ -67,9 +101,13 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     args.dict_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     args.output_model_path = prosodylab_output_model_path
+    args.temp_directory = temp_dir
     train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
     assert (os.path.exists(args.output_model_path))
+
+    args.clean = False
+    train_and_align_corpus(args, skip_input=True)
 
 
 @large
@@ -87,6 +125,7 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
     assert (os.path.exists(args.output_model_path))
+
 
 ## TEXTGRID
 
@@ -131,6 +170,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert (os.path.exists(args.output_model_path))
 
+
 def test_train_g2p(sick_dict_path, sick_g2p_model_path):
     args = G2PDummyArgs()
     args.dictionary_path = sick_dict_path
@@ -138,10 +178,11 @@ def test_train_g2p(sick_dict_path, sick_g2p_model_path):
     train_g2p(args)
     assert (os.path.exists(sick_g2p_model_path))
 
-def test_generate_dict(basic_dir, sick_g2p_model_path, g2p_sick_output):
+
+def test_generate_dict(basic_corpus_dir, sick_g2p_model_path, g2p_sick_output):
     args = G2PDummyArgs()
     args.g2p_model_path = sick_g2p_model_path
-    args.corpus_directory = basic_dir
+    args.corpus_directory = basic_corpus_dir
     args.output_path = g2p_sick_output
     generate_dict(args)
     assert (os.path.exists(g2p_sick_output))
