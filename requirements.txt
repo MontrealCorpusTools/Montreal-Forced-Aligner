@@ -4,5 +4,5 @@ packaging
 https://github.com/pyinstaller/pyinstaller/archive/develop.zip
 numpy
 tqdm
-alignment
+-e git://github.com/eseraygun/python-alignment.git#egg=alignment
 pyyaml
