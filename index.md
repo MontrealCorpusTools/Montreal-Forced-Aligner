@@ -16,6 +16,7 @@ Please visit the release page ([https://github.com/MontrealCorpusTools/Montreal-
 
 * Michael McAuliffe (@mmcauliffe, michael.e.mcauliffe@gmail.com)
 * Michaela Socolof (@michaelasocolof)
+* Elias Stengel-Eskin (@esteng)
 * Sarah Mihuc (@samihuc)
 * Michael Wagner (@prosodylab)
 * Morgan Sonderegger (@mlml)
