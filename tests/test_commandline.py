@@ -4,7 +4,7 @@ import pytest
 from aligner.command_line.align import align_corpus, align_included_model
 
 from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus, align_corpus_no_dict
-from aligner.command_line.generate_dict import generate_dict
+from aligner.command_line.generate_dictionary import generate_dict
 from aligner.command_line.train_g2p import train_g2p
 
 
@@ -48,8 +48,8 @@ def assert_export_exist(old_directory, new_directory):
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir):
     args = DummyArgs()
     args.model_path = 'english'
-    args.corpus_dir = basic_corpus_dir
-    args.dict_path = sick_dict_path
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = sick_dict_path
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args, skip_input=True)
 
@@ -62,8 +62,8 @@ def test_align_basic_errors(basic_corpus_dir, sick_dict_path, generated_dir):
     args = DummyArgs()
     args.errors = True
     args.model_path = 'english'
-    args.corpus_dir = basic_corpus_dir
-    args.dict_path = sick_dict_path
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = sick_dict_path
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args, skip_input=True)
 
@@ -73,8 +73,8 @@ def test_align_basic_debug(basic_corpus_dir, sick_dict_path, generated_dir):
     args = DummyArgs()
     args.debug = True
     args.model_path = 'english'
-    args.corpus_dir = basic_corpus_dir
-    args.dict_path = sick_dict_path
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = sick_dict_path
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args, skip_input=True)
 
@@ -84,8 +84,8 @@ def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_ou
                                 large_dataset_dictionary):
     args = DummyArgs()
     args.model_path = 'english'
-    args.corpus_dir = large_prosodylab_format_directory
-    args.dict_path = large_dataset_dictionary
+    args.corpus_directory = large_prosodylab_format_directory
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     align_included_model(args, skip_input=True)
     # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
@@ -98,8 +98,8 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.corpus_dir = large_prosodylab_format_directory
-    args.dict_path = large_dataset_dictionary
+    args.corpus_directory = large_prosodylab_format_directory
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     args.output_model_path = prosodylab_output_model_path
     args.temp_directory = temp_dir
@@ -119,8 +119,8 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.corpus_dir = single_speaker_prosodylab_format_directory
-    args.dict_path = large_dataset_dictionary
+    args.corpus_directory = single_speaker_prosodylab_format_directory
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     args.output_model_path = prosodylab_output_model_path
     train_and_align_corpus(args, skip_input=True)
@@ -134,9 +134,9 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
 def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory, large_dataset_dictionary):
     args = DummyArgs()
     args.model_path = 'english'
-    args.corpus_dir = large_textgrid_format_directory
+    args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
-    args.dict_path = large_dataset_dictionary
+    args.dictionary_path = large_dataset_dictionary
     align_included_model(args, skip_input=True)
     # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
 
@@ -148,8 +148,8 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.corpus_dir = large_textgrid_format_directory
-    args.dict_path = large_dataset_dictionary
+    args.corpus_directory = large_textgrid_format_directory
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = textgrid_output_directory
     args.output_model_path = textgrid_output_model_path
     train_and_align_corpus(args, skip_input=True)
@@ -164,7 +164,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.corpus_dir = large_textgrid_format_directory
+    args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
     args.output_model_path = textgrid_output_model_path
     align_corpus_no_dict(args, skip_input=True)

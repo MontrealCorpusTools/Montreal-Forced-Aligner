@@ -13,7 +13,7 @@ def train_g2p(args):
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = PhonetisaurusTrainer(dictionary, args.path, temp_directory=temp_dir, korean=args.korean)
+    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, korean=args.korean)
 
     t.train()
 
@@ -28,11 +28,9 @@ def validate(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train a g2p (grapheme to phoneme) model from an existing dictionary")
 
-    parser.add_argument("--dictionary_path",
-                        required=True, help="Location of existing dictionary")
+    parser.add_argument("dictionary_path", help="Location of existing dictionary")
 
-    parser.add_argument("--path",
-                        required=True, help="Desired location of generated model")
+    parser.add_argument("output_model_path", help="Desired location of generated model")
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
 
@@ -42,4 +40,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     validate(args)
-    path_to_model = train_g2p(args)
+    train_g2p(args)

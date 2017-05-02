@@ -24,6 +24,15 @@ class DictionaryPathError(DictionaryError):
         message = 'The specified path for the dictionary ({}) was not found.'.format(input_path)
         super(DictionaryPathError, self).__init__(message)
 
+class DictionaryFileError(DictionaryError):
+    """
+    Class for errors in locating paths for Dictionary objects
+    """
+
+    def __init__(self, input_path):
+        self.input_path = input_path
+        message = 'The specified path for the dictionary ({}) is not a file.'.format(input_path)
+        super(DictionaryFileError, self).__init__(message)
 
 # Corpus Errors
 
