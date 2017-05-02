@@ -51,7 +51,7 @@ def CollectBinaries(directory):
     tools_dir = os.path.join(directory, 'tools')
     for root, dirs, files in os.walk(tools_dir):
         for name in files:
-            if os.path.islink(os.path.join(root, name):
+            if os.path.islink(os.path.join(root, name)):
                 continue
             ext = os.path.splitext(name)
             (key, value) = ext
