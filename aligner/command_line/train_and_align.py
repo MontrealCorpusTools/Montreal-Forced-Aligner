@@ -19,10 +19,10 @@ def align_corpus(args, skip_input=False):
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    corpus_name = os.path.basename(args.corpus_dir)
+    corpus_name = os.path.basename(args.corpus_directory)
     if corpus_name == '':
-        args.corpus_dir = os.path.dirname(args.corpus_dir)
-        corpus_name = os.path.basename(args.corpus_dir)
+        args.corpus_directory = os.path.dirname(args.corpus_directory)
+        corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
@@ -34,7 +34,7 @@ def align_corpus(args, skip_input=False):
                 'version': __version__,
                 'type': 'train_and_align',
                 'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dict_path}
+                'dictionary_path': args.dictionary_path}
     if getattr(args, 'clean', False) \
             or conf['dirty'] or conf['type'] != 'train_and_align' \
             or conf['corpus_directory'] != args.corpus_directory \

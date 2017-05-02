@@ -49,10 +49,10 @@ def align_corpus(args, skip_input=False):
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    corpus_name = os.path.basename(args.corpus_dir)
+    corpus_name = os.path.basename(args.corpus_directory)
     if corpus_name == '':
-        args.corpus_dir = os.path.dirname(args.corpus_dir)
-        corpus_name = os.path.basename(args.corpus_dir)
+        args.corpus_directory = os.path.dirname(args.corpus_directory)
+        corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
@@ -63,12 +63,13 @@ def align_corpus(args, skip_input=False):
                 'begin': time.time(),
                 'version': __version__,
                 'type': 'align',
-                'corpus_directory': args.corpus_dir}
+                'corpus_directory': args.corpus_dir,
+                'dictionary_path': args.dictionary_path}
     if getattr(args, 'clean', False) \
             or conf['dirty'] or conf['type'] != 'align' \
             or conf['corpus_directory'] != args.corpus_dir\
             or conf['version'] != __version__\
-            or conf['dictionary_path'] != args.dict_path:
+            or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
         shutil.rmtree(args.output_directory, ignore_errors=True)
 
@@ -76,7 +77,7 @@ def align_corpus(args, skip_input=False):
     os.makedirs(args.output_directory, exist_ok=True)
     use_speaker_info = not args.no_speaker_adaptation
     try:
-        corpus = Corpus(args.corpus_dir, data_directory,
+        corpus = Corpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
                         num_jobs=args.num_jobs,
                         use_speaker_information=use_speaker_info,
