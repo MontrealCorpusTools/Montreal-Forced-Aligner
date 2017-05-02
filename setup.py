@@ -41,6 +41,7 @@ if __name__ == '__main__':
           author_email='michael.e.mcauliffe@gmail.com',
           packages=['aligner',
                     'aligner.aligner',
+                    'aligner.g2p',
                     'aligner.command_line',
                     'aligner.gui'],
           install_requires=[

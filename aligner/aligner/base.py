@@ -14,7 +14,9 @@ from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
 
 from ..exceptions import NoSuccessfulAlignments
 
-TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+from .. import __version__
+
+from ..config import TEMP_DIR
 
 
 class BaseAligner(object):
@@ -63,7 +65,7 @@ class BaseAligner(object):
         if self.corpus.num_jobs != num_jobs:
             num_jobs = self.corpus.num_jobs
         self.num_jobs = num_jobs
-        if temp_directory is None:
+        if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
         self.call_back = call_back
@@ -77,6 +79,15 @@ class BaseAligner(object):
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         print(self.corpus.speaker_utterance_info())
+
+    @property
+    def meta(self):
+        data = {'phones':sorted(self.dictionary.nonsil_phones),
+                'version': __version__,
+                'architecture':'gmm-hmm',
+                'features':'mfcc+deltas',
+                }
+        return data
 
     @property
     def mono_directory(self):
@@ -124,7 +135,6 @@ class BaseAligner(object):
             model_directory = self.tri_directory
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
-        print('hello')
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
 

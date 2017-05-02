@@ -5,6 +5,7 @@ import re
 from collections import defaultdict, Counter
 
 from .helper import thirdparty_binary
+from .exceptions import DictionaryPathError, DictionaryFileError
 
 
 def compile_graphemes(graphemes):
@@ -22,11 +23,13 @@ def sanitize(item):
     sanitized = re.sub(r"[^-\w']+$", '', sanitized)
     return sanitized
 
+
 def sanitize_clitics(item):
     # Clitic markers are "-" and "'"
     sanitized = re.sub(r"^\W+", '', item)
     sanitized = re.sub(r"\W+$", '', sanitized)
     return sanitized
+
 
 class Dictionary(object):
     """
@@ -68,6 +71,10 @@ class Dictionary(object):
                  num_nonsil_states=3, shared_silence_phones=True,
                  pronunciation_probabilities=True,
                  sil_prob=0.5, word_set=None, debug=False):
+        if not os.path.exists(input_path):
+            raise (DictionaryPathError(input_path))
+        if not os.path.isfile(input_path):
+            raise (DictionaryFileError(input_path))
         self.input_path = input_path
         self.debug = debug
         self.output_directory = os.path.join(output_directory, 'dictionary')
@@ -98,6 +105,8 @@ class Dictionary(object):
                 word = line.pop(0).lower()
                 if word in ['!sil', oov_code]:
                     continue
+                if word_set is not None and sanitize(word) not in word_set:
+                    continue
                 self.graphemes.update(word)
                 try:
                     prob = float(line[0])
@@ -107,8 +116,6 @@ class Dictionary(object):
                 pron = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     self.nonsil_phones.update(pron)
-                #if word_set is not None and sanitize(word) not in word_set:
-                #    continue
                 if word in self.words and pron in set(x[0] for x in self.words[word]):
                     continue
                 self.words[word].append((pron, prob))
@@ -187,7 +194,7 @@ class Dictionary(object):
         for k, v in word_probs.items():
             cost = -1 * math.log(v)
             text += '0 0 {w} {w} {cost}\n'.format(w=self.to_int(k), cost=cost)
-        text += '0 {}\n'.format(-1 * math.log(1/num_words))
+        text += '0 {}\n'.format(-1 * math.log(1 / num_words))
         return text
 
     def to_int(self, item):
@@ -261,10 +268,10 @@ class Dictionary(object):
                 for punc in chars:
                     if punc in self.clitic_markers:
                         idx = chars.index(punc)
-                        option1withpunc = ''.join(chars[:idx+1])
+                        option1withpunc = ''.join(chars[:idx + 1])
                         option1nopunc = ''.join(chars[:idx])
                         option2withpunc = ''.join(chars[idx:])
-                        option2nopunc = ''.join(chars[idx+1:])
+                        option2nopunc = ''.join(chars[idx + 1:])
                         if option1withpunc in self.words:
                             vocab.append(option1withpunc)
                             if option2nopunc in self.words:
@@ -329,7 +336,7 @@ class Dictionary(object):
         for p in sorted(self.sil_phones):
             sil_phones.append(p)
             for pos in self.positions:
-                sil_phones.append(p+pos)
+                sil_phones.append(p + pos)
         return sil_phones
 
     @property
@@ -340,7 +347,7 @@ class Dictionary(object):
         nonsil_phones = []
         for p in sorted(self.nonsil_phones):
             for pos in self.positions:
-                nonsil_phones.append(p+pos)
+                nonsil_phones.append(p + pos)
         return nonsil_phones
 
     @property
@@ -409,7 +416,7 @@ class Dictionary(object):
             for char in sorted(self.graphemes):
                 f.write(char + '\n')
 
-    def export_lexicon(self, path, disambig = False, probability = False):
+    def export_lexicon(self, path, disambig=False, probability=False):
         with open(path, 'w', encoding='utf8') as f:
             for w in sorted(self.words.keys()):
                 for p in sorted(self.words[w]):
@@ -417,7 +424,7 @@ class Dictionary(object):
                     if disambig and p[2] is not None:
                         phones += ' #{}'.format(p[2])
                     if probability:
-                        f.write('{}\t{}\t{}\n'.format(w,p[1], phones))
+                        f.write('{}\t{}\t{}\n'.format(w, p[1], phones))
                     else:
                         f.write('{}\t{}\n'.format(w, phones))
 
@@ -426,13 +433,13 @@ class Dictionary(object):
         with open(outfile, 'w', encoding='utf8') as f:
             for sp in self.sil_phones:
                 if self.position_dependent_phones:
-                    new_phones = [sp+x for x in ['', ''] + self.positions]
+                    new_phones = [sp + x for x in ['', ''] + self.positions]
                 else:
                     new_phones = [sp]
                 f.write(' '.join(new_phones) + '\n')
             for nsp in self.nonsil_phones:
                 if self.position_dependent_phones:
-                    new_phones = [nsp+x for x in [''] + self.positions]
+                    new_phones = [nsp + x for x in [''] + self.positions]
                 else:
                     new_phones = [nsp]
                 f.write(' '.join(new_phones) + '\n')
@@ -446,7 +453,7 @@ class Dictionary(object):
     def _write_word_boundaries(self):
         boundary_path = os.path.join(self.output_directory, 'phones', 'word_boundary.txt')
         boundary_int_path = os.path.join(self.output_directory, 'phones', 'word_boundary.int')
-        with open(boundary_path, 'w', encoding='utf8') as f,\
+        with open(boundary_path, 'w', encoding='utf8') as f, \
                 open(boundary_int_path, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
                 for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
@@ -461,13 +468,13 @@ class Dictionary(object):
                         cat = 'internal'
                     elif p.endswith('_E'):
                         cat = 'end'
-                    f.write(' '.join([p, cat])+'\n')
-                    intf.write(' '.join([str(self.phone_mapping[p]), cat])+'\n')
+                    f.write(' '.join([p, cat]) + '\n')
+                    intf.write(' '.join([str(self.phone_mapping[p]), cat]) + '\n')
 
     def _write_word_file(self):
         words_path = os.path.join(self.output_directory, 'words.txt')
 
-        with open(words_path, 'w', encoding = 'utf8') as f:
+        with open(words_path, 'w', encoding='utf8') as f:
             for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(w, i))
 
@@ -531,15 +538,15 @@ class Dictionary(object):
         sets_int_file = os.path.join(self.output_directory, 'phones', 'sets.int')
         roots_int_file = os.path.join(self.output_directory, 'phones', 'roots.int')
 
-        with open(sets_file, 'w', encoding='utf8') as setf,\
-                open(roots_file, 'w', encoding='utf8') as rootf,\
-                open(sets_int_file, 'w', encoding='utf8') as setintf,\
+        with open(sets_file, 'w', encoding='utf8') as setf, \
+                open(roots_file, 'w', encoding='utf8') as rootf, \
+                open(sets_int_file, 'w', encoding='utf8') as setintf, \
                 open(roots_int_file, 'w', encoding='utf8') as rootintf:
 
             # process silence phones
             for i, sp in enumerate(self.sil_phones):
                 if self.position_dependent_phones:
-                    mapped = [sp+x for x in [''] + self.positions]
+                    mapped = [sp + x for x in [''] + self.positions]
                 else:
                     mapped = [sp]
                 setf.write(' '.join(mapped) + '\n')
@@ -556,7 +563,7 @@ class Dictionary(object):
             # process nonsilence phones
             for nsp in sorted(self.nonsil_phones):
                 if self.position_dependent_phones:
-                    mapped = [nsp+x for x in self.positions]
+                    mapped = [nsp + x for x in self.positions]
                 else:
                     mapped = [nsp]
                 setf.write(' '.join(mapped) + '\n')
@@ -569,7 +576,7 @@ class Dictionary(object):
     def _write_extra_questions(self):
         phone_extra = os.path.join(self.phones_dir, 'extra_questions.txt')
         phone_extra_int = os.path.join(self.phones_dir, 'extra_questions.int')
-        with open(phone_extra, 'w', encoding='utf8') as outf,\
+        with open(phone_extra, 'w', encoding='utf8') as outf, \
                 open(phone_extra_int, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
                 sils = sorted(self.positional_sil_phones)
@@ -597,7 +604,7 @@ class Dictionary(object):
     def _write_disambig(self):
         disambig = os.path.join(self.phones_dir, 'disambig.txt')
         disambig_int = os.path.join(self.phones_dir, 'disambig.int')
-        with open(disambig, 'w', encoding='utf8') as outf,\
+        with open(disambig, 'w', encoding='utf8') as outf, \
                 open(disambig_int, 'w', encoding='utf8') as intf:
             for d in sorted(self.disambig):
                 outf.write('{}\n'.format(d))
@@ -617,16 +624,16 @@ class Dictionary(object):
         log_path = os.path.join(self.output_directory, 'fst.log')
         temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
         subprocess.call([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
-                        '--osymbols={}'.format(words_file_path),
-                        '--keep_isymbols=false','--keep_osymbols=false',
-                        lexicon_fst_path, temp_fst_path])
+                         '--osymbols={}'.format(words_file_path),
+                         '--keep_isymbols=false', '--keep_osymbols=false',
+                         lexicon_fst_path, temp_fst_path])
 
         subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
-                    temp_fst_path, output_fst])
+                         temp_fst_path, output_fst])
         if self.debug:
             dot_path = os.path.join(self.output_directory, 'L.dot')
             with open(log_path, 'w') as logf:
-                draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'),  '--portrait=true',
+                draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'), '--portrait=true',
                                               '--isymbols={}'.format(phones_file_path),
                                               '--osymbols={}'.format(words_file_path), output_fst, dot_path],
                                              stderr=logf)
@@ -645,6 +652,7 @@ class Dictionary(object):
 
             def is_sil(element):
                 return element in [silphone, silphone + '_S']
+
             silcost = -1 * math.log(self.sil_prob)
             nosilcost = -1 * math.log(1.0 - self.sil_prob)
             startstate = 0
@@ -656,11 +664,10 @@ class Dictionary(object):
 
         with open(lexicon_fst_path, 'w', encoding='utf8') as outf:
             if self.sil_prob != 0:
-
                 outf.write('\t'.join(map(str, [startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
 
-                outf.write('\t'.join(map(str, [startstate, loopstate, nonoptsil, '<eps>',silcost]))+"\n")
-                outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>']))+"\n")
+                outf.write('\t'.join(map(str, [startstate, loopstate, nonoptsil, '<eps>', silcost])) + "\n")
+                outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>'])) + "\n")
                 nextstate = 3
             for w in sorted(self.words.keys()):
                 for phones, prob, disambig_symbol in sorted(self.words[w]):
@@ -708,17 +715,18 @@ class Dictionary(object):
                             pron_cost_string = ""
                             s = ns
                         else:
-                            outf.write('\t'.join(map(str, [s, loopstate, p, word_or_eps, local_nosilcost]))+"\n")
-                            outf.write('\t'.join(map(str, [s, silstate, p, word_or_eps, local_silcost]))+"\n")
+                            outf.write('\t'.join(map(str, [s, loopstate, p, word_or_eps, local_nosilcost])) + "\n")
+                            outf.write('\t'.join(map(str, [s, silstate, p, word_or_eps, local_silcost])) + "\n")
                     if disambig and disambig_symbol is not None:
-                        outf.write('\t'.join(map(str, [s, loopstate, '#{}'.format(disambig_symbol), word_or_eps, local_nosilcost]))+"\n")
-                        outf.write('\t'.join(map(str, [s, silstate, '#{}'.format(disambig_symbol), word_or_eps, local_silcost]))+"\n")
+                        outf.write('\t'.join(map(str, [s, loopstate, '#{}'.format(disambig_symbol), word_or_eps,
+                                                       local_nosilcost])) + "\n")
+                        outf.write('\t'.join(
+                            map(str, [s, silstate, '#{}'.format(disambig_symbol), word_or_eps, local_silcost])) + "\n")
 
             outf.write("{}\t{}\n".format(loopstate, 0))
 
 
 class OrthographicDictionary(Dictionary):
-
     def __init__(self, input_dict, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=False,
