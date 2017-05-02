@@ -101,6 +101,7 @@ Contributors
 
 * Michael McAuliffe (michael.e.mcauliffe@gmail.com, `Github`_, `@wavable`_)
 * Michaela Socolof
+* Elias Stengel-Eskin
 * Sarah Mihuc
 * Michael Wagner
 * Morgan Sonderegger

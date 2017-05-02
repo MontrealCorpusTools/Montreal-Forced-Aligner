@@ -175,7 +175,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
 def test_train_g2p(sick_dict_path, sick_g2p_model_path):
     args = G2PDummyArgs()
     args.dictionary_path = sick_dict_path
-    args.path = sick_g2p_model_path
+    args.output_model_path = sick_g2p_model_path
     train_g2p(args)
     assert (os.path.exists(sick_g2p_model_path))
 
