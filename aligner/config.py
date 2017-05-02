@@ -1,5 +1,7 @@
 import os
 
+TEMP_DIR = os.path.expanduser('~/Documents/MFA')
+
 
 def make_safe(value):
     if isinstance(value, bool):

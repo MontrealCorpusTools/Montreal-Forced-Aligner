@@ -8,3 +8,5 @@
 The Montreal Forced Aligner is a command line utility for performing forced alignment of speech datasets using Kaldi (http://kaldi-asr.org/).
 
 Please see the documentation http://montreal-forced-aligner.readthedocs.io for installation and usage.
+
+If you run into any issues, please check the [mailing list](https://groups.google.com/forum/#!forum/mfa-users) for fixes/workarounds or to post a new issue.

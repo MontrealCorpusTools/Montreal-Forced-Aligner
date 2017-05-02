@@ -252,12 +252,14 @@ class Corpus(object):
         os.makedirs(log_dir, exist_ok=True)
         self.log_file = os.path.join(log_dir, 'corpus.log')
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)  # or whatever
-        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')  # or whatever
-        handler.setFormatter = logging.Formatter('%(name)s %(message)s')  # or whatever
+        root_logger.setLevel(logging.INFO)
+        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+        handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         root_logger.addHandler(handler)
         if not os.path.exists(directory):
             raise (CorpusError('The directory \'{}\' does not exist.'.format(directory)))
+        if not os.path.isdir(directory):
+            raise(CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory)))
         if num_jobs < 1:
             num_jobs = 1
         print('Setting up corpus information...')
@@ -291,6 +293,7 @@ class Corpus(object):
             self.speaker_directories = False
         self.sample_rates = defaultdict(set)
         no_transcription_files = []
+        decode_error_files = []
         unsupported_sample_rate = []
         ignored_duplicates = False
         for root, dirs, files in os.walk(self.directory, followlinks=True):
@@ -324,7 +327,10 @@ class Corpus(object):
                         self.ignored_utterances.append(utt_name)
                         continue
                     lab_path = os.path.join(root, lab_name)
-                    text = load_text(lab_path)
+                    try:
+                        text = load_text(lab_path)
+                    except UnicodeDecodeError:
+                        decode_error_files.append(lab_path)
                     text = sanitize(text)
                     if text == '':
                         continue
@@ -414,22 +420,29 @@ class Corpus(object):
             print('{} utterance(s) were ignored due to lack of features, please see {} for more information.'.format(
                 len(self.ignored_utterances), self.log_file))
             root_logger.warning(
-                'The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(
-                    ', '.join(self.ignored_utterances)))
+                'The following utterances were ignored due to lack of features: {}.  '
+                'See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
         if len(no_transcription_files) > 0:
             print(
-                '{} wav file(s) were ignored because neither a .lab file or a .TextGrid file could be found, please see {} for more information'.format(
-                    len(no_transcription_files), self.log_file))
+                '{} wav file(s) were ignored because neither a .lab file or a .TextGrid file could be found, '
+                'please see {} for more information'.format(len(no_transcription_files), self.log_file))
             root_logger.warning(
                 'The following wav files were ignored due to lack of of a .lab or a .TextGrid file: {}.'.format(
                     ', '.join(no_transcription_files)))
         if len(unsupported_sample_rate) > 0:
             print(
-                '{} wav file(s) were ignored because they had a sample rate less than 16000, which is not currently supported, please see {} for more information'.format(
+                '{} wav file(s) were ignored because they had a sample rate less than 16000, '
+                'which is not currently supported, please see {} for more information'.format(
                     len(unsupported_sample_rate), self.log_file))
             root_logger.warning(
                 'The following wav files were ignored due to a sample rate lower than 16000: {}.'.format(
                     ', '.join(unsupported_sample_rate)))
+        if decode_error_files:
+            print('There was an issue reading {} text file(s).  '
+                  'Please see {} for more information.'.format(len(decode_error_files), self.log_file))
+            root_logger.warning(
+                'The following lab files were ignored because they could not be parsed with utf8: {}.'.format(
+                    ', '.join(decode_error_files)))
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
             count = 0
