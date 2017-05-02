@@ -21,6 +21,8 @@
 
 .. _`Github`: http://mmcauliffe.github.io/
 
+.. _`mailing list`: https://groups.google.com/forum/#!forum/mfa-users
+
 .. _introduction:
 
 ************
@@ -48,6 +50,8 @@ models, where context on either side of a phone is taken into account for
 acoustic models.  The final pass enhances the triphone model by taking
 into account speaker differences, and calculates a transformation of the
 mel frequency cepstrum coefficients (MFCC) features for each speaker.
+
+If you run into any issues, please check the `mailing list`_ for fixes/workarounds or to post a new issue.
 
 Use of speaker information
 --------------------------
@@ -97,6 +101,7 @@ Contributors
 
 * Michael McAuliffe (michael.e.mcauliffe@gmail.com, `Github`_, `@wavable`_)
 * Michaela Socolof
+* Elias Stengel-Eskin
 * Sarah Mihuc
 * Michael Wagner
 * Morgan Sonderegger
