@@ -63,11 +63,11 @@ def align_corpus(args, skip_input=False):
                 'begin': time.time(),
                 'version': __version__,
                 'type': 'align',
-                'corpus_directory': args.corpus_dir,
+                'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path}
     if getattr(args, 'clean', False) \
             or conf['dirty'] or conf['type'] != 'align' \
-            or conf['corpus_directory'] != args.corpus_dir\
+            or conf['corpus_directory'] != args.corpus_directory\
             or conf['version'] != __version__\
             or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
