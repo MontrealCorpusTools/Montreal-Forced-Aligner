@@ -32,14 +32,16 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
                       'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings']
 
-included_libraries = {'linux': ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
+linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                                 'libfstscript.so.7', 'libfstfarscript.so.7',
                                 'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                                 'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
                                 'libkaldi-feat.so','libkaldi-transform.so',
                                 'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
-                                'libkaldi-fstext.so'],
-                    'win32': ['openfst64.dll', 'libopenblas.dll']}
+                                'libkaldi-fstext.so']
+included_libraries = {'linux': linux_libraries,
+                    'win32': ['openfst64.dll', 'libopenblas.dll'],
+                     'darwin':linux_libraries}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
