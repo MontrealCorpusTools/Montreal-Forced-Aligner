@@ -23,7 +23,7 @@ Please visit the release page ([https://github.com/MontrealCorpusTools/Montreal-
 
 ### Citation
 
-McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017). Montreal Forced Aligner [Computer program]. Version 0.9.0, retrieved 17 January 2017 from [http://montrealcorpustools.github.io/Montreal-Forced-Aligner/](http://montrealcorpustools.github.io/Montreal-Forced-Aligner/).
+McAuliffe, Michael, Michaela Socolof, Elias Stengel-Eskin, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017). Montreal Forced Aligner [Computer program]. Version 1.0.0, retrieved 05 May 2017 from [http://montrealcorpustools.github.io/Montreal-Forced-Aligner/](http://montrealcorpustools.github.io/Montreal-Forced-Aligner/).
 
 Or:
 
