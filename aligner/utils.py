@@ -17,7 +17,7 @@ def no_dictionary(corpus_object, output_directory):
     ----------
     corpus_object
         Corpus to align
-    output_directory
+    output_directory : str
         Specifies where to put the newly-created dictionary
 
     Returns

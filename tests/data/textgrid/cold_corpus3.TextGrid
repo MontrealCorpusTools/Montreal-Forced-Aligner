@@ -1,0 +1,308 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0 
+xmax = 24.648 
+tiers? <exists> 
+size = 2 
+item []: 
+    item [1]:
+        class = "IntervalTier" 
+        name = "word" 
+        xmin = 0 
+        xmax = 24.648 
+        intervals: size = 71 
+        intervals [1]:
+            xmin = 0 
+            xmax = 0.8232052187877381 
+            text = "" 
+        intervals [2]:
+            xmin = 0.8232052187877381 
+            xmax = 1.2809099150654382 
+            text = "alright" 
+        intervals [3]:
+            xmin = 1.2809099150654382 
+            xmax = 1.412099159221467 
+            text = "so" 
+        intervals [4]:
+            xmin = 1.412099159221467 
+            xmax = 1.6832235971439262 
+            text = "this" 
+        intervals [5]:
+            xmin = 1.6832235971439262 
+            xmax = 1.893126387793572 
+            text = "is" 
+        intervals [6]:
+            xmin = 1.893126387793572 
+            xmax = 2.377068932902478 
+            text = "the" 
+        intervals [7]:
+            xmin = 2.377068932902478 
+            xmax = 2.6576594176941692 
+            text = "sick" 
+        intervals [8]:
+            xmin = 2.6576594176941692 
+            xmax = 3.2757065234959044 
+            text = "corpus" 
+        intervals [9]:
+            xmin = 3.2757065234959044 
+            xmax = 3.813613485994608 
+            text = "uh" 
+        intervals [10]:
+            xmin = 3.813613485994608 
+            xmax = 4.269913559786731 
+            text = "hopefully" 
+        intervals [11]:
+            xmin = 4.269913559786731 
+            xmax = 4.431119299635093 
+            text = "the" 
+        intervals [12]:
+            xmin = 4.431119299635093 
+            xmax = 4.835104768170748 
+            text = "recording" 
+        intervals [13]:
+            xmin = 4.835104768170748 
+            xmax = 5.268216016939665 
+            text = "levels" 
+        intervals [14]:
+            xmin = 5.268216016939665 
+            xmax = 5.468266513377993 
+            text = "are" 
+        intervals [15]:
+            xmin = 5.468266513377993 
+            xmax = 5.955768208582077 
+            text = "okay" 
+        intervals [16]:
+            xmin = 5.955768208582077 
+            xmax = 6.514763164002983 
+            text = "" 
+        intervals [17]:
+            xmin = 6.514763164002983 
+            xmax = 6.99838038354807 
+            text = "um" 
+        intervals [18]:
+            xmin = 6.99838038354807 
+            xmax = 7.1834984442331535 
+            text = "" 
+        intervals [19]:
+            xmin = 7.1834984442331535 
+            xmax = 7.4049135567959645 
+            text = "i" 
+        intervals [20]:
+            xmin = 7.4049135567959645 
+            xmax = 7.521447826565865 
+            text = "have" 
+        intervals [21]:
+            xmin = 7.521447826565865 
+            xmax = 7.624386431529277 
+            text = "a" 
+        intervals [22]:
+            xmin = 7.624386431529277 
+            xmax = 8.067578384272299 
+            text = "cold" 
+        intervals [23]:
+            xmin = 8.067578384272299 
+            xmax = 8.565514748506677 
+            text = "so" 
+        intervals [24]:
+            xmin = 8.565514748506677 
+            xmax = 8.765565244945007 
+            text = "this" 
+        intervals [25]:
+            xmin = 8.765565244945007 
+            xmax = 9.068554346346748 
+            text = "probably" 
+        intervals [26]:
+            xmin = 9.068554346346748 
+            xmax = 9.359276717383546 
+            text = "sounds" 
+        intervals [27]:
+            xmin = 9.359276717383546 
+            xmax = 9.462215322346957 
+            text = "a" 
+        intervals [28]:
+            xmin = 9.462215322346957 
+            xmax = 9.60011420824134 
+            text = "lot" 
+        intervals [29]:
+            xmin = 9.60011420824134 
+            xmax = 9.947774779721543 
+            text = "different" 
+        intervals [30]:
+            xmin = 9.947774779721543 
+            xmax = 10.151709751818869 
+            text = "than" 
+        intervals [31]:
+            xmin = 10.151709751818869 
+            xmax = 10.608127866865763 
+            text = "the" 
+        intervals [32]:
+            xmin = 10.608127866865763 
+            xmax = 11.2684887288952 
+            text = "acoustic" 
+        intervals [33]:
+            xmin = 11.2684887288952 
+            xmax = 11.765701613246774 
+            text = "corpus" 
+        intervals [34]:
+            xmin = 11.765701613246774 
+            xmax = 12.11918112333026 
+            text = "uh" 
+        intervals [35]:
+            xmin = 12.11918112333026 
+            xmax = 12.257080009224643 
+            text = "and" 
+        intervals [36]:
+            xmin = 12.257080009224643 
+            xmax = 12.369729803335547 
+            text = "i'm" 
+        intervals [37]:
+            xmin = 12.369729803335547 
+            xmax = 12.591144915898358 
+            text = "also" 
+        intervals [38]:
+            xmin = 12.591144915898358 
+            xmax = 12.837809120244646 
+            text = "saying" 
+        intervals [39]:
+            xmin = 12.837809120244646 
+            xmax = 13.002899335752005 
+            text = "[adif]" 
+        intervals [40]:
+            xmin = 13.002899335752005 
+            xmax = 13.296177248006256 
+            text = "bunch" 
+        intervals [41]:
+            xmin = 13.296177248006256 
+            xmax = 13.340848718084716 
+            text = "of" 
+        intervals [42]:
+            xmin = 13.340848718084716 
+            xmax = 13.56032159281803 
+            text = "different" 
+        intervals [43]:
+            xmin = 13.56032159281803 
+            xmax = 14.0419887996484 
+            text = "words" 
+        intervals [44]:
+            xmin = 14.0419887996484 
+            xmax = 14.599411056714425 
+            text = "" 
+        intervals [45]:
+            xmin = 14.599411056714425 
+            xmax = 15.055836946646535 
+            text = "um" 
+        intervals [46]:
+            xmin = 15.055836946646535 
+            xmax = 15.36270273649806 
+            text = "" 
+        intervals [47]:
+            xmin = 15.36270273649806 
+            xmax = 15.496717146733445 
+            text = "i" 
+        intervals [48]:
+            xmin = 15.496717146733445 
+            xmax = 15.601597989526356 
+            text = "think" 
+        intervals [49]:
+            xmin = 15.601597989526356 
+            xmax = 15.723958972784752 
+            text = "i'm" 
+        intervals [50]:
+            xmin = 15.723958972784752 
+            xmax = 15.986161079767028 
+            text = "probably" 
+        intervals [51]:
+            xmin = 15.986161079767028 
+            xmax = 16.162904722251376 
+            text = "gonna" 
+        intervals [52]:
+            xmin = 16.162904722251376 
+            xmax = 16.51056529373158 
+            text = "cough" 
+        intervals [53]:
+            xmin = 16.51056529373158 
+            xmax = 16.897062846916537 
+            text = "here" 
+        intervals [54]:
+            xmin = 16.897062846916537 
+            xmax = 17.611806368171926 
+            text = "<VOCNOISE>" 
+        intervals [55]:
+            xmin = 17.611806368171926 
+            xmax = 18.332368828030596 
+            text = "" 
+        intervals [56]:
+            xmin = 18.332368828030596 
+            xmax = 18.604282124160363 
+            text = "yeah" 
+        intervals [57]:
+            xmin = 18.604282124160363 
+            xmax = 18.70139401563528 
+            text = "so" 
+        intervals [58]:
+            xmin = 18.70139401563528 
+            xmax = 18.87813765811963 
+            text = "that" 
+        intervals [59]:
+            xmin = 18.87813765811963 
+            xmax = 19.027689970991002 
+            text = "just" 
+        intervals [60]:
+            xmin = 19.027689970991002 
+            xmax = 19.738549016587395 
+            text = "happened" 
+        intervals [61]:
+            xmin = 19.738549016587395 
+            xmax = 20.239638601712752 
+            text = "uh" 
+        intervals [62]:
+            xmin = 20.239638601712752 
+            xmax = 20.670815399861382 
+            text = "and" 
+        intervals [63]:
+            xmin = 20.670815399861382 
+            xmax = 20.962151074286133 
+            text = "uh" 
+        intervals [64]:
+            xmin = 20.962151074286133 
+            xmax = 21.105876673669012 
+            text = "that" 
+        intervals [65]:
+            xmin = 21.105876673669012 
+            xmax = 21.201038540105213 
+            text = "should" 
+        intervals [66]:
+            xmin = 21.201038540105213 
+            xmax = 21.368070993442068 
+            text = "be" 
+        intervals [67]:
+            xmin = 21.368070993442068 
+            xmax = 21.583659392516385 
+            text = "good" 
+        intervals [68]:
+            xmin = 21.583659392516385 
+            xmax = 21.808958980738193 
+            text = "" 
+        intervals [69]:
+            xmin = 21.808958980738193 
+            xmax = 22.24596249237532 
+            text = "alright" 
+        intervals [70]:
+            xmin = 22.24596249237532 
+            xmax = 22.719868522772916 
+            text = "thanks" 
+        intervals [71]:
+            xmin = 22.719868522772916 
+            xmax = 24.648 
+            text = "" 
+    item [2]:
+        class = "IntervalTier" 
+        name = "phone" 
+        xmin = 0 
+        xmax = 24.648 
+        intervals: size = 1 
+        intervals [1]:
+            xmin = 0 
+            xmax = 24.648 
+            text = "" 

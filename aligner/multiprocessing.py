@@ -308,7 +308,7 @@ def mono_align_equal(mono_directory, split_directory, num_jobs):
         output = [p.get() for p in results]
 
 
-def compile_utterance_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):
+def compile_utterance_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):  # pragma: no cover
     disambig_int_path = os.path.join(lang_directory, 'phones', 'disambig.int')
     tree_path = os.path.join(directory, 'tree')
     mdl_path = os.path.join(directory, 'final.mdl')
@@ -338,7 +338,7 @@ def compile_utterance_train_graphs_func(directory, lang_directory, split_directo
         proc.communicate()
 
 
-def test_utterances_func(directory, lang_directory, split_directory, job_name):
+def test_utterances_func(directory, lang_directory, split_directory, job_name):  # pragma: no cover
     log_path = os.path.join(directory, 'log', 'decode.0.{}.log'.format(job_name))
     words_path = os.path.join(lang_directory, 'words.txt')
     mdl_path = os.path.join(directory, 'final.mdl')
