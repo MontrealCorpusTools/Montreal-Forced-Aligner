@@ -4,6 +4,10 @@ The Montreal Forced Aligner is a tool for time aligning orthographic and phonolo
 
 The underlying technology is the Kaldi ASR toolkit ([http://kaldi-asr.org/](http://kaldi-asr.org/)).  Installing and using the Montreal Forced Aligner executables requires no prerequisites or compilation of third party toolkits (such as HTK).  Further information is available on the project's documentation ([http://montreal-forced-aligner.readthedocs.io](http://montreal-forced-aligner.readthedocs.io)).
 
+
+If you run into any issues, please check the [mailing list](https://groups.google.com/forum/#!forum/mfa-users) for fixes/workarounds or to post a new issue.
+
+
 ### Executable downloads
 
 Please visit the release page ([https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/releases)) and download the latest release.
