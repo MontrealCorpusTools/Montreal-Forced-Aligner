@@ -18,7 +18,7 @@ Common options for both aligner executables
 
    Number of characters to use to identify speakers; if not specified,
    the aligner assumes that the directory name is the identifier for the
-   speaker
+   speaker.  Additionally, it accepts the value ``prosodylab`` to use the second field of a ``_`` delimited file name.
 
 .. cmdoption:: -t DIRECTORY
                --temp_directory DIRECTORY
@@ -66,15 +66,12 @@ Command template:
 
 .. code-block:: bash
 
-   bin/mfa_align [model_path] corpus_directory output_directory
+   bin/mfa_align corpus_directory dictionary_path model_path output_directory
 
+.. note::
+   ``model_path`` can also be a language that has been pretrained ("english" at the moment but other languages coming soon)
 
 Extra options (in addition to the common ones listed above):
-
-.. cmdoption:: -l LANGUAGE
-               --language LANGUAGE
-
-  Specify the language of the pretrained models distributed with the aligner
 
 .. cmdoption:: -n
                --no_speaker_adaptation
@@ -116,7 +113,7 @@ Command template:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align corpus_directory [dictionary_path] output_directory
+   bin/mfa_train_and_align corpus_directory dictionary_path output_directory
 
 
 Extra options (in addition to the common ones listed above):
@@ -132,7 +129,7 @@ Extra options (in addition to the common ones listed above):
   Path to a zip file to save the results' acoustic models (and dictionary)
   from training to use in future aligning
 
-.. cmdoption:: --nodict
+.. cmdoption:: --no_dict
 
   If this option is specified, the pronunciation for any given word will be
   the orthography, useful for transparent orthographies that have near one-to-one
@@ -141,7 +138,8 @@ Extra options (in addition to the common ones listed above):
 .. note::
 
    The arguments ``dictionary_path`` and ``nodict`` are mutually exclusive
-   and one of the two must be specified to align a data set.
+   and one of the two must be specified to align a data set. Dictionaries can also be generated through using a
+   G2P model with the command ``generate_dictionary``.
 
 Steps to align:
 
@@ -154,7 +152,7 @@ An example command:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align -s 7 ~/2_French_training ~/French/fr-QuEu.dict ~/2_French_training -f -v
+   bin/mfa_train_and_align ~/2_French_training ~/French/fr-QuEu.dict ~/2_French_aligned -s 7 -f -v
 
 This command will train a new model and align the files in ``~/2_French_training``
 using the dictionary file ``~/French/fr-QuEu.dict``, and save the output

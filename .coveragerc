@@ -1,0 +1,36 @@
+[run]
+source = aligner
+omit =
+    *_rc.py
+    *_ui.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+
+    raise AssertionError
+    raise NotImplementedError
+    pass
+
+    if sys\.platform
+    if hasattr\(sys, 'frozen'\):
+
+    except ImportError:
+
+    if call_back
+    if stop_check
+
+    def run\(self\):
+
+    def calc\(self\):
+
+    def setResults
+
+    if dialog\.exec_():
+
+    if not skip_input.*:
+
+    if self.debug:
+
+    if debug:

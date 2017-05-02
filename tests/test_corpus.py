@@ -7,36 +7,36 @@ from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 
 
-def test_basic(basic_dict_path, basic_dir, generated_dir):
+def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
-    d = Corpus(basic_dir, output_directory)
+    d = Corpus(basic_corpus_dir, output_directory)
     d.initialize_corpus(dictionary)
     assert(d.get_feat_dim() == '39')
 
 
-def test_extra(sick_dict, extra_dir, generated_dir):
+def test_extra(sick_dict, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
-    corpus = Corpus(extra_dir, output_directory, num_jobs = 2)
+    corpus = Corpus(extra_corpus_dir, output_directory, num_jobs = 2)
     corpus.initialize_corpus(sick_dict)
 
 
 
-def test_stereo(basic_dict_path, textgrid_directory, generated_dir):
-    temp = os.path.join(generated_dir, 'stereo')
+def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir):
+    temp = os.path.join(temp_dir, 'stereo')
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
-    d = Corpus(os.path.join(textgrid_directory, 'stereo'), temp)
+    d = Corpus(stereo_corpus_dir, temp)
     d.initialize_corpus(dictionary)
     assert(d.get_feat_dim() == '39')
 
 
-def test_short_segments(basic_dict_path, textgrid_directory, generated_dir):
-    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'short_segments'))
+def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir):
+    temp = os.path.join(temp_dir, 'short_segments')
+    dictionary = Dictionary(basic_dict_path, temp)
     dictionary.write()
-    temp = os.path.join(generated_dir, 'short_segments')
-    corpus = Corpus(os.path.join(textgrid_directory, 'short_segments'), temp)
+    corpus = Corpus(shortsegments_corpus_dir, temp)
     corpus.initialize_corpus(dictionary)
     assert(len(corpus.feat_mapping.keys()) == 2)
     assert(len(corpus.utt_speak_mapping.keys()) == 2)
@@ -47,8 +47,8 @@ def test_short_segments(basic_dict_path, textgrid_directory, generated_dir):
     assert(len(corpus.ignored_utterances) == 1)
 
 
-def test_speaker_groupings(large_prosodylab_format_directory, generated_dir):
-    output_directory = os.path.join(generated_dir, 'large')
+def test_speaker_groupings(large_prosodylab_format_directory, temp_dir):
+    output_directory = os.path.join(temp_dir, 'large')
     shutil.rmtree(output_directory, ignore_errors = True)
     c = Corpus(large_prosodylab_format_directory, output_directory)
     speakers = os.listdir(large_prosodylab_format_directory)
