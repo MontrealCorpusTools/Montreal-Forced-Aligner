@@ -120,10 +120,10 @@ def align_corpus_no_dict(args, skip_input=False):
 
 
 def validate_args(args):
-    if args.nodict == False and args.dict_path == '':
-        raise (Exception('Must specify dictionary or nodict option'))
-    if args.nodict and args.dict_path != '':
-        raise (Exception('Dict_path cannot be specified with nodict option'))
+    if args.no_dict == False and args.dict_path == '':
+        raise (Exception('Must specify dictionary or no_dict option'))
+    if args.no_dict and args.dict_path != '':
+        raise (Exception('Dict_path cannot be specified with no_dict option'))
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -131,7 +131,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_directory', help='Full path to the source directory to align')
     parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use', nargs='?', default='')
-    parser.add_argument('output_directory', help='Full path to output directory, will be created if it doesn\'t exist')
+    parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')
     parser.add_argument('-s', '--speaker_characters', type=str, default='0',
