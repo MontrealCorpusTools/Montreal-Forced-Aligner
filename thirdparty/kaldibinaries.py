@@ -14,11 +14,6 @@ else:
     exe_ext = ''
     lib_ext = ['.so', '.so.1']
 
-ignored_filenames = ['.DS_Store', 'configure', 'Doxyfile',
-                     'INSTALL', 'NOTES', 'TODO', 'Makefile', 'AUTHORS',
-                     'COPYING', 'NEWS', 'README', 'CHANGELOG', 'DISCLAIMER',
-                     'log', 'makefile', 'packImageTarFile']
-
 included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'compile-train-graphs', 'compile-train-graphs-fsts', 'align-equal-compiled', 'gmm-acc-stats-ali',
                       'gmm-align-compiled', 'gmm-boost-silence', 'linear-to-nbest',
@@ -33,15 +28,15 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings']
 
 linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
-                                'libfstscript.so.7', 'libfstfarscript.so.7',
-                                'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
-                                'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
-                                'libkaldi-feat.so','libkaldi-transform.so',
-                                'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
-                                'libkaldi-fstext.so']
+                   'libfstscript.so.7', 'libfstfarscript.so.7',
+                   'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
+                   'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
+                   'libkaldi-feat.so', 'libkaldi-transform.so',
+                   'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
+                   'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
-                    'win32': ['openfst64.dll', 'libopenblas.dll'],
-                     'darwin':linux_libraries}
+                      'win32': ['openfst64.dll', 'libopenblas.dll'],
+                      'darwin': linux_libraries}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
