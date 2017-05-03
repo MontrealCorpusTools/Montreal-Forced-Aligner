@@ -338,16 +338,18 @@ class Corpus(object):
                     words = self.text_mapping[utt_name].split()
                     self.word_counts.update(words)
                     if self.speaker_directories:
-                        speaker_id = os.path.basename(root)
+                        speaker_name = os.path.basename(root)
                     else:
                         if isinstance(speaker_characters, int):
-                            speaker_id = f[:speaker_characters]
+                            speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
-                            speaker_id = f.split('_')[1]
-                    self.speak_utt_mapping[speaker_id].append(utt_name)
+                            speaker_name = f.split('_')[1]
+                    speaker_name = speaker_name.strip().replace(' ', '_')
+                    utt_name = utt_name.strip().replace(' ', '_')
+                    self.speak_utt_mapping[speaker_name].append(utt_name)
                     self.utt_wav_mapping[utt_name] = wav_path
-                    self.sample_rates[get_sample_rate(wav_path)].add(speaker_id)
-                    self.utt_speak_mapping[utt_name] = speaker_id
+                    self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
+                    self.utt_speak_mapping[utt_name] = speaker_name
                 else:
                     tg_name = find_textgrid(f, files)
                     if tg_name is None:
@@ -369,16 +371,17 @@ class Corpus(object):
                         raise (Exception('More than two channels'))
                     if not self.speaker_directories:
                         if isinstance(speaker_characters, int):
-                            speaker_id = f[:speaker_characters]
+                            speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
-                            speaker_id = f.split('_')[1]
+                            speaker_name = f.split('_')[1]
+                        speaker_name = speaker_name.strip().replace(' ', '_')
                     for i, ti in enumerate(tg.tiers):
                         if ti.name.lower() == 'notes':
                             continue
                         if not isinstance(ti, IntervalTier):
                             continue
                         if self.speaker_directories:
-                            speaker_name = ti.name
+                            speaker_name = ti.name.strip().replace(' ', '_')
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             label = interval.mark.lower().strip()
@@ -387,9 +390,8 @@ class Corpus(object):
                                 continue
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
-                            utt_name = utt_name.replace('.', '_')
+                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
                             if n_channels == 1:
-
                                 if self.feat_mapping and utt_name not in self.feat_mapping:
                                     self.ignored_utterances.append(utt_name)
                                     continue
