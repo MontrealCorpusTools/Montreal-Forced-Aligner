@@ -1,12 +1,12 @@
 import argparse
 import os
 
-from ..g2p.generator import PhonetisaurusDictionaryGenerator
-from ..corpus import Corpus
-from ..models import G2PModel
+from aligner.g2p.generator import PhonetisaurusDictionaryGenerator
+from aligner.corpus import Corpus
+from aligner.models import G2PModel
 
-from ..exceptions import ArgumentError
-from ..config import TEMP_DIR
+from aligner.exceptions import ArgumentError
+from aligner.config import TEMP_DIR
 
 
 def generate_dict(args):
