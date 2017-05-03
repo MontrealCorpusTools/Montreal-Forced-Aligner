@@ -19,7 +19,7 @@ included_filenames = ['ngramcount', 'ngrammake', 'ngramsymbols', 'ngramprint']
 linux_libraries = []
 included_libraries = {'linux': linux_libraries,
                       'win32': [],
-                      'darwin': linux_libraries}
+                      'darwin': [('libngram.2.dylib', 'libngram.dylib')]}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -38,14 +38,28 @@ def CollectBinaries(directory):
         for name in files:
             ext = os.path.splitext(name)
             (key, value) = ext
-            bin_name = os.path.join(bin_out, name)
-            if not os.path.exists(bin_name):
-                if value == exe_ext:
-                    if key not in included_filenames:
-                        continue
-                    shutil.copy(os.path.join(root, name), bin_out)
-                elif value == lib_ext:
-                    shutil.copy(os.path.join(root, name), bin_out)
+            if value == exe_ext and key in included_filenames:
+                bin_name = os.path.join(bin_out, name)
+                shutil.copy(os.path.join(root, name), bin_out)
+                if sys.platform == 'darwin':
+                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE)
+                    output, err = p.communicate()
+                    rc = p.returncode
+                    output = output.decode()
+                    libs = dylib_pattern.findall(output)
+                    for l in libs:
+                        if l.startswith('/usr'):
+                            continue
+                        lib = os.path.basename(l)
+                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+    if sys.platform == 'darwin':
+        lib_dir = os.path.join(directory, 'src','lib','.libs')
+        for f in os.listdir(lib_dir):
+            for lib in included_libraries[sys.platform]:
+                if f == lib[0]:
+                    shutil.copyfile(os.path.join(lib_dir, f), os.path.join(bin_out, lib[1]))
+                    break
 
 
 if __name__ == '__main__':
