@@ -1,0 +1,85 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0 
+xmax = 52.44082780612245 
+tiers? <exists> 
+size = 2 
+item []: 
+    item [1]:
+        class = "IntervalTier" 
+        name = "michael" 
+        xmin = 0 
+        xmax = 52.44082780612245 
+        intervals: size = 7 
+        intervals [1]:
+            xmin = 0 
+            xmax = 1.059222833923831 
+            text = "" 
+        intervals [2]:
+            xmin = 1.059222833923831 
+            xmax = 7.541483952089169 
+            text = "this is the acoustic corpus i'm talking pretty fast here there's nothing going else going on we're just yknow there's some speech errors but who 
+cares" 
+        intervals [3]:
+            xmin = 7.541483952089169 
+            xmax = 8.016163828116456 
+            text = "" 
+        intervals [4]:
+            xmin = 8.016163828116456 
+            xmax = 17.207369573609213 
+            text = "um this is me talking really slow and slightly lower in intensity uh we're just saying some words" 
+        intervals [5]:
+            xmin = 17.207369573609213 
+            xmax = 18.35980726400338 
+            text = "" 
+        intervals [6]:
+            xmin = 18.35980726400338 
+            xmax = 25.251655700977985 
+            text = "and here's some more words words words words um and that should be all thanks" 
+        intervals [7]:
+            xmin = 25.251655700977985 
+            xmax = 52.44082780612245 
+            text = "" 
+    item [2]:
+        class = "IntervalTier" 
+        name = "sickmichael" 
+        xmin = 0 
+        xmax = 52.44080102040816 
+        intervals: size = 9 
+        intervals [1]:
+            xmin = 0 
+            xmax = 26.72325 
+            text = "" 
+        intervals [2]:
+            xmin = 26.72325 
+            xmax = 39.52854922648294 
+            text = "uh so this is the sick corpus uh i have a cold so i probably sound quite different than the uh uh acoustic corpus um the recording environment is also quite different" 
+        intervals [3]:
+            xmin = 39.52854922648294 
+            xmax = 40.20409920265843 
+            text = "" 
+        intervals [4]:
+            xmin = 40.20409920265843 
+            xmax = 43.81379465384285 
+            text = "and i'm saying a bunch of different words that i did not say in the original one" 
+        intervals [5]:
+            xmin = 43.81379465384285 
+            xmax = 44.480184007206404 
+            text = "" 
+        intervals [6]:
+            xmin = 44.480184007206404 
+            xmax = 45.08451636541159 
+            text = "uh" 
+        intervals [7]:
+            xmin = 45.08451636541159 
+            xmax = 46.37863407952624 
+            text = "" 
+        intervals [8]:
+            xmin = 46.37863407952624 
+            xmax = 51.457439118982556 
+            text = "and here's a long pause and i think this is probably good alright thanks" 
+        intervals [9]:
+            xmin = 51.457439118982556 
+            xmax = 52.44080102040816 
+            text = "" 

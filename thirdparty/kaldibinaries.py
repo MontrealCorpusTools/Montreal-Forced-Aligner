@@ -30,7 +30,18 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'fstcopy', 'dot', 'compute-cmvn-stats',
                       'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
                       'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
-                      'draw-tree', 'fstdraw', 'show-transitions']
+                      'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings']
+
+linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
+                                'libfstscript.so.7', 'libfstfarscript.so.7',
+                                'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
+                                'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
+                                'libkaldi-feat.so','libkaldi-transform.so',
+                                'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
+                                'libkaldi-fstext.so']
+included_libraries = {'linux': linux_libraries,
+                    'win32': ['openfst64.dll', 'libopenblas.dll'],
+                     'darwin':linux_libraries}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -42,6 +53,8 @@ def CollectBinaries(directory):
     tools_dir = os.path.join(directory, 'tools')
     for root, dirs, files in os.walk(tools_dir):
         for name in files:
+            if os.path.islink(os.path.join(root, name)):
+                continue
             ext = os.path.splitext(name)
             (key, value) = ext
             if value == exe_ext and key in included_filenames:
@@ -60,15 +73,16 @@ def CollectBinaries(directory):
                                 continue
                             lib = os.path.basename(l)
                             subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-            elif sys.platform == 'win32' and name in ['openfst64.dll', 'libopenblas.dll']:
+            elif sys.platform == 'win32' and name in included_libraries[sys.platform]:
                 shutil.copy(os.path.join(root, name), bin_out)
             elif sys.platform != 'win32':
                 c = False
-                for le in lib_ext:
-                    if name.endswith(le):
+                for l in included_libraries[sys.platform]:
+                    if name.startswith(l):
                         c = True
+                        new_name = included_libraries[sys.platform]
                 if c:
-                    shutil.copy(os.path.join(root, name), bin_out)
+                    shutil.copyfile(os.path.join(root, name), os.path.join(bin_out, new_name))
 
     if sys.platform == 'win32':
         src_dir = directory
