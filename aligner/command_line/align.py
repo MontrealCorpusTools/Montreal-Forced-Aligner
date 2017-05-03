@@ -83,7 +83,7 @@ def align_corpus(args, skip_input=False):
                         use_speaker_information=use_speaker_info,
                         ignore_exceptions=getattr(args, 'ignore_exceptions', False))
         print(corpus.speaker_utterance_info())
-        acoustic_model = AcousticModel(args.model_path)
+        acoustic_model = AcousticModel(args.acoustic_model_path)
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
         acoustic_model.validate(dictionary)
         begin = time.time()
@@ -135,20 +135,20 @@ def align_included_model(args, skip_input=False):
         path = os.path.abspath(__file__)
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
-    args.model_path = os.path.join(pretrained_dir, '{}.zip'.format(args.model_path.lower()))
+    args.acoustic_model_path = os.path.join(pretrained_dir, '{}.zip'.format(args.acoustic_model_path.lower()))
     align_corpus(args, skip_input=skip_input)
 
 
 def validate_args(args):
-    if args.model_path.lower() in PRETRAINED_LANGUAGES:
+    if args.acoustic_model_path.lower() in PRETRAINED_LANGUAGES:
         align_included_model(args)
-    elif args.model_path.lower().endswith('.zip'):
+    elif args.acoustic_model_path.lower().endswith('.zip'):
         align_corpus(args)
     else:
         raise (Exception(
             'The language \'{}\' is not currently included in the distribution, '
             'please align via training or specify one of the following language names: {}.'.format(
-                args.model_path.lower(), ', '.join(PRETRAINED_LANGUAGES))))
+                args.acoustic_model_path.lower(), ', '.join(PRETRAINED_LANGUAGES))))
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -157,7 +157,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_directory', help='Full path to the directory to align')
     parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
-    parser.add_argument('acoustic_model',
+    parser.add_argument('acoustic_model_path',
                         help='Full path to the archive containing pre-trained model or language ({})'.format(
                             ', '.join(PRETRAINED_LANGUAGES)))
     parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")

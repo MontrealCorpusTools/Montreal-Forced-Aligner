@@ -66,10 +66,10 @@ Command template:
 
 .. code-block:: bash
 
-   bin/mfa_align corpus_directory dictionary_path model_path output_directory
+   bin/mfa_align corpus_directory dictionary_path acoustic_model_path output_directory
 
 .. note::
-   ``model_path`` can also be a language that has been pretrained ("english" at the moment but other languages coming soon)
+   ``acoustic_model_path`` can also be a language that has been pretrained ("english" at the moment but other languages coming soon)
 
 Extra options (in addition to the common ones listed above):
 
@@ -85,7 +85,7 @@ Extra options (in addition to the common ones listed above):
 
 .. note::
 
-   The arguments ``model_path`` and ``language`` are mutually exclusive
+   The arguments ``acoustic_model_path`` and ``language`` are mutually exclusive
    and one of the two must be specified to align a data set.
 
 Steps to align:
@@ -137,7 +137,7 @@ Extra options (in addition to the common ones listed above):
 
 .. note::
 
-   The arguments ``dictionary_path`` and ``nodict`` are mutually exclusive
+   The arguments ``dictionary_path`` and ``--no_dict`` are mutually exclusive
    and one of the two must be specified to align a data set. Dictionaries can also be generated through using a
    G2P model with the command ``generate_dictionary``.
 

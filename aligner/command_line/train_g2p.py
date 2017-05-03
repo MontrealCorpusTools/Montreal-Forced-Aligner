@@ -1,10 +1,10 @@
 import argparse
 import os
-from ..g2p.trainer import PhonetisaurusTrainer
+from aligner.g2p.trainer import PhonetisaurusTrainer
 
-from ..dictionary import Dictionary
-from .. exceptions import ArgumentError
-from ..config import TEMP_DIR
+from aligner.dictionary import Dictionary
+from aligner.exceptions import ArgumentError
+from aligner.config import TEMP_DIR
 
 
 def train_g2p(args):
