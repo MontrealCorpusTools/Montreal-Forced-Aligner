@@ -19,7 +19,7 @@ included_filenames = ['ngramcount', 'ngrammake', 'ngramsymbols', 'ngramprint']
 linux_libraries = []
 included_libraries = {'linux': linux_libraries,
                       'win32': [],
-                      'darwin': [('libngram.2.dylib', 'libngram.dylib')]}
+                      'darwin': ['libngram.2.dylib', 'libngramhist.2.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -49,16 +49,16 @@ def CollectBinaries(directory):
                     output = output.decode()
                     libs = dylib_pattern.findall(output)
                     for l in libs:
-                        if l.startswith('/usr'):
+                        if l.startswith('/usr') and not l.startswith('/usr/local'):
                             continue
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
     if sys.platform == 'darwin':
-        lib_dir = os.path.join(directory, 'src','lib','.libs')
+        lib_dir = os.path.join(directory, 'src', 'lib', '.libs')
         for f in os.listdir(lib_dir):
             for lib in included_libraries[sys.platform]:
-                if f == lib[0]:
-                    shutil.copyfile(os.path.join(lib_dir, f), os.path.join(bin_out, lib[1]))
+                if f == lib:
+                    shutil.copyfile(os.path.join(lib_dir, f), os.path.join(bin_out, lib))
                     break
 
 
