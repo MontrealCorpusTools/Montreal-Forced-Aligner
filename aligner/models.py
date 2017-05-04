@@ -132,8 +132,8 @@ class AcousticModel(Archive):
                 missing_phones = dictionary.meta['phones'] - set(self.meta['phones'])
                 raise (PronunciationAcousticMismatchError(missing_phones))
         else:
-            if self.meta['phones'] < dictionary.nonsil_phones:
-                missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
+            missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
+            if missing_phones:
                 raise (PronunciationAcousticMismatchError(missing_phones))
 
 
