@@ -121,6 +121,10 @@ class Dictionary(object):
                 self.words[word].append((pron, prob))
         self.word_pattern = compile_graphemes(self.graphemes)
         self.phone_mapping = {}
+        self.words_mapping = {}
+
+    def generate_mappings(self):
+        self.phone_mapping = {}
         i = 0
         self.phone_mapping['<eps>'] = i
         if self.position_dependent_phones:
@@ -386,8 +390,8 @@ class Dictionary(object):
         Write the files necessary for Kaldi
         """
         print('Creating dictionary information...')
-        if not os.path.exists(self.phones_dir):
-            os.makedirs(self.phones_dir, exist_ok=True)
+        os.makedirs(self.phones_dir, exist_ok=True)
+        self.generate_mappings()
         self._write_graphemes()
         self._write_phone_map_file()
         self._write_phone_sets()

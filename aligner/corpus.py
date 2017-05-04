@@ -259,7 +259,7 @@ class Corpus(object):
         if not os.path.exists(directory):
             raise (CorpusError('The directory \'{}\' does not exist.'.format(directory)))
         if not os.path.isdir(directory):
-            raise(CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory)))
+            raise (CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory)))
         if num_jobs < 1:
             num_jobs = 1
         print('Setting up corpus information...')
@@ -331,12 +331,13 @@ class Corpus(object):
                         text = load_text(lab_path)
                     except UnicodeDecodeError:
                         decode_error_files.append(lab_path)
-                    text = sanitize(text)
-                    if text == '':
                         continue
-                    self.text_mapping[utt_name] = text
-                    words = self.text_mapping[utt_name].split()
+                    words = [sanitize(x) for x in text.split()]
+                    words = [x for x in words if x not in ['', '-', "'"]]
+                    if not words:
+                        continue
                     self.word_counts.update(words)
+                    self.text_mapping[utt_name] = ' '.join(words)
                     if self.speaker_directories:
                         speaker_name = os.path.basename(root)
                     else:
@@ -386,7 +387,9 @@ class Corpus(object):
                         for interval in ti:
                             label = interval.mark.lower().strip()
                             label = sanitize(label)
-                            if label == '':
+                            words = [sanitize(x) for x in label.split()]
+                            words = [x for x in words if x not in ['', '-', "'"]]
+                            if not words:
                                 continue
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
@@ -412,8 +415,8 @@ class Corpus(object):
                                         continue
                                     self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
                                     self.utt_wav_mapping[B_name] = B_path
-                            self.text_mapping[utt_name] = label
-                            self.word_counts.update(label.split())
+                            self.text_mapping[utt_name] = ' '.join(words)
+                            self.word_counts.update(words)
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
         if ignored_duplicates:
