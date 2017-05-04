@@ -62,13 +62,14 @@ class PretrainedAligner(BaseAligner):
         self.debug = debug
         if temp_directory is None:
             temp_directory = TEMP_DIR
+        self.acoustic_model = acoustic_model
         self.temp_directory = temp_directory
         self.output_directory = output_directory
         self.corpus = corpus
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
         self.setup()
-        acoustic_model.export_triphone_model(self.tri_directory)
+        self.acoustic_model.export_triphone_model(self.tri_directory)
         log_dir = os.path.join(self.tri_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
@@ -111,6 +112,9 @@ class PretrainedAligner(BaseAligner):
                         dot_proc.communicate()
         print('Done with setup.')
 
+    def setup(self):
+        self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
+        super(PretrainedAligner, self).setup()
     def test_utterance_transcriptions(self):
         return test_utterances(self)
 
