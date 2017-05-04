@@ -865,8 +865,14 @@ class Corpus(object):
                     del self.utt_wav_mapping[k]
                 except KeyError:
                     pass
-                del self.segments[k]
-                del self.text_mapping[k]
+                try:
+                    del self.segments[k]
+                except KeyError:
+                    pass
+                try:
+                    del self.text_mapping[k]
+                except KeyError:
+                    pass
             for k, v in self.speak_utt_mapping.items():
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
 
