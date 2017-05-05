@@ -55,20 +55,19 @@ def CollectBinaries(directory):
             (key, value) = ext
             if value == exe_ext and key in included_filenames:
                 bin_name = os.path.join(bin_out, name)
-                if not os.path.exists(bin_name):
-                    shutil.copy(os.path.join(root, name), bin_out)
-                    if sys.platform == 'darwin':
-                        p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                             stderr=subprocess.PIPE)
-                        output, err = p.communicate()
-                        rc = p.returncode
-                        output = output.decode()
-                        libs = dylib_pattern.findall(output)
-                        for l in libs:
-                            if l.startswith('/usr'):
-                                continue
-                            lib = os.path.basename(l)
-                            subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+                shutil.copy(os.path.join(root, name), bin_out)
+                if sys.platform == 'darwin':
+                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE)
+                    output, err = p.communicate()
+                    rc = p.returncode
+                    output = output.decode()
+                    libs = dylib_pattern.findall(output)
+                    for l in libs:
+                        if l.startswith('/usr') and not l.startswith('/usr/local'):
+                            continue
+                        lib = os.path.basename(l)
+                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
             elif sys.platform == 'win32' and name in included_libraries[sys.platform]:
                 shutil.copy(os.path.join(root, name), bin_out)
             elif sys.platform != 'win32':
