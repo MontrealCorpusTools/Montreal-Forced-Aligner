@@ -228,8 +228,11 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                                                   '--osymbols={}'.format(words_file_path), temp_fst_path, dot_path],
                                                  stderr=logf)
                     draw_proc.communicate()
-                    dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path], stderr=logf)
-                    dot_proc.communicate()
+                    try:
+                        dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path], stderr=logf)
+                        dot_proc.communicate()
+                    except FileNotFoundError:
+                        pass
 
 
 def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False):
