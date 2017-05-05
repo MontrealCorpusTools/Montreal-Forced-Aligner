@@ -4,7 +4,7 @@ import random
 import tempfile
 from ..dictionary import Dictionary
 
-from ..helper import thirdparty_binary
+from ..helper import thirdparty_path
 
 from ..config import TEMP_DIR
 
@@ -61,23 +61,23 @@ class PhonetisaurusTrainer(object):
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
-        subprocess.call([thirdparty_binary('phonetisaurus-align'),
+        subprocess.call([thirdparty_path('phonetisaurus-align'),
                          '--input=' + input_path, '--ofile=' + corpus_path])
 
-        subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
+        subprocess.call([thirdparty_path('ngramsymbols'), corpus_path, sym_path])
 
         subprocess.call(
-                [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
+                [thirdparty_path('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
                  corpus_path, far_path])
 
-        subprocess.call([thirdparty_binary('ngramcount'), '--order=7', far_path, cnts_path])
+        subprocess.call([thirdparty_path('ngramcount'), '--order=7', far_path, cnts_path])
 
-        subprocess.call([thirdparty_binary('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
+        subprocess.call([thirdparty_path('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
 
-        subprocess.call([thirdparty_binary('ngramprint'), '--ARPA', mod_path, arpa_path])
+        subprocess.call([thirdparty_path('ngramprint'), '--ARPA', mod_path, arpa_path])
 
         subprocess.call(
-                [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
+                [thirdparty_path('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
 
         directory, filename = os.path.split(self.model_path)
         basename, _ = os.path.splitext(filename)

@@ -21,3 +21,6 @@ def make_safe(element):
     if isinstance(element, list):
         return ' '.join(map(make_safe, element))
     return str(element)
+
+def thirdparty_path(binary_name):
+    return os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'thirdparty','bin', binary_name)
