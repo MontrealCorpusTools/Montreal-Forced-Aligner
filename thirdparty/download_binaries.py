@@ -19,8 +19,10 @@ def tqdm_hook(t):
 
 
 def download(args):
-    if args.temp_directory is None:
+    base_dir = args.temp_directory
+    if not args.temp_directory:
         base_dir = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(base_dir, exist_ok=True)
     if sys.platform == 'darwin':
         plat = 'macosx'
     elif sys.platform == 'win32':
@@ -50,7 +52,7 @@ def download(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('temp_directory', required=False, default=None, help='Full path to the directory to save to')
+    parser.add_argument('temp_directory', nargs='?', default='', help='Full path to the directory to save to')
     parser.add_argument('--keep', action='store_true')
     args = parser.parse_args()
     download(args)
