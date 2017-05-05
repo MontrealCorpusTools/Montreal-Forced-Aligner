@@ -23,7 +23,7 @@ class PhonetisaurusTrainer(object):
 
     """
 
-    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False, ch = False):
+    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False, chinese = False):
         super(PhonetisaurusTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -36,7 +36,7 @@ class PhonetisaurusTrainer(object):
         self.korean = korean
         self.evaluate = evaluate
         self.dictionary = dictionary
-        self.ch = ch
+        self.ch = chinese
 
     def train(self, word_dict = None):
         if self.korean:
@@ -63,9 +63,11 @@ class PhonetisaurusTrainer(object):
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
         if self.ch:
+            print('running ch')
             subprocess.call([thirdparty_binary('phonetisaurus-align'), '--seq1_max=3 --seq2_max=3',
                          '--input=' + input_path, '--ofile=' + corpus_path])
         else:
+            print('running normal')
             subprocess.call([thirdparty_binary('phonetisaurus-align'),
                          '--input=' + input_path, '--ofile=' + corpus_path])
             

@@ -15,7 +15,7 @@ def train_g2p(args):
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, korean=args.korean)
+    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, korean=args.korean, chinese = args.chinese)
 
     t.train()
 
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     parser.add_argument("--korean", action='store_true',
                         help="Set to true if dictionary is in Korean. "
                              "Decomposes Hangul into separate letters (jamo) and increases accuracy")
-    parser.add_argument("--ch", action='store_true', 
+    parser.add_argument("--chinese", action='store_true', 
         help = "Set to true if dictionary is in Hanzi characters")
 
 
