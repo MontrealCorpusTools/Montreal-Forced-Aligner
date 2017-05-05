@@ -26,7 +26,7 @@ class DummyArgs(object):
 class G2PDummyArgs(object):
     def __init__(self):
         self.temp_directory = None
-        self.korean = False
+        self.window_size = 2
 
 
 large = pytest.mark.skipif(
