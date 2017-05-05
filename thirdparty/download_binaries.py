@@ -27,7 +27,7 @@ def download():
         plat = 'linux'
     print('Downloading precompiled binaries for {}...'.format(plat))
 
-    download_link = 'https://montrealcorpustools.github.io/Montreal-Forced-Aligner/thirdparty_precompiled/{}.zip'.format(
+    download_link = 'http://mlmlab.org/mfa/precompiled_binaries/{}.zip'.format(
         plat)
     path = os.path.join(base_dir, '{}.zip'.format(plat))
     with tqdm(unit='B', unit_scale=True, miniters=1) as t:
