@@ -10,7 +10,7 @@ from aligner import __version__
 
 
 def test_training(sick_dict, sick_g2p_model_path):
-    trainer = PhonetisaurusTrainer(sick_dict, sick_g2p_model_path, korean=False)
+    trainer = PhonetisaurusTrainer(sick_dict, sick_g2p_model_path, window_size=2)
     trainer.train()
     model = G2PModel(sick_g2p_model_path)
     assert (model.meta['version'] == __version__)
