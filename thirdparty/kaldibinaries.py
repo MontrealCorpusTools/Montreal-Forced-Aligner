@@ -76,7 +76,7 @@ def CollectBinaries(directory):
                 for l in included_libraries[sys.platform]:
                     if name.startswith(l):
                         c = True
-                        new_name = included_libraries[sys.platform]
+                        new_name = l
                 if c:
                     shutil.copyfile(os.path.join(root, name), os.path.join(bin_out, new_name))
 
