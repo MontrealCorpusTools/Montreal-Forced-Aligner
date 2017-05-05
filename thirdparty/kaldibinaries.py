@@ -36,7 +36,8 @@ linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libopenblas.dll'],
-                      'darwin': linux_libraries}
+                      'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
+                                 'libfstfar.7.dylib', 'libfstngram.7.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
