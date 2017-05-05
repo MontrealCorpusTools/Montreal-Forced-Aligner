@@ -30,7 +30,3 @@ exclude_lines =
     if dialog\.exec_():
 
     if not skip_input.*:
-
-    if self.debug:
-
-    if debug:
