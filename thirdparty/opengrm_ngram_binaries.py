@@ -70,6 +70,7 @@ def CollectBinaries(directory):
                         for l in libs:
                             if l.startswith('/usr') and not l.startswith('/usr/local'):
                                 continue
+                            print(l)
                             lib = os.path.basename(l)
                             subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
                     break

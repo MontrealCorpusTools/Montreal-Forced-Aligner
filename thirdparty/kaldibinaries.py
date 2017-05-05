@@ -77,7 +77,20 @@ def CollectBinaries(directory):
                         c = True
                         new_name = l
                 if c:
-                    shutil.copyfile(os.path.join(root, name), os.path.join(bin_out, new_name))
+                    bin_name = os.path.join(bin_out, new_name)
+                    shutil.copyfile(os.path.join(root, name), bin_name)
+                    if sys.platform == 'darwin':
+                        p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE)
+                        output, err = p.communicate()
+                        rc = p.returncode
+                        output = output.decode()
+                        libs = dylib_pattern.findall(output)
+                        for l in libs:
+                            if l.startswith('/usr') and not l.startswith('/usr/local'):
+                                continue
+                            lib = os.path.basename(l)
+                            subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
     if sys.platform == 'win32':
         src_dir = directory
@@ -88,25 +101,12 @@ def CollectBinaries(directory):
         for name in files:
             ext = os.path.splitext(name)
             (key, value) = ext
-            bin_name = os.path.join(bin_out, name)
             if value == exe_ext:
                 if key not in included_filenames:
                     continue
                 shutil.copy(os.path.join(root, name), bin_out)
             elif value == lib_ext:
                 shutil.copy(os.path.join(root, name), bin_out)
-            if sys.platform == 'darwin':
-                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
-                output, err = p.communicate()
-                rc = p.returncode
-                output = output.decode()
-                libs = dylib_pattern.findall(output)
-                for l in libs:
-                    if l.startswith('/usr') and not l.startswith('/usr/local'):
-                        continue
-                    lib = os.path.basename(l)
-                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
 
 if __name__ == '__main__':
