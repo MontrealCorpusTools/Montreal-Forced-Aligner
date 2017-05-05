@@ -8,6 +8,8 @@ from aligner.command_line.train_and_align import align_corpus as train_and_align
 from aligner.command_line.generate_dictionary import generate_dict
 from aligner.command_line.train_g2p import train_g2p
 
+from aligner.exceptions import PronunciationAcousticMismatchError
+
 class DummyArgs(object):
     def __init__(self):
         self.speaker_characters = 0
@@ -44,36 +46,42 @@ def assert_export_exist(old_directory, new_directory):
             assert (os.path.exists(os.path.join(new_root, new_f)))
 
 
-def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir):
+def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary):
     args = DummyArgs()
-    args.model_path = 'english'
+    args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = sick_dict_path
     args.output_directory = os.path.join(generated_dir, 'basic_output')
-    align_included_model(args, skip_input=True)
+    with pytest.raises(PronunciationAcousticMismatchError):
+        align_included_model(args, skip_input=True)
 
     #args.clean = False
-    #args.model_path = 'english'
+    #args.acoustic_model_path = 'english'
     #align_included_model(args, skip_input=True)
+    args.acoustic_model_path = 'english'
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'basic_output')
+    align_included_model(args, skip_input=True)
 
 
-def test_align_basic_errors(basic_corpus_dir, sick_dict_path, generated_dir):
+def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.errors = True
-    args.model_path = 'english'
+    args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
-    args.dictionary_path = sick_dict_path
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args, skip_input=True)
 
 
 @pytest.mark.xfail
-def test_align_basic_debug(basic_corpus_dir, sick_dict_path, generated_dir):
+def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.debug = True
-    args.model_path = 'english'
+    args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
-    args.dictionary_path = sick_dict_path
+    args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args, skip_input=True)
 
@@ -82,7 +90,7 @@ def test_align_basic_debug(basic_corpus_dir, sick_dict_path, generated_dir):
 def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_output_directory,
                                 large_dataset_dictionary):
     args = DummyArgs()
-    args.model_path = 'english'
+    args.acoustic_model_path = 'english'
     args.corpus_directory = large_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
@@ -132,7 +140,7 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
 @large
 def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory, large_dataset_dictionary):
     args = DummyArgs()
-    args.model_path = 'english'
+    args.acoustic_model_path = 'english'
     args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
     args.dictionary_path = large_dataset_dictionary
