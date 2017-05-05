@@ -4,7 +4,7 @@ import random
 import tempfile
 from ..dictionary import Dictionary
 
-from ..helper import thirdparty_path
+from ..helper import thirdparty_path, thirdparty_binary
 
 from ..config import TEMP_DIR
 
@@ -23,7 +23,7 @@ class PhonetisaurusTrainer(object):
 
     """
 
-    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False):
+    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False, ch = False):
         super(PhonetisaurusTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -36,6 +36,7 @@ class PhonetisaurusTrainer(object):
         self.korean = korean
         self.evaluate = evaluate
         self.dictionary = dictionary
+        self.ch = ch
 
     def train(self, word_dict = None):
         if self.korean:
@@ -61,23 +62,27 @@ class PhonetisaurusTrainer(object):
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
-        subprocess.call([thirdparty_path('phonetisaurus-align'),
+        if self.ch:
+            subprocess.call([thirdparty_binary('phonetisaurus-align'), '--seq1_max=3 --seq2_max=3',
                          '--input=' + input_path, '--ofile=' + corpus_path])
-
-        subprocess.call([thirdparty_path('ngramsymbols'), corpus_path, sym_path])
+        else:
+            subprocess.call([thirdparty_binary('phonetisaurus-align'),
+                         '--input=' + input_path, '--ofile=' + corpus_path])
+            
+        subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
 
         subprocess.call(
-                [thirdparty_path('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
+                [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
                  corpus_path, far_path])
 
-        subprocess.call([thirdparty_path('ngramcount'), '--order=7', far_path, cnts_path])
+        subprocess.call([thirdparty_binary('ngramcount'), '--order=7', far_path, cnts_path])
 
-        subprocess.call([thirdparty_path('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
+        subprocess.call([thirdparty_binary('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
 
-        subprocess.call([thirdparty_path('ngramprint'), '--ARPA', mod_path, arpa_path])
+        subprocess.call([thirdparty_binary('ngramprint'), '--ARPA', mod_path, arpa_path])
 
         subprocess.call(
-                [thirdparty_path('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
+                [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
 
         directory, filename = os.path.split(self.model_path)
         basename, _ = os.path.splitext(filename)

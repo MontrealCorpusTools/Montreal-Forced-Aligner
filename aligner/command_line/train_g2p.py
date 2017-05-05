@@ -5,6 +5,7 @@ from aligner.g2p.trainer import PhonetisaurusTrainer
 from aligner.dictionary import Dictionary
 from aligner.exceptions import ArgumentError
 from aligner.config import TEMP_DIR
+from aligner.command_line.align import fix_path, unfix_path
 
 
 def train_g2p(args):
@@ -37,8 +38,12 @@ if __name__ == '__main__':
     parser.add_argument("--korean", action='store_true',
                         help="Set to true if dictionary is in Korean. "
                              "Decomposes Hangul into separate letters (jamo) and increases accuracy")
+    parser.add_argument("--ch", action='store_true', 
+        help = "Set to true if dictionary is in Hanzi characters")
+
 
     args = parser.parse_args()
+    fix_path()
     validate(args)
     train_g2p(args)
-
+    unfix_path()
