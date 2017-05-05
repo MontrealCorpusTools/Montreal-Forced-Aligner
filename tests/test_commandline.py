@@ -76,7 +76,6 @@ def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generate
     align_included_model(args, skip_input=True)
 
 
-@pytest.mark.xfail
 def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.debug = True
