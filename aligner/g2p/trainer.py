@@ -23,7 +23,7 @@ class PhonetisaurusTrainer(object):
 
     """
 
-    def __init__(self, dictionary, model_path, temp_directory=None, korean=False, evaluate=False):
+    def __init__(self, dictionary, model_path, temp_directory=None, window_size=2, evaluate=False):
         super(PhonetisaurusTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -33,24 +33,18 @@ class PhonetisaurusTrainer(object):
         self.temp_directory = os.path.join(temp_directory, self.name)
         os.makedirs(self.temp_directory, exist_ok=True)
         self.model_path = model_path
-        self.korean = korean
+        self.grapheme_window_size = 2
+        self.phoneme_window_size = window_size
         self.evaluate = evaluate
         self.dictionary = dictionary
 
     def train(self, word_dict = None):
-        if self.korean:
-            try:
-                from jamo import h2j, j2hcj
-            except ImportError:
-                raise (Exception('Cannot parse hangul into jamo for increased accuracy, please run `pip install jamo`.'))
         input_path = os.path.join(self.temp_directory, 'input.txt')
         if word_dict is None:
             word_dict = self.dictionary.words
         with open(input_path, "w") as f2:
             for word, v in word_dict.items():
                 for v2 in v:
-                    if self.korean:
-                        word = j2hcj(h2j(word))
                     f2.write(word + "\t" + " ".join(v2[0]) + "\n")
 
         corpus_path = os.path.join(self.temp_directory, 'full.corpus')
@@ -62,6 +56,8 @@ class PhonetisaurusTrainer(object):
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
         subprocess.call([thirdparty_binary('phonetisaurus-align'),
+                         '--seq1_max={}'.format(self.grapheme_window_size),
+                         '--seq2_max={}'.format(self.phoneme_window_size),
                          '--input=' + input_path, '--ofile=' + corpus_path])
 
         subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
