@@ -14,7 +14,7 @@ def train_g2p(args):
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, korean=args.korean)
+    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, window_size=args.window_size)
 
     t.train()
 
@@ -35,9 +35,9 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
 
-    parser.add_argument("--korean", action='store_true',
-                        help="Set to true if dictionary is in Korean. "
-                             "Decomposes Hangul into separate letters (jamo) and increases accuracy")
+    parser.add_argument("--window_size", type=int, default=2,
+                        help="Window size of phonemes, default is 2, increase if one character often corresponds to"
+                             "more than 2 phonemes")
 
     args = parser.parse_args()
     fix_path()
