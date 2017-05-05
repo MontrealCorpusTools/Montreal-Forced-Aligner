@@ -128,13 +128,11 @@ class AcousticModel(Archive):
 
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):
-            if self.meta['phones'] < dictionary.meta['phones']:
-                missing_phones = dictionary.meta['phones'] - set(self.meta['phones'])
-                raise (PronunciationAcousticMismatchError(missing_phones))
+            missing_phones = dictionary.meta['phones'] - set(self.meta['phones'])
         else:
             missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
-            if missing_phones:
-                raise (PronunciationAcousticMismatchError(missing_phones))
+        if missing_phones:
+            raise (PronunciationAcousticMismatchError(missing_phones))
 
 
 class G2PModel(Archive):
