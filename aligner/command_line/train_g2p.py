@@ -7,6 +7,7 @@ from aligner.exceptions import ArgumentError
 from aligner.config import TEMP_DIR
 from aligner.command_line.align import fix_path, unfix_path
 
+from aligner.command_line.align import fix_path, unfix_path
 
 def train_g2p(args):
     if not args.temp_directory:
