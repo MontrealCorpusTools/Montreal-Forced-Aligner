@@ -19,9 +19,10 @@ def tqdm_hook(t):
 
 
 def download(args):
-    base_dir = args.temp_directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = args.temp_directory
     if not args.temp_directory:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        temp_dir = base_dir
     os.makedirs(base_dir, exist_ok=True)
     if sys.platform == 'darwin':
         plat = 'macosx'
@@ -33,11 +34,11 @@ def download(args):
 
     download_link = 'http://mlmlab.org/mfa/precompiled_binaries/{}.zip'.format(
         plat)
-    path = os.path.join(base_dir, '{}.zip'.format(plat))
+    path = os.path.join(temp_dir, '{}.zip'.format(plat))
     if not os.path.exists(path):
         with tqdm(unit='B', unit_scale=True, miniters=1) as t:
             filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
-        shutil.unpack_archive(filename, base_dir)
+    shutil.unpack_archive(path, base_dir)
     if not args.keep:
         os.remove(path)
     if plat != 'win':
