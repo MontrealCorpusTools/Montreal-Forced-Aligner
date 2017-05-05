@@ -327,5 +327,63 @@ def example_output_model_path(generated_dir):
 
 
 @pytest.fixture(scope='session')
+<<<<<<< HEAD
+def textgrid_output_model_path():
+    return os.path.expanduser('~/textgrid_output_model.zip')
+
+@pytest.fixture(scope='session')
+def dict_language():
+    return "CH"
+
+@pytest.fixture(scope='session')
+def dict_input_directory():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "examples", "CH")
+
+@pytest.fixture(scope='session')
+def dict_output_path(test_dir):
+    return os.path.join(test_dir, "dictionaries", "chinese_dict.txt", )
+
+@pytest.fixture(scope='session')
+def dict_model_path():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "dict_models", "CH")
+
+@pytest.fixture(scope='session')
+def example_output_directory():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "examples", "output")
+
+@pytest.fixture(scope='session')
+def example_output_model_path():
+    return os.path.expanduser('~/example_output_model.zip')
+
+
+@pytest.fixture(scope='session')
+def KO_path():
+    return os.path.expanduser('~/Montreal-Forced-Aligner/tests')
+
+@pytest.fixture(scope='session')
 def KO_dict(test_dir):
-    return os.path.join(test_dir, "dictionaries", "KO_dict.txt")
+    return os.path.join(test_dir,"dictionaries","KO_dict.txt")
+
+@pytest.fixture(scope='session')
+def dict_input_directory_char():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "examples", "CH_chars")
+
+@pytest.fixture(scope='session')
+def dict_output_path_char(test_dir):
+    return os.path.join(test_dir, "dictionaries", "chinese_dict_char.txt", )
+
+@pytest.fixture(scope='session')
+def dict_model_path_char():
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(test_dir)
+    return os.path.join(repo_dir, "dict_models", "CH_chars")
+
+

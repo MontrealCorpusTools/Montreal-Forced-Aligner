@@ -120,6 +120,7 @@ def align_corpus_no_dict(args, skip_input=False):
 
 
 def validate_args(args):
+
     if not args.no_dict and args.dictionary_path == '':
         raise (Exception('Must specify dictionary or no_dict option'))
     if args.no_dict and args.dictionary_path != '':

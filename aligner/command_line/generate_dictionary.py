@@ -7,7 +7,6 @@ from aligner.models import G2PModel
 
 from aligner.exceptions import ArgumentError
 from aligner.config import TEMP_DIR
-
 from aligner.command_line.align import fix_path, unfix_path
 
 
@@ -56,9 +55,11 @@ if __name__ == '__main__':
     parser.add_argument("--korean", action='store_true',
                         help="Set to true if corpus is in Korean. "
                              "Decomposes Hangul into separate letters (jamo) and increases accuracy")
-
+    
     args = parser.parse_args()
     fix_path()
+
     validate(args)
     generate_dict(args)
     unfix_path()
+

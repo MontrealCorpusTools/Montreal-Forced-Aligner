@@ -4,10 +4,10 @@
 .. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
 
 
-
 ***********************
 Generating a Dictionary
 ***********************
+
 
 Included with MFA is a separate tool to generate a dictionary from a preexisting model. This should be used if you're
 aligning a dataset for which you have no pronunciation dictionary. We have pretrained models for several languages,
@@ -16,33 +16,32 @@ which can be downloaded `here <http://mlmlab.org/mfa/>`_. These models were gene
 alphabet. Current language options are: Arabic, Bulgarian, Mandarin, Czech, Polish, Russian, Swahili, Ukrainian,
 and Vietnamese, with the following accuracies when trained on 90% of the data and tested on 10%:
 
-+----------------------+
-| Language  | Link | Accuracy |
-+======================+
-| Arabic    | `model <http://mlmlab.org/mfa/pretrained/g2p/arabic_g2p.zip>`_ | 91.8   |
-+----------------------+
-| Bulgarian | `model <http://mlmlab.org/mfa/pretrained/g2p/bulgarian_g2p.zip>`_  |   97.0   |
-+----------------------+
-| Croatian | `model <http://mlmlab.org/mfa/pretrained/g2p/croatian_g2p.zip>`_   |   89.0   |
-+----------------------+
-| Czech    | `model <http://mlmlab.org/mfa/pretrained/g2p/czech_g2p.zip>`_   |   96.2   |
-+----------------------+
-| Mandarin | `model <http://mlmlab.org/mfa/pretrained/g2p/mandarin_g2p.zip>`_   |   99.9   |
-+----------------------+
-| Polish    | `model <http://mlmlab.org/mfa/pretrained/g2p/polish_g2p.zip>`_  |   98.7   |
-+----------------------+
-| Russian  | `model <http://mlmlab.org/mfa/pretrained/g2p/russian_g2p.zip>`_   |   96.1   |
-+----------------------+
-| Swahili   | `model <http://mlmlab.org/mfa/pretrained/g2p/swahili_g2p.zip>`_  |   99.9   |
-+----------------------+
-| Ukrainian | `model <http://mlmlab.org/mfa/pretrained/g2p/ukrainian_g2p.zip>`_  |   98.7   |
-+----------------------+
-| Vietnamese | `model <http://mlmlab.org/mfa/pretrained/g2p/vietnamese_g2p.zip>`_ |   95.2   |
-+----------------------+
++----------------------+--------------------------------------------------------------------+----------+
+| Language             | Link                                                               | Accuracy |
++======================+====================================================================+==========+
+| Arabic               | `model <http://mlmlab.org/mfa/pretrained/g2p/arabic_g2p.zip>`_     | 91.8     |  
++----------------------+--------------------------------------------------------------------+----------+
+| Bulgarian            | `model <http://mlmlab.org/mfa/pretrained/g2p/bulgarian_g2p.zip>`_  |   97.0   |
++----------------------+--------------------------------------------------------------------+----------+
+| Croatian             | `model <http://mlmlab.org/mfa/pretrained/g2p/croatian_g2p.zip>`_   |   89.0   |
++----------------------+--------------------------------------------------------------------+----------+
+| Czech                | `model <http://mlmlab.org/mfa/pretrained/g2p/czech_g2p.zip>`_      |   96.2   |
++----------------------+--------------------------------------------------------------------+----------+
+| Mandarin             | `model <http://mlmlab.org/mfa/pretrained/g2p/mandarin_g2p.zip>`_   |   99.9   |
++----------------------+--------------------------------------------------------------------+----------+
+| Polish               | `model <http://mlmlab.org/mfa/pretrained/g2p/polish_g2p.zip>`_     |   98.7   |
++----------------------+--------------------------------------------------------------------+----------+
+| Russian              | `model <http://mlmlab.org/mfa/pretrained/g2p/russian_g2p.zip>`_    |   96.1   |
++----------------------+--------------------------------------------------------------------+----------+
+| Swahili              | `model <http://mlmlab.org/mfa/pretrained/g2p/swahili_g2p.zip>`_    |   99.9   |
++----------------------+--------------------------------------------------------------------+----------+
+| Ukrainian            | `model <http://mlmlab.org/mfa/pretrained/g2p/ukrainian_g2p.zip>`_  |   98.7   |
++----------------------+--------------------------------------------------------------------+----------+
+| Vietnamese           | `model <http://mlmlab.org/mfa/pretrained/g2p/vietnamese_g2p.zip>`_ |   95.2   |
++----------------------+--------------------------------------------------------------------+----------+
 
 
-Since the point of the model is to reconstruct a dictionary as accurately as possible, they were trained on 100% of the
-data, and all attain >95% accuracy when used to reconstruct the dictionary from the entire dataset.
+Since the point of the model is to reconstruct a dictionary as accurately as possible, they were trained on 100% of the data, and all attain >95% accuracy when used to reconstruct the dictionary from the entire dataset.
 
 Use
 ===
@@ -91,6 +90,7 @@ of the transcription should be near 100%. You can now use this to align your min
 
 Since there are very few files (i.e. small training set), the alignment will be suboptimal. This example is intended more
 to give a sense of the pipeline for generating a dictionary and using it for alignment.
+
 
 
 
