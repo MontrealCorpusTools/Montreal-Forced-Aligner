@@ -58,7 +58,20 @@ def CollectBinaries(directory):
         for f in os.listdir(lib_dir):
             for lib in included_libraries[sys.platform]:
                 if f == lib:
-                    shutil.copyfile(os.path.join(lib_dir, f), os.path.join(bin_out, lib))
+                    bin_name = os.path.join(bin_out, lib)
+                    shutil.copyfile(os.path.join(lib_dir, f), bin_name)
+                    if sys.platform == 'darwin':
+                        p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE)
+                        output, err = p.communicate()
+                        rc = p.returncode
+                        output = output.decode()
+                        libs = dylib_pattern.findall(output)
+                        for l in libs:
+                            if l.startswith('/usr') and not l.startswith('/usr/local'):
+                                continue
+                            lib = os.path.basename(l)
+                            subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
                     break
 
 
