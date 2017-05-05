@@ -17,10 +17,9 @@ Contents:
    aligning.rst
    example.rst
    commonerrors.rst
+   g2p.rst
    changelog.rst
    apireference.rst
-   model_training.rst
-   dictionary_generating.rst
 
 
 Indices and tables
