@@ -52,19 +52,20 @@ Dictionary API
 
 .. _archive_api:
 
-Archive API
-===========
+Model API
+=========
 
 Output from training a model is compressed using the Archive class, which
 results in a zip folder.
 
-.. currentmodule:: aligner.archive
+.. currentmodule:: aligner.models
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   Archive
+   AcousticModel
+   G2PModel
 
 .. _multiprocessing_api:
 
