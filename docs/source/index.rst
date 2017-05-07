@@ -18,6 +18,7 @@ Contents:
    example.rst
    commonerrors.rst
    g2p.rst
+   pretrained_models.rst
    changelog.rst
    apireference.rst
 

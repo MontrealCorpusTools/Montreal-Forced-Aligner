@@ -14,7 +14,11 @@ def compile_graphemes(graphemes):
     else:
         base = r'^\W*([{}]+)\W*'
     string = ''.join(x for x in graphemes if x != '-')
-    return re.compile(base.format(string))
+    try:
+        return re.compile(base.format(string))
+    except Exception:
+        print(graphemes)
+        raise
 
 
 def sanitize(item):

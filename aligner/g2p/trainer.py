@@ -38,11 +38,11 @@ class PhonetisaurusTrainer(object):
         self.evaluate = evaluate
         self.dictionary = dictionary
 
-    def train(self, word_dict = None):
+    def train(self, word_dict=None):
         input_path = os.path.join(self.temp_directory, 'input.txt')
         if word_dict is None:
             word_dict = self.dictionary.words
-        with open(input_path, "w") as f2:
+        with open(input_path, "w", encoding='utf8') as f2:
             for word, v in word_dict.items():
                 for v2 in v:
                     f2.write(word + "\t" + " ".join(v2[0]) + "\n")
@@ -63,8 +63,8 @@ class PhonetisaurusTrainer(object):
         subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
 
         subprocess.call(
-                [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
-                 corpus_path, far_path])
+            [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
+             corpus_path, far_path])
 
         subprocess.call([thirdparty_binary('ngramcount'), '--order=7', far_path, cnts_path])
 
@@ -73,7 +73,7 @@ class PhonetisaurusTrainer(object):
         subprocess.call([thirdparty_binary('ngramprint'), '--ARPA', mod_path, arpa_path])
 
         subprocess.call(
-                [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
+            [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
 
         directory, filename = os.path.split(self.model_path)
         basename, _ = os.path.splitext(filename)
@@ -86,22 +86,40 @@ class PhonetisaurusTrainer(object):
         print('Saved model to {}'.format(self.model_path))
 
     def validate(self):
+        from .generator import PhonetisaurusDictionaryGenerator
+        from ..models import G2PModel
+        print('Performing validation...')
         word_dict = self.dictionary.words
         validation = 0.1
         words = word_dict.keys()
         total_items = len(words)
         validation_items = int(total_items * validation)
         validation_words = random.sample(words, validation_items)
-        training_dictionary = {k:v for k,v in word_dict.items() if k not in validation_words}
-        validation_dictionary = {k:v for k,v in word_dict.items() if k in validation_words}
+        training_dictionary = {k: v for k, v in word_dict.items() if k not in validation_words}
+        validation_dictionary = {k: v for k, v in word_dict.items() if k in validation_words}
         self.train(training_dictionary)
+
+        model = G2PModel(self.model_path)
+        output_path = os.path.join(self.temp_directory, 'validation.txt')
+        validation_errors_path = os.path.join(self.temp_directory, 'validation_errors.txt')
+        gen = PhonetisaurusDictionaryGenerator(model, validation_dictionary.keys(),
+                                               output_path,
+                                               temp_directory=os.path.join(self.temp_directory, 'validation'))
+        gen.generate()
         count_right = 0
-        incorrect = []
-        for k,v in validation_dictionary.items():
-            actual = list(self.g2p([k])[0])
-            if actual == v:
-                count_right += 1
-            else:
-                incorrect.append((k, v, actual))
-        print('Accuracy was: {}'.format(count_right/validation_items))
-        print(incorrect[:100])
+
+        with open(output_path, 'r', encoding='utf8') as f, \
+                open(validation_errors_path, 'w', encoding='utf8') as outf:
+            for line in f:
+                line = line.strip().split()
+                word = line[0]
+                pron = ' '.join(line[1:])
+                actual_prons = set(' '.join(x[0]) for x in validation_dictionary[word])
+                if pron not in actual_prons:
+                    print(word, pron, actual_prons)
+                    outf.write('{}\t{}\t{}\n'.format(word, pron, ', '.join(actual_prons)))
+                else:
+                    count_right += 1
+
+        print('Accuracy was: {}'.format(count_right / validation_items))
+        os.remove(self.model_path)

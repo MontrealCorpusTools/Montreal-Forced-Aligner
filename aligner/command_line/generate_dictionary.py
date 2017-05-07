@@ -19,10 +19,10 @@ def generate_dict(args):
     input_dir = os.path.expanduser(args.corpus_directory)
 
     corpus = Corpus(input_dir, os.path.join(temp_dir, 'corpus'))
-
+    word_set = corpus.word_set
     model = G2PModel(args.g2p_model_path)
 
-    gen = PhonetisaurusDictionaryGenerator(model, corpus, args.output_path, temp_directory=temp_dir)
+    gen = PhonetisaurusDictionaryGenerator(model, word_set, args.output_path, temp_directory=temp_dir)
     gen.generate()
 
 
