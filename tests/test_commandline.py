@@ -29,6 +29,7 @@ class G2PDummyArgs(object):
         self.window_size = 2
 
 
+
 large = pytest.mark.skipif(
     pytest.config.getoption("--skiplarge"),
     reason="remove --skiplarge option to run"
@@ -181,6 +182,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
 
 def test_train_g2p(sick_dict_path, sick_g2p_model_path):
     args = G2PDummyArgs()
+    args.validate = True
     args.dictionary_path = sick_dict_path
     args.output_model_path = sick_g2p_model_path
     train_g2p(args)
