@@ -15,7 +15,8 @@ def train_g2p(args):
         temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
     t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, window_size=args.window_size)
-
+    if args.validate:
+        t.validate()
     t.train()
 
 
@@ -38,6 +39,9 @@ if __name__ == '__main__':
     parser.add_argument("--window_size", type=int, default=2,
                         help="Window size of phonemes, default is 2, increase if one character often corresponds to"
                              "more than 2 phonemes")
+    parser.add_argument('-v', "--validate", action='store_true',
+                        help="Perform an analysis of accuracy training on "
+                             "most of the data and validating on an unseen subset")
 
     args = parser.parse_args()
     fix_path()

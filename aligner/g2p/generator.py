@@ -25,6 +25,8 @@ def parse_errors(error_output):
 def parse_output(output):
     for line in output.splitlines():
         line = line.strip().split("\t")
+        if len(line) == 2:
+            line += [None]
         yield line[0], line[2]
 
 
@@ -43,7 +45,7 @@ class PhonetisaurusDictionaryGenerator(object):
             default to False, to be used if using a Korean corpus in Hangul
     """
 
-    def __init__(self, g2p_model, corpus, outfile, temp_directory=None):
+    def __init__(self, g2p_model, word_set, outfile, use_unk = False, temp_directory=None):
         super(PhonetisaurusDictionaryGenerator, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -62,8 +64,8 @@ class PhonetisaurusDictionaryGenerator(object):
         handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         self.logger.addHandler(handler)
 
-        with open(self.word_list_path, 'w') as f:
-            for word in corpus.word_set:
+        with open(self.word_list_path, 'w', encoding='utf8') as f:
+            for word in word_set:
                 f.write(word.strip() + '\n')
 
         self.outfile = outfile
@@ -94,4 +96,6 @@ class PhonetisaurusDictionaryGenerator(object):
 
         with open(self.outfile, "w", encoding='utf8') as f:
             for word, pronunciation in parse_output(results):
+                if pronunciation is None:
+                    continue
                 f.write('{}\t{}\n'.format(word, pronunciation))
