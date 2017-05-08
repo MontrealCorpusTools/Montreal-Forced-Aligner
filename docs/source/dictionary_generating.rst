@@ -62,11 +62,11 @@ To reconstruct a pronunciation dictionary from your .lab or .TextGrid files, sim
 
 .. code-block:: bash
 
-    bin/generate_dict /path/to/model/file.zip /path/to/corpus
+    bin/mfa_generate_dictionary --g2p_model_path=/path/to/model/file.zip --corpus_directory=/path/to/corpus
 
 Other options include specifying an output directory and whether the text should be decomposed (to be used if you are
 working with a Korean dataset, in which case decomposing the Hangul greatly increases the accuracy). All options can be
-viewed by inputting ``bin/generate_dict --help``.
+viewed by inputting ``bin/mfa_generate_dictionary --help``.
 
 
 Example
@@ -79,14 +79,14 @@ phonetic transcription for each one of these words, which it will write to a fil
 
 .. code-block:: bash
 
-   bin/generate_dict examples/CH_models examples/CH chinese_dict.txt
+   bin/mfa_generate_dictionary --g2p_model_path=examples/CH_models_chars/CH_test_model.zip --corpus_directory=examples/CH --output_path=chinese_dict.txt
 
 This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy
 of the transcription should be near 100%. You can now use this to align your mini corpus:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align examples/CH  examples/chinese_dict.txt examples/aligned_output
+   bin/mfa_train_and_align examples/chinese_dict.txt examples/aligned_output
 
 Since there are very few files (i.e. small training set), the alignment will be suboptimal. This example is intended more
 to give a sense of the pipeline for generating a dictionary and using it for alignment.

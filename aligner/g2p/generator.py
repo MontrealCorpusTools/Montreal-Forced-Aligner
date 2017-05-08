@@ -25,8 +25,10 @@ def parse_errors(error_output):
 def parse_output(output):
     for line in output.splitlines():
         line = line.strip().split("\t")
-        yield line[0], line[2]
-
+        try:
+            yield line[0], line[2]
+        except IndexError:
+            pass
 
 class PhonetisaurusDictionaryGenerator(object):
     """creates a Dictionary from a g2pfst model

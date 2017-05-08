@@ -71,3 +71,4 @@ docs/build/
 target/
 
 dict_models/*
+validate.py

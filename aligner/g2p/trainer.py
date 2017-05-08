@@ -63,11 +63,9 @@ class PhonetisaurusTrainer(object):
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
         if self.ch:
-            print('running ch')
-            subprocess.call([thirdparty_binary('phonetisaurus-align'), '--seq1_max=3 --seq2_max=3',
+            subprocess.call([thirdparty_binary('phonetisaurus-align'), '--seq1_max=3', '--seq2_max=3',
                          '--input=' + input_path, '--ofile=' + corpus_path])
         else:
-            print('running normal')
             subprocess.call([thirdparty_binary('phonetisaurus-align'),
                          '--input=' + input_path, '--ofile=' + corpus_path])
             
