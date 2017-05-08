@@ -31,7 +31,7 @@ linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libfstscript.so.7', 'libfstfarscript.so.7',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
-                   'libkaldi-feat.so', 'libkaldi-transform.so',
+                   'libkaldi-feat.so', 'libkaldi-transform.so','libkaldi-lm.so',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
@@ -40,7 +40,7 @@ included_libraries = {'linux': linux_libraries,
                                  'libfstfar.7.dylib', 'libfstngram.7.dylib',
                                  'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
                                  'libkaldi-base.dylib', 'libkaldi-tree.dylib', 'libkaldi-matrix.dylib',
-                                 'libkaldi-feat.dylib', 'libkaldi-transform.dylib',
+                                 'libkaldi-feat.dylib', 'libkaldi-transform.dylib', 'libkaldi-lm.dylib',
                                  'libkaldi-gmm.dylib', 'libkaldi-lat.dylib', 'libkaldi-decoder.dylib',
                                  'libkaldi-fstext.dylib']}
 
