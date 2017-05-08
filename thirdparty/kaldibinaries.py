@@ -37,7 +37,12 @@ linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libopenblas.dll'],
                       'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
-                                 'libfstfar.7.dylib', 'libfstngram.7.dylib']}
+                                 'libfstfar.7.dylib', 'libfstngram.7.dylib',
+                                 'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
+                                 'libkaldi-base.dylib', 'libkaldi-tree.dylib', 'libkaldi-matrix.dylib',
+                                 'libkaldi-feat.dylib', 'libkaldi-transform.dylib',
+                                 'libkaldi-gmm.dylib', 'libkaldi-lat.dylib', 'libkaldi-decoder.dylib',
+                                 'libkaldi-fstext.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -99,14 +104,33 @@ def CollectBinaries(directory):
     for root, dirs, files in os.walk(src_dir, followlinks=True):
         cur_dir = os.path.basename(root)
         for name in files:
+            if os.path.islink(os.path.join(root, name)):
+                continue
             ext = os.path.splitext(name)
             (key, value) = ext
+            bin_name = os.path.join(bin_out, name)
+            if key == 'libkaldi-hmm':
+                print(name, value == lib_ext)
             if value == exe_ext:
                 if key not in included_filenames:
                     continue
                 shutil.copy(os.path.join(root, name), bin_out)
-            elif value == lib_ext:
+            elif name in included_libraries[sys.platform]:
                 shutil.copy(os.path.join(root, name), bin_out)
+            else:
+                continue
+            if sys.platform == 'darwin':
+                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                output, err = p.communicate()
+                rc = p.returncode
+                output = output.decode()
+                libs = dylib_pattern.findall(output)
+                for l in libs:
+                    if (l.startswith('/usr') and not l.startswith('/usr/local')) or l.startswith('/System'):
+                        continue
+                    lib = os.path.basename(l)
+                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
 
 if __name__ == '__main__':
