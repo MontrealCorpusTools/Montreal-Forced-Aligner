@@ -327,7 +327,6 @@ def example_output_model_path(generated_dir):
 
 
 @pytest.fixture(scope='session')
-<<<<<<< HEAD
 def textgrid_output_model_path():
     return os.path.expanduser('~/textgrid_output_model.zip')
 
