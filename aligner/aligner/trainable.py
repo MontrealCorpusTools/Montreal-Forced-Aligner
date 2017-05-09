@@ -57,7 +57,7 @@ class TrainableAligner(BaseAligner):
         basename, _ = os.path.splitext(filename)
         acoustic_model = AcousticModel.empty(basename)
         acoustic_model.add_meta_file(self)
-        acoustic_model.add_triphone_model(self.tri_fmllr_directory)
+        #acoustic_model.add_triphone_model(self.tri_fmllr_directory)
         acoustic_model.add_triphone_fmllr_model(self.tri_fmllr_directory)
         os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)

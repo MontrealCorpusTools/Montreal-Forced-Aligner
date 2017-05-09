@@ -26,7 +26,8 @@ class DummyArgs(object):
 class G2PDummyArgs(object):
     def __init__(self):
         self.temp_directory = None
-        self.korean = False
+        self.window_size = 2
+
 
 large = pytest.mark.skipif(
     pytest.config.getoption("--skiplarge"),
@@ -75,7 +76,6 @@ def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generate
     align_included_model(args, skip_input=True)
 
 
-@pytest.mark.xfail
 def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.debug = True
@@ -182,6 +182,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
 
 def test_train_g2p(sick_dict_path, sick_g2p_model_path):
     args = G2PDummyArgs()
+    args.validate = True
     args.dictionary_path = sick_dict_path
     args.output_model_path = sick_g2p_model_path
     train_g2p(args)

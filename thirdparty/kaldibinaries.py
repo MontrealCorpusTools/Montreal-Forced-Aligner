@@ -31,12 +31,18 @@ linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libfstscript.so.7', 'libfstfarscript.so.7',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
-                   'libkaldi-feat.so', 'libkaldi-transform.so',
+                   'libkaldi-feat.so', 'libkaldi-transform.so','libkaldi-lm.so',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libopenblas.dll'],
-                      'darwin': linux_libraries}
+                      'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
+                                 'libfstfar.7.dylib', 'libfstngram.7.dylib',
+                                 'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
+                                 'libkaldi-base.dylib', 'libkaldi-tree.dylib', 'libkaldi-matrix.dylib',
+                                 'libkaldi-feat.dylib', 'libkaldi-transform.dylib', 'libkaldi-lm.dylib',
+                                 'libkaldi-gmm.dylib', 'libkaldi-lat.dylib', 'libkaldi-decoder.dylib',
+                                 'libkaldi-fstext.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
@@ -54,8 +60,30 @@ def CollectBinaries(directory):
             (key, value) = ext
             if value == exe_ext and key in included_filenames:
                 bin_name = os.path.join(bin_out, name)
-                if not os.path.exists(bin_name):
-                    shutil.copy(os.path.join(root, name), bin_out)
+                shutil.copy(os.path.join(root, name), bin_out)
+                if sys.platform == 'darwin':
+                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE)
+                    output, err = p.communicate()
+                    rc = p.returncode
+                    output = output.decode()
+                    libs = dylib_pattern.findall(output)
+                    for l in libs:
+                        if l.startswith('/usr') and not l.startswith('/usr/local'):
+                            continue
+                        lib = os.path.basename(l)
+                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+            elif sys.platform == 'win32' and name in included_libraries[sys.platform]:
+                shutil.copy(os.path.join(root, name), bin_out)
+            elif sys.platform != 'win32':
+                c = False
+                for l in included_libraries[sys.platform]:
+                    if name.startswith(l):
+                        c = True
+                        new_name = l
+                if c:
+                    bin_name = os.path.join(bin_out, new_name)
+                    shutil.copyfile(os.path.join(root, name), bin_name)
                     if sys.platform == 'darwin':
                         p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                              stderr=subprocess.PIPE)
@@ -64,20 +92,10 @@ def CollectBinaries(directory):
                         output = output.decode()
                         libs = dylib_pattern.findall(output)
                         for l in libs:
-                            if l.startswith('/usr'):
+                            if l.startswith('/usr') and not l.startswith('/usr/local'):
                                 continue
                             lib = os.path.basename(l)
                             subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-            elif sys.platform == 'win32' and name in included_libraries[sys.platform]:
-                shutil.copy(os.path.join(root, name), bin_out)
-            elif sys.platform != 'win32':
-                c = False
-                for l in included_libraries[sys.platform]:
-                    if name.startswith(l):
-                        c = True
-                        new_name = included_libraries[sys.platform]
-                if c:
-                    shutil.copyfile(os.path.join(root, name), os.path.join(bin_out, new_name))
 
     if sys.platform == 'win32':
         src_dir = directory
@@ -86,16 +104,33 @@ def CollectBinaries(directory):
     for root, dirs, files in os.walk(src_dir, followlinks=True):
         cur_dir = os.path.basename(root)
         for name in files:
+            if os.path.islink(os.path.join(root, name)):
+                continue
             ext = os.path.splitext(name)
             (key, value) = ext
             bin_name = os.path.join(bin_out, name)
-            if not os.path.exists(bin_name):
-                if value == exe_ext:
-                    if key not in included_filenames:
+            if key == 'libkaldi-hmm':
+                print(name, value == lib_ext)
+            if value == exe_ext:
+                if key not in included_filenames:
+                    continue
+                shutil.copy(os.path.join(root, name), bin_out)
+            elif name in included_libraries[sys.platform]:
+                shutil.copy(os.path.join(root, name), bin_out)
+            else:
+                continue
+            if sys.platform == 'darwin':
+                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                output, err = p.communicate()
+                rc = p.returncode
+                output = output.decode()
+                libs = dylib_pattern.findall(output)
+                for l in libs:
+                    if (l.startswith('/usr') and not l.startswith('/usr/local')) or l.startswith('/System'):
                         continue
-                    shutil.copy(os.path.join(root, name), bin_out)
-                elif value == lib_ext:
-                    shutil.copy(os.path.join(root, name), bin_out)
+                    lib = os.path.basename(l)
+                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
 
 if __name__ == '__main__':
