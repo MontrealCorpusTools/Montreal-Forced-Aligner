@@ -4,7 +4,7 @@ import random
 import tempfile
 from ..dictionary import Dictionary
 
-from ..helper import thirdparty_path, thirdparty_binary
+from ..helper import thirdparty_binary
 
 from ..config import TEMP_DIR
 
@@ -23,7 +23,6 @@ class PhonetisaurusTrainer(object):
 
     """
 
-
     def __init__(self, dictionary, model_path, temp_directory=None, window_size=2, evaluate=False):
         super(PhonetisaurusTrainer, self).__init__()
         if not temp_directory:
@@ -38,7 +37,6 @@ class PhonetisaurusTrainer(object):
         self.phoneme_window_size = window_size
         self.evaluate = evaluate
         self.dictionary = dictionary
-        self.ch = chinese
 
     def train(self, word_dict=None):
         input_path = os.path.join(self.temp_directory, 'input.txt')
@@ -57,15 +55,11 @@ class PhonetisaurusTrainer(object):
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
-
         subprocess.call([thirdparty_binary('phonetisaurus-align'),
                          '--seq1_max={}'.format(self.grapheme_window_size),
                          '--seq2_max={}'.format(self.phoneme_window_size),
                          '--input=' + input_path, '--ofile=' + corpus_path])
-        else:
-            subprocess.call([thirdparty_binary('phonetisaurus-align'),
-                         '--input=' + input_path, '--ofile=' + corpus_path])
-            
+
         subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
 
         subprocess.call(
