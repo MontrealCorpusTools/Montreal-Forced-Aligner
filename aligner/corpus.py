@@ -1,5 +1,7 @@
 import os
 import subprocess
+import sys
+import traceback
 import shutil
 import struct
 import wave
@@ -296,6 +298,7 @@ class Corpus(object):
         decode_error_files = []
         unsupported_sample_rate = []
         ignored_duplicates = False
+        textgrid_read_errors = {}
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             for f in sorted(files):
                 file_name, ext = os.path.splitext(f)
@@ -360,7 +363,11 @@ class Corpus(object):
                     self.wav_durations[file_name] = get_wav_duration(wav_path)
                     tg_path = os.path.join(root, tg_name)
                     tg = TextGrid()
-                    tg.read(tg_path)
+                    try:
+                        tg.read(tg_path)
+                    except Exception as e:
+                        exc_type, exc_value, exc_traceback = sys.exc_info()
+                        textgrid_read_errors[tg_path] = traceback.format_exception(exc_type, exc_value, exc_traceback)
                     n_channels = get_n_channels(wav_path)
                     num_tiers = len(tg.tiers)
                     if n_channels == 2:
@@ -434,6 +441,11 @@ class Corpus(object):
             root_logger.warning(
                 'The following wav files were ignored due to lack of of a .lab or a .TextGrid file: {}.'.format(
                     ', '.join(no_transcription_files)))
+        if textgrid_read_errors:
+            print('{} TextGrid files were ignored due to errors loading them. '
+                  'Please see {} for more information on the errors.'.format(len(textgrid_read_errors), self.log_file))
+            for k, v in textgrid_read_errors.items():
+                root_logger.warning('The TextGrid file {} gave the following error on load:\n\n{}'.format(k, v))
         if len(unsupported_sample_rate) > 0:
             print(
                 '{} wav file(s) were ignored because they had a sample rate less than 16000, '
