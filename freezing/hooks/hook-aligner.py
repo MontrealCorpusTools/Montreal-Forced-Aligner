@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import (
 hiddenimports = ['six', 'packaging', 'packaging.version', 'packaging.specifiers',
                  'packaging.requirements']
 
-thirdparty_dir = os.path.abspath(os.path.join('thirdparty', 'bin'))
-binaries = [(os.path.join(thirdparty_dir, x), 'thirdparty/bin')
-            for x in os.listdir(thirdparty_dir)
-            ]
+#thirdparty_dir = os.path.abspath(os.path.join('thirdparty', 'bin'))
+#binaries = [(os.path.join(thirdparty_dir, x), 'thirdparty/bin')
+#            for x in os.listdir(thirdparty_dir)
+#            ]
