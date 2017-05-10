@@ -14,3 +14,4 @@ os.makedirs(out_dir, exist_ok=True)
 
 for f in os.listdir(orig_dir):
     shutil.copyfile(os.path.join(orig_dir, f), os.path.join(out_dir, f))
+    shutil.copystat(os.path.join(orig_dir, f), os.path.join(out_dir, f))
