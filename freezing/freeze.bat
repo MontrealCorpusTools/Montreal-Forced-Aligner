@@ -52,6 +52,14 @@ move generate_dictionary\generate_dictionary.exe montreal-forced-aligner\bin\mfa
 move train_g2p\train_g2p.exe montreal-forced-aligner\bin\mfa_train_g2p.exe
 
 cd montreal-forced-aligner
+
+del bin\libgcc_s_seh-1.dll
+del bin\libgfortran-3.dll
+del bin\libopenblas.dll
+del bin\libquadmath-0.dll
+del bin\openfst64.dll
+del bin\pthreadVC2.dll
+
 mkdir pretrained_models
 
 cd ..
