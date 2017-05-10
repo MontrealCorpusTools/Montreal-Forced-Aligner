@@ -116,10 +116,11 @@ class PhonetisaurusTrainer(object):
                 pron = ' '.join(line[1:])
                 actual_prons = set(' '.join(x[0]) for x in validation_dictionary[word])
                 if pron not in actual_prons:
-                    print(word, pron, actual_prons)
                     outf.write('{}\t{}\t{}\n'.format(word, pron, ', '.join(actual_prons)))
                 else:
                     count_right += 1
-
-        print('Accuracy was: {}'.format(count_right / validation_items))
+        accuracy = count_right / validation_items
+        print('Accuracy was: {}'.format(accuracy))
         os.remove(self.model_path)
+
+        return accuracy
