@@ -61,6 +61,8 @@ ln -s ../lib/train_g2p mfa_train_g2p
 cd ../..
 cp -r ../pretrained_models montreal-forced-aligner/pretrained_models
 
+python3 ../freezing/freeze_final.py
+
 if [ `uname` == Darwin ]; then
 zip -y -r montreal-forced-aligner.zip montreal-forced-aligner
 else
