@@ -41,14 +41,11 @@ def validate(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Create a dictionary from a G2P model")
 
-    parser.add_argument("--g2p_model_path",
-                        required=True, help="Path to the trained G2P model")
+    parser.add_argument("g2p_model_path", help="Path to the trained G2P model")
 
-    parser.add_argument("--corpus_directory",
-                        required=True, help="Corpus to base word list on")
+    parser.add_argument("corpus_directory", help="Corpus to base word list on")
 
-    parser.add_argument("--output_path",
-                        help="Path to save output dictionary")
+    parser.add_argument("output_path", help="Path to save output dictionary")
 
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for dictionary generation, default is ~/Documents/MFA')
