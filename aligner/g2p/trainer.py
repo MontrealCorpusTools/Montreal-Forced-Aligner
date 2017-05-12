@@ -119,8 +119,10 @@ class PhonetisaurusTrainer(object):
                     outf.write('{}\t{}\t{}\n'.format(word, pron, ', '.join(actual_prons)))
                 else:
                     count_right += 1
+
         accuracy = count_right / validation_items
         print('Accuracy was: {}'.format(accuracy))
         os.remove(self.model_path)
 
         return accuracy
+

@@ -7,7 +7,7 @@ import logging
 
 from ..corpus import Corpus
 
-from ..helper import thirdparty_binary
+from ..helper import thirdparty_path
 
 from ..config import TEMP_DIR
 
@@ -27,7 +27,7 @@ def parse_output(output):
         line = line.strip().split("\t")
         if len(line) == 2:
             line += [None]
-        yield line[0], line[2]
+            yield line[0], line[2]
 
 
 class PhonetisaurusDictionaryGenerator(object):
@@ -79,7 +79,7 @@ class PhonetisaurusDictionaryGenerator(object):
         runs the phonetisaurus-g2pfst binary with the language and all the words in the corpus
         """
 
-        proc = subprocess.Popen([thirdparty_binary('phonetisaurus-g2pfst'),
+        proc = subprocess.Popen([thirdparty_path('phonetisaurus-g2pfst'),
                                  '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path],
                                 stderr=subprocess.PIPE,
                                 stdout=subprocess.PIPE)

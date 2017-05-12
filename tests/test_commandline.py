@@ -4,11 +4,11 @@ import pytest
 from aligner.command_line.align import align_corpus, align_included_model
 
 from aligner.command_line.train_and_align import align_corpus as train_and_align_corpus, align_corpus_no_dict
+
 from aligner.command_line.generate_dictionary import generate_dict
 from aligner.command_line.train_g2p import train_g2p
 
 from aligner.exceptions import PronunciationAcousticMismatchError
-
 
 class DummyArgs(object):
     def __init__(self):
@@ -27,7 +27,6 @@ class G2PDummyArgs(object):
     def __init__(self):
         self.temp_directory = None
         self.window_size = 2
-
 
 
 large = pytest.mark.skipif(
@@ -172,6 +171,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
+
     args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
     args.output_model_path = textgrid_output_model_path
@@ -196,3 +196,4 @@ def test_generate_dict(basic_corpus_dir, sick_g2p_model_path, g2p_sick_output):
     args.output_path = g2p_sick_output
     generate_dict(args)
     assert (os.path.exists(g2p_sick_output))
+

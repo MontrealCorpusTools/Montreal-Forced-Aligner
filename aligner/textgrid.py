@@ -92,6 +92,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
     else:
         silences = {dictionary.optional_silence, dictionary.nonoptional_silence}
         for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
+            print("filename writing to: " , filename)
             maxtime = corpus.get_wav_duration(filename)
             tg = TextGrid(maxTime=maxtime)
             for speaker, words in speaker_dict.items():
