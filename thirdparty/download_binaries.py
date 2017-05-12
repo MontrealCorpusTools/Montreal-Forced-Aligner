@@ -27,12 +27,12 @@ def download(args):
     if sys.platform == 'darwin':
         plat = 'macosx'
     elif sys.platform == 'win32':
-        plat = 'win'
+        plat = 'win64'
     else:
         plat = 'linux'
     print('Downloading precompiled binaries for {}...'.format(plat))
 
-    download_link = 'http://mlmlab.org/mfa/precompiled_binaries/{}.zip'.format(
+    download_link = 'http://mlmlab.org/mfa/precompiled_binaries/mfa_thirdparty_{}.zip'.format(
         plat)
     path = os.path.join(temp_dir, '{}.zip'.format(plat))
     if not os.path.exists(path):
