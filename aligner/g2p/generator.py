@@ -27,10 +27,7 @@ def parse_output(output):
         line = line.strip().split("\t")
         if len(line) == 2:
             line += [None]
-        try:
             yield line[0], line[2]
-        except IndexError:
-            print('wrong line: ', line)
 
 
 class PhonetisaurusDictionaryGenerator(object):
