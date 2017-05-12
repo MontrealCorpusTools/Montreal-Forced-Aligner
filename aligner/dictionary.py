@@ -73,7 +73,6 @@ class Dictionary(object):
     def __init__(self, input_path, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
-                 pronunciation_probabilities=True,
                  sil_prob=0.5, word_set=None, debug=False):
         if not os.path.exists(input_path):
             raise (DictionaryPathError(input_path))
@@ -88,7 +87,6 @@ class Dictionary(object):
         self.sil_prob = sil_prob
         self.oov_code = oov_code
         self.position_dependent_phones = position_dependent_phones
-        self.pronunciation_probabilities = pronunciation_probabilities
 
         self.words = defaultdict(list)
         self.nonsil_phones = set()
@@ -100,6 +98,7 @@ class Dictionary(object):
             word_set = {sanitize(x) for x in word_set}
         self.words['!sil'].append((('sp',), 1))
         self.words[self.oov_code].append((('spn',), 1))
+        self.pronunciation_probabilities = True
         with open(input_path, 'r', encoding='utf8') as inf:
             for line in inf:
                 line = line.strip()
@@ -117,6 +116,7 @@ class Dictionary(object):
                     line = line[1:]
                 except ValueError:
                     prob = None
+                    self.pronunciation_probabilities = False
                 pron = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     self.nonsil_phones.update(pron)

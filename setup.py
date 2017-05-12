@@ -24,7 +24,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='0.8.0',
+          version='1.0.0',
           description='',
           long_description='',
           classifiers=[
@@ -47,6 +47,9 @@ if __name__ == '__main__':
           install_requires=[
               'textgrid',
               'tqdm',
+              'alignment',
+              'pyyaml',
+
           ],
         cmdclass={'test': PyTest},
         extras_require={

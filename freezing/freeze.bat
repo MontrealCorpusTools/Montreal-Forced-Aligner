@@ -51,7 +51,11 @@ move align\align.exe montreal-forced-aligner\bin\mfa_align.exe
 move generate_dictionary\generate_dictionary.exe montreal-forced-aligner\bin\mfa_generate_dictionary.exe
 move train_g2p\train_g2p.exe montreal-forced-aligner\bin\mfa_train_g2p.exe
 
+python ..\freezing\freeze_final.py
+
 cd montreal-forced-aligner
+
+
 mkdir pretrained_models
 
 cd ..
