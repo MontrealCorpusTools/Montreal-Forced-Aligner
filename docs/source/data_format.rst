@@ -76,7 +76,8 @@ If a word is not found in the dictionary, and has no orthographic
 markers for morpheme boundaries (apostrophes or hyphens), then it will
 be replaced in the output with '<unk>' for unknown word.
 
-.. note ::
+.. note::
+
    The list of all unknown words (out of vocabulary words; OOV words) will
    be output to a file named ``oovs_found.txt``
    in the output directory, if you would like to add them to the dictionary
@@ -116,7 +117,7 @@ The normalization would result in the following:
 ::
 
    c'est un c
-   c' etait un c
+   c' était un c
 
 With a pronunciation of:
 
@@ -125,14 +126,14 @@ With a pronunciation of:
    S E A N S E
    S E T E A N S E
 
-The key point to note is that the pronunciation of the clitic `c'` is ``S``
-and the pronunciation of the letter `c` in French is ``S A``.
+The key point to note is that the pronunciation of the clitic ``c'`` is ``S``
+and the pronunciation of the letter ``c`` in French is ``S A``.
 
 The algorithm will try to associate the apostrophe with either the element
 before (as for French clitics) or the element after (as for English clitics
 like the possessive marker).
 
-Hyphens are treated the same as apostrophes. For example, `merry-go-round` will
-become `merry go round` if the hyphenated form is not in the dictionary.
+Hyphens are treated the same as apostrophes. For example, ``merry-go-round`` will
+become ``merry go round`` if the hyphenated form is not in the dictionary.
 If no words are found on splitting the word based on hyphens or apostrophes,
 then the word will be treated as a single unit (single unknown word).

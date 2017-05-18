@@ -36,6 +36,8 @@ Forced alignment is a technique to take an orthographic transcription of
 an audio file and generate a time-aligned version using a pronunciation
 dictionary to look up phones for words.
 
+Many languages have pretrained acoustic models available for download and use (:ref:`pretrained_acoustic`)
+
 
 Montreal Forced Aligner
 =======================

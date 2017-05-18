@@ -3,6 +3,10 @@
 
 .. _`Kaldi GitHub repository`: https://github.com/kaldi-asr/kaldi
 
+.. _`OpenGrm NGram library`: http://opengrm.org/NGramLibrary
+
+.. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
+
 .. _installation:
 
 ************
@@ -63,11 +67,15 @@ not your default Python) and assume Linux in the commands.
 5. Run ``pip install -r requirements.txt`` to install the requirements for the aligner
 6. Run the build script via ``freezing/freeze.sh``. There will now be a ``montreal-forced-aligner`` folder in the ``dist`` folder. This folder should contain a ``bin`` folder with the two executables ``mfa_align`` and ``mfa_train_and_align`` that should be used for alignment.
 
+If you would like to use the G2P capabilities, you will also have to build the `OpenGrm NGram library`_ and `Phonetisaurus`_
+and then run the ``thirdparty/opengrm_ngram_binaries.py`` and ``thirdparty/phonetisaurus_binaries.py`` pointing at the respective root directories.
+
 Files created when using the Montreal Forced Aligner
 ====================================================
 
 The aligner will save data and logs for the models it trains in a new folder,
 ``Documents/MFA`` (which it creates in your user's home directory).  If a model for a corpus already
 exists in MFA, it will use any existing models if you try to align it again.
-(If this is not desired, delete or move the old model folder.)
+(If this is not desired, delete or move the old model folder.)  You can specify your own temporary directory by using the ``-t``
+flag when calling the executable.
 
