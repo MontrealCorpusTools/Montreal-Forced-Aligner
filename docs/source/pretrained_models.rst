@@ -129,57 +129,59 @@ see more information about the phone set.  When using these with a pronunciation
 compatible.  If the orthography of the language is transparent, it is likely that we have a G2P model that can be used
 to generate the necessary pronunciation dictionary.
 
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Language       | | Link                                                | | Corpus               | | Phone set             |
-+================+=======================================================+========================+=========================+
-| Arabic         | | Not available yet                                   | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Bulgarian      | | `Bulgarian acoustic model`_                         | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Croatian       | | `Croatian acoustic model`_                          | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Czech          | | `Czech acoustic model`_                             | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| English        | | `English acoustic model`_                           | | LibriSpeech          | | Arpabet               |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| French (FR)    | | `French (FR) acoustic model`_                       | | GlobalPhone          | | GlobalPhone           |
-|                | | `French (Prosodylab) acoustic model`_               |                        | | Prosodylab [1]_       |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| French (QC)    | | `French (QC) acoustic model`_                       | | Lab speech           | | Prosodylab [1]_       |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| German         | | `German acoustic model`_                            | | GlobalPhone          | | GlobalPhone           |
-|                | | `German (Prosodylab) acoustic model`_               |                        | | Prosodylab [3]_       |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Hausa          | | `Hausa acoustic model`_                             | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Japanese       | | Not available yet                                   | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Korean         | | `Korean acoustic model`_                            | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Mandarin       | | `Mandarin acoustic model`_                          | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Polish         | | `Polish acoustic model`_                            | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Portuguese     | | `Portuguese acoustic model`_                        | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Russian        | | `Russian acoustic model`_                           | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Swahili        | | `Swahili acoustic model`_                           | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Swedish        | | `Swedish acoustic model`_                           | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Tamil          | | Not available yet                                   | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Thai           | | `Thai acoustic model`_                              | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Turkish        | | `Turkish acoustic model`_                           | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Ukrainian      | | `Ukrainian acoustic model`_                         | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Vietnamese     | | `Vietnamese acoustic model`_                        | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
-| Wu             | | Not available yet                                   | | GlobalPhone          | | GlobalPhone           |
-+----------------+-------------------------------------------------------+------------------------+-------------------------+
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Language       | Link                                                | Corpus               | Phone set             |
++================+=====================================================+======================+=======================+
+| Arabic         | Not available yet                                   | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Bulgarian      | `Bulgarian acoustic model`_                         | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Croatian       | `Croatian acoustic model`_                          | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Czech          | `Czech acoustic model`_                             | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| English        | `English acoustic model`_                           | LibriSpeech          | Arpabet               |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| French (FR)    | `French (FR) acoustic model`_                       | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| French (FR)    | `French (Prosodylab) acoustic model`_               | GlobalPhone          | Prosodylab [1]_       |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| French (QC)    | `French (QC) acoustic model`_                       | Lab speech           | Prosodylab [1]_       |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| German         | `German acoustic model`_                            | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| German         | `German (Prosodylab) acoustic model`_               | GlobalPhone          | Prosodylab [3]_       |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Hausa          | `Hausa acoustic model`_                             | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Japanese       | Not available yet                                   | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Korean         | `Korean acoustic model`_                            | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Mandarin       | `Mandarin acoustic model`_                          | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Polish         | `Polish acoustic model`_                            | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Portuguese     | `Portuguese acoustic model`_                        | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Russian        | `Russian acoustic model`_                           | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Swahili        | `Swahili acoustic model`_                           | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Swedish        | `Swedish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Tamil          | Not available yet                                   | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Thai           | `Thai acoustic model`_                              | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Turkish        | `Turkish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Ukrainian      | `Ukrainian acoustic model`_                         | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Vietnamese     | `Vietnamese acoustic model`_                        | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Wu             | Not available yet                                   | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
 
 .. _pretrained_g2p:
 
@@ -195,52 +197,55 @@ alphabet. Current language options are: Arabic, Bulgarian, Mandarin, Czech, Poli
 and Vietnamese, with the following accuracies when trained on 90% of the data and tested on 10%:
 
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Language        | | Link                                        | Accuracy | | Orthography system   | | Phone set     |
+| Language        | Link                                          | Accuracy | Orthography system     | Phone set       |
 +=================+===============================================+==========+========================+=================+
-| Arabic          | | `Arabic G2P model`_                         | | 95.4   | | Romanized    [1]_    | | GlobalPhone   |
+| Arabic          | `Arabic G2P model`_                           |   95.4   |   Romanized    [1]_    |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Bulgarian       | | `Bulgarian G2P model`_                      | | 97.3   | | Cyrillic alphabet    | | GlobalPhone   |
+| Bulgarian       | `Bulgarian G2P model`_                        |   97.3   |   Cyrillic alphabet    |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Croatian        | | `Croatian G2P model`_                       | | 92.7   | | Latin alphabet       | | GlobalPhone   |
+| Croatian        | `Croatian G2P model`_                         |   92.7   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Czech           | | `Czech G2P model`_                          | | 96.8   | | Latin alphabet       | | GlobalPhone   |
+| Czech           | `Czech G2P model`_                            |   96.8   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| French          | | `French G2P model`_                         | |  93.2  | | Latin alphabet       | | GlobalPhone   |
-|                 | | `French (Prosodylab) G2P model`_ [1]_       | |  95.2  |                        | | Prosodylab    |
+| French          | `French G2P model`_                           |    93.2  |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| German          | | `German G2P model`_                         | |  67.0  | | Latin alphabet       | | GlobalPhone   |
-|                 | | `German (Prosodylab) G2P model`_ [3]_       | |  94.1  |                        | | Prosodylab    |
+| French          | `French (Prosodylab) G2P model`_ [1]_         |    95.2  |   Latin alphabet       |   Prosodylab    |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Hausa           | | `Hausa G2P model`_                          | | 70.1   | | Latin alphabet       | | GlobalPhone   |
+| German          | `German G2P model`_                           |    67.0  |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Japanese        | | `Japanese G2P model`_                       | | 82.1   | | Romanized            | | GlobalPhone   |
+| German          | `German (Prosodylab) G2P model`_ [3]_         |    94.1  |   Latin alphabet       |   Prosodylab    |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Korean          | | `Korean G2P model`_                         | | 89.5   | | Hangul               | | GlobalPhone   |
+| Hausa           | `Hausa G2P model`_                            |   70.1   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Mandarin        | | `Mandarin Pinyin G2P model`_                | |  99.9  | | Pinyin               | | Pinyin phones |
-|                 | | `Mandarin Character G2P model`_  [4]_       | |  83.2  | | Hanzi                |                 |
+| Japanese        | `Japanese G2P model`_                         |   82.1   |   Romanized            |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Polish          | | `Polish G2P model`_                         | | 98.8   | | Latin alphabet       | | GlobalPhone   |
+| Korean          | `Korean G2P model`_                           |   89.5   |   Hangul               |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Portuguese      | | `Portuguese G2P model`_                     | | 86.5   | | Latin alphabet       | | GlobalPhone   |
+| Mandarin        | `Mandarin Pinyin G2P model`_                  |    99.9  |   Pinyin               |   Pinyin phones |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Russian         | | `Russian G2P model`_                        | | 96.4   | | Cyrillic alphabet    | | GlobalPhone   |
+| Mandarin        | `Mandarin Character G2P model`_  [4]_         |    83.2  |   Hanzi                |   Pinyin phones |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Spanish         | | `Spanish G2P model`_                        | | 94.0   | | Latin alphabet       | | GlobalPhone   |
+| Polish          | `Polish G2P model`_                           |   98.8   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Swahili         | | `Swahili G2P model`_                        | | 99.9   | | Latin alphabet       | | GlobalPhone   |
+| Portuguese      | `Portuguese G2P model`_                       |   86.5   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Swedish         | | `Swedish G2P model`_                        | | 83.3   | | Latin alphabet       | | GlobalPhone   |
+| Russian         | `Russian G2P model`_                          |   96.4   |   Cyrillic alphabet    |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Thai            | | `Thai G2P model`_                           | | 71.7   | | Thai script          | | GlobalPhone   |
+| Spanish         | `Spanish G2P model`_                          |   94.0   |  Latin alphabet        |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Turkish         | | `Turkish G2P model`_                        | | 83.3   | | Latin alphabet       | | GlobalPhone   |
+| Swahili         | `Swahili G2P model`_                          |   99.9   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Ukrainian       | | `Ukrainian G2P model`_                      | | 98.0   | | Cyrillic alphabet    | | GlobalPhone   |
+| Swedish         | `Swedish G2P model`_                          |   83.3   |   Latin alphabet       |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Vietnamese      | | `Vietnamese G2P model`_                     | | 98.2   | | Vietnamese alphabet  | | GlobalPhone   |
+| Thai            | `Thai G2P model`_                             |   71.7   |   Thai script          |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Wu              | | `Wu G2P model`_ [5]_                        | | 77.5   | | Hanzi                | | GlobalPhone   |
+| Turkish         | `Turkish G2P model`_                          |   83.3   |   Latin alphabet       |   GlobalPhone   |
++-----------------+-----------------------------------------------+----------+------------------------+-----------------+
+| Ukrainian       | `Ukrainian G2P model`_                        |   98.0   |   Cyrillic alphabet    |   GlobalPhone   |
++-----------------+-----------------------------------------------+----------+------------------------+-----------------+
+| Vietnamese      | `Vietnamese G2P model`_                       |   98.2   |   Vietnamese alphabet  |   GlobalPhone   |
++-----------------+-----------------------------------------------+----------+------------------------+-----------------+
+| Wu              | `Wu G2P model`_ [5]_                          |   77.5   |   Hanzi                |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
 
 .. [1] The `ProsodyLab French dictionary`_ is based on `Lexique`_ with substitutions for numbers and special characters.
