@@ -31,11 +31,16 @@ Extra options:
    This should be used if there are instances of a single orthographic
    character corresponding to more than 2 phones (common in Korean hangul, Chinese character orthography, etc.).
 
+.. cmdoption:: -v
+               --validate
+
+   Run a validation on the dictionary with 90% of the data as training and 10% as test.  It will output the percentage
+   accuracy of pronunciations generated.
 
 Example
 =======
 
-In ```Montreal-Forced-Aligner/examples/``` you will find a small Chinese dictionary. It is too small to generate a usable model, but can provide a helpful example. Inputting 
+In ``Montreal-Forced-Aligner/examples/`` you will find a small Chinese dictionary. It is too small to generate a usable model, but can provide a helpful example. Inputting
 
 .. code-block:: bash
 

@@ -3,6 +3,20 @@
 Changelog
 =========
 
+1.0.0
+-----
+
+- Added Grapheme-to-Phoneme capabilities
+- Acoustic models no longer contain the dictionary they were trained with
+- Dictionaries must be specified when aligning using pretrained models
+- The aligner now automatically cleans the temporary directory when the previous run failed
+- Added validation for types of command line arguments
+- Catch and list files that could not be read using UTF-8
+- Update Kaldi version to 5.1 and OpenFST version to 1.6.2 on Mac and Linux
+- Add support for specifying custom non-speech annotations in pronunciation dictionary with sil and spn
+- Made command line flags more consistent in spelling
+- Made pretrained models for many languages available
+
 0.8.0
 -----
 

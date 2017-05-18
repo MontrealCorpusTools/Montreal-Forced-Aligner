@@ -28,7 +28,7 @@ Enter the following command into the terminal:
 
 .. code-block:: bash
 
-   bin/mfa_align /path/to/librispeech/dataset /path/to/librispeech/lexicon english ~/Documents/aligned_librispeech
+   bin/mfa_align /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt english ~/Documents/aligned_librispeech
 
 Aligning through training
 -------------------------
@@ -37,4 +37,4 @@ Enter the following command into the terminal:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align  /path/to/librispeech/dataset /path/to/librispeech/lexicon ~/Documents/aligned_librispeech
+   bin/mfa_train_and_align  /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt ~/Documents/aligned_librispeech

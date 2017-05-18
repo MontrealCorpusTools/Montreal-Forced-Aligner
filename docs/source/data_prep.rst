@@ -1,3 +1,5 @@
+
+.. _`MFA-reorganization-scripts repository`: https://github.com/MontrealCorpusTools/MFA-reorganization-scripts
 .. _data_prep:
 
 ****************
@@ -14,6 +16,11 @@ of orthographic transcriptions.
 3. Orthographic annotations in .lab files for individual sound files (Prosodylab-aligner format)
    or in TextGrid intervals for longer sound files (TextGrid format)
 
+
+.. note::
+
+   A collection of preprocessing scripts to get various corpora of other formats is available in the
+   `MFA-reorganization-scripts repository`_.
 
 .. toctree::
    :maxdepth: 3

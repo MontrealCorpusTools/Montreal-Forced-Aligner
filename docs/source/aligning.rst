@@ -18,7 +18,8 @@ Common options for both aligner executables
 
    Number of characters to use to identify speakers; if not specified,
    the aligner assumes that the directory name is the identifier for the
-   speaker.  Additionally, it accepts the value ``prosodylab`` to use the second field of a ``_`` delimited file name.
+   speaker.  Additionally, it accepts the value ``prosodylab`` to use the second field of a ``_`` delimited file name,
+   following the convention of labelling production data in the ProsodyLab at McGill.
 
 .. cmdoption:: -t DIRECTORY
                --temp_directory DIRECTORY
@@ -82,11 +83,6 @@ Extra options (in addition to the common ones listed above):
                --errors
 
    Flag for whether utterance transcriptions should be checked for errors prior to aligning
-
-.. note::
-
-   The arguments ``acoustic_model_path`` and ``language`` are mutually exclusive
-   and one of the two must be specified to align a data set.
 
 Steps to align:
 
