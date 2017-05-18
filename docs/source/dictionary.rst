@@ -27,7 +27,7 @@ A dictionary for English that has good coverage is the lexicon derived
 from the LibriSpeech corpus (`LibriSpeech lexicon`_).
 This lexicon uses the Arpabet transcription format (like the `CMU Pronouncing Dictionary`_).
 
-There is an option when running the aligner for not using a dictionary (``--nodict``).
+There is an option when running the aligner for not using a dictionary (``--no_dict``).
 When run in this mode, the aligner will construct pronunciations for words
 in the corpus based on their orthographies.  In this mode, a dataset with an example transcription
 
@@ -46,3 +46,20 @@ The Prosodylab-aligner has two preconstructed dictionaries as well, one
 for English (`Prosodylab-aligner English dictionary`_)
 and one for Quebec French (`Prosodylab-aligner French dictionary`_)
 
+.. note::
+
+   See the page on :doc:`generating dictionaries <dictionary_generating>` for how to use G2P models to generate a dictionary
+   from our pretrained models.
+
+Non-speech annotations
+----------------------
+
+There are two special phones that can be used for annotations that are not speech, ``sil`` and ``spn``.  The ``sil`` phone is used
+to model silence, and the ``spn`` phone is used to model unknown words.  If you have annotations for non-speech vocalizations that are
+similar to silence like breathing or exhalation, you can use the ``sil`` phone to align those.  You can use the ``spn`` phone
+to align annotations like laughter, coughing, etc.
+
+::
+
+  {LG} spn
+  {SL} sil

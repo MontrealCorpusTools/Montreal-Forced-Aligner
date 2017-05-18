@@ -50,7 +50,7 @@ Dictionary API
 
    Dictionary
 
-.. _archive_api:
+.. _model_api:
 
 Model API
 =========
