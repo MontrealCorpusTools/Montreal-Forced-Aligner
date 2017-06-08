@@ -27,4 +27,4 @@ McAuliffe, Michael, Michaela Socolof, Elias Stengel-Eskin, Sarah Mihuc, Michael 
 
 Or:
 
-McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017). Montreal Forced Aligner: an accurate and trainable aligner using Kaldi. Presented at the 91st Annual Meeting of the Linguistic Society of America, Austin, TX. [Poster PDF](https://montrealcorpustools.github.io/Montreal-Forced-Aligner/images/MFA_poster_LSA2017.pdf)
+McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017). Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In *Proceedings of the 18th Conference of the International Speech Communication Association*. [Paper PDF](https://montrealcorpustools.github.io/Montreal-Forced-Aligner/images/MFA_paper_Interspeech2017.pdf)
