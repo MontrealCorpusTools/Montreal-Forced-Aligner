@@ -393,7 +393,7 @@ class Corpus(object):
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             label = interval.mark.lower().strip()
-                            label = sanitize(label)
+                            #label = sanitize(label)
                             words = [sanitize(x) for x in label.split()]
                             words = [x for x in words if x not in ['', '-', "'"]]
                             if not words:

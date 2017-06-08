@@ -21,7 +21,15 @@ def compile_graphemes(graphemes):
         raise
 
 
+brackets = [('[', ']'), ('{', '}'), ('<', '>')]
+
+
 def sanitize(item):
+    if not item:
+        return item
+    for b in brackets:
+        if item[0] == b[0] and item[-1] == b[1]:
+            return item
     # Clitic markers are "-" and "'"
     sanitized = re.sub(r"^[^-\w']+", '', item)
     sanitized = re.sub(r"[^-\w']+$", '', sanitized)
@@ -29,6 +37,11 @@ def sanitize(item):
 
 
 def sanitize_clitics(item):
+    if not item:
+        return item
+    for b in brackets:
+        if item[0] == b[0] and item[-1] == b[1]:
+            return item
     # Clitic markers are "-" and "'"
     sanitized = re.sub(r"^\W+", '', item)
     sanitized = re.sub(r"\W+$", '', sanitized)
