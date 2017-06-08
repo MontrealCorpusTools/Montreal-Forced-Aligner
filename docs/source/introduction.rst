@@ -118,8 +118,8 @@ retrieved 17 January 2017 from http://montrealcorpustools.github.io/Montreal-For
 Or:
 
 McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
-Montreal Forced Aligner: an accurate and trainable aligner using Kaldi. Presented at the 91st Annual Meeting of the
-Linguistic Society of America, Austin, TX. :download:`Poster PDF <_static/MFA_poster_LSA2017.pdf>`
+Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
+*Proceedings of the 18th Conference of the International Speech Communication Association*. :download:`Paper PDF <_static/MFA_paper_Interspeech2017.pdf>`
 
 
 Funding
