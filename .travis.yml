@@ -26,6 +26,7 @@ before_install:
 install:
   - export PATH="$HOME/miniconda/miniconda/bin:$PATH"
   - source activate test-environment
+  - pip install -r requirements.txt
   - which python
   - conda list
 
