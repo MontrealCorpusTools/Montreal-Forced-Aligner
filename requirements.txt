@@ -1,4 +1,5 @@
 textgrid
+numpy
 six
 packaging
 https://github.com/pyinstaller/pyinstaller/archive/develop.zip
