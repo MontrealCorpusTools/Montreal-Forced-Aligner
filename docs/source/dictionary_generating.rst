@@ -2,7 +2,7 @@
 
 .. _`THCHS-30`: http://www.openslr.org/18/
 
-.. _`example Mandarin corpus`: http://mlmlab.org/mfa/CH_g2p_exmaple.zip
+.. _`example Mandarin corpus`: http://mlmlab.org/mfa/CH_g2p_example.zip
 
 .. _`Mandarin pinyin G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/mandarin_pinyin_g2p.zip
 
