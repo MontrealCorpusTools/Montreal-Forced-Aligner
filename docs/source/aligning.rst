@@ -69,6 +69,12 @@ Command template:
 
    bin/mfa_align corpus_directory dictionary_path acoustic_model_path output_directory
 
+.. warning::
+
+   Do not specify an existing directory as the output directory (unless it is from an earlier run of the aligner).  The
+   current functionality of the aligner destroys the output directory prior to generating TextGrids.  Future versions will
+   be smarter about cleaning up TextGrids from previous runs without removing the directory.
+
 .. note::
    ``acoustic_model_path`` can also be a language that has been pretrained ("english" at the moment but other languages coming soon)
 
@@ -110,6 +116,12 @@ Command template:
 .. code-block:: bash
 
    bin/mfa_train_and_align corpus_directory dictionary_path output_directory
+
+.. warning::
+
+   Do not specify an existing directory as the output directory (unless it is from an earlier run of the aligner).  The
+   current functionality of the aligner destroys the output directory prior to generating TextGrids.  Future versions will
+   be smarter about cleaning up TextGrids from previous runs without removing the directory.
 
 
 Extra options (in addition to the common ones listed above):
