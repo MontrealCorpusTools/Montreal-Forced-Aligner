@@ -140,7 +140,7 @@ to generate the necessary pronunciation dictionary.
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
 | Czech          | `Czech acoustic model`_                             | GlobalPhone          | GlobalPhone           |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
-| English        | `English acoustic model`_                           | LibriSpeech          | Arpabet               |
+| English        | `English acoustic model`_                           | LibriSpeech          | Arpabet  (stressed)   |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
 | French (FR)    | `French (FR) acoustic model`_                       | GlobalPhone          | GlobalPhone           |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
@@ -260,3 +260,22 @@ and Vietnamese, with the following accuracies when trained on 90% of the data an
 .. [5] The Wu G2P model was trained a fairly small lexicon, so it likely does not have the coverage to be a robust model
    for most purposes.  Please check carefully any resulting dictionaries, as they are likely to have missing syllables from
    from unknown symbols.
+
+.. _dictionaries:
+
+Available pronunciation dictionaries
+====================================
+
+.. _`English pronunciation dictionary`:  http://mlmlab.org/mfa/dictionaries/english.dict
+.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/prosodylab/prosodylab.dictionaries/master/fr.dict
+.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/prosodylab/prosodylab.dictionaries/master/de.dict
+
++-----------------+-----------------------------------------------+------------------------+------------------------+
+| Language        | Link                                          | Orthography system     | Phone set              |
++=================+===============================================+========================+========================+
+| English         | `English pronunciation dictionary`_           |   Latin                |   Arpabet (stressed)   |
++-----------------+-----------------------------------------------+------------------------+------------------------+
+| French          | `French Prosodylab dictionary`_               |   Latin                |   Prosodylab French    |
++-----------------+-----------------------------------------------+------------------------+------------------------+
+| German          | `German Prosodylab dictionary`_               |   Latin                |   Prosodylab German    |
++-----------------+-----------------------------------------------+------------------------+------------------------+
