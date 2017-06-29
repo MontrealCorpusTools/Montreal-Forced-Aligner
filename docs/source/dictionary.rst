@@ -44,7 +44,7 @@ for a sound file would have the following dictionary generated:
 
 The Prosodylab-aligner has two preconstructed dictionaries as well, one
 for English (`Prosodylab-aligner English dictionary`_)
-and one for Quebec French (`Prosodylab-aligner French dictionary`_)
+and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see `dictionaries`_ for a list of supported dictionaries.
 
 .. note::
 
