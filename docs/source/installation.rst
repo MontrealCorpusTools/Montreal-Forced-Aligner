@@ -20,7 +20,7 @@ Mac
 ===
 
 .. note::
-   Montreal Forced Aligner currently only works on Mac OS X 10.11
+   Montreal Forced Aligner works on Mac OS X 10.11+
 
 1. Download the zip archive for Mac and unzip the folder to any directory
 2. Open a terminal window
