@@ -32,6 +32,8 @@
 
 .. _`Russian acoustic model`: http://mlmlab.org/mfa/mfa-models/russian.zip
 
+.. _`Spanish acoustic model`: http://mlmlab.org/mfa/mfa-models/spanish.zip
+
 .. _`Swahili acoustic model`: http://mlmlab.org/mfa/mfa-models/swahili.zip
 
 .. _`Swedish acoustic model`: http://mlmlab.org/mfa/mfa-models/swedish.zip
@@ -165,6 +167,8 @@ to generate the necessary pronunciation dictionary.
 | Portuguese     | `Portuguese acoustic model`_                        | GlobalPhone          | GlobalPhone           |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
 | Russian        | `Russian acoustic model`_                           | GlobalPhone          | GlobalPhone           |
++----------------+-----------------------------------------------------+----------------------+-----------------------+
+| Spanish        | `Spanish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
 | Swahili        | `Swahili acoustic model`_                           | GlobalPhone          | GlobalPhone           |
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
