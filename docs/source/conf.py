@@ -23,7 +23,7 @@ import sys
 import mock
 
 MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
-                'tqdm',
+                'tqdm', 'yaml',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',
                 'librosa', 'librosa.core.spectrum',]
