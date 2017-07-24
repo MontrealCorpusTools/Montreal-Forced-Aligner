@@ -22,7 +22,7 @@ To reconstruct a pronunciation dictionary from your .lab or .TextGrid files, sim
 
 .. code-block:: bash
 
-    bin/mfa_generate_dict /path/to/model/file.zip /path/to/corpus
+    bin/mfa_generate_dictionary /path/to/model/file.zip /path/to/corpus
 
 
 
@@ -36,7 +36,7 @@ phonetic transcription for each one of these words, which it will write to a fil
 
 .. code-block:: bash
 
-   bin/mfa_generate_dict path/to/mandarin_pinyin_g2p.zip examples/CH chinese_dict.txt
+   bin/mfa_generate_dictionary path/to/mandarin_pinyin_g2p.zip examples/CH chinese_dict.txt
 
 This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy
 of the transcription should be near 100%. You can now use this to align your mini corpus:
