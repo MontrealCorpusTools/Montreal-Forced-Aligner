@@ -72,7 +72,7 @@ class Archive(object):
 
 class AcousticModel(Archive):
     def add_meta_file(self, aligner):
-        with open(os.path.join(self.dirname, 'meta.yaml'), 'w') as f:
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             yaml.dump(aligner.meta, f)
 
     @property
@@ -83,7 +83,7 @@ class AcousticModel(Archive):
                 self._meta = {'version': '0.9.0',
                               'architecture': 'gmm-hmm'}
             else:
-                with open(meta_path, 'r') as f:
+                with open(meta_path, 'r', encoding='utf8') as f:
                     self._meta = yaml.load(f)
             self._meta['phones'] = set(self._meta.get('phones', []))
         return self._meta
@@ -131,7 +131,7 @@ class AcousticModel(Archive):
 
 class G2PModel(Archive):
     def add_meta_file(self, dictionary):
-        with open(os.path.join(self.dirname, 'meta.yaml'), 'w') as f:
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             meta = {'phones': sorted(dictionary.nonsil_phones),
                     'graphemes': sorted(dictionary.graphemes),
                     'architecture': 'phonetisaurus',
@@ -146,7 +146,7 @@ class G2PModel(Archive):
                 self._meta = {'version': '0.9.0',
                               'architecture': 'phonetisaurus'}
             else:
-                with open(meta_path, 'r') as f:
+                with open(meta_path, 'r', encoding='utf8') as f:
                     self._meta = yaml.load(f)
             self._meta['phones'] = set(self._meta.get('phones', []))
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
