@@ -259,9 +259,9 @@ class Corpus(object):
         handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         root_logger.addHandler(handler)
         if not os.path.exists(directory):
-            raise (CorpusError('The directory \'{}\' does not exist.'.format(directory)))
+            raise CorpusError('The directory \'{}\' does not exist.'.format(directory))
         if not os.path.isdir(directory):
-            raise (CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory)))
+            raise CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory))
         if num_jobs < 1:
             num_jobs = 1
         print('Setting up corpus information...')
@@ -367,7 +367,7 @@ class Corpus(object):
                         tg.read(tg_path)
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
-                        textgrid_read_errors[tg_path] = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                        textgrid_read_errors[tg_path] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
                     n_channels = get_n_channels(wav_path)
                     num_tiers = len(tg.tiers)
                     if n_channels == 2:
@@ -601,7 +601,7 @@ class Corpus(object):
             for u in g:
                 if dictionary is None:
                     try:
-                        text = self.text_mapping[u]
+                        new_text = self.text_mapping[u]
                     except KeyError:
                         continue
                 else:
