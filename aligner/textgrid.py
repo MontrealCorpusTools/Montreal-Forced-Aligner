@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 from decimal import Decimal
 from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
@@ -57,6 +58,7 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
 
 
 def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, frameshift=0.01):
+    textgrid_write_errors = {}
     frameshift = Decimal(str(frameshift))
     if not os.path.exists(out_directory):
         os.makedirs(out_directory, exist_ok=True)
@@ -86,31 +88,42 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 os.makedirs(speaker_directory, exist_ok=True)
                 outpath = os.path.join(speaker_directory, k + '.TextGrid')
                 tg.write(outpath)
-            except ValueError as e:
-                print('There was an error writing the TextGrid for {}, please see below:'.format(k))
-                raise
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                textgrid_write_errors[k] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     else:
         silences = {dictionary.optional_silence, dictionary.nonoptional_silence}
         for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
             maxtime = corpus.get_wav_duration(filename)
-            tg = TextGrid(maxTime=maxtime)
-            for speaker, words in speaker_dict.items():
-                word_tier_name = '{} - words'.format(speaker)
-                phone_tier_name = '{} - phones'.format(speaker)
-                word_tier = IntervalTier(name=word_tier_name, maxTime=maxtime)
-                phone_tier = IntervalTier(name=phone_tier_name, maxTime=maxtime)
-                for w in words:
-                    word_tier.add(*w)
-                for p in phone_ctm[filename][speaker]:
-                    if len(phone_tier) > 0 and phone_tier[-1].mark in silences and p[2] in silences:
-                        phone_tier[-1].maxTime = p[1]
-                    else:
-                        if len(phone_tier) > 0 and p[2] in silences and p[0] < phone_tier[-1].maxTime:
-                            p = phone_tier[-1].maxTime, p[1], p[2]
-                        elif len(phone_tier) > 0 and p[2] not in silences and p[0] < phone_tier[-1].maxTime and \
-                                        phone_tier[-1].mark in silences:
-                            phone_tier[-1].maxTime = p[0]
-                        phone_tier.add(*p)
-                tg.append(word_tier)
-                tg.append(phone_tier)
-            tg.write(os.path.join(out_directory, filename + '.TextGrid'))
+            try:
+                tg = TextGrid(maxTime=maxtime)
+                for speaker, words in speaker_dict.items():
+                    word_tier_name = '{} - words'.format(speaker)
+                    phone_tier_name = '{} - phones'.format(speaker)
+                    word_tier = IntervalTier(name=word_tier_name, maxTime=maxtime)
+                    phone_tier = IntervalTier(name=phone_tier_name, maxTime=maxtime)
+                    for w in words:
+                        word_tier.add(*w)
+                    for p in phone_ctm[filename][speaker]:
+                        if len(phone_tier) > 0 and phone_tier[-1].mark in silences and p[2] in silences:
+                            phone_tier[-1].maxTime = p[1]
+                        else:
+                            if len(phone_tier) > 0 and p[2] in silences and p[0] < phone_tier[-1].maxTime:
+                                p = phone_tier[-1].maxTime, p[1], p[2]
+                            elif len(phone_tier) > 0 and p[2] not in silences and p[0] < phone_tier[-1].maxTime and \
+                                            phone_tier[-1].mark in silences:
+                                phone_tier[-1].maxTime = p[0]
+                            phone_tier.add(*p)
+                    tg.append(word_tier)
+                    tg.append(phone_tier)
+                tg.write(os.path.join(out_directory, filename + '.TextGrid'))
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                textgrid_write_errors[filename] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    if textgrid_write_errors:
+        error_log = os.path.join(out_directory, 'output_errors.txt')
+        with open(error_log, 'w', encoding='utf8') as f:
+            f.write('The following exceptions were encountered during the ouput of the alignments to TextGrids:\n\n')
+            for k,v in textgrid_write_errors.items():
+                f.write('{}:\n'.format(k))
+                f.write('{}\n\n'.format(v))
