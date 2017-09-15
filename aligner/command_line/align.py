@@ -37,10 +37,11 @@ def fix_path():
     else:
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
+    old_path = os.environ.get('PATH', '')
     if sys.platform == 'win32':
-        os.environ['PATH'] = thirdparty_dir + ';' + os.environ['PATH']
+        os.environ['PATH'] = thirdparty_dir + ';' + old_path
     else:
-        os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
+        os.environ['PATH'] = thirdparty_dir + ':' + old_path
         os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 
 
