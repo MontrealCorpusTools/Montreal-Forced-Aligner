@@ -57,11 +57,12 @@ do not work, then the executables will have to be built from source.
 Building from source
 ====================
 
-NB: These instructions require Python 3 (you may have to replace
-instances of ``python`` and ``pip`` with ``python3`` and ``pip3`` if Python 3 is
-not your default Python) and assume Linux in the commands.
+.. note::
+   These instructions require Python 3 (you may have to replace
+   instances of ``python`` and ``pip`` with ``python3`` and ``pip3`` if Python 3 is
+   not your default Python) and assume Linux in the commands.
 
-1. Get kaldi compiled and working: `Kaldi GitHub repository`_
+1. Get Kaldi compiled and working: `Kaldi GitHub repository`_
 2. Download the source zip from the releases page
 3. Open a terminal and go to the unzipped folder (``cd /path/to/Montreal-Forced-Aligner/thirdparty``)
 4. Run the ``thirdparty/kaldibinaries.py`` script, pointing it to where Kaldi was built (``python thirdparty/kaldibinaries.py /path/to/kaldi/root``)
