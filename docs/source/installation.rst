@@ -48,7 +48,7 @@ The Linux distributions were built on Ubuntu 14.04, and so may not work on
 machines that have older versions of Linux system packages.  If these instructions
 do not work, then the executables will have to be built from source.
 
-1. Ensure the atlas package is installed (``sudo apt-get install libatlas3-base``)
+1. Ensure the ATLAS package is installed (``sudo apt-get install libatlas3-base``)
 2. Download the tar.gz archive for Linux and untar the folder to any directory
 3. Open a terminal window
 4. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
