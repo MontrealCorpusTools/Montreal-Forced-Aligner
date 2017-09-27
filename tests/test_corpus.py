@@ -1,11 +1,12 @@
 import os
+import sys
 import pytest
 import shutil
 
+sys.path.insert(0,"/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner")
 from aligner.corpus import Corpus
 from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
-
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
@@ -13,6 +14,7 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'basic')
     d = Corpus(basic_corpus_dir, output_directory)
     d.initialize_corpus(dictionary)
+    #assert(1==2)    # Dumb assert to make print
     assert (d.get_feat_dim() == '39')
 
 

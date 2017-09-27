@@ -72,9 +72,9 @@ class TrainableAligner(BaseAligner):
         '''
         Perform triphone training
         '''
-        if os.path.exists(self.tri_final_model_path):
-            print('Triphone training already done, using previous final.mdl')
-            return
+        #if os.path.exists(self.tri_final_model_path):
+        #    print('Triphone training already done, using previous final.mdl')
+        #    return
         if not os.path.exists(self.mono_ali_directory):
             self._align_si()
 
@@ -87,6 +87,7 @@ class TrainableAligner(BaseAligner):
         '''
         Initialize monophone training
         '''
+        print("Initializing monophone training...")
         log_dir = os.path.join(self.mono_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         tree_path = os.path.join(self.mono_directory, 'tree')
@@ -134,10 +135,153 @@ class TrainableAligner(BaseAligner):
         Perform monophone training
         '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
-        if os.path.exists(final_mdl):
-            print('Monophone training already done, using previous final.mdl')
-            return
+        #if os.path.exists(final_mdl):
+        #    print('Monophone training already done, using previous final.mdl')
+        #    return
         os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok=True)
 
         self._init_mono()
         self._do_mono_training()
+
+    # Beginning of nnet functions
+    def _init_lda_mllt(self):
+        '''
+        Initialize LDA + MLLT training.
+        '''
+        log_dir = os.path.join(self.lda_mllt_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+
+        ##
+        config = self.lda_mllt_config
+        directory = self.lda_mllt_directory
+        align_directory = self.tri_fmllr_ali_directory  # The previous
+        #align_directory = self.tri_ali_directory
+        mdl_dir = self.tri_fmllr_directory
+        #if os.path.exists(os.path.join(directory, '1.mdl')):
+        #    return
+        print('Initializing LDA + MLLT training...')
+        print("here we go")
+        context_opts = []
+        ci_phones = self.dictionary.silence_csl
+
+        print("this far")
+        #tree_stats(directory, align_directory,
+        #           self.corpus.split_directory, ci_phones, self.num_jobs)
+        print("do this")
+        log_path = os.path.join(directory, 'log', 'questions.log')
+        tree_path = os.path.join(directory, 'tree')
+        treeacc_path = os.path.join(directory, 'treeacc')
+        sets_int_path = os.path.join(self.dictionary.phones_dir, 'sets.int')
+        roots_int_path = os.path.join(self.dictionary.phones_dir, 'roots.int')
+        extra_question_int_path = os.path.join(self.dictionary.phones_dir, 'extra_questions.int')
+        topo_path = os.path.join(self.dictionary.output_directory, 'topo')
+        questions_path = os.path.join(directory, 'questions.int')
+        questions_qst_path = os.path.join(directory, 'questions.qst')
+        print("here now")
+
+        # Accumulate LDA stats
+        print("accumulating lda stats")
+        log_path = os.path.join(directory, 'log', 'ali_to_post.log')
+        with open(log_path, 'w') as logf:
+            for i in range(self.num_jobs):
+                spliced_feat_path = os.path.join(self.corpus.split_directory, 'cmvnsplicefeats.{}_sub'.format(i))
+                ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                                    #'ark:gunzip -c ' + align_directory +
+                                                    #'/ali.{}.gz|'.format(i),
+                                                    'ark:' + align_directory + '/ali.{}'.format(i),
+                                                    'ark:-'],
+                                                    stderr=logf, stdout=subprocess.PIPE)
+                weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
+                                                            str(config.boost_silence), ci_phones, mdl_dir +
+                                                            '/final.mdl', 'ark:-', 'ark:-'],
+                                                            stdin=ali_to_post_proc.stdout,
+                                                            stderr=logf, stdout=subprocess.PIPE)
+                acc_lda_post_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
+                                                    '--rand-prune=' + str(config.randprune),
+                                                    mdl_dir + '/final.mdl',
+                                                    'ark:'+spliced_feat_path, # Unsure about this
+                                                    'ark,s,cs:-',
+                                                    directory + '/lda.{}.acc'.format(i)],
+                                                    stdin=weight_silence_post_proc.stdout,
+                                                    stderr=logf)
+                acc_lda_post_proc.communicate()
+
+        log_path = os.path.join(directory, 'log', 'lda_est.log')
+        with open(log_path, 'w') as logf:
+            for i in range(self.num_jobs):
+                est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
+                                                 '--write-full-matrix=' + directory + '/full.mat',
+                                                 '--dim=' + str(config.dim),
+                                                 directory + '/0.mat',
+                                                 directory + '/lda.{}.acc'.format(i)],
+                                                 stderr=logf)
+                est_lda_proc.communicate()
+
+        # Accumulating tree stats
+        tree_stats(directory, align_directory, self.corpus.split_directory, ci_phones, self.num_jobs)
+
+        # Getting questions for tree clustering
+        log_path = os.path.join(directory, 'log', 'cluster_phones.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('cluster-phones')] + context_opts +
+                            [treeacc_path, sets_int_path, questions_path], stderr=logf)
+
+        with open(extra_question_int_path, 'r') as inf, \
+                open(questions_path, 'a') as outf:
+            for line in inf:
+                outf.write(line)
+
+        log_path = os.path.join(directory, 'log', 'compile_questions.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('compile-questions')] + context_opts +
+                            [topo_path, questions_path, questions_qst_path],
+                            stderr=logf)
+
+        # Building the tree
+        log_path = os.path.join(directory, 'log', 'build_tree.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('build-tree')] + context_opts +
+                            ['--verbose=1', '--max-leaves={}'.format(config.initial_gauss_count),
+                             '--cluster-thresh={}'.format(config.cluster_threshold),
+                             treeacc_path, roots_int_path, questions_qst_path,
+                             topo_path, tree_path], stderr=logf)
+
+        # Initializing the model
+        log_path = os.path.join(directory, 'log', 'init_model.log')
+        occs_path = os.path.join(directory, '0.occs')
+        mdl_path = os.path.join(directory, '0.mdl')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-init-model'),
+                             '--write-occs=' + occs_path, tree_path, treeacc_path,
+                             topo_path, mdl_path], stderr=logf)
+
+        """log_path = os.path.join(directory, 'log', 'mixup.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-mixup'),
+                             '--mix-up={}'.format(config.initial_gauss_count),
+                             mdl_path, occs_path, mdl_path], stderr=logf)
+        os.remove(treeacc_path)"""
+
+        compile_train_graphs(directory, self.dictionary.output_directory,
+                             self.corpus.split_directory, self.num_jobs)
+        os.rename(occs_path, os.path.join(directory, '1.occs')) # ?
+        os.rename(mdl_path, os.path.join(directory, '1.mdl'))   # ?
+
+        convert_alignments(directory, align_directory, self.num_jobs)
+
+        if os.path.exists(os.path.join(align_directory, 'trans.0')):            # ?
+            for i in range(self.num_jobs):                                      # ?
+                shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),# ?
+                            os.path.join(directory, 'trans.{}'.format(i)))      # ?
+
+    def train_lda_mllt(self):
+        '''
+        Perform LDA + MLLT training
+        '''
+        #if os.path.exists(self.lda_mllt_final_model_path):
+        #    print('LDA + MLLT training already done, using previous final.mdl')
+        #    return
+        os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
+
+        self._init_lda_mllt()   # NOT YET IMPLEMENTED
+        self._do_lda_mllt_training()    # NOT YET IMPLEMENTED

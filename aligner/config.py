@@ -209,6 +209,40 @@ class TriphoneFmllrConfig(TriphoneConfig):
         defaults.update(kwargs)
         super(TriphoneFmllrConfig, self).__init__(**defaults)
 
+# For nnets
+class LdaMlltConfig(object):
+    '''
+    fill in docstring
+    '''
+    def __init__(self, **kwargs):
+        self.num_iters = 13
+
+        self.scale_opts = ['--transition-scale=1.0',
+                           '--acoustic-scale=0.1',
+                           '--self-loop-scale=0.1']
+        self.beam = 10
+        self.retry_beam = 40
+        self.initial_gauss_count = 5000
+        self.cluster_threshold = -1
+        self.max_gauss_count = 1000
+        self.boost_silence = 1.0
+        if kwargs.get('align_often', False):
+            self.realign_iters = [10, 20, 30]
+        else:
+            self.realign_iters = [1, 5, 10, 15, 20, 25, 30, 35, 38]
+        self.stage = -5
+        self.power = 0.25
+
+        self.dim = 40
+        self.careful = False
+        self.randprune = 4.0
+        self.splice_opts = ['--left-context=3', '--right-context=3']
+        self.cluster_thresh = -1
+        self.norm_vars = False
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
 
 class MfccConfig(object):
     '''

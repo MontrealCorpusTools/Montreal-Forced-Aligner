@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from ..helper import thirdparty_binary, make_path_safe
 
-from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig
+from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig, LdaMlltConfig
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
@@ -49,16 +49,22 @@ class BaseAligner(object):
     def __init__(self, corpus, dictionary, output_directory,
                  temp_directory=None, num_jobs=3, call_back=None,
                  mono_params=None, tri_params=None,
-                 tri_fmllr_params=None, debug=False):
+                 tri_fmllr_params=None, lda_mllt_params=None, debug=False):
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
             tri_params = {}
         if tri_fmllr_params is None:
             tri_fmllr_params = {}
+        if lda_mllt_params is None:
+            lda_mllt_params = {}
+
         self.mono_config = MonophoneConfig(**mono_params)
         self.tri_config = TriphoneConfig(**tri_params)
         self.tri_fmllr_config = TriphoneFmllrConfig(**tri_fmllr_params)
+
+        self.lda_mllt_config = LdaMlltConfig(**lda_mllt_params)
+
         self.corpus = corpus
         self.dictionary = dictionary
         self.output_directory = output_directory
@@ -125,6 +131,21 @@ class BaseAligner(object):
     def tri_fmllr_final_model_path(self):
         return os.path.join(self.tri_fmllr_directory, 'final.mdl')
 
+    # Beginning of nnet properties
+    @property
+    def lda_mllt_directory(self):
+        return os.path.join(self.temp_directory, 'lda_mllt')
+
+    @property
+    def lda_mllt_ali_directory(self):
+        return os.path.join(self.temp_directory, 'lda_mllt_ali')
+
+    @property
+    def lda_mllt_final_model_path(self):
+        return os.path.join(self.lda_mllt_directory, 'final.mdl')
+
+    # End of nnet properties
+
     def export_textgrids(self):
         '''
         Export a TextGrid file for every sound file in the dataset
@@ -159,17 +180,26 @@ class BaseAligner(object):
         Generate an alignment of the dataset
         '''
         if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
+            print("here1 fmllr")
             model_directory = self.tri_fmllr_directory
             output_directory = self.tri_fmllr_ali_directory
             config = self.tri_fmllr_config
         elif os.path.exists(self.tri_final_model_path):
+            print("here2 no fmllr")
             model_directory = self.tri_directory
             output_directory = self.tri_ali_directory
             config = self.tri_config
         elif os.path.exists(self.mono_final_model_path):
+            print("here3")
             model_directory = self.mono_directory
             output_directory = self.mono_ali_directory
             config = self.mono_config
+
+        #
+        if fmllr:
+            output_directory = self.tri_fmllr_ali_directory
+            print("changed")
+        #
 
         optional_silence = self.dictionary.optional_silence_csl
         oov = self.dictionary.oov_int
@@ -188,6 +218,8 @@ class BaseAligner(object):
 
         compile_train_graphs(output_directory, self.dictionary.output_directory,
                              self.corpus.split_directory, self.num_jobs, debug=self.debug)
+        print("from align_si")
+        print("output dir:", output_directory)
         align(0, output_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, config)
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
@@ -233,9 +265,13 @@ class BaseAligner(object):
         '''
         Align the dataset using speaker-adapted transforms
         '''
+        print("getting here")
         model_directory = self.tri_directory
-        output_directory = self.tri_ali_directory
-        self._align_si(fmllr=False)
+        #model_directory = self.tri_ali_directory
+        #output_directory = self.tri_ali_directory
+        output_directory = self.tri_fmllr_ali_directory
+        #self._align_si(fmllr=False)
+        self._align_si(fmllr=True)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')
@@ -244,20 +280,25 @@ class BaseAligner(object):
         calc_fmllr(output_directory, self.corpus.split_directory,
                    sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
-        align(0, output_directory, self.corpus.split_directory,
+        print("from align_fmllr:")
+        #align(0, output_directory, self.corpus.split_directory,
+        #      optional_silence, self.num_jobs, self.tri_fmllr_config)
+        #print("model dir:", model_directory)
+        align(0, model_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, self.tri_fmllr_config)
 
     def _init_tri(self, fmllr=False):
         if fmllr:
             config = self.tri_fmllr_config
             directory = self.tri_fmllr_directory
-            align_directory = self.tri_ali_directory
+            align_directory = self.tri_ali_directory    # The previous
+            #align_directory = self.tri_fmllr_ali_directory
         else:
             config = self.tri_config
             directory = self.tri_directory
             align_directory = self.mono_ali_directory
-        if os.path.exists(os.path.join(directory, '1.mdl')):
-            return
+        #if os.path.exists(os.path.join(directory, '1.mdl')):
+        #    return
         if fmllr:
             print('Initializing speaker-adapted triphone training...')
         else:
@@ -330,11 +371,14 @@ class BaseAligner(object):
         '''
         Perform speaker-adapted triphone training
         '''
-        if os.path.exists(self.tri_fmllr_final_model_path):
-            print('Triphone FMLLR training already done, using previous final.mdl')
-            return
-        if not os.path.exists(self.tri_ali_directory):
-            self._align_fmllr()
+        # Commented out for testing
+        #if os.path.exists(self.tri_fmllr_final_model_path):
+        #    print('Triphone FMLLR training already done, using previous final.mdl')
+        #    return
+
+        #if not os.path.exists(self.tri_ali_directory):
+        #    self._align_fmllr()
+        self._align_fmllr()
 
         os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok=True)
         self._init_tri(fmllr=True)
@@ -345,6 +389,7 @@ class BaseAligner(object):
         self._do_training(self.tri_fmllr_directory, self.tri_fmllr_config)
 
     def _do_training(self, directory, config):
+        print("doing training")
         if config.realign_iters is None:
             config.realign_iters = list(range(0, config.num_iters, 10))
         num_gauss = config.initial_gauss_count
@@ -359,13 +404,15 @@ class BaseAligner(object):
             model_path = os.path.join(directory, '{}.mdl'.format(i))
             occs_path = os.path.join(directory, '{}.occs'.format(i + 1))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
-            if os.path.exists(next_model_path):
-                continue
+            #if os.path.exists(next_model_path):
+            #    continue
             if i in config.realign_iters:
+                print("from do_training")
                 align(i, directory, self.corpus.split_directory,
                       self.dictionary.optional_silence_csl,
                       self.num_jobs, config)
             if config.do_fmllr and i in config.fmllr_iters:
+                print("calc fmllr")
                 calc_fmllr(directory, self.corpus.split_directory, sil_phones,
                            self.num_jobs, config, initial=False, iteration=i)
 
@@ -387,6 +434,7 @@ class BaseAligner(object):
             self.parse_log_directory(log_directory, i)
             if i < config.max_iter_inc:
                 num_gauss += inc_gauss
+        print("dir where final.mdl is:", directory)
         shutil.copy(os.path.join(directory, '{}.mdl'.format(config.num_iters)),
                     os.path.join(directory, 'final.mdl'))
         shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),

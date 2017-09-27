@@ -454,6 +454,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
+    print("MDL:", mdl)
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
@@ -497,6 +498,7 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
+    print("Safe mdl path:", make_path_safe(mdl_path))
 
     feat_name = 'cmvndeltafeats'
     if config.do_fmllr:

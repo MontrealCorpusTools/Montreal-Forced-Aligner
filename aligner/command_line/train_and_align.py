@@ -65,12 +65,24 @@ def align_corpus(args, skip_input=False):
                              mono_params=mono_params, tri_params=tri_params,
                              tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs)
         a.verbose = args.verbose
+
+        # GMM training (looks like it needs to be done either way, as a starter for nnet)
         a.train_mono()
         a.export_textgrids()
         a.train_tri()
         a.export_textgrids()
         a.train_tri_fmllr()
         a.export_textgrids()
+
+        # nnet training
+        if getattr(args, 'neural_net', True):
+            # Do nnet training
+            a.train_lda_mllt()  # NOT YET IMPLEMENTED - working on it
+            a.train_diag_ubm()  # NOT YET IMPLEMENTED
+            a.ivectors()        # NOT YET IMPLEMENTED
+            a.train_nnet()      # NOT YET IMPLEMENTED
+            a.export_textgrids()
+
         if args.output_model_path is not None:
             a.save(args.output_model_path)
     except:
@@ -132,6 +144,9 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('corpus_directory', help='Full path to the source directory to align')
     parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use', nargs='?', default='')
     parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
+
+    parser.add_argument('-n', '--neural_net', action='store_true')
+
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')
     parser.add_argument('-s', '--speaker_characters', type=str, default='0',

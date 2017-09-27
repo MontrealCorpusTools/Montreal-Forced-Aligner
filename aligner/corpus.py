@@ -938,6 +938,69 @@ class Corpus(object):
                                          "--n=10", "ark:-", "ark:-"],
                                         stdin=inf, stderr=logf, stdout=outf)
 
+    #
+    def _norm_splice_feats(self):
+        split_dir = self.split_directory
+        log_dir = os.path.join(split_dir, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, 'norm_splice.log'), 'w') as logf:
+            for i in range(self.num_jobs):
+                path = os.path.join(split_dir, 'cmvnsplicefeats.{}'.format(i))
+                utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(i))
+                cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
+                featspath = os.path.join(split_dir, 'feats.{}.scp'.format(i))
+                if not os.path.exists(path):
+                    with open(path, 'wb') as outf:
+                        cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
+                                                      '--utt2spk=ark:' + utt2spkpath,
+                                                      'scp:' + cmvnpath,
+                                                      'scp:' + featspath,
+                                                      'ark:-'], stdout=subprocess.PIPE,
+                                                     stderr=logf
+                                                     )
+                        with open(path, 'rb') as inf, open(path + '_sub', 'wb') as outf:
+                            subprocess.call([thirdparty_binary("splice-feats"),
+                                             '--left-context=3', '--right-context=3',
+                                             'ark:-',
+                                             'ark:-'], stdin=cmvn_proc.stdout,
+                                             stderr=logf, stdout=outf
+                                             )
+    def _norm_splice_transform_feats(self, directory):
+        split_dir = self.split_directory
+        log_dir = os.path.join(split_dir, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, 'norm_splice_transform.log'), 'w') as logf:
+            for i in range(self.num_jobs):
+                path = os.path.join(split_dir, 'cmvnsplicetransformfeats.{}'.format(i))
+                utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(i))
+                cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
+                featspath = os.path.join(split_dir, 'feats.{}.scp'.format(i))
+                #if not os.path.exists(path):
+                with open(path, 'wb') as outf:
+                    cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
+                                                  '--utt2spk=ark:' + utt2spkpath,
+                                                  'scp:' + cmvnpath,
+                                                  'scp:' + featspath,
+                                                  'ark:-'], stdout=subprocess.PIPE,
+                                                  stderr=logf
+                                                 )
+                    splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                                    '--left-context=3', '--right-context=3',
+                                                    'ark:-',
+                                                    'ark:-'], stdin=cmvn_proc.stdout,
+                                                    stderr=logf, stdout=subprocess.PIPE
+                                                    )
+                    with open(path, 'rb') as inf, open(path + '_sub', 'wb') as outf:
+                        transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
+                                                                directory + '/0.mat',
+                                                                'ark:-',
+                                                                'ark:-'], stdin=splice_proc.stdout,
+                                                                stderr=logf, stdout=outf
+                                                                )
+                        transform_feats_proc.communicate()
+
+    #
+
     def get_feat_dim(self):
         directory = self.split_directory
 
@@ -967,8 +1030,21 @@ class Corpus(object):
             self._split_spk2utt(split_dir)
             self._split_texts(split_dir, dictionary)
             self._split_utt2fst(split_dir, dictionary)
+        """# For testing
+        split = True
+        root_logger.info('Setting up training data...')
+        print('Setting up training data...')
+        os.makedirs(split_dir)
+        self._split_wavs(split_dir)
+        self._split_utt2spk(split_dir)
+        self._split_spk2utt(split_dir)
+        self._split_texts(split_dir, dictionary)
+        self._split_utt2fst(split_dir, dictionary)"""
+
         self.create_mfccs()
         if split:
             self._split_feats(split_dir)
             self._split_cmvns(split_dir)
             self._split_and_norm_feats()
+            #For nnet
+            self._norm_splice_feats()
