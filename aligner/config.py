@@ -202,6 +202,7 @@ class TriphoneFmllrConfig(TriphoneConfig):
 
     def __init__(self, align_often=True, **kwargs):
         defaults = {'do_fmllr': True,
+                    'do_lda_mllt': False,
                     'fmllr_update_type': 'full',
                     'fmllr_iters': [2, 4, 6, 12],
                     'fmllr_power': 0.2,
@@ -216,6 +217,8 @@ class LdaMlltConfig(object):
     '''
     def __init__(self, **kwargs):
         self.num_iters = 13
+        self.do_fmllr = False
+        self.do_lda_mllt = True
 
         self.scale_opts = ['--transition-scale=1.0',
                            '--acoustic-scale=0.1',
@@ -242,6 +245,14 @@ class LdaMlltConfig(object):
 
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+    @property
+    def max_iter_inc(self):
+        return self.num_iters - 10
+        
+    @property
+    def inc_gauss_count(self):
+        return int((self.max_gauss_count - self.initial_gauss_count) / self.max_iter_inc)
 
 
 class MfccConfig(object):

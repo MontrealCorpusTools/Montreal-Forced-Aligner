@@ -99,7 +99,7 @@ def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cov
         acc_proc.communicate()
 
 
-def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False):
+def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False, lda_mllt=False):
     """
     Multiprocessing function that computes stats for GMM training
 
@@ -466,6 +466,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
                                       stderr=logf,
                                       stdout=outf)
         align_proc.communicate()
+    print("leaving align()")
 
 
 def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
@@ -825,4 +826,108 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(calc_fmllr_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+
+def calc_lda_mllt_func(directory, split_directory, sil_phones, num_jobs, job_name, config, initial,
+                    model_name='final'):  # pragma: no cover
+    print("from calc_lda_mllt:", directory)
+    feat_path = os.path.join(split_directory, 'cmvnsplicefeats')
+    if not initial:
+        feat_path += '_lda_mllt'
+    feat_path += '.{}'.format(job_name)
+    feat_lda_mllt_path = os.path.join(split_directory, 'cmvnsplicefeats_lda_mllt.{}'.format(job_name))
+    log_path = os.path.join(directory, 'log', 'lda_mllt.{}.log'.format(job_name))
+    #print("log path:", log_path)
+    ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
+    print("ali path:", ali_path)
+    mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
+    spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
+    utt2spk_path = os.path.join(split_directory, 'utt2spk.{}'.format(job_name))
+    if not initial:
+        print("not initial")
+        tmp_trans_path = os.path.join(directory, 'trans.temp.{}'.format(job_name))
+        trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
+        cmp_trans_path = os.path.join(directory, 'trans.cmp.{}'.format(job_name))
+    else:
+        print("initial")
+        tmp_trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
+    post_path = os.path.join(directory, 'post.{}'.format(job_name))
+    weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
+    with open(log_path, 'w') as logf:
+        print("here we go")
+        #print("ali_path", ali_path)
+        #print("post_path", post_path)
+        subprocess.call([thirdparty_binary('ali-to-post'),
+                         "ark:" + ali_path, 'ark:' + post_path]
+                         , stderr=logf
+                         )
+
+        subprocess.call([thirdparty_binary('weight-silence-post'), '0.0',
+                         sil_phones, mdl_path, 'ark:' + post_path,
+                         'ark:' + weight_path]
+                         , stderr=logf
+                         )
+        print("log path:", log_path)
+        subprocess.call([thirdparty_binary('gmm-acc-mllt'),
+                                           '--rand-prune=' + str(config.randprune),
+                                           mdl_path, 'ark:'+feat_path,
+                                           'ark:-',
+                                           directory + '/{}.{}.macc'.format(model_name, job_name)]
+                                           , stderr=logf
+                                           )
+        macc_string = ""
+        for i in range(num_jobs):
+            macc_string = macc_string + ' directory/{}.{}.macc'.format(job_name, i)
+        subprocess.call([thirdparty_binary('est-mllt'),
+                                           directory + '/{}.mat.new'.format(model_name),
+                                           macc_string],
+                                           stderr=logf)
+    print("made it this far")
+    log_path = os.path.join(directory, 'log', 'transform_means.{}.log'.format(job_name))
+    with open(log_path, 'w') as logf:
+        subprocess.call([thirdparty_binary('gmm-transform-means'),
+                                           directory + '/{}.mat.new'.format(model_name),
+                                           mdl_path, mdl_path],
+                                           stderr=logf)
+
+
+        if not initial:
+            """subprocess.call([thirdparty_binary('compose-transforms'),
+                             #'--b-is-affine=true',
+                             'ark:' + tmp_trans_path, 'ark:' + trans_path,
+                             'ark:' + cmp_trans_path], stderr=logf)
+            os.remove(tmp_trans_path)
+            os.remove(trans_path)
+            os.rename(cmp_trans_path, trans_path)"""
+            subprocess.call([thirdparty_binary('compose-transforms'),
+                            '--print-args=false',
+                            directory + '/{}.mat.new'.format(model_name),
+                            directory + '{}.mat'.format(int(model_name)-1),
+                            directory + '{}.mat'.format(model_name)],
+                            stderr=logf)
+            feat_path = os.path.join(split_directory, 'cmvnsplicefeats.{}'.format(job_name))
+        else:
+            trans_path = tmp_trans_path
+        subprocess.call([thirdparty_binary('transform-feats'),
+                         '--utt2spk=ark:' + utt2spk_path,
+                         'ark:' + trans_path, 'ark:' + feat_path,
+                         'ark:' + feat_lda_mllt_path],
+                        stderr=logf)
+
+
+def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
+               initial=False, iteration=None):
+    """
+    Fill out docstring
+
+    """
+    if iteration is None:
+        model_name = 'final'
+    else:
+        model_name = iteration
+    jobs = [(directory, split_directory, sil_phones, num_jobs, x, config, initial, model_name)
+            for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(calc_lda_mllt_func, args=i) for i in jobs]
         output = [p.get() for p in results]

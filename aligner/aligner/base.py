@@ -10,7 +10,8 @@ from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig, LdaMl
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids, calc_fmllr)
+                               convert_ali_to_textgrids, calc_fmllr,
+                               calc_lda_mllt)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -175,12 +176,25 @@ class BaseAligner(object):
             num = int(matches.groups()[0])
         return num
 
-    def _align_si(self, fmllr=True):
+    def _align_si(self, fmllr=True, lda_mllt=False):
         '''
         Generate an alignment of the dataset
         '''
         if fmllr and os.path.exists(self.tri_fmllr_final_model_path):
             print("here1 fmllr")
+            model_directory = self.tri_fmllr_directory
+            output_directory = self.tri_fmllr_ali_directory
+            config = self.tri_fmllr_config
+        #
+        #elif lda_mllt and os.path.exists(self.lda_mllt_final_model_path):
+        elif lda_mllt and os.path.exists(self.lda_mllt_final_model_path):
+            print("here lda_mllt")
+            model_directory = self.lda_mllt_directory
+            output_directory = self.lda_mllt_ali_directory
+            config = self.lda_mllt_config
+        #
+        elif lda_mllt:
+            print("first pass lda_mllt")
             model_directory = self.tri_fmllr_directory
             output_directory = self.tri_fmllr_ali_directory
             config = self.tri_fmllr_config
@@ -196,9 +210,9 @@ class BaseAligner(object):
             config = self.mono_config
 
         #
-        if fmllr:
-            output_directory = self.tri_fmllr_ali_directory
-            print("changed")
+        #if fmllr:
+        #    output_directory = self.tri_fmllr_ali_directory
+        #    print("changed")
         #
 
         optional_silence = self.dictionary.optional_silence_csl
@@ -222,8 +236,10 @@ class BaseAligner(object):
         print("output dir:", output_directory)
         align(0, output_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, config)
+        print("coming back from align() to align_si")
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
         shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
+        print("done align_si")
 
     def parse_log_directory(self, directory, iteration):
         '''
@@ -270,22 +286,23 @@ class BaseAligner(object):
         #model_directory = self.tri_ali_directory
         #output_directory = self.tri_ali_directory
         output_directory = self.tri_fmllr_ali_directory
-        #self._align_si(fmllr=False)
-        self._align_si(fmllr=True)
+        self._align_si(fmllr=False)
+        #self._align_si(fmllr=True)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
+        print("calculating fmllr")
         calc_fmllr(output_directory, self.corpus.split_directory,
                    sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
         print("from align_fmllr:")
-        #align(0, output_directory, self.corpus.split_directory,
-        #      optional_silence, self.num_jobs, self.tri_fmllr_config)
-        #print("model dir:", model_directory)
-        align(0, model_directory, self.corpus.split_directory,
+        align(0, output_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, self.tri_fmllr_config)
+        #print("model dir:", model_directory)
+        #align(0, model_directory, self.corpus.split_directory,
+        #      optional_silence, self.num_jobs, self.tri_fmllr_config)
 
     def _init_tri(self, fmllr=False):
         if fmllr:
@@ -378,6 +395,7 @@ class BaseAligner(object):
 
         #if not os.path.exists(self.tri_ali_directory):
         #    self._align_fmllr()
+        print("going into align_fmllr")
         self._align_fmllr()
 
         os.makedirs(os.path.join(self.tri_fmllr_directory, 'log'), exist_ok=True)
@@ -415,9 +433,15 @@ class BaseAligner(object):
                 print("calc fmllr")
                 calc_fmllr(directory, self.corpus.split_directory, sil_phones,
                            self.num_jobs, config, initial=False, iteration=i)
-
+            #
+            if config.do_lda_mllt and i <= config.num_iters:
+                print("calc lda mllt")
+                calc_lda_mllt(directory, self.corpus.split_directory, sil_phones,
+                              self.num_jobs, config, initial=False, iteration=i)
+            #
+            print("getting stats")
             acc_stats(i, directory, self.corpus.split_directory, self.num_jobs,
-                      config.do_fmllr)
+                      config.do_fmllr, config.do_lda_mllt)
             log_path = os.path.join(log_directory, 'update.{}.log'.format(i))
             with open(log_path, 'w') as logf:
                 acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))

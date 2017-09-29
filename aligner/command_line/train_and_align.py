@@ -77,7 +77,7 @@ def align_corpus(args, skip_input=False):
         # nnet training
         if getattr(args, 'neural_net', True):
             # Do nnet training
-            a.train_lda_mllt()  # NOT YET IMPLEMENTED - working on it
+            a.train_lda_mllt()  # Implemented!
             a.train_diag_ubm()  # NOT YET IMPLEMENTED
             a.ivectors()        # NOT YET IMPLEMENTED
             a.train_nnet()      # NOT YET IMPLEMENTED

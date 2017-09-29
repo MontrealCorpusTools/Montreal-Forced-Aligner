@@ -8,7 +8,8 @@ from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids, calc_fmllr)
+                               convert_ali_to_textgrids, calc_fmllr,
+                               calc_lda_mllt)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -160,14 +161,9 @@ class TrainableAligner(BaseAligner):
         #if os.path.exists(os.path.join(directory, '1.mdl')):
         #    return
         print('Initializing LDA + MLLT training...')
-        print("here we go")
         context_opts = []
         ci_phones = self.dictionary.silence_csl
 
-        print("this far")
-        #tree_stats(directory, align_directory,
-        #           self.corpus.split_directory, ci_phones, self.num_jobs)
-        print("do this")
         log_path = os.path.join(directory, 'log', 'questions.log')
         tree_path = os.path.join(directory, 'tree')
         treeacc_path = os.path.join(directory, 'treeacc')
@@ -177,10 +173,8 @@ class TrainableAligner(BaseAligner):
         topo_path = os.path.join(self.dictionary.output_directory, 'topo')
         questions_path = os.path.join(directory, 'questions.int')
         questions_qst_path = os.path.join(directory, 'questions.qst')
-        print("here now")
 
         # Accumulate LDA stats
-        print("accumulating lda stats")
         log_path = os.path.join(directory, 'log', 'ali_to_post.log')
         with open(log_path, 'w') as logf:
             for i in range(self.num_jobs):
@@ -254,13 +248,7 @@ class TrainableAligner(BaseAligner):
             subprocess.call([thirdparty_binary('gmm-init-model'),
                              '--write-occs=' + occs_path, tree_path, treeacc_path,
                              topo_path, mdl_path], stderr=logf)
-
-        """log_path = os.path.join(directory, 'log', 'mixup.log')
-        with open(log_path, 'w') as logf:
-            subprocess.call([thirdparty_binary('gmm-mixup'),
-                             '--mix-up={}'.format(config.initial_gauss_count),
-                             mdl_path, occs_path, mdl_path], stderr=logf)
-        os.remove(treeacc_path)"""
+        print("!!!!", os.path.exists(os.path.join(directory, '0.mdl')))
 
         compile_train_graphs(directory, self.dictionary.output_directory,
                              self.corpus.split_directory, self.num_jobs)
@@ -274,6 +262,30 @@ class TrainableAligner(BaseAligner):
                 shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),# ?
                             os.path.join(directory, 'trans.{}'.format(i)))      # ?
 
+    def _align_lda_mllt(self):
+        '''
+        Align the dataset using LDA + MLLT transforms
+        '''
+        print("align lda")
+        #model_directory = self.lda_mllt_directory
+        model_directory = self.tri_fmllr_directory
+        output_directory = self.lda_mllt_ali_directory
+        self._align_si(fmllr=True, lda_mllt=False)
+        sil_phones = self.dictionary.silence_csl
+
+        log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        calc_lda_mllt(model_directory, self.corpus.split_directory,
+                      sil_phones, self.num_jobs, self.lda_mllt_config, initial=True)
+        optional_silence = self.dictionary.optional_silence_csl
+        #align(0, model_directory, self.corpus.split_directory,
+        align(0, output_directory, self.corpus.split_directory,
+              optional_silence, self.num_jobs, self.lda_mllt_config)
+
+    def _do_lda_mllt_training(self):
+        self.call_back('Beginning LDA + MLLT training...')
+        self._do_training(self.lda_mllt_directory, self.lda_mllt_config)
+
     def train_lda_mllt(self):
         '''
         Perform LDA + MLLT training
@@ -281,7 +293,12 @@ class TrainableAligner(BaseAligner):
         #if os.path.exists(self.lda_mllt_final_model_path):
         #    print('LDA + MLLT training already done, using previous final.mdl')
         #    return
+
+        #if not os.path.exists(self.lta_mllt_ali_directory):
+        #    self._align_lda_mllt()
+        self._align_lda_mllt()  # Implemented!
+
         os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
 
-        self._init_lda_mllt()   # NOT YET IMPLEMENTED
-        self._do_lda_mllt_training()    # NOT YET IMPLEMENTED
+        self._init_lda_mllt()   # Implemented!
+        self._do_lda_mllt_training()    # Implemented!
