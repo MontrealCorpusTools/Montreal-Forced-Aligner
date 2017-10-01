@@ -59,6 +59,7 @@ class MonophoneConfig(object):
                            '--self-loop-scale=0.1']
         self.beam = 10
         self.retry_beam = 40
+        #self.retry_beam = 50
         self.max_gauss_count = 1000
         self.boost_silence = 1.0
         if kwargs.get('align_often', False):
@@ -70,6 +71,7 @@ class MonophoneConfig(object):
         self.power = 0.25
 
         self.do_fmllr = False
+        self.do_lda_mllt = False
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -135,7 +137,8 @@ class TriphoneConfig(MonophoneConfig):
         defaults = {'num_iters': 35,
                     'initial_gauss_count': 3100,
                     'max_gauss_count': 50000,
-                    'cluster_threshold': 100}
+                    'cluster_threshold': 100,
+                    'do_lda_mllt': False}
         defaults.update(kwargs)
         super(TriphoneConfig, self).__init__(**defaults)
 
@@ -223,11 +226,13 @@ class LdaMlltConfig(object):
         self.scale_opts = ['--transition-scale=1.0',
                            '--acoustic-scale=0.1',
                            '--self-loop-scale=0.1']
+        self.num_gauss = 5000
         self.beam = 10
-        self.retry_beam = 40
+        #self.retry_beam = 40
+        self.retry_beam = 100000000    # For testing
         self.initial_gauss_count = 5000
         self.cluster_threshold = -1
-        self.max_gauss_count = 1000
+        self.max_gauss_count = 10000
         self.boost_silence = 1.0
         if kwargs.get('align_often', False):
             self.realign_iters = [10, 20, 30]
@@ -248,12 +253,30 @@ class LdaMlltConfig(object):
 
     @property
     def max_iter_inc(self):
-        return self.num_iters - 10
-        
+        return self.num_iters
+
     @property
     def inc_gauss_count(self):
         return int((self.max_gauss_count - self.initial_gauss_count) / self.max_iter_inc)
 
+class DiagUbmConfig(object):
+    '''
+    fill in docstring
+    '''
+    def __init__(self, **kwargs):
+        self.num_iters = 4
+        self.num_gselect = 30
+        self.num_frames = 400000
+        self.num_gauss = 256
+
+        self.num_iters_init = 20
+        self.initial_gauss_proportion = 0.5
+        self.subsample = 2
+        self.cleanup = True
+        self.min_gaussian_weight = 0.0001
+
+        self.remove_low_count_gaussians = True
+        self.num_threads = 32
 
 class MfccConfig(object):
     '''

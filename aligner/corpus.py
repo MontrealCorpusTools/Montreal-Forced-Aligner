@@ -949,22 +949,23 @@ class Corpus(object):
                 utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(i))
                 cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
                 featspath = os.path.join(split_dir, 'feats.{}.scp'.format(i))
-                if not os.path.exists(path):
-                    with open(path, 'wb') as outf:
-                        cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
-                                                      '--utt2spk=ark:' + utt2spkpath,
-                                                      'scp:' + cmvnpath,
-                                                      'scp:' + featspath,
-                                                      'ark:-'], stdout=subprocess.PIPE,
-                                                     stderr=logf
-                                                     )
-                        with open(path, 'rb') as inf, open(path + '_sub', 'wb') as outf:
-                            subprocess.call([thirdparty_binary("splice-feats"),
-                                             '--left-context=3', '--right-context=3',
-                                             'ark:-',
-                                             'ark:-'], stdin=cmvn_proc.stdout,
-                                             stderr=logf, stdout=outf
-                                             )
+                #if not os.path.exists(path):
+                with open(path, 'wb') as outf:
+                    cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
+                                                  '--utt2spk=ark:' + utt2spkpath,
+                                                  'scp:' + cmvnpath,
+                                                  'scp:' + featspath,
+                                                  'ark:-'], stdout=subprocess.PIPE,
+                                                 stderr=logf
+                                                 )
+                    with open(path, 'rb') as inf, open(path + '_sub', 'wb') as outf:
+                        subprocess.call([thirdparty_binary("splice-feats"),
+                                         '--left-context=3', '--right-context=3',
+                                         'ark:-',
+                                         'ark:-'], stdin=cmvn_proc.stdout,
+                                         stderr=logf,
+                                         stdout=outf
+                                         )
     def _norm_splice_transform_feats(self, directory):
         split_dir = self.split_directory
         log_dir = os.path.join(split_dir, 'log')
@@ -1046,5 +1047,5 @@ class Corpus(object):
             self._split_feats(split_dir)
             self._split_cmvns(split_dir)
             self._split_and_norm_feats()
-            #For nnet
-            self._norm_splice_feats()
+        #For nnet
+        self._norm_splice_feats()

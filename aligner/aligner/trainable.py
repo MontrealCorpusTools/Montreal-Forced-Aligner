@@ -149,8 +149,8 @@ class TrainableAligner(BaseAligner):
         '''
         Initialize LDA + MLLT training.
         '''
-        log_dir = os.path.join(self.lda_mllt_directory, 'log')
-        os.makedirs(log_dir, exist_ok=True)
+        #log_dir = os.path.join(self.lda_mllt_directory, 'log')
+        #os.makedirs(log_dir, exist_ok=True)
 
         ##
         config = self.lda_mllt_config
@@ -161,6 +161,9 @@ class TrainableAligner(BaseAligner):
         #if os.path.exists(os.path.join(directory, '1.mdl')):
         #    return
         print('Initializing LDA + MLLT training...')
+
+        self.corpus._norm_splice_transform_feats(self.lda_mllt_directory)
+
         context_opts = []
         ci_phones = self.dictionary.silence_csl
 
@@ -212,7 +215,8 @@ class TrainableAligner(BaseAligner):
                 est_lda_proc.communicate()
 
         # Accumulating tree stats
-        tree_stats(directory, align_directory, self.corpus.split_directory, ci_phones, self.num_jobs)
+        tree_stats(directory, align_directory, self.corpus.split_directory, ci_phones,
+                   self.num_jobs, feature_name='cmvnsplicetransformfeats')
 
         # Getting questions for tree clustering
         log_path = os.path.join(directory, 'log', 'cluster_phones.log')
@@ -242,18 +246,24 @@ class TrainableAligner(BaseAligner):
 
         # Initializing the model
         log_path = os.path.join(directory, 'log', 'init_model.log')
-        occs_path = os.path.join(directory, '0.occs')
-        mdl_path = os.path.join(directory, '0.mdl')
+        #occs_path = os.path.join(directory, '0.occs')
+        occs_path = os.path.join(mdl_dir, '0.occs')
+        #mdl_path = os.path.join(directory, '0.mdl')
+        mdl_path = os.path.join(mdl_dir, '0.mdl')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('gmm-init-model'),
                              '--write-occs=' + occs_path, tree_path, treeacc_path,
                              topo_path, mdl_path], stderr=logf)
-        print("!!!!", os.path.exists(os.path.join(directory, '0.mdl')))
+        print("!!!!", os.path.exists(os.path.join(mdl_dir, '0.mdl')))
+        print("!!!!", os.path.exists(os.path.join(mdl_dir, '0.occs')))
 
         compile_train_graphs(directory, self.dictionary.output_directory,
                              self.corpus.split_directory, self.num_jobs)
-        os.rename(occs_path, os.path.join(directory, '1.occs')) # ?
-        os.rename(mdl_path, os.path.join(directory, '1.mdl'))   # ?
+        #os.rename(occs_path, os.path.join(directory, '1.occs')) # ?
+        #os.rename(mdl_path, os.path.join(directory, '1.mdl'))   # ?
+        shutil.copy(mdl_path, os.path.join(directory, '1.mdl'))
+        shutil.copy(occs_path, os.path.join(directory, '1.occs'))
+
 
         convert_alignments(directory, align_directory, self.num_jobs)
 
@@ -266,21 +276,26 @@ class TrainableAligner(BaseAligner):
         '''
         Align the dataset using LDA + MLLT transforms
         '''
+        log_dir = os.path.join(self.lda_mllt_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
         print("align lda")
+        feat_name = "cmvnsplicetransformfeats"
         #model_directory = self.lda_mllt_directory
         model_directory = self.tri_fmllr_directory
         output_directory = self.lda_mllt_ali_directory
-        self._align_si(fmllr=True, lda_mllt=False)
+        self._align_si(fmllr=False, lda_mllt=True, feature_name=feat_name)
         sil_phones = self.dictionary.silence_csl
 
         log_dir = os.path.join(output_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         calc_lda_mllt(model_directory, self.corpus.split_directory,
-                      sil_phones, self.num_jobs, self.lda_mllt_config, initial=True)
+                      self.tri_fmllr_directory,
+                      sil_phones, self.num_jobs, self.lda_mllt_config,
+                      self.lda_mllt_config.num_iters, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
         #align(0, model_directory, self.corpus.split_directory,
         align(0, output_directory, self.corpus.split_directory,
-              optional_silence, self.num_jobs, self.lda_mllt_config)
+              optional_silence, self.num_jobs, self.lda_mllt_config, feature_name=feat_name)
 
     def _do_lda_mllt_training(self):
         self.call_back('Beginning LDA + MLLT training...')
@@ -302,3 +317,22 @@ class TrainableAligner(BaseAligner):
 
         self._init_lda_mllt()   # Implemented!
         self._do_lda_mllt_training()    # Implemented!
+
+    def train_diag_ubm(self):
+        '''
+        Train a diagonal UBM on the LDA + MLLT model
+        '''
+        #if os.path.exists(self.diag_ubm_final_model_path):  # What actually is this?
+        #    print('Diagonal UBM training already done; using previous model')
+        #    return
+        log_dir = os.path.join(self.diag_ubm_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+
+        directory = self.corpus.split_directory
+        lda_mllt_path = self.lda_mllt_directory
+        output_path = self.diag_ubm_directory
+        old_config = self.lda_mllt_config
+        diag_ubm_config = self.diag_ubm_config
+        ci_phones = self.dictionary.silence_csl
+
+        final_mat_path = os.path.join(lda_mllt_path, 'final.mat')

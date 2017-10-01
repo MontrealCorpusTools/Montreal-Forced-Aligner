@@ -33,3 +33,9 @@ def test_sick_lda_mllt(sick_dict, sick_corpus, generated_dir):
     a.train_lda_mllt()
     assert(1==2)
     a.export_textgrids()
+
+def test_sick_diag_ubm(sick_dict, sick_corpus, generated_dir):
+    a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),
+                         temp_directory=os.path.join(generated_dir, 'sickcorpus'))
+    a.train_diag_ubm()
+    assert(1==2)
