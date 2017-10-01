@@ -480,8 +480,8 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     #print("DUMMY:", dummy)
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
-        #logf.write("HELLO")
-        #logf.write(feat_path)
+        logf.write("HELLO")
+        logf.write(feat_path)
         #logf.write(dummy)
         #print("PRINTING AT SAME TIME:", feat_path)
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
@@ -672,13 +672,19 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
 def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  # pragma: no cover
     context_opts = []
     log_path = os.path.join(directory, 'log', 'acc_tree.{}.log'.format(job_name))
+    print("TREE LOG PATH:", log_path)
 
     treeacc_path = os.path.join(directory, '{}.treeacc'.format(job_name))
+
+    print("TREEACC PATH:", treeacc_path)
+    print("TREE MDL:", mdl)
+
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
                         ['--ci-phones=' + ci_phones, mdl, "ark:" + feat_path,
                          "ark:" + ali_path,
                          treeacc_path], stderr=logf)
+
 
 
 def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs, fmllr=False, lda_mllt=False, feature_name=None):
@@ -719,7 +725,13 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
     else:
         feat_name += '.{}_sub'
 
+    print("feature name:", feature_name)
     mdl_path = os.path.join(align_directory, 'final.mdl')
+    #if feature_name == None:
+    #    print(":)")
+    #    mdl_path = os.path.join(directory, 'final.mdl')
+    #    align_directory = directory
+    print("mdl path for tree:", mdl_path)
     jobs = [(directory, ci_phones, mdl_path,
              os.path.join(split_directory, feat_name.format(x)),
              os.path.join(align_directory, 'ali.{}'.format(x)), x)

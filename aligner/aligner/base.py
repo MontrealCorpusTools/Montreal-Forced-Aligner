@@ -204,8 +204,8 @@ class BaseAligner(object):
         elif fmllr:     # First pass with fmllr, final path doesn't exist yet
             print("here2 fmllr first pass")
             model_directory = self.tri_directory
-            #output_directory = self.tri_fmllr_ali_directory
-            output_directory = self.tri_fmllr_directory
+            output_directory = self.tri_fmllr_ali_directory
+            #output_directory = self.tri_fmllr_directory
             config = self.tri_fmllr_config
 
         elif lda_mllt and os.path.exists(self.lda_mllt_final_model_path):
@@ -217,7 +217,8 @@ class BaseAligner(object):
         elif lda_mllt:  # First pass with LDA + MLLT, final path doesn't exist yet
             print("first pass lda_mllt")
             model_directory = self.tri_fmllr_directory
-            output_directory = self.lda_mllt_ali_directory
+            #output_directory = self.lda_mllt_ali_directory
+            output_directory = self.lda_mllt_directory
             config = self.lda_mllt_config
         elif os.path.exists(self.tri_final_model_path):
             print("here2 no fmllr")
@@ -254,9 +255,11 @@ class BaseAligner(object):
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
         shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
 
-        #if output_directory == self.tri_fmllr_ali_directory:
-        #    shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
-        #    shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
+        print("checking:", os.path.exists(os.path.join(self.tri_fmllr_directory, 'final.mdl')))
+        if output_directory == self.tri_fmllr_ali_directory:
+            os.makedirs(self.tri_fmllr_directory) #, exists_ok=True)
+            shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
+            shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
 
     def parse_log_directory(self, directory, iteration):
         '''
@@ -301,8 +304,8 @@ class BaseAligner(object):
         model_directory = self.tri_directory        # Get final.mdl from here
         #model_directory = self.tri_ali_directory
         #output_directory = self.tri_ali_directory
-        #output_directory = self.tri_fmllr_ali_directory
-        output_directory = self.tri_fmllr_directory # End up putting fmllr alignments here
+        output_directory = self.tri_fmllr_ali_directory
+        #output_directory = self.tri_fmllr_directory # End up putting fmllr alignments here
         #self._align_si(fmllr=False)
         self._align_si(fmllr=True)
         sil_phones = self.dictionary.silence_csl
@@ -351,7 +354,6 @@ class BaseAligner(object):
                    self.corpus.split_directory, ci_phones, self.num_jobs)
         log_path = os.path.join(directory, 'log', 'questions.log')
         tree_path = os.path.join(directory, 'tree')
-        #tree_path = os.pat.join(align_directory, 'tree')
         treeacc_path = os.path.join(directory, 'treeacc')
         sets_int_path = os.path.join(self.dictionary.phones_dir, 'sets.int')
         roots_int_path = os.path.join(self.dictionary.phones_dir, 'roots.int')
@@ -395,6 +397,7 @@ class BaseAligner(object):
             subprocess.call([thirdparty_binary('gmm-mixup'),
                              '--mix-up={}'.format(config.initial_gauss_count),
                              mdl_path, occs_path, mdl_path], stderr=logf)
+
         os.remove(treeacc_path)
 
         compile_train_graphs(directory, self.dictionary.output_directory,
@@ -413,6 +416,8 @@ class BaseAligner(object):
             for i in range(self.num_jobs):
                 shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
                             os.path.join(directory, 'trans.{}'.format(i)))
+
+
 
     def train_tri_fmllr(self):
         '''
