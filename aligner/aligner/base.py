@@ -201,10 +201,11 @@ class BaseAligner(object):
         #
         #elif lda_mllt and os.path.exists(self.lda_mllt_final_model_path):
 
-        elif fmllr:     # First pass with fmllr, final path doesn't exist YET
+        elif fmllr:     # First pass with fmllr, final path doesn't exist yet
             print("here2 fmllr first pass")
             model_directory = self.tri_directory
-            output_directory = self.tri_fmllr_ali_directory
+            #output_directory = self.tri_fmllr_ali_directory
+            output_directory = self.tri_fmllr_directory
             config = self.tri_fmllr_config
 
         elif lda_mllt and os.path.exists(self.lda_mllt_final_model_path):
@@ -213,11 +214,11 @@ class BaseAligner(object):
             output_directory = self.lda_mllt_ali_directory
             config = self.lda_mllt_config
         #
-        elif lda_mllt:
+        elif lda_mllt:  # First pass with LDA + MLLT, final path doesn't exist yet
             print("first pass lda_mllt")
-            model_directory = self.lda_mllt_directory
+            model_directory = self.tri_fmllr_directory
             output_directory = self.lda_mllt_ali_directory
-            config = self.tri_fmllr_config
+            config = self.lda_mllt_config
         elif os.path.exists(self.tri_final_model_path):
             print("here2 no fmllr")
             model_directory = self.tri_directory
@@ -253,9 +254,9 @@ class BaseAligner(object):
         shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(output_directory, 'final.mdl'))
         shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(output_directory, 'final.occs'))
 
-        if output_directory == self.tri_fmllr_ali_directory:
-            shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
-            shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
+        #if output_directory == self.tri_fmllr_ali_directory:
+        #    shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
+        #    shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
 
     def parse_log_directory(self, directory, iteration):
         '''

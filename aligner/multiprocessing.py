@@ -463,9 +463,27 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
+    # There is weirdness in here between what is being passed from align()
+    # and what actually appears here.
+    # e.g. before entering the with statement, fst_path is printed
+    # /Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/tests/data/generated/sickcorpus/lda_mllt_ali/fsts.0
+    # but it appears in the log as
+    # /Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/tests/data/generated/sickcorpus/lda_mllt/fsts.0
+    # (note change in directory path).
+
     print("MDL:", mdl)
+    print("FROM ALIGN, FEAT PATH:", feat_path)
+    print("FROM ALIGN, FST PATH:", fst_path)
+    print("FROM ALIGN, ALI PATH:", ali_path)
+    #dummy = feat_path
+    #dummy = dummy.upper() + "..."
+    #print("DUMMY:", dummy)
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
+        #logf.write("HELLO")
+        #logf.write(feat_path)
+        #logf.write(dummy)
+        #print("PRINTING AT SAME TIME:", feat_path)
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
                                       ['--beam={}'.format(config.beam),
                                        #'--retry-beam={}'.format(config.beam * 4),
@@ -513,13 +531,18 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 
     if feature_name == None:
         feat_name = 'cmvndeltafeats'
-    else:
-        feat_name = feature_name
+    #else:
+    #    feat_name = feature_name
+
     #if config.do_fmllr:
     #    feat_name += '_fmllr'
+
     if config.do_lda_mllt:
         #feat_name += '_lda_mllt'
-        feat_name += '.{}_sub'
+        #feat_name += '.{}_sub'
+
+        feat_name = 'cmvnsplicetransformfeats.{}_sub'
+
         #print("hello")
     else:
         feat_name += '.{}'
@@ -776,7 +799,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
     print("FROM CALC FMLLR, INITIAL?", initial)
     print("FROM CALC FMLLR, FEAT PATH:", feat_path)
-    with open(log_path, 'a') as logf:
+    with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('ali-to-post'),
                          "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
 

@@ -281,8 +281,8 @@ class TrainableAligner(BaseAligner):
         print("align lda")
         feat_name = "cmvnsplicetransformfeats"
         #model_directory = self.lda_mllt_directory
-        model_directory = self.tri_fmllr_directory
-        output_directory = self.lda_mllt_ali_directory
+        model_directory = self.tri_fmllr_directory  # Get final.mdl from here
+        output_directory = self.lda_mllt_directory  # Alignments end up here
         self._align_si(fmllr=False, lda_mllt=True, feature_name=feat_name)
         sil_phones = self.dictionary.silence_csl
 
@@ -293,8 +293,7 @@ class TrainableAligner(BaseAligner):
                       sil_phones, self.num_jobs, self.lda_mllt_config,
                       self.lda_mllt_config.num_iters, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
-        #align(0, model_directory, self.corpus.split_directory,
-        align(0, output_directory, self.corpus.split_directory,
+        align(0, model_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, self.lda_mllt_config, feature_name=feat_name)
 
     def _do_lda_mllt_training(self):
