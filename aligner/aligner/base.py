@@ -188,7 +188,7 @@ class BaseAligner(object):
             num = int(matches.groups()[0])
         return num
 
-    def _align_si(self, fmllr=True, lda_mllt=False, feature_name=None):
+    def _align_si(self, fmllr=False, lda_mllt=False, feature_name=None):
         '''
         Generate an alignment of the dataset
         '''
@@ -218,7 +218,7 @@ class BaseAligner(object):
             print("first pass lda_mllt")
             model_directory = self.tri_fmllr_directory
             #output_directory = self.lda_mllt_ali_directory
-            output_directory = self.lda_mllt_directory
+            output_directory = self.lda_mllt_ali_directory
             config = self.lda_mllt_config
         elif os.path.exists(self.tri_final_model_path):
             print("here2 no fmllr")
@@ -260,6 +260,10 @@ class BaseAligner(object):
             os.makedirs(self.tri_fmllr_directory) #, exists_ok=True)
             shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
             shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
+        elif output_directory == self.lda_mllt_ali_directory:
+            os.makedirs(self.lda_mllt_directory, exist_ok=True)
+            shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.lda_mllt_directory, 'final.mdl'))
+            shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.lda_mllt_directory, 'final.occs'))
 
     def parse_log_directory(self, directory, iteration):
         '''
@@ -463,7 +467,9 @@ class BaseAligner(object):
                 print("from do_training")
                 align(i, directory, self.corpus.split_directory,
                       self.dictionary.optional_silence_csl,
-                      self.num_jobs, config)
+                      self.num_jobs, config,
+                      feature_name='cmvnsplicetransformfeats')
+                #return
             if config.do_fmllr and i in config.fmllr_iters:
                 print("calc fmllr")
                 calc_fmllr(directory, self.corpus.split_directory, sil_phones,
@@ -473,11 +479,12 @@ class BaseAligner(object):
                 print("calc lda mllt")
                 calc_lda_mllt(directory, self.corpus.split_directory,
                               self.lda_mllt_directory, sil_phones,
-                              self.num_jobs, config, config.num_iters, initial=False, iteration=i)
+                              self.num_jobs, config, config.num_iters,
+                              initial=False, iteration=i, corpus=self.corpus)
             #
             print("getting stats")
             acc_stats(i, directory, self.corpus.split_directory, self.num_jobs,
-                      config.do_fmllr, config.do_lda_mllt)
+                      config.do_fmllr, do_lda_mllt=config.do_lda_mllt)
             log_path = os.path.join(log_directory, 'update.{}.log'.format(i))
             with open(log_path, 'w') as logf:
                 acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))
@@ -499,5 +506,5 @@ class BaseAligner(object):
                     os.path.join(directory, 'final.mdl'))
         shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),
                     os.path.join(directory, 'final.occs'))
-        #shutil.copy(os.path.join(self.lda_mllt_directory, '{}.mat'.format(config.num_iters)),
-        #            os.path.join(self.lda_mllt_directory, 'final.mat'))
+        shutil.copy(os.path.join(self.lda_mllt_directory, '{}.mat'.format(config.num_iters)),
+                    os.path.join(self.lda_mllt_directory, 'final.mat'))

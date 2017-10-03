@@ -228,20 +228,22 @@ class LdaMlltConfig(object):
                            '--self-loop-scale=0.1']
         self.num_gauss = 5000
         self.beam = 10
-        #self.retry_beam = 40
-        self.retry_beam = 100000000    # For testing
+        self.retry_beam = 40
+        #self.retry_beam = 100    # For testing
         self.initial_gauss_count = 5000
         self.cluster_threshold = -1
         self.max_gauss_count = 10000
         self.boost_silence = 1.0
-        if kwargs.get('align_often', False):
-            self.realign_iters = [10, 20, 30]
-        else:
-            self.realign_iters = [1, 5, 10, 15, 20, 25, 30, 35, 38]
+        #if kwargs.get('align_often', False):
+        #    self.realign_iters = [10, 20, 30]
+        #else:
+        #    self.realign_iters = [1, 5, 10, 15, 20, 25, 30, 35, 38]
+        self.realign_iters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
         self.stage = -5
         self.power = 0.25
 
         self.dim = 40
+        #self.dim = 91
         self.careful = False
         self.randprune = 4.0
         self.splice_opts = ['--left-context=3', '--right-context=3']

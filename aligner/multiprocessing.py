@@ -100,7 +100,7 @@ def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cov
         acc_proc.communicate()
 
 
-def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False, lda_mllt=False, feature_name=None):
+def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False, do_lda_mllt=None, feature_name=None):
     """
     Multiprocessing function that computes stats for GMM training
 
@@ -132,12 +132,16 @@ def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False, lda_
         feat_name = feature_name
     if fmllr:
         feat_name += '_fmllr'
-    if lda_mllt:
-        feat_name += '_lda_mllt'
-    if lda_mllt:
-        feat_name += '.{}_sub'
-    else:
-        feat_name += '.{}'
+
+    if do_lda_mllt == True:
+        feat_name = 'cmvnsplicetransformfeats'
+
+    #if lda_mllt:
+    #    feat_name = 'cmvnsplicetransformfeats'
+        #feat_name += '_lda_mllt'
+
+    feat_name += '.{}'
+
     jobs = [(directory, iteration, x, os.path.join(split_directory, feat_name.format(x)))
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
@@ -475,12 +479,13 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     print("FROM ALIGN, FEAT PATH:", feat_path)
     print("FROM ALIGN, FST PATH:", fst_path)
     print("FROM ALIGN, ALI PATH:", ali_path)
+    print("FROM ALIGN, LOG PATH:", log_path)
     #dummy = feat_path
     #dummy = dummy.upper() + "..."
     #print("DUMMY:", dummy)
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
-        logf.write("HELLO")
+        logf.write("HELLO!!!")
         logf.write(feat_path)
         #logf.write(dummy)
         #print("PRINTING AT SAME TIME:", feat_path)
@@ -495,6 +500,18 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
                                       stdout=outf)
         align_proc.communicate()
     print("leaving align()")
+
+def align_no_pool(iteration, directory, split_directory, optional_silence, num_jobs, config, feature_name=None):
+    mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
+    mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
+                                           config.boost_silence, optional_silence, make_path_safe(mdl_path))
+    print("Safe mdl path:", make_path_safe(mdl_path))
+
+    feat_name = feature_name + '.{}'
+
+    for x in range(num_jobs):
+        align_func(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)))
+
 
 
 def align(iteration, directory, split_directory, optional_silence, num_jobs, config, feature_name=None):
@@ -531,19 +548,12 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 
     if feature_name == None:
         feat_name = 'cmvndeltafeats'
-    #else:
-    #    feat_name = feature_name
-
-    #if config.do_fmllr:
-    #    feat_name += '_fmllr'
 
     if config.do_lda_mllt:
         #feat_name += '_lda_mllt'
         #feat_name += '.{}_sub'
 
-        feat_name = 'cmvnsplicetransformfeats.{}_sub'
-
-        #print("hello")
+        feat_name = 'cmvnsplicetransformfeats.{}'
     else:
         feat_name += '.{}'
     jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)))
@@ -678,6 +688,8 @@ def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  
 
     print("TREEACC PATH:", treeacc_path)
     print("TREE MDL:", mdl)
+    print("TREE ALI PATH:", ali_path)
+    print("TREE FEAT PATH:", feat_path)
 
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
@@ -720,10 +732,12 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
     if fmllr:
         feat_name += '_fmllr'
 
-    if feature_name == None:
-        feat_name += '.{}'
-    else:
-        feat_name += '.{}_sub'
+    #feat_name += '.{}'
+
+    #if feature_name == None:
+    feat_name += '.{}'
+    #else:
+    #    feat_name += '.{}_sub'
 
     print("feature name:", feature_name)
     mdl_path = os.path.join(align_directory, 'final.mdl')
@@ -745,8 +759,8 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
                         tree_accs, stderr=logf)
-    for f in tree_accs:
-        os.remove(f)
+    #for f in tree_accs:
+    #    os.remove(f)
 
 
 def convert_alignments_func(directory, align_directory, job_name):  # pragma: no cover
@@ -895,23 +909,23 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
 
 
 def calc_lda_mllt_func(directory, split_directory, fmllr_dir, sil_phones, num_jobs, job_name, config, num_iters, initial,
-                    model_name='final'):  # pragma: no cover
+                    model_name='final', corpus=None):  # pragma: no cover
     #print("from calc_lda_mllt:", directory)
     feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats')
     if not initial:
         feat_path += '_lda_mllt'
-    feat_path += '.{}_sub'.format(job_name)
-    feat_lda_mllt_path = os.path.join(split_directory, 'cmvnsplicetransformfeats_lda_mllt.{}_sub'.format(job_name))
+    feat_path += '.{}'.format(job_name)
+    feat_lda_mllt_path = os.path.join(split_directory, 'cmvnsplicetransformfeats_lda_mllt.{}'.format(job_name))
     print("INITIAL?:", initial)
     #print("FEAT PATH:", feat_path)
     log_path = os.path.join(directory, 'log', 'lda_mllt.{}.log'.format(job_name))
-    ali_path = os.path.join(directory+'_ali', 'ali.{}'.format(job_name))
+    ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     if not initial:
         mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
     else:
         mdl_path = os.path.join(directory, '1.mdl')
-        model_name = 0
-        feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}_sub'.format(job_name))
+        model_name = 1
+        feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name))
     print("MODEL NAME:", model_name)
     print("MODEL PATH:", mdl_path)
     spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
@@ -926,84 +940,115 @@ def calc_lda_mllt_func(directory, split_directory, fmllr_dir, sil_phones, num_jo
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
     #print("num_iters:", num_iters)
     print("LOG PATH:", log_path)
-    for k in range(num_iters):
-        with open(log_path, 'a') as logf:
-            subprocess.call([thirdparty_binary('ali-to-post'),
-                             "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
+    #for k in range(num_iters+1):
+    #    if k == 0:
+    #        continue
 
-            subprocess.call([thirdparty_binary('weight-silence-post'), '0.0',
-                             sil_phones, mdl_path, 'ark:' + post_path,
-                             'ark:' + weight_path], stderr=logf)
-            if initial:
-                feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}_sub'.format(job_name))
-            print("FEAT PATH JUST BEFORE CALL:", feat_path)
-            if k == 0:
-                print("in initial!")
-                logf.write("NOTE: IN THE INITIAL PART")
-                subprocess.call([thirdparty_binary('gmm-acc-mllt'),
-                                 '--rand-prune=' + str(config.randprune),
-                                 mdl_path,
-                                 'ark:'+os.path.join(split_directory, 'cmvnsplicetransformfeats.{}_sub'.format(job_name)),
-                                 'ark:'+post_path,
-                                 directory + '/{}.{}.macc'.format(k, job_name)],
-                                 stderr=logf)
-            else:
-                #print("DONE")
-                subprocess.call([thirdparty_binary('gmm-acc-mllt'),
-                                 '--rand-prune=' + str(config.randprune),
-                                 mdl_path,
-                                 #os.path.join(directory, '1.mdl'),
-                                 'ark:'+feat_path,
-                                 #'ark:-',
-                                 'ark:'+post_path,
-                                 #directory + '/{}.{}.macc'.format(model_name, job_name)],
-                                 directory + '/{}.{}.macc'.format(k, job_name)],
-                                 stderr=logf)
-                                 #)
+    # Aligning data
+    #align_no_pool(model_name, directory, split_directory, sil_phones, num_jobs, config, feature_name='cmvnsplicetransformfeats')
 
-            macc_list = []
-            if k == 0:
-                macc_list.append(directory+'/{}.{}.macc'.format(0, job_name))
-            else:
-                for j in range(int(k)):
-                    macc_list.append(directory+'/{}.{}.macc'.format(j, job_name))
-            subprocess.call([thirdparty_binary('est-mllt'),
-                                               directory + '/{}.mat.new'.format(k)]
-                                               + macc_list,
-                                               stderr=logf)
-        log_path = os.path.join(directory, 'log', 'transform_means.{}.log'.format(job_name))
-        with open(log_path, 'w') as logf:
-            subprocess.call([thirdparty_binary('gmm-transform-means'),
-                                               directory + '/{}.mat.new'.format(k),
-                                               mdl_path, mdl_path],
-                                               stderr=logf)
+    # Estimating MLLT
+    with open(log_path, 'a') as logf:
+        subprocess.call([thirdparty_binary('ali-to-post'),
+                         "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
+
+        subprocess.call([thirdparty_binary('weight-silence-post'), '0.0',
+                         sil_phones, mdl_path, 'ark:' + post_path,
+                         'ark:' + weight_path], stderr=logf)
+        if initial:
+            feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name))
+        print("FEAT PATH JUST BEFORE CALL:", feat_path)
+        if model_name == 1:
+            print("in initial!")
+            subprocess.call([thirdparty_binary('gmm-acc-mllt'),
+                             '--rand-prune=' + str(config.randprune),
+                             mdl_path,
+                             'ark:'+os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name)),
+                             'ark:'+post_path,
+                             directory + '/{}.{}.macc'.format(model_name, job_name)],
+                             stderr=logf)
+        else:
+            subprocess.call([thirdparty_binary('gmm-acc-mllt'),
+                             '--rand-prune=' + str(config.randprune),
+                             mdl_path,
+                             #os.path.join(directory, '1.mdl'),
+                             'ark:'+feat_path,
+                             #'ark:-',
+                             'ark:'+post_path,
+                             #directory + '/{}.{}.macc'.format(model_name, job_name)],
+                             directory + '/{}.{}.macc'.format(model_name, job_name)],
+                             stderr=logf)
+                             #)
+
+        macc_list = []
+        for j in range(int(model_name)+1):
+            if j == range(int(model_name))[0]:
+                continue
+            macc_list.append(directory+'/{}.{}.macc'.format(j, job_name))
+        subprocess.call([thirdparty_binary('est-mllt'),
+                                           directory + '/{}.mat.new'.format(model_name)]
+                                           + macc_list,
+                                           stderr=logf)
+    log_path = os.path.join(directory, 'log', 'transform_means.{}.log'.format(job_name))
+    with open(log_path, 'a') as logf:
+        subprocess.call([thirdparty_binary('gmm-transform-means'),
+                                           directory + '/{}.mat.new'.format(model_name),
+                                           mdl_path, mdl_path],
+                                           stderr=logf)
 
 
-            if not initial:
-                subprocess.call([thirdparty_binary('compose-transforms'),
-                                '--print-args=false',
-                                directory + '/{}.mat.new'.format(k),
-                                directory + '/{}.mat'.format(int(k-1)),
-                                directory + '/{}.mat'.format(k)],
-                                stderr=logf)
-                #print("model we're on:", '{}.mat'.format(k))
-                feat_path = os.path.join(split_directory, 'cmvnsplicefeats.{}'.format(job_name))
-            else:
-                trans_path = tmp_trans_path
-            subprocess.call([thirdparty_binary('transform-feats'),
-                             '--utt2spk=ark:' + utt2spk_path,
-                             'ark:' + trans_path, 'ark:' + feat_path,
-                             'ark:' + feat_lda_mllt_path],
+        if not initial:
+            subprocess.call([thirdparty_binary('compose-transforms'),
+                            '--print-args=false',
+                            directory + '/{}.mat.new'.format(model_name),
+                            directory + '/{}.mat'.format(int(model_name)-1),
+                            directory + '/{}.mat'.format(model_name)],
                             stderr=logf)
-            # New
-            #shutil.copy(os.path.join(fmllr_dir, '{}.mat'.format(config.num_iters)),
-            #            os.path.join(fmllr_dir, 'final.mat'))
+            feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name))
+            #feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}_lda_mllt_sub'.format(job_name))
+            #feat_path = feat_lda_mllt_path
+        else:
+            trans_path = tmp_trans_path
+        #subprocess.call([thirdparty_binary('transform-feats'),
+                         #'--utt2spk=ark:' + utt2spk_path,
+                         #'ark:' + trans_path, 'ark:' + feat_path,
+                         #'ark:' + feat_lda_mllt_path],
 
-        # Last part of loop
+        #                stderr=logf)
+        corpus._norm_splice_transform_feats(directory, num=int(model_name))
+
+    # Last part of loop
+    """log_path = os.path.join(directory, 'log', 'gmm_est.{}.log'.format(job_name))
+    with open(log_path, 'a') as logf:
+        logf.write("HELLO")
+        logf.write(feat_path)
+        gmm_acc_stats_proc = subprocess.call([thirdparty_binary('gmm-acc-stats-ali'),
+                                              mdl_path,
+                                              'ark:' + feat_path,
+                                              'ark:' + directory + '/ali.{}'.format(job_name),
+                                              directory + '/{}.{}.acc'.format(k, job_name)],
+                                              #stdout=subprocess.PIPE,
+                                              stderr=logf)
+        if job_name == 0:
+            acc_files = [os.path.join(directory, '{}.{}.acc'.format(k,0))]
+            logf.write("JOB NAME IS 0")
+        else:
+            acc_files = [os.path.join(directory, '{}.{}.acc'.format(k,x)) for x in range(job_name)]
+            logf.write("JOB NAME NOT 0")
+        #acc_files = [os.path.join(directory, '{}.{}.acc'.format(k, job_name)) for ]
+        est_proc = subprocess.call([thirdparty_binary('gmm-est'),
+                                     '--write-occs=' + directory+'/{}.occs'.format(k+1),
+                                     '--mix-up={}'.format(config.num_gauss), '--power={}'.format(config.power),
+                                     mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                                                 ' '.join(map(make_path_safe, acc_files))),
+                                     os.path.join(directory, '{}.mdl'.format(k+1))],
+                                     #stdin=gmm_acc_stats_proc.stdout,
+                                     stderr=logf)
+        #est_proc.communicate()"""
 
 
 def calc_lda_mllt(directory, split_directory, fmllr_dir, sil_phones, num_jobs, config, num_iters,
-               initial=False, iteration=None):
+               initial=False, iteration=None, corpus=None):
     """
     Fill out docstring
 
@@ -1012,7 +1057,7 @@ def calc_lda_mllt(directory, split_directory, fmllr_dir, sil_phones, num_jobs, c
         model_name = 'final'
     else:
         model_name = iteration
-    jobs = [(directory, split_directory, fmllr_dir, sil_phones, num_jobs, x, config, num_iters, initial, model_name)
+    jobs = [(directory, split_directory, fmllr_dir, sil_phones, num_jobs, x, config, num_iters, initial, model_name, corpus)
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(calc_lda_mllt_func, args=i) for i in jobs]
