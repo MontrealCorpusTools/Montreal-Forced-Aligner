@@ -40,7 +40,8 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'nnet-relabel-egs', 'nnet-compute-prob', 'nnet-show-progress',
                       'nnet-am-copy', 'nnet-train', 'nnet-am-average', 'nnet-am-fix',
                       'nnet-combine-fast', 'online2-wav-nnet2-latgen-threaded',
-                      'online2-wav-ivector-config-latgen-faster']
+                      'online2-wav-ivector-config-latgen-faster', 'apply-cmvn-online',
+                      'subsample-feats', 'gmm-global-sum-accs']
 
 linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libfstscript.so.7', 'libfstfarscript.so.7',

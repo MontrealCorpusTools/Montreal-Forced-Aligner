@@ -270,6 +270,7 @@ class DiagUbmConfig(object):
         self.num_gselect = 30
         self.num_frames = 400000
         self.num_gauss = 256
+        self.num_gselect = 30
 
         self.num_iters_init = 20
         self.initial_gauss_proportion = 0.5
@@ -279,6 +280,7 @@ class DiagUbmConfig(object):
 
         self.remove_low_count_gaussians = True
         self.num_threads = 32
+        self.splice_opts = ['--left-context=3', '--right-context=3']
 
 class MfccConfig(object):
     '''

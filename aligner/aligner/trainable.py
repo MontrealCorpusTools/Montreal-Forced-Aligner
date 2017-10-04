@@ -9,7 +9,7 @@ from ..helper import thirdparty_binary, make_path_safe
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
                                convert_ali_to_textgrids, calc_fmllr,
-                               calc_lda_mllt)
+                               calc_lda_mllt, gmm_gselect, acc_global_stats)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -339,11 +339,120 @@ class TrainableAligner(BaseAligner):
         log_dir = os.path.join(self.diag_ubm_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
-        directory = self.corpus.split_directory
+        split_dir = self.corpus.split_directory
+        train_dir = self.corpus.output_directory
         lda_mllt_path = self.lda_mllt_directory
-        output_path = self.diag_ubm_directory
+        directory = self.diag_ubm_directory
+
+        #cmvn_path = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
+        cmvn_path = os.path.join(train_dir, 'cmvn.scp')
+
         old_config = self.lda_mllt_config
-        diag_ubm_config = self.diag_ubm_config
+        config = self.diag_ubm_config
         ci_phones = self.dictionary.silence_csl
 
         final_mat_path = os.path.join(lda_mllt_path, 'final.mat')
+
+        # Beginning code: will likely need to be refactored
+
+        # Create global_cmvn.stats
+        log_path = os.path.join(directory, 'log', 'make_global_cmvn.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('matrix-sum'),
+                            '--binary=false',
+                            'scp:' + cmvn_path,
+                             os.path.join(directory, 'global_cmvn.stats')],
+                             stderr=logf)
+
+        # Get all feats
+        all_feats_path = os.path.join(split_dir, 'cmvnonlinesplicetransformfeats')
+        log_path = os.path.join(split_dir, 'log', 'cmvnonlinesplicetransform.log')
+        with open(log_path, 'w') as logf:
+            with open(all_feats_path, 'wb') as outf:
+                apply_cmvn_online_proc = subprocess.Popen([thirdparty_binary('apply-cmvn-online'),
+                                                          #'--config=' +
+                                                          # This^ makes reference to a config file
+                                                          # in Kaldi, but it's empty there
+                                                          os.path.join(directory, 'global_cmvn.stats'),
+                                                          'scp:' + train_dir + '/feats.scp',
+                                                          'ark:-'],
+                                                          stdout=subprocess.PIPE,
+                                                          stderr=logf)
+                splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats')]
+                                                     + config.splice_opts +
+                                                     ['ark:-', 'ark:-'],
+                                                     stdin=apply_cmvn_online_proc.stdout,
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=logf)
+                transform_feats_proc = subprocess.Popen([thirdparty_binary('transform-feats'),
+                                                        os.path.join(lda_mllt_path, 'final.mat'),
+                                                        'ark:-', 'ark:-'],
+                                                        stdin=splice_feats_proc.stdout,
+                                                        stdout=outf,
+                                                        stderr=logf)
+                transform_feats_proc.communicate()
+
+        # Initialize model from E-M in memory
+        num_gauss_init = int(config.initial_gauss_proportion * int(config.num_gauss))
+        log_path = os.path.join(directory, 'log', 'gmm_init.log')
+        with open(log_path, 'w') as logf:
+            gmm_init_proc = subprocess.Popen([thirdparty_binary('gmm-global-init-from-feats'),
+                                             '--num-threads=' + str(config.num_threads),
+                                             '--num-frames=' + str(config.num_frames),
+                                             '--num_gauss=' + str(config.num_gauss),
+                                             '--num_gauss_init=' + str(num_gauss_init),
+                                             '--num_iters=' + str(config.num_iters_init),
+                                             'ark:' + all_feats_path,
+                                             os.path.join(directory, '0.dubm')],
+                                             stderr=logf)
+            gmm_init_proc.communicate()
+
+        # Get subset of all feats
+        subsample_feats_path = os.path.join(split_dir, 'cmvnonlinesplicetransformsubsamplefeats')
+        log_path = os.path.join(split_dir, 'log', 'cmvnonlinesplicetransformsubsample.log')
+        with open(log_path, 'w') as logf:
+            with open(all_feats_path, 'r') as inf, open(subsample_feats_path, 'wb') as outf:
+                subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                        '--n=' + str(config.subsample),
+                                                        #all_feats_path,
+                                                        'ark:-',
+                                                        'ark:-'],
+                                                        stdin=inf,
+                                                        stdout=outf,
+                                                        stderr=logf)
+                subsample_feats_proc.communicate()
+
+
+        # Store Gaussian selection indices on disk
+        gmm_gselect(directory, config, subsample_feats_path, self.num_jobs)
+
+        # Training
+        for i in range(config.num_iters):
+            # Accumulate stats
+            acc_global_stats(directory, config, subsample_feats_path, self.num_jobs, i)
+
+            # Don't remove low-count Gaussians till the last tier,
+            # or gselect info won't be valid anymore
+            if i < config.num_iters-1:
+                opt = '--remove-low-count-gaussians=false'
+            else:
+                opt = '--remove-low-count-gaussians=' + str(config.remove_low_count_gaussians)
+
+            log_path = os.path.join(directory, 'log', 'update.{}.log'.format(i))
+            with open(log_path, 'w') as logf:
+                acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))
+                             for x in range(self.num_jobs)]
+                #num_gauss_init = int(config.initial_gauss_proportion * int(config.num_gauss))
+                gmm_global_est_proc = subprocess.Popen([thirdparty_binary('gmm-global-est'),
+                                                        opt,
+                                                        '--min-gaussian-weight=' + str(config.min_gaussian_weight),
+                                                        os.path.join(directory, '{}.dubm'.format(i)),
+                                                        "{} - {}|".format(thirdparty_binary('gmm-global-sum-accs'),
+                                                                          ' '.join(map(make_path_safe, acc_files))),
+                                                        os.path.join(directory, '{}.dubm'.format(i+1))],
+                                                        stderr=logf)
+                gmm_global_est_proc.communicate()
+                
+        # Move files
+        shutil.copy(os.path.join(directory, '{}.dubm'.format(config.num_iters)),
+                    os.path.join(directory, 'final.dubm'))

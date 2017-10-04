@@ -477,7 +477,8 @@ class BaseAligner(object):
             #
             if config.do_lda_mllt and i <= config.num_iters:
                 print("calc lda mllt")
-                calc_lda_mllt(directory, self.corpus.split_directory,
+                calc_lda_mllt(directory, self.corpus.split_directory,   # Could change this to make ali directory later
+                #calc_lda_mllt(self.lda_mllt_ali_directory, sil_phones,
                               self.lda_mllt_directory, sil_phones,
                               self.num_jobs, config, config.num_iters,
                               initial=False, iteration=i, corpus=self.corpus)
@@ -504,7 +505,11 @@ class BaseAligner(object):
         print("dir where final.mdl is:", directory)
         shutil.copy(os.path.join(directory, '{}.mdl'.format(config.num_iters)),
                     os.path.join(directory, 'final.mdl'))
+        print("moving final occs:")
         shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),
                     os.path.join(directory, 'final.occs'))
-        shutil.copy(os.path.join(self.lda_mllt_directory, '{}.mat'.format(config.num_iters)),
-                    os.path.join(self.lda_mllt_directory, 'final.mat'))
+        #shutil.copy(os.path.join(self.lda_mllt_directory, '{}.mat'.format(config.num_iters)),
+        #            os.path.join(self.lda_mllt_directory, 'final.mat'))
+        print("moving final mat:")
+        shutil.copy(os.path.join(directory, '{}.mat'.format(config.num_iters-1)),
+                    os.path.join(directory, 'final.mat'))

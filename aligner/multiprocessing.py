@@ -923,8 +923,10 @@ def calc_lda_mllt_func(directory, split_directory, fmllr_dir, sil_phones, num_jo
     if not initial:
         mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
     else:
-        mdl_path = os.path.join(directory, '1.mdl')
-        model_name = 1
+        #mdl_path = os.path.join(directory, '1.mdl')
+        #model_name = 1
+        mdl_path = os.path.join(directory, '0.mdl')
+        model_name = 0
         feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name))
     print("MODEL NAME:", model_name)
     print("MODEL PATH:", mdl_path)
@@ -996,7 +998,6 @@ def calc_lda_mllt_func(directory, split_directory, fmllr_dir, sil_phones, num_jo
                                            mdl_path, mdl_path],
                                            stderr=logf)
 
-
         if not initial:
             subprocess.call([thirdparty_binary('compose-transforms'),
                             '--print-args=false',
@@ -1004,47 +1005,15 @@ def calc_lda_mllt_func(directory, split_directory, fmllr_dir, sil_phones, num_jo
                             directory + '/{}.mat'.format(int(model_name)-1),
                             directory + '/{}.mat'.format(model_name)],
                             stderr=logf)
+            logf.write("WRITING THIS MAT NOW:\n")
+            logf.write(directory + '/{}.mat'.format(model_name))
             feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}'.format(job_name))
             #feat_path = os.path.join(split_directory, 'cmvnsplicetransformfeats.{}_lda_mllt_sub'.format(job_name))
             #feat_path = feat_lda_mllt_path
         else:
             trans_path = tmp_trans_path
-        #subprocess.call([thirdparty_binary('transform-feats'),
-                         #'--utt2spk=ark:' + utt2spk_path,
-                         #'ark:' + trans_path, 'ark:' + feat_path,
-                         #'ark:' + feat_lda_mllt_path],
 
-        #                stderr=logf)
         corpus._norm_splice_transform_feats(directory, num=int(model_name))
-
-    # Last part of loop
-    """log_path = os.path.join(directory, 'log', 'gmm_est.{}.log'.format(job_name))
-    with open(log_path, 'a') as logf:
-        logf.write("HELLO")
-        logf.write(feat_path)
-        gmm_acc_stats_proc = subprocess.call([thirdparty_binary('gmm-acc-stats-ali'),
-                                              mdl_path,
-                                              'ark:' + feat_path,
-                                              'ark:' + directory + '/ali.{}'.format(job_name),
-                                              directory + '/{}.{}.acc'.format(k, job_name)],
-                                              #stdout=subprocess.PIPE,
-                                              stderr=logf)
-        if job_name == 0:
-            acc_files = [os.path.join(directory, '{}.{}.acc'.format(k,0))]
-            logf.write("JOB NAME IS 0")
-        else:
-            acc_files = [os.path.join(directory, '{}.{}.acc'.format(k,x)) for x in range(job_name)]
-            logf.write("JOB NAME NOT 0")
-        #acc_files = [os.path.join(directory, '{}.{}.acc'.format(k, job_name)) for ]
-        est_proc = subprocess.call([thirdparty_binary('gmm-est'),
-                                     '--write-occs=' + directory+'/{}.occs'.format(k+1),
-                                     '--mix-up={}'.format(config.num_gauss), '--power={}'.format(config.power),
-                                     mdl_path, "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                                                 ' '.join(map(make_path_safe, acc_files))),
-                                     os.path.join(directory, '{}.mdl'.format(k+1))],
-                                     #stdin=gmm_acc_stats_proc.stdout,
-                                     stderr=logf)
-        #est_proc.communicate()"""
 
 
 def calc_lda_mllt(directory, split_directory, fmllr_dir, sil_phones, num_jobs, config, num_iters,
@@ -1061,4 +1030,37 @@ def calc_lda_mllt(directory, split_directory, fmllr_dir, sil_phones, num_jobs, c
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(calc_lda_mllt_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def gmm_gselect_func(directory, config, feats, x):
+    log_path = os.path.join(directory, 'log', 'gselect.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        subprocess.call([thirdparty_binary('gmm-gselect'),
+                        '--n=' + str(config.num_gselect),
+                        os.path.join(directory, '0.dubm'),
+                        'ark:' + feats,
+                        'ark:' + os.path.join(directory, 'gselect.{}'.format(x))],
+                        stderr=logf)
+
+def gmm_gselect(directory, config, feats, num_jobs):
+    jobs = [(directory, config, feats, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(gmm_gselect_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def acc_global_stats_func(directory, config, feats, x, iteration):
+    log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
+    with open(log_path, 'w') as logf:
+        gmm_global_acc_proc = subprocess.Popen([thirdparty_binary('gmm-global-acc-stats'),
+                                               '--gselect=' + 'ark:' + os.path.join(directory, 'gselect.{}'.format(x)),
+                                               os.path.join(directory, '{}.dubm'.format(iteration)),
+                                               'ark:' + feats,
+                                               os.path.join(directory, '{}.{}.acc'.format(iteration, x))],
+                                               stderr=logf)
+        gmm_global_acc_proc.communicate()
+
+def acc_global_stats(directory, config, feats, num_jobs, iteration):
+    jobs = [(directory, config, feats, x, iteration) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(acc_global_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
