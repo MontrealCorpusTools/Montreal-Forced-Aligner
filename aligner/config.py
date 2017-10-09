@@ -282,6 +282,57 @@ class DiagUbmConfig(object):
         self.num_threads = 32
         self.splice_opts = ['--left-context=3', '--right-context=3']
 
+class iVectorExtractorConfig(object):
+    '''
+    fill in docstring'''
+    def __init__(self, **kwargs):
+        self.ivector_dim = 100
+        self.num_iters = 10
+        self.num_gselect = 5
+        self.posterior_scale = 0.1
+
+        self.min_post = 0.025
+        self.subsample = 2
+
+        self.num_threads = 4
+        self.num_processes = 4
+
+        self.splice_opts = ['--left-context=3', '--right-context=3']
+
+class NnetBasicConfig(object):
+    def __init__(self, **kwargs):
+        self.num_epochs = 15
+        self.num_epochs_extra = 5
+        self.num_iters_final = 20
+        self.iters_per_epoch = 2
+
+        self.initial_learning_rate=0.04
+        self.final_learning_rate=0.004
+        self.bias_stddev = 0.5
+
+        self.shrink_interval = 5
+        self.shrink = True
+        self.num_frames_shrink = 2000
+
+        self.final_learning_rate_factor = 0.5
+        self.hidden_layer_dim = 50
+
+        self.samples_per_iter = 200000
+        self.shuffle_buffer_size = 5000
+        self.add_layers_period = 2
+        self.num_hidden_layers = 3
+        self.modify_learning_rates = False
+
+        self.last_layer_factor = 0.1
+        self.first_layer_factor = 1.0
+
+        self.splice_width = 4
+        self.randprune = 0.4
+        self.alpha = 4.0
+        self.max_change = 10.0
+        self.mix_up = 0
+        self.prior_subset_size = 10000
+
 class MfccConfig(object):
     '''
     Class to store configuration information about MFCC generation

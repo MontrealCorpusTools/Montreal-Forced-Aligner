@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import re
+import math
 from tqdm import tqdm
 
 from ..helper import thirdparty_binary, make_path_safe
@@ -9,7 +10,9 @@ from ..helper import thirdparty_binary, make_path_safe
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
                                convert_ali_to_textgrids, calc_fmllr,
-                               calc_lda_mllt, gmm_gselect, acc_global_stats)
+                               calc_lda_mllt, gmm_gselect, acc_global_stats,
+                               gauss_to_post, acc_ivector_stats, get_egs,
+                               get_lda_nnet, nnet_train_trans, nnet_train)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -442,7 +445,6 @@ class TrainableAligner(BaseAligner):
             with open(log_path, 'w') as logf:
                 acc_files = [os.path.join(directory, '{}.{}.acc'.format(i, x))
                              for x in range(self.num_jobs)]
-                #num_gauss_init = int(config.initial_gauss_proportion * int(config.num_gauss))
                 gmm_global_est_proc = subprocess.Popen([thirdparty_binary('gmm-global-est'),
                                                         opt,
                                                         '--min-gaussian-weight=' + str(config.min_gaussian_weight),
@@ -452,7 +454,288 @@ class TrainableAligner(BaseAligner):
                                                         os.path.join(directory, '{}.dubm'.format(i+1))],
                                                         stderr=logf)
                 gmm_global_est_proc.communicate()
-                
+
         # Move files
         shutil.copy(os.path.join(directory, '{}.dubm'.format(config.num_iters)),
                     os.path.join(directory, 'final.dubm'))
+
+    def ivectors(self):
+        '''
+        Train iVector extractor and extract iVectors
+        '''
+        os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
+        self._train_ivector_extractor()
+
+        # YET TO BE IMPLEMENTED
+        #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
+        #self._extract_ivectors()
+
+        #if os.path.exists(self.ivector_extractor_final_model_path):
+        #    print('iVector training already done, using previous final.mdl')
+        #    return
+
+        #if not os.path.exists(self.lta_mllt_ali_directory):
+        #    self._align_lda_mllt()
+        #self._align_lda_mllt()  # NOT implemented, can come back later or make people run from fmllr
+
+        #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
+
+    def _train_ivector_extractor(self):
+        #if os.path.exists(self.ivector_extractor_final_model_path):
+        #    print('iVector extractor training already done, using previous final.ie')
+        #    return
+
+        log_dir = os.path.join(self.ivector_extractor_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+
+        directory = self.ivector_extractor_directory
+        split_dir = self.corpus.split_directory
+        diag_ubm_path = self.diag_ubm_directory
+        lda_mllt_path = self.lda_mllt_directory
+        train_dir = self.corpus.output_directory
+        config = self.ivector_extractor_config
+
+        # Convert final.ubm to fgmm
+        log_path = os.path.join(directory, 'log', 'global_to_fgmm.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('gmm-global-to-fgmm'),
+                            os.path.join(diag_ubm_path, 'final.dubm'),
+                            os.path.join(directory, '0.fgmm')],
+                            stdout=subprocess.PIPE,
+                            stderr=logf)
+
+        # Initialize iVector extractor
+        log_path = os.path.join(directory, 'log', 'init.log')
+        with open(log_path, 'w') as logf:
+            subprocess.call([thirdparty_binary('ivector-extractor-init'),
+                            '--ivector-dim=' + str(config.ivector_dim),
+                            '--use-weights=false',
+                            os.path.join(directory, '0.fgmm'),
+                            os.path.join(directory, '0.ie')],
+                            stderr=logf)
+
+        # Get GMM feats with online CMVN
+        gmm_feats_path = os.path.join(split_dir, 'ivectorgmmfeats')
+        log_path = os.path.join(split_dir, 'log', 'ivectorgmmfeats.log')
+        with open(log_path, 'w') as logf:
+            with open(gmm_feats_path, 'wb') as outf:
+                apply_cmvn_online_proc = subprocess.Popen([thirdparty_binary('apply-cmvn-online'),
+                                                          #'--config=' +
+                                                          # This^ makes reference to a config file
+                                                          # in Kaldi, but it's empty there
+                                                          os.path.join(diag_ubm_path, 'global_cmvn.stats'),
+                                                          'scp:' + train_dir + '/feats.scp',
+                                                          'ark:-'],
+                                                          stdout=subprocess.PIPE,
+                                                          stderr=logf)
+                splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats')]
+                                                     + config.splice_opts +
+                                                     ['ark:-', 'ark:-'],
+                                                     stdin=apply_cmvn_online_proc.stdout,
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=logf)
+                transform_feats_proc = subprocess.Popen([thirdparty_binary('transform-feats'),
+                                                        os.path.join(lda_mllt_path, 'final.mat'),
+                                                        'ark:-', 'ark:-'],
+                                                        stdin=splice_feats_proc.stdout,
+                                                        stdout=subprocess.PIPE,
+                                                        stderr=logf)
+                subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                        '--n=' + str(config.subsample),
+                                                        'ark:-', 'ark:-'],
+                                                        stdin=transform_feats_proc.stdout,
+                                                        stdout=outf,
+                                                        stderr=logf)
+                subsample_feats_proc.communicate()
+
+
+        # Do Gaussian selection and posterior extraction
+        gauss_to_post(directory, config, diag_ubm_path, gmm_feats_path, self.num_jobs)
+
+        # Get GMM feats without online CMVN
+        feats_path = os.path.join(split_dir, 'ivectorfeats')
+        log_path = os.path.join(split_dir, 'log', 'ivectorfeats.log')
+        with open(log_path, 'w') as logf:
+            with open(feats_path, 'wb') as outf:
+                splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats')]
+                                                     + config.splice_opts +
+                                                     ['scp:' + os.path.join(train_dir, 'feats.scp'),
+                                                     'ark:-'],
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=logf)
+                transform_feats_proc = subprocess.Popen([thirdparty_binary('transform-feats'),
+                                                        os.path.join(lda_mllt_path, 'final.mat'),
+                                                        'ark:-', 'ark:-'],
+                                                        stdin=splice_feats_proc.stdout,
+                                                        stdout=subprocess.PIPE,
+                                                        stderr=logf)
+                subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                        '--n=' + str(config.subsample),
+                                                        'ark:-', 'ark:-'],
+                                                        stdin=transform_feats_proc.stdout,
+                                                        stdout=outf,
+                                                        stderr=logf)
+                subsample_feats_proc.communicate()
+
+        # Training loop
+        for i in range(config.num_iters):
+
+            # Accumulate stats
+            acc_ivector_stats(directory, config, feats_path, self.num_jobs, i)
+
+    def train_nnet_basic(self):
+        os.makedirs(os.path.join(self.nnet_basic_directory, 'log'), exist_ok=True)
+
+        split_directory = self.corpus.split_directory
+        config = self.nnet_basic_config
+        tri_fmllr_config = self.tri_fmllr_config
+        directory = self.nnet_basic_directory
+        align_directory = self.tri_fmllr_ali_directory  # For now-- could change if the preprocessing changes
+        lda_directory = self.lda_mllt_directory
+        egs_directory = os.path.join(directory, 'egs')
+        training_directory = self.corpus.output_directory
+
+        #tree_path = os.path.join(directory, 'tree')
+        #treeacc_path = os.path.join(directory, 'treeacc')
+        sets_int_path = os.path.join(self.dictionary.phones_dir, 'sets.int')
+        roots_int_path = os.path.join(self.dictionary.phones_dir, 'roots.int')
+        extra_question_int_path = os.path.join(self.dictionary.phones_dir, 'extra_questions.int')
+        topo_path = os.path.join(self.dictionary.output_directory, 'topo')
+        #questions_path = os.path.join(directory, 'questions.int')
+        #questions_qst_path = os.path.join(directory, 'questions.qst')
+        L_fst_path = os.path.join(self.dictionary.output_directory, 'L.fst')
+        ali_tree_path = os.path.join(align_directory, 'tree')
+        mdl_path = os.path.join(align_directory, 'final.mdl')
+        raw_feats = os.path.join(training_directory, 'feats.scp')
+
+        #num_leaves = tri_fmllr_config.initial_gauss_count # Assuming max number of leaves is the same as number of leaves
+        num_leaves = 93 # Hard coded, from dimensions of spliced features
+        #feat_dim = self.corpus.get_feat_dim() # Unspliced
+        feat_dim = 13 # Hard coded, from MFCC dimensions
+        lda_dim = 40 # Hard coded, could paramaterize this/make safer
+
+        # Get LDA matrix
+        get_lda_nnet(directory, align_directory, raw_feats, config, self.num_jobs)
+
+        log_path = os.path.join(directory, 'log', 'lda_matrix.log')
+        with open(log_path, 'w') as logf:
+            acc_files = [os.path.join(directory, 'lda.{}.acc'.format(x))
+                         for x in range(self.num_jobs)]
+            sum_lda_accs_proc = subprocess.Popen([thirdparty_binary('sum-lda-accs'),
+                                                 os.path.join(directory, 'lda.acc')]
+                                                 + acc_files,
+                                                 stderr=logf)
+            sum_lda_accs_proc.communicate()
+
+            lda_mat_proc = subprocess.Popen([thirdparty_binary('nnet-get-feature-transform'),
+                                            '--dim=' + str(lda_dim),
+                                            os.path.join(directory, 'lda.mat'),
+                                            os.path.join(directory, 'lda.acc')],
+                                            stderr=logf)
+            lda_mat_proc.communicate()
+        lda_mat_path = os.path.join(directory, 'lda.mat')
+
+
+        # Get examples for training
+        os.makedirs(egs_directory, exist_ok=True)
+        training_feats = os.path.join(split_directory, 'nnet_training_feats')
+
+        with open(training_feats, 'w') as outf:
+            copy_feats_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
+                                                'scp:' + os.path.join(training_directory, 'feats.scp'),
+                                                'ark:'],
+                                                stdout=outf)
+            copy_feats_proc.communicate()
+        get_egs(directory, egs_directory, training_directory, align_directory, training_feats, config, self.num_jobs)
+
+        # Initialize neural net
+        stddev = float(1.0/config.hidden_layer_dim**0.5)
+        nnet_config_path = os.path.join(directory, 'nnet.config')
+        hidden_config_path = os.path.join(directory, 'hidden.config')
+
+        with open(nnet_config_path, 'w') as nc:
+            print("feat dim:", feat_dim)
+            nc.write('SpliceComponent input-dim={} left-context={} right-context={}\n'.format(13, config.splice_width, config.splice_width))
+            nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
+            nc.write('AffineComponent input-dim={} output-dim={} learning-rate={} param-stddev={} bias-stddev={}\n'.format(lda_dim, config.hidden_layer_dim, config.initial_learning_rate, stddev, config.bias_stddev))
+            nc.write('TanhComponent dim={}\n'.format(config.hidden_layer_dim))
+            nc.write('AffineComponent input-dim={} output-dim={} learning-rate={} param-stddev={} bias-stddev={}\n'.format(config.hidden_layer_dim, num_leaves, config.initial_learning_rate, stddev, config.bias_stddev))
+            nc.write('SoftmaxComponent dim={}\n'.format(num_leaves))
+
+        with open(hidden_config_path, 'w') as nc:
+            nc.write('AffineComponent input-dim={} output-dim={} learning-rate={} param-stddev={} bias-stddev={}\n'.format(config.hidden_layer_dim, config.hidden_layer_dim, config.initial_learning_rate, stddev, config.bias_stddev))
+            nc.write('TanhComponent dim={}\n'.format(config.hidden_layer_dim))
+
+        log_path = os.path.join(directory, 'log', 'nnet_init.log')
+        with open(log_path, 'w') as logf:
+            nnet_am_init_proc = subprocess.Popen([thirdparty_binary('nnet-am-init'),
+                                                 os.path.join(align_directory, 'tree'),
+                                                 topo_path,
+                                                 "{} {} -|".format(thirdparty_binary('nnet-init'),
+                                                                   nnet_config_path),
+                                                os.path.join(directory, '0.mdl')],
+                                                stderr=logf)
+            nnet_am_init_proc.communicate()
+
+        # Train transition probabilities and set priors
+        nnet_train_trans(directory, align_directory, self.num_jobs)
+
+        # Training loop
+        num_tot_iters = config.num_epochs * config.iters_per_epoch
+        for i in range(num_tot_iters):
+            # If it is NOT the first iteration,
+            # AND we still have layers to add,
+            # AND it's the right time to add a layer...
+            if i > 0 and i <= ((config.num_hidden_layers-1)*config.add_layers_period) and ((i-1)%config.add_layers_period) == 0:
+                # Add a new hidden layer
+                mdl = os.path.join(directory, 'tmp{}.mdl'.format(i))
+                log_path = os.path.join(directory, 'log', 'temp_mdl.{}.log'.format(i))
+                with open(log_path, 'w') as logf:
+                    with open(mdl, 'w') as outf:
+                        tmp_mdl_init_proc = subprocess.Popen([thirdparty_binary('nnet-init'),
+                                                            '--srand={}'.format(i),
+                                                            os.path.join(directory, 'hidden.config'),
+                                                            '-'],
+                                                            stdout=subprocess.PIPE,
+                                                            stderr=logf)
+                        tmp_mdl_ins_proc = subprocess.Popen([thirdparty_binary('nnet-insert'),
+                                                            os.path.join(directory, '{}.mdl'.format(i)),
+                                                            '-', '-'],
+                                                            stdin=tmp_mdl_init_proc.stdout,
+                                                            stdout=outf,
+                                                            stderr=logf)
+                        tmp_mdl_ins_proc.communicate()
+
+            # Otherwise just use the past model
+            else:
+                mdl = os.path.join(directory, '{}.mdl'.format(i))
+
+            # Shuffle examples and train nets with SGD
+            nnet_train(directory, egs_directory, mdl, i, self.num_jobs)
+
+            # Get nnet list from the various jobs on this iteration
+            nnets_list = [os.path.join(directory, '{}.{}.mdl'.format((i+1), x))
+                         for x in range(self.num_jobs)]
+
+            if (i+1) >= num_tot_iters:
+                learning_rate = config.final_learning_rate
+            else:
+                learning_rate = config.initial_learning_rate * math.exp(i * math.log(config.final_learning_rate/config.initial_learning_rate)/num_tot_iters)
+
+            log_path = os.path.join(directory, 'log', 'average.{}.log'.format(i))
+            with open(log_path, 'w') as logf:
+                nnet_avg_proc = subprocess.Popen([thirdparty_binary('nnet-am-average')]
+                                                 + nnets_list
+                                                 + ['-'],
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=logf)
+                nnet_copy_proc = subprocess.Popen([thirdparty_binary('nnet-am-copy'),
+                                                  '--learning-rate={}'.format(learning_rate),
+                                                  '-',
+                                                  os.path.join(directory, '{}.mdl'.format(i+1))],
+                                                  stdin=nnet_avg_proc.stdout,
+                                                  stderr=logf)
+                nnet_copy_proc.communicate()
+
+        # Rename the final model
+        shutil.copy(os.path.join(directory, '{}.mdl'.format(num_tot_iters)), os.path.join(directory, 'final.mdl'))

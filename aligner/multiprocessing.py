@@ -1064,3 +1064,258 @@ def acc_global_stats(directory, config, feats, num_jobs, iteration):
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(acc_global_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
+
+def gauss_to_post_func(directory, config, diag_ubm_directory, gmm_feats, x):
+    modified_posterior_scale = config.posterior_scale * config.subsample
+    log_path = os.path.join(directory, 'log', 'post.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        gmm_global_get_post_proc = subprocess.Popen([thirdparty_binary('gmm-global-get-post'),
+                                                    '--n=' + str(config.num_gselect),
+                                                    '--min-post=' + str(config.min_post),
+                                                    os.path.join(diag_ubm_directory, 'final.dubm'),
+                                                    'ark:' + gmm_feats,
+                                                    'ark:-'],
+                                                    stdout=subprocess.PIPE,
+                                                    stderr=logf)
+        scale_post_proc = subprocess.Popen([thirdparty_binary('scale-post'),
+                                            'ark:-',
+                                            str(modified_posterior_scale),
+                                            'ark:' + os.path.join(directory, 'post.{}'.format(x))],
+                                            stdin=gmm_global_get_post_proc.stdout,
+                                            stderr=logf)
+        scale_post_proc.communicate()
+
+def gauss_to_post(directory, config, diag_ubm_directory, gmm_feats, num_jobs):
+    jobs = [(directory, config, diag_ubm_directory, gmm_feats, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(gauss_to_post_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def acc_ivector_stats_func(directory, config, feat_path, num_jobs, x, iteration):
+    log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
+    with open(log_path, 'w') as logf:
+
+        # Weird threading stuff
+        nj_full = num_jobs * config.num_processes
+        args = []
+        #for j in range(nj_full):
+        for j in range(num_jobs):
+            #args.append([thirdparty_binary('ivector-extractor-acc-stats'),
+            #            '--num-threads=' + str(config.num_threads),
+            #            os.path.join(directory, '{}.ie'.format(iteration)),
+            #            'ark:' + feat_path,
+            #            'ark:' + os.path.join(directory, 'post.{}'.format(x)),
+            #            '-'])
+            args.append('{} {} {} {} {} -|'.format(
+                        thirdparty_binary('ivector-extractor-acc-stats'),
+                        '--num-threads=' + str(config.num_threads),
+                        os.path.join(directory, '{}.ie'.format(iteration)),
+                        'ark:' + feat_path,
+                        'ark:' + os.path.join(directory, 'post.{}'.format(j)))
+                        )
+
+
+        for g in range(num_jobs):
+            start = (config.num_processes * (g-1)) + 1
+            print("START POSITION:", start)
+            #start = 0
+            """ivector_extractor_acc_proc = subprocess.Popen([thirdparty_binary('ivector extractor-acc-stats'),
+                                                            '--num-threads=' + str(config.num_threads),
+                                                            os.path.join(directory, '{}.ie'.format(iteration)),
+                                                            'ark:' + feat_path,
+                                                            'ark:' + os.path.join(directory, 'post.{}'.format(x)),
+                                                            '-'],
+                                                            stdout=subprocess.PIPE)
+            ])"""
+            subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
+                            '--parallel=true']
+                            + args[start:start+config.num_processes]
+                            + [os.path.join(directory, 'acc.{}.{}'.format(iteration, g))],
+                            stderr=logf)
+
+
+
+        """ivector_extractor_acc_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
+                                                      '--num-threads=' + str(config.num_threads),
+                                                      os.path.join(directory, '{}.ie'.format(iteration)),
+                                                      'ark:' + feat_path,
+                                                      'ark:' + os.path.join(directory, 'post.{}'.format(x)),
+                                                      os.path.join(directory, '{}.{}.accinit'.format(iteration, x))],
+                                                      #stdout=subprocess.PIPE,
+                                                      stderr=logf)
+        ivector_extractor_acc_proc.communicate()"""
+
+        accinit_files = [os.path.join(directory, '{}.{}.accinit'.format(iteration, x))
+                     for x in range(num_jobs)]
+
+        # Come back to this bit? Some weird threading stuff, see train_ivector_extractor.sh
+        """ivector_extractor_sum_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
+                                                      #'--num-threads=' + str(config.num_threads * config.num_processes),
+                                                      '--parallel=true',
+                                                      ' '.join(map(make_path_safe, accinit_files)),
+                                                      os.path.join(directory, 'acc.{}.{}'.format(iteration, x))],
+                                                      std
+
+        ])"""
+
+        ivector_extractor_sum_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs')]
+                                                      + accinit_files
+                                                      + [os.path.join(directory, 'acc.{}'.format(iteration))],
+                                                      stderr=logf)
+        ivector_extractor_sum_proc.communicate()
+
+        ivector_extractor_est_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-est'),
+                                                      os.path.join(directory, '{}.ie'.format(iteration)),
+                                                      os.path.join(directory, 'acc.{}'.format(iteration)),
+                                                      os.path.join(directory, '{}.ie'.format(iteration+1))],
+                                                      stderr=logf)
+        ivector_extractor_est_proc.communicate()
+
+
+def acc_ivector_stats(directory, config, feat_path, num_jobs, iteration):
+    jobs = [(directory, config, feat_path, num_jobs, x, iteration) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(acc_ivector_stats_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def get_egs_func(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x):
+    # Create training examples
+    iters_per_epoch = config.iters_per_epoch
+
+    log_path = os.path.join(nnet_dir, 'log', 'ali_to_post.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        ali_to_pdf_proc = subprocess.Popen([thirdparty_binary('ali-to-pdf'),
+                                            os.path.join(ali_dir, 'final.mdl'),
+                                            #'ark:-',
+                                            'ark:' + os.path.join(ali_dir, 'ali.{}'.format(x)),
+                                            'ark:-'],
+                                            #stdin=os.path.join(ali_dir, 'ali.{}'.format(x)),
+                                            stdout=subprocess.PIPE,
+                                            stderr=logf)
+        ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                            'ark:-', 'ark:-'],
+                                            stdin=ali_to_pdf_proc.stdout,
+                                            stderr=logf,
+                                            stdout=subprocess.PIPE)
+
+    log_path = os.path.join(nnet_dir, 'log', 'get_egs.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs'),
+                                             '--left-context=' + str(config.splice_width),
+                                             '--right-context=' + str(config.splice_width),
+                                             #"copy-feats scp:{}/{}/feats.scp ark:- |".format(training_dir, x),
+                                             'ark:' + feats,
+                                             'ark:-',
+                                             #"{}/ali.{} | ali-to-pdf {}/final.mdl ark:- ark:- | ali-to-post ark:- ark:- |".format(ali_dir, x, ali_dir),
+                                             'ark:-'],
+                                             stdin=ali_to_post_proc.stdout,
+                                             stdout=subprocess.PIPE,
+                                             stderr=logf)
+        nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
+                                              'ark:-',
+                                              'ark:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x))],
+                                              stdin=nnet_get_egs_proc.stdout,
+                                              stderr=logf)
+        nnet_copy_egs_proc.communicate()
+
+    # Rearranging training examples
+    log_path = os.path.join(nnet_dir, 'log', 'nnet_copy_egs.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
+                                              '--srand=' + str(x),
+                                              'ark:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x)),
+                                              'ark:' + os.path.join(egs_dir, 'egs_temp.{}'.format(x))],
+                                              stderr=logf)
+        nnet_copy_egs_proc.communicate()
+
+    # Shuffling training examples
+    log_path = os.path.join(nnet_dir, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        nnet_shuffle_egs_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
+                                                 '--srand=' + str(x),
+                                                 'ark:' + os.path.join(egs_dir, 'egs_temp.{}'.format(x)),
+                                                 'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x))],
+                                                 stderr=logf)
+        nnet_shuffle_egs_proc.communicate()
+
+def get_egs(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, num_jobs):
+    jobs = [(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(get_egs_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def get_lda_nnet_func(nnet_dir, ali_dir, feats, config, x):
+    log_path = os.path.join(nnet_dir, 'log', 'lda_acc.{}.log'.format(x))
+    splice_feats = os.path.join(nnet_dir, 'splicefeats.{}'.format(x))
+    with open(log_path, 'w') as logf:
+        with open(splice_feats, 'w') as outf:
+            splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                                 '--left-context={}'.format(config.splice_width),
+                                                 '--right-context={}'.format(config.splice_width),
+                                                 'scp:' + feats, 'ark:-'],
+                                                 stdout=outf,
+                                                 stderr=logf)
+            splice_feats_proc.communicate()
+
+            ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                                'ark:' + os.path.join(ali_dir, 'ali.{}'.format(x)),
+                                                'ark:-'],
+                                                stdout=subprocess.PIPE,
+                                                stderr=logf)
+            acc_lda_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
+                                            os.path.join(ali_dir, 'final.mdl'),
+                                            'ark:' + splice_feats,
+                                            'ark:-',
+                                            os.path.join(nnet_dir, 'lda.{}.acc'.format(x))],
+                                            stdin=ali_to_post_proc.stdout,
+                                            stderr=logf)
+            acc_lda_proc.communicate()
+
+def get_lda_nnet(nnet_dir, ali_dir, feats, config, num_jobs):
+    jobs = [(nnet_dir, ali_dir, feats, config, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(get_lda_nnet_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def nnet_train_trans_func(nnet_dir, align_dir, x):
+    log_path = os.path.join(nnet_dir, 'log', 'train_trans{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        #ali_files = [os.path.join(align_dir 'ali.{}'.format(x))
+        #             for x in range(self.num_jobs)]
+        train_trans_proc = subprocess.Popen([thirdparty_binary('nnet-train-transitions'),
+                                            os.path.join(nnet_dir, '0.mdl'),
+                                            'ark:' + os.path.join(align_dir, 'ali.{}'.format(x)),
+                                            os.path.join(nnet_dir, '0.mdl')],
+                                            stderr=logf)
+        train_trans_proc.communicate()
+
+def nnet_train_trans(nnet_dir, align_dir, num_jobs):
+    jobs = [(nnet_dir, align_dir, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(nnet_train_trans_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def nnet_train_func(nnet_dir, egs_dir, mdl, i, x):
+    log_path = os.path.join(nnet_dir, 'log', 'train.{}.{}.log'.format(i, x))
+    with open(log_path, 'w') as logf:
+        shuffle_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
+                                        '--srand={}'.format(i),
+                                        'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x)),
+                                        'ark:-'],
+                                        stdout=subprocess.PIPE,
+                                        stderr=logf)
+        train_proc = subprocess.Popen([thirdparty_binary('nnet-train-parallel'),
+                                      # Leave off threads and minibatch params for now
+                                      '--srand={}'.format(i),
+                                      mdl,
+                                      'ark:-',
+                                      os.path.join(nnet_dir, '{}.{}.mdl'.format((i+1), x))],
+                                      stdin=shuffle_proc.stdout,
+                                      stderr=logf)
+        train_proc.communicate()
+
+def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
+    jobs = [(nnet_dir, egs_dir, mdl, i, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(nnet_train_func, args=i) for i in jobs]
+        output = [p.get() for p in results]

@@ -39,3 +39,15 @@ def test_sick_diag_ubm(sick_dict, sick_corpus, generated_dir):
                          temp_directory=os.path.join(generated_dir, 'sickcorpus'))
     a.train_diag_ubm()
     assert(1==2)
+
+def test_sick_ivectors(sick_dict, sick_corpus, generated_dir):
+    a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),
+                         temp_directory=os.path.join(generated_dir, 'sickcorpus'))
+    a.ivectors()
+    assert(1==2)
+
+def test_sick_nnet_basic(sick_dict, sick_corpus, generated_dir):
+    a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),
+                         temp_directory=os.path.join(generated_dir, 'sickcorpus'))
+    a.train_nnet_basic()
+    assert(1==2)

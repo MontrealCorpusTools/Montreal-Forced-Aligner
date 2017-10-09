@@ -6,7 +6,9 @@ from tqdm import tqdm
 
 from ..helper import thirdparty_binary, make_path_safe
 
-from ..config import MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig, LdaMlltConfig, DiagUbmConfig
+from ..config import (MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig,
+                      LdaMlltConfig, DiagUbmConfig, iVectorExtractorConfig,
+                      NnetBasicConfig)
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
@@ -51,17 +53,24 @@ class BaseAligner(object):
                  temp_directory=None, num_jobs=3, call_back=None,
                  mono_params=None, tri_params=None,
                  tri_fmllr_params=None, lda_mllt_params=None,
-                 diag_ubm_params=None, debug=False):
+                 diag_ubm_params=None, ivector_extractor_params=None,
+                 nnet_basic_params=None,
+                 debug=False):
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
             tri_params = {}
         if tri_fmllr_params is None:
             tri_fmllr_params = {}
+
         if lda_mllt_params is None:
             lda_mllt_params = {}
         if diag_ubm_params is None:
             diag_ubm_params = {}
+        if ivector_extractor_params is None:
+            ivector_extractor_params = {}
+        if nnet_basic_params is None:
+            nnet_basic_params = {}
 
         self.mono_config = MonophoneConfig(**mono_params)
         self.tri_config = TriphoneConfig(**tri_params)
@@ -69,6 +78,8 @@ class BaseAligner(object):
 
         self.lda_mllt_config = LdaMlltConfig(**lda_mllt_params)
         self.diag_ubm_config = DiagUbmConfig(**diag_ubm_params)
+        self.ivector_extractor_config = iVectorExtractorConfig(**ivector_extractor_params)
+        self.nnet_basic_config = NnetBasicConfig(**nnet_basic_params)
 
         self.corpus = corpus
         self.dictionary = dictionary
@@ -155,7 +166,23 @@ class BaseAligner(object):
 
     @property
     def diag_ubm_final_model_path(self):
-        return os.path.join(self.lda_mllt_directory, 'final.mdl')   # May not be this label
+        return os.path.join(self.diag_ubm_directory, 'final.dubm')   # May not be this label (but I think so)
+
+    @property
+    def ivector_extractor_directory(self):
+        return os.path.join(self.temp_directory, 'ivector_extractor')
+
+    @property
+    def ivector_extractor_final_model_path(self):
+        return os.path.join(self.ivector_extractor_directory, 'final.ie')
+
+    @property
+    def nnet_basic_directory(self):
+        return os.path.join(self.temp_directory, 'nnet_basic')
+
+    @property
+    def nnet_basic_final_model_path(self):
+        return os.path.join(self.nnet_basic_directory, 'final.mdl')
 
     # End of nnet properties
 

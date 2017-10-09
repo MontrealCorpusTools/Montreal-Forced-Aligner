@@ -78,9 +78,9 @@ def align_corpus(args, skip_input=False):
         if getattr(args, 'neural_net', True):
             # Do nnet training
             a.train_lda_mllt()  # Implemented!
-            a.train_diag_ubm()  # NOT YET IMPLEMENTED
+            a.train_diag_ubm()  # Implemented!
             a.ivectors()        # NOT YET IMPLEMENTED
-            a.train_nnet()      # NOT YET IMPLEMENTED
+            a.train_nnet_basic()      # NOT YET IMPLEMENTED
             a.export_textgrids()
 
         if args.output_model_path is not None:
