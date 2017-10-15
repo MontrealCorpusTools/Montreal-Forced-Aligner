@@ -74,14 +74,15 @@ def align_corpus(args, skip_input=False):
         a.train_tri_fmllr()
         a.export_textgrids()
 
+        print("doing new stuff")
         # nnet training
-        if getattr(args, 'neural_net', True):
-            # Do nnet training
-            a.train_lda_mllt()  # Implemented!
-            a.train_diag_ubm()  # Implemented!
-            a.ivectors()        # NOT YET IMPLEMENTED
-            a.train_nnet_basic()      # NOT YET IMPLEMENTED
-            a.export_textgrids()
+        #if getattr(args, 'neural_net', True):
+        # Do nnet training
+        a.train_lda_mllt()  # Implemented!
+        a.train_diag_ubm()  # Implemented!
+        a.ivectors()        # NOT YET IMPLEMENTED
+        #a.train_nnet_basic()      # NOT YET IMPLEMENTED
+        #a.export_textgrids()
 
         if args.output_model_path is not None:
             a.save(args.output_model_path)

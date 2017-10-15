@@ -467,28 +467,9 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    # There is weirdness in here between what is being passed from align()
-    # and what actually appears here.
-    # e.g. before entering the with statement, fst_path is printed
-    # /Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/tests/data/generated/sickcorpus/lda_mllt_ali/fsts.0
-    # but it appears in the log as
-    # /Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/tests/data/generated/sickcorpus/lda_mllt/fsts.0
-    # (note change in directory path).
 
-    print("MDL:", mdl)
-    print("FROM ALIGN, FEAT PATH:", feat_path)
-    print("FROM ALIGN, FST PATH:", fst_path)
-    print("FROM ALIGN, ALI PATH:", ali_path)
-    print("FROM ALIGN, LOG PATH:", log_path)
-    #dummy = feat_path
-    #dummy = dummy.upper() + "..."
-    #print("DUMMY:", dummy)
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
-        logf.write("HELLO!!!")
-        logf.write(feat_path)
-        #logf.write(dummy)
-        #print("PRINTING AT SAME TIME:", feat_path)
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
                                       ['--beam={}'.format(config.beam),
                                        #'--retry-beam={}'.format(config.beam * 4),
@@ -499,7 +480,6 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
                                       stderr=logf,
                                       stdout=outf)
         align_proc.communicate()
-    print("leaving align()")
 
 def align_no_pool(iteration, directory, split_directory, optional_silence, num_jobs, config, feature_name=None):
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
@@ -546,8 +526,8 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
     print("Safe mdl path:", make_path_safe(mdl_path))
 
-    if feature_name == None:
-        feat_name = 'cmvndeltafeats'
+    #if feature_name == None:
+    feat_name = 'cmvndeltafeats'
 
     if config.do_lda_mllt:
         #feat_name += '_lda_mllt'
@@ -1094,88 +1074,61 @@ def gauss_to_post(directory, config, diag_ubm_directory, gmm_feats, num_jobs):
 def acc_ivector_stats_func(directory, config, feat_path, num_jobs, x, iteration):
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w') as logf:
+        # There is weird threading/array stuff here, so come back if necessary
+        acc_stats_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
+                                          os.path.join(directory, '{}.ie'.format(iteration)),
+                                          'ark:' + feat_path,
+                                          'ark:' + os.path.join(directory, 'post.{}'.format(x)),
+                                          os.path.join(directory, 'accinit.{}.{}'.format(iteration, x))],
+                                          stderr=logf)
+        acc_stats_proc.communicate()
 
-        # Weird threading stuff
-        nj_full = num_jobs * config.num_processes
-        args = []
-        #for j in range(nj_full):
-        for j in range(num_jobs):
-            #args.append([thirdparty_binary('ivector-extractor-acc-stats'),
-            #            '--num-threads=' + str(config.num_threads),
-            #            os.path.join(directory, '{}.ie'.format(iteration)),
-            #            'ark:' + feat_path,
-            #            'ark:' + os.path.join(directory, 'post.{}'.format(x)),
-            #            '-'])
-            args.append('{} {} {} {} {} -|'.format(
-                        thirdparty_binary('ivector-extractor-acc-stats'),
-                        '--num-threads=' + str(config.num_threads),
-                        os.path.join(directory, '{}.ie'.format(iteration)),
-                        'ark:' + feat_path,
-                        'ark:' + os.path.join(directory, 'post.{}'.format(j)))
-                        )
+        accinits = []
+        if x == 0:
+            accinits.append(os.path.join(directory, 'accinit.{}.0'.format(iteration)))
+        else:
+            accinits = [os.path.join(directory, 'accinit.{}.{}'.format(iteration, j))
+                         for j in range(x)]
+        print("accinits:", accinits)
+        sum_accs_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
+                                         '--parallel=true']
+                                         + accinits
+                                         + [os.path.join(directory, 'acc.{}'.format(iteration))],
+                                         stderr=logf)
 
-
-        for g in range(num_jobs):
-            start = (config.num_processes * (g-1)) + 1
-            print("START POSITION:", start)
-            #start = 0
-            """ivector_extractor_acc_proc = subprocess.Popen([thirdparty_binary('ivector extractor-acc-stats'),
-                                                            '--num-threads=' + str(config.num_threads),
-                                                            os.path.join(directory, '{}.ie'.format(iteration)),
-                                                            'ark:' + feat_path,
-                                                            'ark:' + os.path.join(directory, 'post.{}'.format(x)),
-                                                            '-'],
-                                                            stdout=subprocess.PIPE)
-            ])"""
-            subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
-                            '--parallel=true']
-                            + args[start:start+config.num_processes]
-                            + [os.path.join(directory, 'acc.{}.{}'.format(iteration, g))],
-                            stderr=logf)
-
-
-
-        """ivector_extractor_acc_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
-                                                      '--num-threads=' + str(config.num_threads),
-                                                      os.path.join(directory, '{}.ie'.format(iteration)),
-                                                      'ark:' + feat_path,
-                                                      'ark:' + os.path.join(directory, 'post.{}'.format(x)),
-                                                      os.path.join(directory, '{}.{}.accinit'.format(iteration, x))],
-                                                      #stdout=subprocess.PIPE,
-                                                      stderr=logf)
-        ivector_extractor_acc_proc.communicate()"""
-
-        accinit_files = [os.path.join(directory, '{}.{}.accinit'.format(iteration, x))
-                     for x in range(num_jobs)]
-
-        # Come back to this bit? Some weird threading stuff, see train_ivector_extractor.sh
-        """ivector_extractor_sum_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
-                                                      #'--num-threads=' + str(config.num_threads * config.num_processes),
-                                                      '--parallel=true',
-                                                      ' '.join(map(make_path_safe, accinit_files)),
-                                                      os.path.join(directory, 'acc.{}.{}'.format(iteration, x))],
-                                                      std
-
-        ])"""
-
-        ivector_extractor_sum_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs')]
-                                                      + accinit_files
-                                                      + [os.path.join(directory, 'acc.{}'.format(iteration))],
-                                                      stderr=logf)
-        ivector_extractor_sum_proc.communicate()
-
-        ivector_extractor_est_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-est'),
-                                                      os.path.join(directory, '{}.ie'.format(iteration)),
-                                                      os.path.join(directory, 'acc.{}'.format(iteration)),
-                                                      os.path.join(directory, '{}.ie'.format(iteration+1))],
-                                                      stderr=logf)
-        ivector_extractor_est_proc.communicate()
+        sum_accs_proc.communicate()
 
 
 def acc_ivector_stats(directory, config, feat_path, num_jobs, iteration):
     jobs = [(directory, config, feat_path, num_jobs, x, iteration) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(acc_ivector_stats_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def extract_ivectors_func(directory, training_dir, ieconf, config, x):
+    log_path = os.path.join(directory, 'log', 'extract_ivectors.{}.log'.format(x))
+    ark_path = os.path.join(directory, 'ivector_online.{}.ark'.format(x))
+    scp_path = os.path.join(directory, 'ivector_online.{}.scp'.format(x))
+    with open(log_path, 'w') as logf:
+        extract_proc = subprocess.Popen([thirdparty_binary('ivector-extract-online2'),
+                                        '--config={}'.format(ieconf),
+                                        'ark:' + os.path.join(training_dir, 'spk2utt'),
+                                        'scp:' + os.path.join(training_dir, 'feats.scp'),
+                                        'ark:-'],
+                                        stdout=subprocess.PIPE,
+                                        stderr=logf)
+        copy_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
+                                     #'compress=true',
+                                     'ark:-',
+                                     'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                     stdin=extract_proc.stdout,
+                                     stderr=logf)
+        copy_proc.communicate()
+
+def extract_ivectors(directory, training_dir, ieconf, config, num_jobs):
+    jobs = [(directory, training_dir, ieconf, config, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(extract_ivectors_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
 def get_egs_func(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x):
@@ -1318,4 +1271,76 @@ def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
     jobs = [(nnet_dir, egs_dir, mdl, i, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(nnet_train_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, config, x):
+    log_path = os.path.join(nnet_dir, 'log', 'alignment_features{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        path = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
+        utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(x))
+        cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(x))
+        featspath = os.path.join(split_dir, 'feats.{}.scp'.format(x))
+        with open(path, 'wb') as outf:
+            cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
+                                          '--utt2spk=ark:' + utt2spkpath,
+                                          'scp:' + cmvnpath,
+                                          'scp:' + featspath,
+                                          'ark:-'],
+                                          #stdout=outf,
+                                          stdout=subprocess.PIPE,
+                                          stderr=logf
+                                         )
+            #cmvn_proc.communicate()
+            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                            '--left-context=4', '--right-context=4',
+                                            'ark:-',
+                                            'ark:-'], stdin=cmvn_proc.stdout,
+                                            stderr=logf, stdout=subprocess.PIPE
+                                            )
+            transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
+                                                    #lda_dir + '/final.mat',
+                                                    os.path.join(nnet_dir, 'lda.mat'),
+                                                    'ark:-',
+                                                    'ark:-'],
+                                                    stdin=splice_proc.stdout,
+                                                    stderr=logf,
+                                                    #stdout=subprocess.PIPE
+                                                    stdout=outf
+                                                    )
+            transform_feats_proc.communicate()
+def nnet_get_align_feats(nnet_dir, split_dir, lda_dir, config, num_jobs):
+    jobs = [(nnet_dir, split_dir, lda_dir, config, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(nnet_get_align_feats_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def nnet_align_func(i, nnet_dir, mdl_path, config, x):  # pragma: no cover
+    feat_path = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
+    fst_path = os.path.join(nnet_dir, 'fsts.{}'.format(x))
+    log_path = os.path.join(nnet_dir, 'log', 'align.{}.{}.log'.format(i, x))
+    ali_path = os.path.join(nnet_dir, 'ali.{}'.format(x))
+
+    with open(log_path, 'w') as logf, \
+            open(ali_path, 'wb') as outf:
+        align_proc = subprocess.Popen([thirdparty_binary('nnet-align-compiled'),
+                                       '--beam={}'.format(config.beam),
+                                       '--retry-beam={}'.format(config.retry_beam),
+                                       '--careful=false',
+                                       mdl_path,
+                                       "ark:" + fst_path, "ark:" + feat_path, "ark:-"],
+                                      stderr=logf,
+                                      stdout=outf)
+        align_proc.communicate()
+
+def nnet_align(i, nnet_dir, optional_silence, num_jobs, config):
+    mdl_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
+    # No nnet equivalent to boost silence (yet?)
+    #mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
+    #                                       config.boost_silence, optional_silence, make_path_safe(mdl_path))
+
+    jobs = [(i, nnet_dir, mdl_path, config, x)
+            for x in range(num_jobs)]
+
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(nnet_align_func, args=i) for i in jobs]
         output = [p.get() for p in results]

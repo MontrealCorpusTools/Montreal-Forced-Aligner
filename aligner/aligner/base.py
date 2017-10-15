@@ -177,8 +177,16 @@ class BaseAligner(object):
         return os.path.join(self.ivector_extractor_directory, 'final.ie')
 
     @property
+    def extracted_ivector_directory(self):
+        return os.path.join(self.temp_directory, 'extracted_ivector')
+
+    @property
     def nnet_basic_directory(self):
         return os.path.join(self.temp_directory, 'nnet_basic')
+
+    @property
+    def nnet_basic_ali_directory(self):
+        return os.path.join(self.temp_directory, 'nnet_basic_ali')
 
     @property
     def nnet_basic_final_model_path(self):
@@ -537,6 +545,7 @@ class BaseAligner(object):
                     os.path.join(directory, 'final.occs'))
         #shutil.copy(os.path.join(self.lda_mllt_directory, '{}.mat'.format(config.num_iters)),
         #            os.path.join(self.lda_mllt_directory, 'final.mat'))
-        print("moving final mat:")
-        shutil.copy(os.path.join(directory, '{}.mat'.format(config.num_iters-1)),
-                    os.path.join(directory, 'final.mat'))
+        if config.do_lda_mllt:
+            print("moving final mat:")
+            shutil.copy(os.path.join(directory, '{}.mat'.format(config.num_iters-1)),
+                        os.path.join(directory, 'final.mat'))

@@ -12,7 +12,8 @@ from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                convert_ali_to_textgrids, calc_fmllr,
                                calc_lda_mllt, gmm_gselect, acc_global_stats,
                                gauss_to_post, acc_ivector_stats, get_egs,
-                               get_lda_nnet, nnet_train_trans, nnet_train)
+                               get_lda_nnet, nnet_train_trans, nnet_train,
+                               nnet_align, nnet_get_align_feats, extract_ivectors)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -465,10 +466,10 @@ class TrainableAligner(BaseAligner):
         '''
         os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
         self._train_ivector_extractor()
+        self._extract_ivectors()
 
         # YET TO BE IMPLEMENTED
         #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
-        #self._extract_ivectors()
 
         #if os.path.exists(self.ivector_extractor_final_model_path):
         #    print('iVector training already done, using previous final.mdl')
@@ -580,8 +581,80 @@ class TrainableAligner(BaseAligner):
         # Training loop
         for i in range(config.num_iters):
 
-            # Accumulate stats
+            # Accumulate stats and sum
             acc_ivector_stats(directory, config, feats_path, self.num_jobs, i)
+
+            # Est extractor
+            log_path = os.path.join(directory, 'log', 'update.{}.log'.format(i))
+            with open(log_path, 'w') as logf:
+                extractor_est_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-est'),
+                                                      os.path.join(directory, '{}.ie'.format(i)),
+                                                      os.path.join(directory, 'acc.{}'.format(i)),
+                                                      os.path.join(directory, '{}.ie'.format(i+1))],
+                                                      stderr=logf)
+                extractor_est_proc.communicate()
+        # Rename to final
+        shutil.copy(os.path.join(directory, '{}.ie'.format(config.num_iters)), os.path.join(directory, 'final.ie'))
+
+    def _extract_ivectors(self):
+        #if os.path.exists(self.ivector_extractor_final_model_path):
+        #    print('iVector extractor training already done, using previous final.ie')
+        #    return
+
+        log_dir = os.path.join(self.extracted_ivector_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+
+        directory = self.extracted_ivector_directory
+        ivector_extractor_dir = self.ivector_extractor_directory
+        split_dir = self.corpus.split_directory
+        diag_ubm_path = self.diag_ubm_directory
+        lda_mllt_path = self.lda_mllt_directory
+        train_dir = self.corpus.output_directory
+        config = self.ivector_extractor_config
+        training_directory = self.corpus.output_directory
+
+        # Write a "cmvn config" file (this is blank in the actual kaldi code, but it needs the argument passed)
+        cmvn_config = os.path.join(directory, 'online_cmvn.conf')
+        with open(cmvn_config, 'w') as cconf:
+            cconf.write("")
+
+        # Write a "splice config" file
+        splice_config = os.path.join(directory, 'splice.conf')
+        with open(splice_config, 'w') as sconf:
+            sconf.write(config.splice_opts[0])
+            sconf.write('\n')
+            sconf.write(config.splice_opts[1])
+
+        # Write a "config" file to input to the extraction binary
+        ext_config = os.path.join(directory, 'ivector_extractor.conf')
+        with open(ext_config, 'w') as ieconf:
+            ieconf.write('--cmvn-config={}\n'.format(cmvn_config))
+            ieconf.write('--ivector-period={}\n'.format(config.ivector_period))
+            ieconf.write('--splice-config={}\n'.format(splice_config))
+            ieconf.write('--lda-matrix={}\n'.format(os.path.join(lda_mllt_path, 'final.mat')))
+            ieconf.write('--global-cmvn-stats={}\n'.format(os.path.join(diag_ubm_path, 'global_cmvn.stats')))
+            ieconf.write('--diag-ubm={}\n'.format(os.path.join(diag_ubm_path, 'final.dubm')))
+            ieconf.write('--ivector-extractor={}\n'.format(os.path.join(ivector_extractor_dir, 'final.ie')))
+            ieconf.write('--num-gselect={}\n'.format(config.num_gselect))
+            ieconf.write('--min-post={}\n'.format(config.min_post))
+            ieconf.write('--posterior-scale={}\n'.format(config.posterior_scale))
+            ieconf.write('--max-remembered-frames=1000\n')
+            ieconf.write('--max-count={}\n'.format(0))
+
+        # Extract iVectors
+        extract_ivectors(directory, split_dir, training_directory, ext_config, config, self.num_jobs)
+
+        # Combine iVectors across jobs
+        file_list = []
+        for j in range(self.num_jobs):
+            file_list.append(os.path.join(directory, 'ivector_online.{}.scp'.format(j)))
+        print("file list:", file_list)
+
+        with open(os.path.join(directory, 'ivector_online.scp'), 'w') as outfile:
+            for fname in file_list:
+                with open(fname) as infile:
+                    for line in infile:
+                        outfile.write(line)
 
     def train_nnet_basic(self):
         os.makedirs(os.path.join(self.nnet_basic_directory, 'log'), exist_ok=True)
@@ -590,6 +663,7 @@ class TrainableAligner(BaseAligner):
         config = self.nnet_basic_config
         tri_fmllr_config = self.tri_fmllr_config
         directory = self.nnet_basic_directory
+        nnet_align_directory = self.nnet_basic_ali_directory
         align_directory = self.tri_fmllr_ali_directory  # For now-- could change if the preprocessing changes
         lda_directory = self.lda_mllt_directory
         egs_directory = os.path.join(directory, 'egs')
@@ -605,6 +679,9 @@ class TrainableAligner(BaseAligner):
         #questions_qst_path = os.path.join(directory, 'questions.qst')
         L_fst_path = os.path.join(self.dictionary.output_directory, 'L.fst')
         ali_tree_path = os.path.join(align_directory, 'tree')
+        shutil.copy(ali_tree_path, os.path.join(directory, 'tree'))
+
+
         mdl_path = os.path.join(align_directory, 'final.mdl')
         raw_feats = os.path.join(training_directory, 'feats.scp')
 
@@ -648,6 +725,7 @@ class TrainableAligner(BaseAligner):
             copy_feats_proc.communicate()
         get_egs(directory, egs_directory, training_directory, align_directory, training_feats, config, self.num_jobs)
 
+
         # Initialize neural net
         stddev = float(1.0/config.hidden_layer_dim**0.5)
         nnet_config_path = os.path.join(directory, 'nnet.config')
@@ -680,9 +758,24 @@ class TrainableAligner(BaseAligner):
         # Train transition probabilities and set priors
         nnet_train_trans(directory, align_directory, self.num_jobs)
 
+        # Compile train graphs (gets fsts.{} for alignment)
+        compile_train_graphs(directory, self.dictionary.output_directory,
+                             self.corpus.split_directory, self.num_jobs)
+
+        # Get alignment feats
+        nnet_get_align_feats(directory, self.corpus.split_directory, lda_directory, config, self.num_jobs)
+
         # Training loop
         num_tot_iters = config.num_epochs * config.iters_per_epoch
         for i in range(num_tot_iters):
+            # Do first alignment
+            model_path = os.path.join(directory, '{}.mdl'.format(i))
+            next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
+            nnet_align(i, directory,
+                  self.dictionary.optional_silence_csl,
+                  self.num_jobs, config)
+
+
             # If it is NOT the first iteration,
             # AND we still have layers to add,
             # AND it's the right time to add a layer...

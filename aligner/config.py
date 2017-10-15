@@ -287,17 +287,20 @@ class iVectorExtractorConfig(object):
     fill in docstring'''
     def __init__(self, **kwargs):
         self.ivector_dim = 100
+        self.ivector_period = 10
         self.num_iters = 10
         self.num_gselect = 5
         self.posterior_scale = 0.1
 
         self.min_post = 0.025
         self.subsample = 2
+        self.max_count = 0
 
         self.num_threads = 4
         self.num_processes = 4
 
         self.splice_opts = ['--left-context=3', '--right-context=3']
+        self.compress = False
 
 class NnetBasicConfig(object):
     def __init__(self, **kwargs):
@@ -305,6 +308,9 @@ class NnetBasicConfig(object):
         self.num_epochs_extra = 5
         self.num_iters_final = 20
         self.iters_per_epoch = 2
+
+        self.beam = 10
+        self.retry_beam = 150
 
         self.initial_learning_rate=0.04
         self.final_learning_rate=0.004
