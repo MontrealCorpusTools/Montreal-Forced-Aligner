@@ -198,12 +198,15 @@ class BaseAligner(object):
         '''
         Export a TextGrid file for every sound file in the dataset
         '''
-        if os.path.exists(self.tri_fmllr_final_model_path):
+        if os.path.exists(self.nnet_basic_final_model_path):
+            model_directory = self.nnet_basic_directory
+        elif os.path.exists(self.tri_fmllr_final_model_path):
             model_directory = self.tri_fmllr_directory
         elif os.path.exists(self.tri_final_model_path):
             model_directory = self.tri_directory
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
+        print("EXPORTING TO:", self.output_directory)
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
 
@@ -292,7 +295,7 @@ class BaseAligner(object):
 
         print("checking:", os.path.exists(os.path.join(self.tri_fmllr_directory, 'final.mdl')))
         if output_directory == self.tri_fmllr_ali_directory:
-            os.makedirs(self.tri_fmllr_directory) #, exists_ok=True)
+            os.makedirs(self.tri_fmllr_directory, exist_ok=True)
             shutil.copyfile(os.path.join(output_directory, '0.mdl'), os.path.join(self.tri_fmllr_directory, 'final.mdl'))
             shutil.copyfile(os.path.join(output_directory, '0.occs'), os.path.join(self.tri_fmllr_directory, 'final.occs'))
         elif output_directory == self.lda_mllt_ali_directory:
@@ -499,19 +502,16 @@ class BaseAligner(object):
             #if os.path.exists(next_model_path):
             #    continue
             if i in config.realign_iters:
-                print("from do_training")
                 align(i, directory, self.corpus.split_directory,
                       self.dictionary.optional_silence_csl,
                       self.num_jobs, config,
                       feature_name='cmvnsplicetransformfeats')
                 #return
             if config.do_fmllr and i in config.fmllr_iters:
-                print("calc fmllr")
                 calc_fmllr(directory, self.corpus.split_directory, sil_phones,
                            self.num_jobs, config, initial=False, iteration=i)
             #
             if config.do_lda_mllt and i <= config.num_iters:
-                print("calc lda mllt")
                 calc_lda_mllt(directory, self.corpus.split_directory,   # Could change this to make ali directory later
                 #calc_lda_mllt(self.lda_mllt_ali_directory, sil_phones,
                               self.lda_mllt_directory, sil_phones,
@@ -540,6 +540,11 @@ class BaseAligner(object):
         print("dir where final.mdl is:", directory)
         shutil.copy(os.path.join(directory, '{}.mdl'.format(config.num_iters)),
                     os.path.join(directory, 'final.mdl'))
+        print("gmm info:")
+        gmm_info_proc = subprocess.Popen([thirdparty_binary('gmm-info'),
+                                         os.path.join(directory, 'final.mdl')])
+        gmm_info_proc.communicate()
+        
         print("moving final occs:")
         shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),
                     os.path.join(directory, 'final.occs'))

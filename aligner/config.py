@@ -310,7 +310,7 @@ class NnetBasicConfig(object):
         self.iters_per_epoch = 2
 
         self.beam = 10
-        self.retry_beam = 150
+        self.retry_beam = 15000000
 
         self.initial_learning_rate=0.04
         self.final_learning_rate=0.004
@@ -332,8 +332,9 @@ class NnetBasicConfig(object):
         self.last_layer_factor = 0.1
         self.first_layer_factor = 1.0
 
-        self.splice_width = 4
-        self.randprune = 0.4
+        self.splice_width = 3
+        #self.randprune = 0.4
+        self.randprune = 4.0
         self.alpha = 4.0
         self.max_change = 10.0
         self.mix_up = 0

@@ -467,7 +467,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-
+    print("RUNNING")
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
@@ -479,6 +479,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
                                        "ark:" + fst_path, "ark:" + feat_path, "ark:-"],
                                       stderr=logf,
                                       stdout=outf)
+        logf.write("hello")
         align_proc.communicate()
 
 def align_no_pool(iteration, directory, split_directory, optional_silence, num_jobs, config, feature_name=None):
@@ -1106,6 +1107,8 @@ def acc_ivector_stats(directory, config, feat_path, num_jobs, iteration):
         output = [p.get() for p in results]
 
 def extract_ivectors_func(directory, training_dir, ieconf, config, x):
+    log_dir = os.path.join(directory, 'log')
+    os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(directory, 'log', 'extract_ivectors.{}.log'.format(x))
     ark_path = os.path.join(directory, 'ivector_online.{}.ark'.format(x))
     scp_path = os.path.join(directory, 'ivector_online.{}.scp'.format(x))
@@ -1131,9 +1134,118 @@ def extract_ivectors(directory, training_dir, ieconf, config, num_jobs):
         results = [pool.apply_async(extract_ivectors_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
-def get_egs_func(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x):
+def get_egs_helper(nnet_dir, label, feats, ivector_period, to_filter, ivector_dir, ivector_randomize_prob, logf, x):
+    new_feats = os.path.join(nnet_dir, '{}_helped.{}'.format(label, x))
+    with open(new_feats, 'w') as outf:
+        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        filter_proc = subprocess.Popen([filter_scp_path,
+                                        #os.path.join(split_dir, 'utt2spk.{}'.format(x)),
+                                        to_filter,
+                                        os.path.join(ivector_dir, 'ivector_online.scp')],
+                                        stdout=subprocess.PIPE,
+                                        stderr=logf)
+        subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                '--n={}'.format(-10),
+                                                'scp:-',
+                                                'ark:-'],
+                                                stdin=filter_proc.stdout,
+                                                stdout=subprocess.PIPE,
+                                                #stdout=outf,
+                                                stderr=logf)
+        ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
+                                                '--randomize-prob={}'.format(0),
+                                                'ark:-',
+                                                'ark:-'],
+                                                stdin=subsample_feats_proc.stdout,
+                                                stdout=subprocess.PIPE,
+                                                stderr=logf)
+
+        paste_feats_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
+                                            '--length-tolerance={}'.format(10),
+                                            'ark:'+ feats,
+                                            'ark:-',
+                                            'ark:-'],
+                                            stdin=ivector_random_proc.stdout,
+                                            #stdout=subprocess.PIPE,
+                                            stdout=outf,
+                                            stderr=logf)
+        paste_feats_proc.communicate()
+
+def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_dir, feats, valid_uttlist, train_subset_uttlist, config, x):
     # Create training examples
     iters_per_epoch = config.iters_per_epoch
+    ivector_dim = 100 # Make safe later
+    ivectors_opt = '--const-feat-dim={}'.format(ivector_dim)
+    #ivector_period = ivector_config.ivector_period
+    ivector_period = 3000
+    ivector_randomize_prob = 0.0
+    cmvn_opts = []
+
+    # Deal with ivector stuff
+    filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+    log_path = os.path.join(nnet_dir, 'log', 'get_egs_feats.{}.log'.format(x))
+    with open(log_path, 'w') as logf:
+        # Gets "feats" (Kaldi)
+        egs_feats = os.path.join(nnet_dir, 'egsfeats.{}'.format(x))
+        with open(egs_feats, 'w') as outf:
+            filter_proc = subprocess.Popen([filter_scp_path,
+                                            #'--exclude',
+                                            valid_uttlist,
+                                            os.path.join(split_dir, 'feats.{}.scp'.format(x))],
+                                            stdout=subprocess.PIPE,
+                                            stderr=logf)
+            apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
+                                                + cmvn_opts
+                                                + ['--utt2spk=ark:{}'.format(os.path.join(split_dir, 'utt2spk.{}'.format(x))),
+                                                'scp:' + os.path.join(split_dir, 'cmvn.{}.scp'.format(x)),
+                                                'scp:-', 'ark:-'],
+                                                stdin=filter_proc.stdout,
+                                                stdout=outf,
+                                                stderr=logf)
+            apply_cmvn_proc.communicate()
+
+        # Gets "valid_feats" (Kaldi)
+        egs_valid_feats = os.path.join(nnet_dir, 'egsvalidfeats.{}'.format(x))
+        with open(egs_valid_feats, 'w') as outf:
+            filter_proc = subprocess.Popen([filter_scp_path,
+                                            valid_uttlist,
+                                            os.path.join(training_dir, 'feats.scp')],
+                                            stdout=subprocess.PIPE,
+                                            stderr=logf)
+            apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
+                                                + cmvn_opts
+                                                + ['--utt2spk=ark:{}'.format(os.path.join(training_dir, 'utt2spk')),
+                                                'scp:' + os.path.join(training_dir, 'cmvn.scp'),
+                                                'scp:-', 'ark:-'],
+                                                stdin=filter_proc.stdout,
+                                                stdout=outf,
+                                                stderr=logf)
+            apply_cmvn_proc.communicate()
+
+        """# Gets "train_subset_feats" (Kaldi)
+        egs_train_subset_feats = os.path.join(nnet_dir, 'egstrainsubsetfeats.{}'.format(x))
+        with open(egs_train_subset_feats, 'w') as outf:
+            filter_proc = subprocess.Popen([filter_scp_path,
+                                            train_subset_uttlist,
+                                            os.path.join(training_dir, 'feats.scp')],
+                                            stdout=subprocess.PIPE,
+                                            stderr=logf)
+            apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
+                                                + cmvn_opts
+                                                + ['--utt2spk=ark:{}'.format(os.path.join(training_dir, 'utt2spk')),
+                                                'scp:' + os.path.join(training_dir, 'cmvn.scp'),
+                                                'scp:-', 'ark:-'],
+                                                stdin=filter_proc.stdout,
+                                                stdout=outf,
+                                                stderr=logf)
+            apply_cmvn_proc.communicate()"""
+
+        # Get final forms of these feats
+        get_egs_helper(nnet_dir, 'egsfeats', egs_feats, ivector_period, os.path.join(split_dir, 'utt2spk.{}'.format(x)), ivector_dir, ivector_randomize_prob, logf, x)
+        get_egs_helper(nnet_dir, 'egsvalidfeats', egs_valid_feats, ivector_period, valid_uttlist, ivector_dir, ivector_randomize_prob, logf, x)
+        #get_egs_helper(nnet_dir, 'egstrainsubsetfeats', egs_feats, ivector_period, train_subset_uttlist, ivector_dir, ivector_randomize_prob, logf, x)
+
+    # ---------------------------------
 
     log_path = os.path.join(nnet_dir, 'log', 'ali_to_post.{}.log'.format(x))
     with open(log_path, 'w') as logf:
@@ -1154,10 +1266,11 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x):
     log_path = os.path.join(nnet_dir, 'log', 'get_egs.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs'),
+                                             ivectors_opt,
                                              '--left-context=' + str(config.splice_width),
                                              '--right-context=' + str(config.splice_width),
                                              #"copy-feats scp:{}/{}/feats.scp ark:- |".format(training_dir, x),
-                                             'ark:' + feats,
+                                             'ark:' + os.path.join(nnet_dir, 'egsfeats_helped.{}'.format(x)),
                                              'ark:-',
                                              #"{}/ali.{} | ali-to-pdf {}/final.mdl ark:- ark:- | ali-to-post ark:- ark:- |".format(ali_dir, x, ali_dir),
                                              'ark:-'],
@@ -1191,41 +1304,150 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x):
                                                  stderr=logf)
         nnet_shuffle_egs_proc.communicate()
 
-def get_egs(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, num_jobs):
-    jobs = [(nnet_dir, egs_dir, training_dir, ali_dir, feats, config, x) for x in range(num_jobs)]
+def get_egs(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_dir, feats, valid_uttlist, train_subset_uttlist, config, num_jobs):
+    jobs = [(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_dir, feats, valid_uttlist, train_subset_uttlist, config, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(get_egs_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
-def get_lda_nnet_func(nnet_dir, ali_dir, feats, config, x):
+def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, feats, sil_phones, config, N, x):
     log_path = os.path.join(nnet_dir, 'log', 'lda_acc.{}.log'.format(x))
     splice_feats = os.path.join(nnet_dir, 'splicefeats.{}'.format(x))
     with open(log_path, 'w') as logf:
         with open(splice_feats, 'w') as outf:
+            cmvn_opts = []
+            #print("dim proc!{}:".format(x))
+            #dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+            #                             #'ark:'+new_splice_feats,
+            #                             'scp:' + os.path.join(split_dir, 'feats.{}.scp'.format(x))
+            #                             #'-'],
+            #                             ],
+            #                            stderr=logf)
+            apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
+                                                + cmvn_opts
+                                                + ['--utt2spk=ark:{}'.format(os.path.join(split_dir, 'utt2spk.{}'.format(x))),
+                                                #'scp:' + os.path.join(training_dir, 'cmvn.scp'),
+                                                'scp:' + os.path.join(split_dir, 'cmvn.{}.scp'.format(x)),
+                                                #'scp:-',
+                                                #'scp:' + os.path.join(training_dir, 'feats.scp'),
+                                                'scp:' + os.path.join(split_dir, 'feats.{}.scp'.format(x)),
+                                                'ark:-'],
+                                                #stdin=subset_scp_proc.stdout,
+                                                stdout=subprocess.PIPE,
+                                                stderr=logf)
+
             splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
                                                  '--left-context={}'.format(config.splice_width),
                                                  '--right-context={}'.format(config.splice_width),
-                                                 'scp:' + feats, 'ark:-'],
+                                                 #'scp:' + feats,
+                                                 #'scp:-',
+                                                 'ark:-',
+                                                 'ark:-'],
+                                                 stdin=apply_cmvn_proc.stdout,
                                                  stdout=outf,
                                                  stderr=logf)
             splice_feats_proc.communicate()
+            print("dim proc:")
+            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                         'ark:'+splice_feats,
+                                         #'scp:' + os.path.join(split_dir, 'feats.{}.scp'.format(x)),
+                                         '-'],
+                                        stderr=logf)
+            print("done dim proc")
+            #print("dim proc?{}:".format(x))
+            #dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+                                         #'ark:'+new_splice_feats,
+            #                             'ark:' + splice_feats,
+                                         #'-'],
+            #                             ],
+            #                            stderr=logf)
+            # Add iVector functionality
+        ivector_period = 3000
+        new_splice_feats = os.path.join(nnet_dir, 'newsplicefeats.{}'.format(x))
+        with open(new_splice_feats, 'w') as outf:
+            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            filter_proc = subprocess.Popen([filter_scp_path,
+                                            #os.path.join(ivector_dir, 'utt2spk'),
+                                            os.path.join(split_dir, 'utt2spk.{}'.format(x)),
+                                            os.path.join(ivector_dir, 'ivector_online.scp')],
+                                            stdout=subprocess.PIPE,
+                                            #stdout=outf,
+                                            stderr=logf)
+            subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                    '--n={}'.format(-10),
+                                                    #'scp:{}'.format(os.path.join(ivector_dir, 'ivector_online.scp')),
+                                                    #'scp:{}'.format(os.path.join(nnet_dir, 'lda_filter_scp')),
+                                                    'scp:-',
+                                                    'ark:-'],
+                                                    stdin=filter_proc.stdout,
+                                                    stdout=subprocess.PIPE,
+                                                    #stdout=outf,
+                                                    stderr=logf)
+        #with open(os.path.join(nnet_dir, 'log', 'lda_test_test.log'), 'w') as outf:
+            ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
+                                                    '--randomize-prob={}'.format(0),
+                                                    'ark:-',
+                                                    'ark:-'],
+                                                    stdin=subsample_feats_proc.stdout,
+                                                    stdout=subprocess.PIPE,
+                                                    #stdout=outf,
+                                                    stderr=logf)
+            #ivector_random_proc.communicate()
+
+            paste_feats_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
+                                                '--length-tolerance={}'.format(10),
+                                                'ark:'+ splice_feats,
+                                                'ark:-',
+                                                'ark:-'],
+                                                stdin=ivector_random_proc.stdout,
+                                                #stdout=subprocess.PIPE,
+                                                stdout=outf,
+                                                stderr=logf)
+            paste_feats_proc.communicate()
+
+            splice_feats = new_splice_feats
+
+        # Get iVector dimension
+        ivector_dim_path = os.path.join(nnet_dir, 'ivector_dim')
+        with open(ivector_dim_path, 'w') as outf:
+            print("dim proc ivector:")
+            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                         #'ark:'+new_splice_feats,
+                                         'scp:' + os.path.join(ivector_dir, 'ivector_online.scp'),
+                                         '-'],
+                                        stderr=logf,
+                                        stdout=outf)
+            print("done dim proc ivector")
+
 
             ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
                                                 'ark:' + os.path.join(ali_dir, 'ali.{}'.format(x)),
                                                 'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
+            weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
+                                                        '0.0',
+                                                        sil_phones,
+                                                        os.path.join(ali_dir, 'final.mdl'),
+                                                        'ark:-',
+                                                        'ark:-'],
+                                                        stdin=ali_to_post_proc.stdout,
+                                                        stdout=subprocess.PIPE,
+                                                        stderr=logf)
             acc_lda_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
+                                            '--rand-prune={}'.format(config.randprune),
                                             os.path.join(ali_dir, 'final.mdl'),
                                             'ark:' + splice_feats,
-                                            'ark:-',
+                                            'ark,s,cs:-',
                                             os.path.join(nnet_dir, 'lda.{}.acc'.format(x))],
-                                            stdin=ali_to_post_proc.stdout,
+                                            stdin=weight_silence_post_proc.stdout,
                                             stderr=logf)
             acc_lda_proc.communicate()
 
-def get_lda_nnet(nnet_dir, ali_dir, feats, config, num_jobs):
-    jobs = [(nnet_dir, ali_dir, feats, config, x) for x in range(num_jobs)]
+def get_lda_nnet(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, feats, sil_phones, config, num_jobs):
+    num_feats = 10000
+    N = num_feats/num_jobs
+    jobs = [(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, feats, sil_phones, config, N, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(get_lda_nnet_func, args=i) for i in jobs]
         output = [p.get() for p in results]
@@ -1273,48 +1495,81 @@ def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
         results = [pool.apply_async(nnet_train_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
-def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, config, x):
+def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config, x):
     log_path = os.path.join(nnet_dir, 'log', 'alignment_features{}.log'.format(x))
     with open(log_path, 'w') as logf:
-        path = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
+        first_feats = os.path.join(nnet_dir, 'alignfeats_first.{}'.format(x))
         utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(x))
         cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(x))
         featspath = os.path.join(split_dir, 'feats.{}.scp'.format(x))
-        with open(path, 'wb') as outf:
+        with open(first_feats, 'wb') as outf:
             cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
                                           '--utt2spk=ark:' + utt2spkpath,
                                           'scp:' + cmvnpath,
                                           'scp:' + featspath,
                                           'ark:-'],
-                                          #stdout=outf,
-                                          stdout=subprocess.PIPE,
+                                          stdout=outf,
+                                          #stdout=subprocess.PIPE,
                                           stderr=logf
                                          )
-            #cmvn_proc.communicate()
-            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                            '--left-context=4', '--right-context=4',
-                                            'ark:-',
-                                            'ark:-'], stdin=cmvn_proc.stdout,
-                                            stderr=logf, stdout=subprocess.PIPE
-                                            )
-            transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
-                                                    #lda_dir + '/final.mat',
-                                                    os.path.join(nnet_dir, 'lda.mat'),
+            cmvn_proc.communicate()
+        print("dim proc cmvn:")
+        dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                     'ark:'+first_feats,
+                                     #'scp:' + os.path.join(split_dir, 'feats.{}.scp'.format(x)),
+                                     '-'],
+                                    stderr=logf)
+
+        new_feats = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
+        with open(new_feats, 'w') as outf:
+            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            filter_proc = subprocess.Popen([filter_scp_path,
+                                            os.path.join(split_dir, 'utt2spk.{}'.format(x)),
+                                            #to_filter,
+                                            os.path.join(ivector_dir, 'ivector_online.scp')],
+                                            stdout=subprocess.PIPE,
+                                            stderr=logf)
+            subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
+                                                    '--n={}'.format(-10),
+                                                    'scp:-',
+                                                    'ark:-'],
+                                                    stdin=filter_proc.stdout,
+                                                    stdout=subprocess.PIPE,
+                                                    #stdout=outf,
+                                                    stderr=logf)
+            ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
+                                                    '--randomize-prob={}'.format(0),
                                                     'ark:-',
                                                     'ark:-'],
-                                                    stdin=splice_proc.stdout,
-                                                    stderr=logf,
-                                                    #stdout=subprocess.PIPE
-                                                    stdout=outf
-                                                    )
-            transform_feats_proc.communicate()
-def nnet_get_align_feats(nnet_dir, split_dir, lda_dir, config, num_jobs):
-    jobs = [(nnet_dir, split_dir, lda_dir, config, x) for x in range(num_jobs)]
+                                                    stdin=subsample_feats_proc.stdout,
+                                                    stdout=subprocess.PIPE,
+                                                    stderr=logf)
+
+            paste_feats_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
+                                                '--length-tolerance={}'.format(10),
+                                                'ark:'+ first_feats,
+                                                'ark:-',
+                                                'ark:-'],
+                                                stdin=ivector_random_proc.stdout,
+                                                #stdout=subprocess.PIPE,
+                                                stdout=outf,
+                                                stderr=logf)
+            paste_feats_proc.communicate()
+
+            print("dim proc after:")
+            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                         'ark:'+new_feats,
+                                         #'scp:' + os.path.join(split_dir, 'feats.{}.scp'.format(x)),
+                                         '-'],
+                                        stderr=logf)
+            #transform_feats_proc.communicate()
+def nnet_get_align_feats(nnet_dir, split_dir, lda_dir, ivector_dir, config, num_jobs):
+    jobs = [(nnet_dir, split_dir, lda_dir, ivector_dir, config, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(nnet_get_align_feats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
-def nnet_align_func(i, nnet_dir, mdl_path, config, x):  # pragma: no cover
+def nnet_align_func(i, nnet_dir, mdl_path, config, x):
     feat_path = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
     fst_path = os.path.join(nnet_dir, 'fsts.{}'.format(x))
     log_path = os.path.join(nnet_dir, 'log', 'align.{}.{}.log'.format(i, x))
@@ -1322,18 +1577,28 @@ def nnet_align_func(i, nnet_dir, mdl_path, config, x):  # pragma: no cover
 
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
+        print("dim proc sanity check:")
+        dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                     'ark:'+feat_path,
+                                     '-'],
+                                    stderr=logf)
+        dim_proc.communicate()
         align_proc = subprocess.Popen([thirdparty_binary('nnet-align-compiled'),
                                        '--beam={}'.format(config.beam),
                                        '--retry-beam={}'.format(config.retry_beam),
-                                       '--careful=false',
+                                       #'--careful=false',
                                        mdl_path,
                                        "ark:" + fst_path, "ark:" + feat_path, "ark:-"],
                                       stderr=logf,
                                       stdout=outf)
         align_proc.communicate()
 
-def nnet_align(i, nnet_dir, optional_silence, num_jobs, config):
-    mdl_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
+def nnet_align(i, nnet_dir, optional_silence, num_jobs, config, mdl=None):
+    if mdl == None:
+        mdl_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
+    else:
+        mdl_path = mdl
+        print("!!!")
     # No nnet equivalent to boost silence (yet?)
     #mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
     #                                       config.boost_silence, optional_silence, make_path_safe(mdl_path))

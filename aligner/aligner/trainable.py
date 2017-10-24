@@ -460,13 +460,13 @@ class TrainableAligner(BaseAligner):
         shutil.copy(os.path.join(directory, '{}.dubm'.format(config.num_iters)),
                     os.path.join(directory, 'final.dubm'))
 
-    def ivectors(self):
+    def ivector_extractor(self):
         '''
-        Train iVector extractor and extract iVectors
+        Train iVector extractor
         '''
         os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
         self._train_ivector_extractor()
-        self._extract_ivectors()
+        #self._extract_ivectors()
 
         # YET TO BE IMPLEMENTED
         #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
@@ -605,13 +605,30 @@ class TrainableAligner(BaseAligner):
         os.makedirs(log_dir, exist_ok=True)
 
         directory = self.extracted_ivector_directory
-        ivector_extractor_dir = self.ivector_extractor_directory
+        ivector_extractor_dir = "/Users/mlml/Documents/Project/ivector_extractor" # Fixed; can change
+        diag_ubm_path = "/Users/mlml/Documents/Project/diag_ubm"
+        lda_mllt_path = "/Users/mlml/Documents/Project/lda_mllt"
+        #ivector_extractor_dir = self.ivector_extractor_directory
         split_dir = self.corpus.split_directory
-        diag_ubm_path = self.diag_ubm_directory
-        lda_mllt_path = self.lda_mllt_directory
+        #diag_ubm_path = self.diag_ubm_directory
+        #lda_mllt_path = self.lda_mllt_directory
         train_dir = self.corpus.output_directory
         config = self.ivector_extractor_config
         training_directory = self.corpus.output_directory
+
+        # Need to make a directory for corpus with just 2 utterances per speaker
+        #max2_dir = os.path.join(directory, 'max2')
+        #os.makedirs(max2_dir, exist_ok=True)
+        #mfa_working_dir = os.getcwd()
+        #os.chdir("/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2")
+        #opy_data_sh = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2/copy_data_dir.sh"
+        #log_path = os.path.join(directory, 'log', 'max2.log')
+        #with open(log_path, 'w') as logf:
+        #    command = [copy_data_sh, '--utts-per-spk-max', '2', train_dir, max2_dir]
+        #    max2_proc = subprocess.Popen(command,
+        #                                 stderr=logf)
+        #    max2_proc.communicate()
+        #os.chdir(mfa_working_dir)
 
         # Write a "cmvn config" file (this is blank in the actual kaldi code, but it needs the argument passed)
         cmvn_config = os.path.join(directory, 'online_cmvn.conf')
@@ -642,7 +659,7 @@ class TrainableAligner(BaseAligner):
             ieconf.write('--max-count={}\n'.format(0))
 
         # Extract iVectors
-        extract_ivectors(directory, split_dir, training_directory, ext_config, config, self.num_jobs)
+        extract_ivectors(directory, training_directory, ext_config, config, self.num_jobs)
 
         # Combine iVectors across jobs
         file_list = []
@@ -686,13 +703,36 @@ class TrainableAligner(BaseAligner):
         raw_feats = os.path.join(training_directory, 'feats.scp')
 
         #num_leaves = tri_fmllr_config.initial_gauss_count # Assuming max number of leaves is the same as number of leaves
-        num_leaves = 93 # Hard coded, from dimensions of spliced features
+        #num_leaves = 95 # Hard coded, but that's not working, so figure this out
+
+        #print("gmm info:")
+        #gmm_info_proc = subprocess.Popen([thirdparty_binary('gmm-info'),
+        #                                 os.path.join(align_directory, 'final.mdl')])
+        #gmm_info_proc.communicate()
+        print("tree info:")
+        tree_info_proc = subprocess.Popen([thirdparty_binary('tree-info'),
+                                          os.path.join(align_directory, 'tree')],
+                                          stdout=subprocess.PIPE)
+        tree_info = tree_info_proc.stdout.read()
+        tree_info = tree_info.split()
+        num_leaves = tree_info[1]
+        num_leaves = num_leaves.decode("utf-8")
+        #num_leaves = re.sub(r'[^\d]', '', num_leaves)
+        print("num leaves:", num_leaves)
+
         #feat_dim = self.corpus.get_feat_dim() # Unspliced
-        feat_dim = 13 # Hard coded, from MFCC dimensions
+        #feat_dim = 13 # Hard coded, from MFCC dimensions
         lda_dim = 40 # Hard coded, could paramaterize this/make safer
 
+        # Extract iVectors
+        self._extract_ivectors()
+
         # Get LDA matrix
-        get_lda_nnet(directory, align_directory, raw_feats, config, self.num_jobs)
+        #fixed_ivector_dir = "/Users/mlml/Documents/MFA/textgrid_format/extracted_ivector/max2" # Integrate later
+        fixed_ivector_dir = self.extracted_ivector_directory
+        print("FIXED IVECTOR DIR:", fixed_ivector_dir)
+        get_lda_nnet(directory, align_directory, fixed_ivector_dir, training_directory,
+                     split_directory, raw_feats, self.dictionary.optional_silence_csl, config, self.num_jobs)
 
         log_path = os.path.join(directory, 'log', 'lda_matrix.log')
         with open(log_path, 'w') as logf:
@@ -715,25 +755,86 @@ class TrainableAligner(BaseAligner):
 
         # Get examples for training
         os.makedirs(egs_directory, exist_ok=True)
-        training_feats = os.path.join(split_directory, 'nnet_training_feats')
 
-        with open(training_feats, 'w') as outf:
-            copy_feats_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
-                                                'scp:' + os.path.join(training_directory, 'feats.scp'),
-                                                'ark:'],
-                                                stdout=outf)
-            copy_feats_proc.communicate()
-        get_egs(directory, egs_directory, training_directory, align_directory, training_feats, config, self.num_jobs)
+        # Get valid uttlist and train subset uttlist
+        shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
+        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        valid_uttlist = os.path.join(directory, 'valid_uttlist')
+        train_subset_uttlist = os.path.join(directory, 'train_subset_uttlist')
+        training_feats = os.path.join(directory, 'nnet_training_feats')
+        num_utts_subset = 300
+        log_path = os.path.join(directory, 'log', 'training_egs_feats.log')
+        with open(log_path, 'w') as logf:
+            with open(valid_uttlist, 'w') as outf:
+                valid_uttlist_proc = subprocess.Popen(['awk', '{print $1}',
+                                                      os.path.join(training_directory, 'utt2spk')],
+                                                      stdout=subprocess.PIPE,
+                                                      stderr=logf)
+                shuffle_list_proc = subprocess.Popen([shuffle_list_path],
+                                                     stdin=valid_uttlist_proc.stdout,
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=logf)
+                head_proc = subprocess.Popen(['head', '-{}'.format(num_utts_subset)],
+                                             stdin=shuffle_list_proc.stdout,
+                                             stdout=outf,
+                                             stderr=logf)
+                head_proc.communicate()
+
+            with open(train_subset_uttlist, 'w') as outf:
+                awk_proc = subprocess.Popen(['awk', '{print $1}',
+                                             os.path.join(training_directory, 'utt2spk')],
+                                             stdout=subprocess.PIPE,
+                                             stderr=logf)
+                filter_scp_proc = subprocess.Popen([filter_scp_path,
+                                                   '--exclude', valid_uttlist],
+                                                   stdin=awk_proc.stdout,
+                                                   stdout=subprocess.PIPE,
+                                                   stderr=logf)
+                shuffle_list_proc = subprocess.Popen([shuffle_list_path],
+                                                     stdin=filter_scp_proc.stdout,
+                                                     stdout=subprocess.PIPE,
+                                                     stderr=logf)
+                head_proc = subprocess.Popen(['head', '-{}'.format(num_utts_subset)],
+                                             stdin=shuffle_list_proc.stdout,
+                                             stdout=outf,
+                                             stderr=logf)
+                head_proc.communicate()
+
+            # Now get "feats" (Kaldi)
+            """with open(training_feats, 'w') as outf:
+                filter_scp_proc = subprocess.Popen([filter_scp_path,
+                                                   '--exclude', valid_uttlist,
+                                                   os.path.join(split_directory, 'feats.{}.scp'.format())],
+                                                   stdout=subprocess.PIPE,
+                                                   stderr=logf)"""
+
+
+            """training_feats = os.path.join(split_directory, 'nnet_training_feats')
+
+            with open(training_feats, 'w') as outf:
+                copy_feats_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
+                                                    'scp:' + os.path.join(training_directory, 'feats.scp'),
+                                                    'ark:'],
+                                                    stdout=outf)
+                copy_feats_proc.communicate()"""
+        get_egs(directory, egs_directory, training_directory, split_directory, align_directory,
+                fixed_ivector_dir, training_feats, valid_uttlist,
+                train_subset_uttlist, config, self.num_jobs)
 
 
         # Initialize neural net
         stddev = float(1.0/config.hidden_layer_dim**0.5)
         nnet_config_path = os.path.join(directory, 'nnet.config')
         hidden_config_path = os.path.join(directory, 'hidden.config')
+        ivector_dim_path = os.path.join(directory, 'ivector_dim')
+        with open(ivector_dim_path, 'r') as inf:
+            ivector_dim = inf.read().strip()
+        print("here is the ivector dim:", ivector_dim)
+        feat_dim = 13 + int(ivector_dim)
 
         with open(nnet_config_path, 'w') as nc:
             print("feat dim:", feat_dim)
-            nc.write('SpliceComponent input-dim={} left-context={} right-context={}\n'.format(13, config.splice_width, config.splice_width))
+            nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(feat_dim, config.splice_width, config.splice_width, ivector_dim))
             nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
             nc.write('AffineComponent input-dim={} output-dim={} learning-rate={} param-stddev={} bias-stddev={}\n'.format(lda_dim, config.hidden_layer_dim, config.initial_learning_rate, stddev, config.bias_stddev))
             nc.write('TanhComponent dim={}\n'.format(config.hidden_layer_dim))
@@ -755,15 +856,14 @@ class TrainableAligner(BaseAligner):
                                                 stderr=logf)
             nnet_am_init_proc.communicate()
 
+            nnet_am_info = subprocess.Popen([thirdparty_binary('nnet-am-info'),
+                                            os.path.join(directory, '0.mdl')],
+                                            stderr=logf)
+            nnet_am_info.communicate()
+
+
         # Train transition probabilities and set priors
         nnet_train_trans(directory, align_directory, self.num_jobs)
-
-        # Compile train graphs (gets fsts.{} for alignment)
-        compile_train_graphs(directory, self.dictionary.output_directory,
-                             self.corpus.split_directory, self.num_jobs)
-
-        # Get alignment feats
-        nnet_get_align_feats(directory, self.corpus.split_directory, lda_directory, config, self.num_jobs)
 
         # Training loop
         num_tot_iters = config.num_epochs * config.iters_per_epoch
@@ -771,9 +871,9 @@ class TrainableAligner(BaseAligner):
             # Do first alignment
             model_path = os.path.join(directory, '{}.mdl'.format(i))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
-            nnet_align(i, directory,
-                  self.dictionary.optional_silence_csl,
-                  self.num_jobs, config)
+            #nnet_align(i, directory,
+            #      self.dictionary.optional_silence_csl,
+            #      self.num_jobs, config)
 
 
             # If it is NOT the first iteration,
@@ -831,4 +931,16 @@ class TrainableAligner(BaseAligner):
                 nnet_copy_proc.communicate()
 
         # Rename the final model
-        shutil.copy(os.path.join(directory, '{}.mdl'.format(num_tot_iters)), os.path.join(directory, 'final.mdl'))
+        shutil.copy(os.path.join(directory, '{}.mdl'.format(num_tot_iters-1)), os.path.join(directory, 'final.mdl'))
+
+        # Compile train graphs (gets fsts.{} for alignment)
+        compile_train_graphs(directory, self.dictionary.output_directory,
+                             self.corpus.split_directory, self.num_jobs)
+
+        # Get alignment feats
+        nnet_get_align_feats(directory, self.corpus.split_directory, lda_directory, fixed_ivector_dir, config, self.num_jobs)
+
+        # Do alignment
+        nnet_align("final", directory,
+              self.dictionary.optional_silence_csl,
+              self.num_jobs, config, mdl=os.path.join(directory, 'final.mdl'))
