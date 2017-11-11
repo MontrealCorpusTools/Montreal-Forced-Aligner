@@ -952,7 +952,7 @@ class Corpus(object):
             feats = stdout.decode('utf8').strip()
         return feats
 
-    def initialize_corpus(self, dictionary, skip_input=False):
+    def initialize_corpus(self, dictionary, skip_input=True):
         root_logger = logging.getLogger()
         split_dir = self.split_directory
         self.write()
