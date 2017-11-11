@@ -14,7 +14,7 @@ from aligner.utils import no_dictionary
 from aligner.config import TEMP_DIR
 
 
-def align_corpus(args, skip_input=False):
+def align_corpus(args):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -63,7 +63,7 @@ def align_corpus(args, skip_input=False):
         a = TrainableAligner(corpus, dictionary, args.output_directory,
                              temp_directory=data_directory,
                              mono_params=mono_params, tri_params=tri_params,
-                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs)
+                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, skip_input=getattr(args,'quiet', False))
         a.verbose = args.verbose
         a.train_mono()
         a.export_textgrids()
@@ -81,7 +81,7 @@ def align_corpus(args, skip_input=False):
             yaml.dump(conf, f)
 
 
-def align_corpus_no_dict(args, skip_input=False):
+def align_corpus_no_dict(args):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -107,7 +107,7 @@ def align_corpus_no_dict(args, skip_input=False):
     a = TrainableAligner(corpus, dictionary, args.output_directory,
                          temp_directory=data_directory,
                          mono_params=mono_params, tri_params=tri_params,
-                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug)
+                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug, skip_input=getattr(args,'quiet', False))
     a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
@@ -148,6 +148,8 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
     parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
+                        action='store_true')
+    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
                         action='store_true')
     args = parser.parse_args()
     fix_path()
