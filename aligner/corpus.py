@@ -952,7 +952,7 @@ class Corpus(object):
             feats = stdout.decode('utf8').strip()
         return feats
 
-    def initialize_corpus(self, dictionary):
+    def initialize_corpus(self, dictionary, skip_input=False):
         root_logger = logging.getLogger()
         split_dir = self.split_directory
         self.write()
@@ -967,6 +967,11 @@ class Corpus(object):
             self._split_spk2utt(split_dir)
             self._split_texts(split_dir, dictionary)
             self._split_utt2fst(split_dir, dictionary)
+        if not skip_input and dictionary.oovs_found:
+            user_input = input(
+                'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
+            if user_input.lower() == 'y':
+                sys.exit(1)
         self.create_mfccs()
         if split:
             self._split_feats(split_dir)

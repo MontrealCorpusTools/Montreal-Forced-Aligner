@@ -57,7 +57,7 @@ def unfix_path():
 PRETRAINED_LANGUAGES = ['english']
 
 
-def align_corpus(args, skip_input=False):
+def align_corpus(args):
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -104,10 +104,10 @@ def align_corpus(args, skip_input=False):
         a = PretrainedAligner(corpus, dictionary, acoustic_model, args.output_directory, temp_directory=data_directory,
                               num_jobs=getattr(args, 'num_jobs', 3),
                               speaker_independent=getattr(args, 'no_speaker_adaptation', False),
-                              debug=getattr(args, 'debug', False))
+                              debug=getattr(args, 'debug', False), skip_input=getattr(args, 'quiet', False))
         if getattr(args, 'errors', False):
             check = a.test_utterance_transcriptions()
-            if not skip_input and not check:
+            if not getattr(args, 'quiet', False) and not check:
                 user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
                 if user_input.lower() == 'y':
                     return
@@ -120,11 +120,6 @@ def align_corpus(args, skip_input=False):
         oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
-        if not skip_input and a.dictionary.oovs_found:
-            user_input = input(
-                'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
-            if user_input.lower() == 'y':
-                return
         begin = time.time()
         a.do_align()
         if args.debug:
@@ -142,7 +137,7 @@ def align_corpus(args, skip_input=False):
             yaml.dump(conf, f)
 
 
-def align_included_model(args, skip_input=False):
+def align_included_model(args):
     if getattr(sys, 'frozen', False):
         root_dir = os.path.dirname(os.path.dirname(sys.executable))
     else:
@@ -150,7 +145,7 @@ def align_included_model(args, skip_input=False):
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     args.acoustic_model_path = os.path.join(pretrained_dir, '{}.zip'.format(args.acoustic_model_path.lower()))
-    align_corpus(args, skip_input=skip_input)
+    align_corpus(args)
 
 
 def validate_args(args):
@@ -190,6 +185,8 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-e', '--errors', help="Test for transcription errors in files to be aligned",
                         action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
+                        action='store_true')
+    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
                         action='store_true')
     args = parser.parse_args()
     try:
