@@ -27,7 +27,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = Corpus(stereo_corpus_dir, temp)
-    d.initialize_corpus(dictionary)
+    d.initialize_corpus(dictionary, skip_input=True)
     assert (d.get_feat_dim() == '39')
 
 
@@ -36,7 +36,7 @@ def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir):
     dictionary = Dictionary(basic_dict_path, temp)
     dictionary.write()
     corpus = Corpus(shortsegments_corpus_dir, temp)
-    corpus.initialize_corpus(dictionary)
+    corpus.initialize_corpus(dictionary, skip_input=True)
     assert (len(corpus.feat_mapping.keys()) == 2)
     assert (len(corpus.utt_speak_mapping.keys()) == 2)
     assert (len(corpus.speak_utt_mapping.keys()) == 1)

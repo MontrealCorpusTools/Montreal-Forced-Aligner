@@ -58,7 +58,7 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, output_directory,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
-                 call_back=None, debug=False):
+                 call_back=None, debug=False, skip_input=False):
         self.debug = debug
         if temp_directory is None:
             temp_directory = TEMP_DIR
@@ -68,18 +68,20 @@ class PretrainedAligner(BaseAligner):
         self.corpus = corpus
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
+        self.verbose = False
+        self.skip_input = skip_input
+        self.num_jobs = num_jobs
+        if self.corpus.num_jobs != num_jobs:
+            self.num_jobs = self.corpus.num_jobs
+        self.call_back = call_back
+        if self.call_back is None:
+            self.call_back = print
+
         self.setup()
         self.acoustic_model.export_triphone_model(self.tri_directory)
         log_dir = os.path.join(self.tri_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
-        if self.corpus.num_jobs != num_jobs:
-            num_jobs = self.corpus.num_jobs
-        self.num_jobs = num_jobs
-        self.call_back = call_back
-        if self.call_back is None:
-            self.call_back = print
-        self.verbose = False
         self.tri_fmllr_config = TriphoneFmllrConfig(**{'realign_iters': [1, 2],
                                                        'fmllr_iters': [1],
                                                        'num_iters': 3,
@@ -115,6 +117,7 @@ class PretrainedAligner(BaseAligner):
     def setup(self):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
+
     def test_utterance_transcriptions(self):
         return test_utterances(self)
 
