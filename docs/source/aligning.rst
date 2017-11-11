@@ -55,6 +55,11 @@ Common options for both aligner executables
   Ignore exceptions in loading the corpus. An error will be thrown if two files share the same name, adding this flag will
   ensure utterance names will be unique by appending numbers to the ends of the file names.
 
+.. cmdoption:: -q
+               --quiet
+
+   Flag to ignore stop checks like having OOV items
+
 Align using pretrained models
 -----------------------------
 
