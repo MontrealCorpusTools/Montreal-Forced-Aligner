@@ -337,8 +337,9 @@ class NnetBasicConfig(object):
         self.randprune = 4.0
         self.alpha = 4.0
         self.max_change = 10.0
-        self.mix_up = 0
+        self.mix_up = 12000 # From run_nnet2.sh
         self.prior_subset_size = 10000
+        self.boost_silence = 100
 
 class MfccConfig(object):
     '''

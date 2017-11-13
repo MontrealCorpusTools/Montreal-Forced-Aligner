@@ -156,18 +156,13 @@ class TrainableAligner(BaseAligner):
         #log_dir = os.path.join(self.lda_mllt_directory, 'log')
         #os.makedirs(log_dir, exist_ok=True)
 
-        ##
         config = self.lda_mllt_config
         directory = self.lda_mllt_directory
         align_directory = self.tri_fmllr_ali_directory  # The previous
-        #align_directory = self.tri_ali_directory
         mdl_dir = self.tri_fmllr_directory
-        #mdl_dir = self.lda_mllt_directory
         #if os.path.exists(os.path.join(directory, '1.mdl')):
         #    return
         print('Initializing LDA + MLLT training...')
-
-        #self.corpus._norm_splice_transform_feats(self.lda_mllt_directory)
 
         context_opts = []
         ci_phones = self.dictionary.silence_csl
@@ -190,22 +185,18 @@ class TrainableAligner(BaseAligner):
             for i in range(self.num_jobs):
                 spliced_feat_path = os.path.join(self.corpus.split_directory, 'cmvnsplicefeats.{}'.format(i))
                 ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
-                                                    #'ark:gunzip -c ' + align_directory +
-                                                    #'/ali.{}.gz|'.format(i),
                                                     'ark:' + align_directory + '/ali.{}'.format(i),
                                                     'ark:-'],
                                                     stderr=logf, stdout=subprocess.PIPE)
                 weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
                                                             str(config.boost_silence), ci_phones,
                                                             align_directory +'/final.mdl',
-                                                            #final_mdl_path,
                                                             'ark:-', 'ark:-'],
                                                             stdin=ali_to_post_proc.stdout,
                                                             stderr=logf, stdout=subprocess.PIPE)
                 acc_lda_post_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
                                                     '--rand-prune=' + str(config.randprune),
                                                     align_directory + '/final.mdl',
-                                                    #final_mdl_path,
                                                     'ark:'+spliced_feat_path, # Unsure about this
                                                     'ark,s,cs:-',
                                                     directory + '/lda.{}.acc'.format(i)],
@@ -258,24 +249,13 @@ class TrainableAligner(BaseAligner):
         # Initializing the model
         log_path = os.path.join(directory, 'log', 'init_model.log')
         occs_path = os.path.join(directory, '0.occs')
-        #occs_path = os.path.join(mdl_dir, '0.occs')
         mdl_path = os.path.join(directory, '0.mdl')
-        #mdl_path = os.path.join(mdl_dir, '0.mdl')
         with open(log_path, 'w') as logf:
             subprocess.call([thirdparty_binary('gmm-init-model'),
                              '--write-occs=' + occs_path, tree_path, treeacc_path,
                              topo_path, mdl_path], stderr=logf)
-        #print("!!!!", mdl_path, os.path.exists(os.path.join(mdl_dir, '0.mdl')))
-        #print("!!!!", os.path.exists(os.path.join(mdl_dir, '0.occs')))
-
-        #compile_train_graphs(directory, self.dictionary.output_directory,
-        #                     self.corpus.split_directory, self.num_jobs)
-
-        #os.rename(occs_path, os.path.join(directory, '1.occs')) # ?
-        #os.rename(mdl_path, os.path.join(directory, '1.mdl'))   # ?
         shutil.copy(mdl_path, os.path.join(directory, '1.mdl'))
         shutil.copy(occs_path, os.path.join(directory, '1.occs'))
-
 
         convert_alignments(directory, align_directory, self.num_jobs)
 
@@ -328,9 +308,7 @@ class TrainableAligner(BaseAligner):
 
         os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
 
-        #self.corpus._norm_splice_transform_feats(self.lda_mllt_directory, num=0)
         self._init_lda_mllt()   # Implemented!
-        #self.corpus._norm_splice_transform_feats(self.lda_mllt_directory, num=0)
         self._do_lda_mllt_training()    # Implemented!
 
     def train_diag_ubm(self):
@@ -348,7 +326,6 @@ class TrainableAligner(BaseAligner):
         lda_mllt_path = self.lda_mllt_directory
         directory = self.diag_ubm_directory
 
-        #cmvn_path = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
         cmvn_path = os.path.join(train_dir, 'cmvn.scp')
 
         old_config = self.lda_mllt_config
@@ -356,8 +333,6 @@ class TrainableAligner(BaseAligner):
         ci_phones = self.dictionary.silence_csl
 
         final_mat_path = os.path.join(lda_mllt_path, 'final.mat')
-
-        # Beginning code: will likely need to be refactored
 
         # Create global_cmvn.stats
         log_path = os.path.join(directory, 'log', 'make_global_cmvn.log')
@@ -418,7 +393,6 @@ class TrainableAligner(BaseAligner):
             with open(all_feats_path, 'r') as inf, open(subsample_feats_path, 'wb') as outf:
                 subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                         '--n=' + str(config.subsample),
-                                                        #all_feats_path,
                                                         'ark:-',
                                                         'ark:-'],
                                                         stdin=inf,
@@ -605,13 +579,16 @@ class TrainableAligner(BaseAligner):
         os.makedirs(log_dir, exist_ok=True)
 
         directory = self.extracted_ivector_directory
-        ivector_extractor_dir = "/Users/mlml/Documents/Project/ivector_extractor" # Fixed; can change
-        diag_ubm_path = "/Users/mlml/Documents/Project/diag_ubm"
-        lda_mllt_path = "/Users/mlml/Documents/Project/lda_mllt"
-        #ivector_extractor_dir = self.ivector_extractor_directory
+        ivector_extractor_dir = "/data/acoles/acoles/Montreal-Forced-Aligner/ivector_extractor"
+        #ivector_extractor_dir = "../../ivector_extractor"
+        #ivector_extractor_dir = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/ivector_extractor"
+        diag_ubm_path = "/data/acoles/acoles/Montreal-Forced-Aligner/diag_ubm"
+        #diag_ubm_path = "../../diag_ubm"
+        #diag_ubm_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/diag_ubm"
+        lda_mllt_path = "/data/acoles/acoles/Montreal-Forced-Aligner/lda_mllt"
+        #lda_mllt_path = "../../lda_mllt"
+        #lda_mllt_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/lda_mllt"
         split_dir = self.corpus.split_directory
-        #diag_ubm_path = self.diag_ubm_directory
-        #lda_mllt_path = self.lda_mllt_directory
         train_dir = self.corpus.output_directory
         config = self.ivector_extractor_config
         training_directory = self.corpus.output_directory
@@ -681,35 +658,22 @@ class TrainableAligner(BaseAligner):
         tri_fmllr_config = self.tri_fmllr_config
         directory = self.nnet_basic_directory
         nnet_align_directory = self.nnet_basic_ali_directory
-        align_directory = self.tri_fmllr_ali_directory  # For now-- could change if the preprocessing changes
+        align_directory = self.tri_fmllr_ali_directory
         lda_directory = self.lda_mllt_directory
         egs_directory = os.path.join(directory, 'egs')
         training_directory = self.corpus.output_directory
 
-        #tree_path = os.path.join(directory, 'tree')
-        #treeacc_path = os.path.join(directory, 'treeacc')
         sets_int_path = os.path.join(self.dictionary.phones_dir, 'sets.int')
         roots_int_path = os.path.join(self.dictionary.phones_dir, 'roots.int')
         extra_question_int_path = os.path.join(self.dictionary.phones_dir, 'extra_questions.int')
         topo_path = os.path.join(self.dictionary.output_directory, 'topo')
-        #questions_path = os.path.join(directory, 'questions.int')
-        #questions_qst_path = os.path.join(directory, 'questions.qst')
         L_fst_path = os.path.join(self.dictionary.output_directory, 'L.fst')
         ali_tree_path = os.path.join(align_directory, 'tree')
         shutil.copy(ali_tree_path, os.path.join(directory, 'tree'))
 
-
         mdl_path = os.path.join(align_directory, 'final.mdl')
         raw_feats = os.path.join(training_directory, 'feats.scp')
 
-        #num_leaves = tri_fmllr_config.initial_gauss_count # Assuming max number of leaves is the same as number of leaves
-        #num_leaves = 95 # Hard coded, but that's not working, so figure this out
-
-        #print("gmm info:")
-        #gmm_info_proc = subprocess.Popen([thirdparty_binary('gmm-info'),
-        #                                 os.path.join(align_directory, 'final.mdl')])
-        #gmm_info_proc.communicate()
-        print("tree info:")
         tree_info_proc = subprocess.Popen([thirdparty_binary('tree-info'),
                                           os.path.join(align_directory, 'tree')],
                                           stdout=subprocess.PIPE)
@@ -717,18 +681,13 @@ class TrainableAligner(BaseAligner):
         tree_info = tree_info.split()
         num_leaves = tree_info[1]
         num_leaves = num_leaves.decode("utf-8")
-        #num_leaves = re.sub(r'[^\d]', '', num_leaves)
-        print("num leaves:", num_leaves)
 
-        #feat_dim = self.corpus.get_feat_dim() # Unspliced
-        #feat_dim = 13 # Hard coded, from MFCC dimensions
-        lda_dim = 40 # Hard coded, could paramaterize this/make safer
+        lda_dim = 40 # Hard coded, could paramaterize this/make safer, but it's always 40 for LDA
 
         # Extract iVectors
         self._extract_ivectors()
 
         # Get LDA matrix
-        #fixed_ivector_dir = "/Users/mlml/Documents/MFA/textgrid_format/extracted_ivector/max2" # Integrate later
         fixed_ivector_dir = self.extracted_ivector_directory
         print("FIXED IVECTOR DIR:", fixed_ivector_dir)
         get_lda_nnet(directory, align_directory, fixed_ivector_dir, training_directory,
@@ -756,9 +715,11 @@ class TrainableAligner(BaseAligner):
         # Get examples for training
         os.makedirs(egs_directory, exist_ok=True)
 
-        # Get valid uttlist and train subset uttlist
-        shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
-        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        # # Get valid uttlist and train subset uttlist
+        #shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
+        shuffle_list_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/shuffle_list.pl"
+        #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
         valid_uttlist = os.path.join(directory, 'valid_uttlist')
         train_subset_uttlist = os.path.join(directory, 'train_subset_uttlist')
         training_feats = os.path.join(directory, 'nnet_training_feats')
@@ -800,23 +761,6 @@ class TrainableAligner(BaseAligner):
                                              stderr=logf)
                 head_proc.communicate()
 
-            # Now get "feats" (Kaldi)
-            """with open(training_feats, 'w') as outf:
-                filter_scp_proc = subprocess.Popen([filter_scp_path,
-                                                   '--exclude', valid_uttlist,
-                                                   os.path.join(split_directory, 'feats.{}.scp'.format())],
-                                                   stdout=subprocess.PIPE,
-                                                   stderr=logf)"""
-
-
-            """training_feats = os.path.join(split_directory, 'nnet_training_feats')
-
-            with open(training_feats, 'w') as outf:
-                copy_feats_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
-                                                    'scp:' + os.path.join(training_directory, 'feats.scp'),
-                                                    'ark:'],
-                                                    stdout=outf)
-                copy_feats_proc.communicate()"""
         get_egs(directory, egs_directory, training_directory, split_directory, align_directory,
                 fixed_ivector_dir, training_feats, valid_uttlist,
                 train_subset_uttlist, config, self.num_jobs)
@@ -865,16 +809,16 @@ class TrainableAligner(BaseAligner):
         # Train transition probabilities and set priors
         nnet_train_trans(directory, align_directory, self.num_jobs)
 
-        # Training loop
+        # Get iteration at which we will mix up
         num_tot_iters = config.num_epochs * config.iters_per_epoch
+        finish_add_layers_iter = config.num_hidden_layers * config.add_layers_period
+        first_modify_iter = finish_add_layers_iter + config.add_layers_period
+        mix_up_iter = (num_tot_iters + finish_add_layers_iter)/2
+
+        # Training loop
         for i in range(num_tot_iters):
-            # Do first alignment
             model_path = os.path.join(directory, '{}.mdl'.format(i))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
-            #nnet_align(i, directory,
-            #      self.dictionary.optional_silence_csl,
-            #      self.num_jobs, config)
-
 
             # If it is NOT the first iteration,
             # AND we still have layers to add,
@@ -929,6 +873,18 @@ class TrainableAligner(BaseAligner):
                                                   stdin=nnet_avg_proc.stdout,
                                                   stderr=logf)
                 nnet_copy_proc.communicate()
+
+            # If it's the right time, do mixing up
+            if config.mix_up > 0 and i == mix_up_iter:
+                log_path = os.path.join(directory, 'log', 'mix_up.{}.log'.format(i))
+                with open(log_path, 'w') as logf:
+                    nnet_am_mixup_proc = subprocess.Popen([thirdparty_binary('nnet-am-mixup'),
+                                                          '--min-count=10',
+                                                          '--num-mixtures={}'.format(config.mix_up),
+                                                          os.path.join(directory, '{}.mdl'.format(i+1)),
+                                                          os.path.join(directory, '{}.mdl'.format(i+1))],
+                                                          stderr=logf)
+                    nnet_am_mixup_proc.communicate()
 
         # Rename the final model
         shutil.copy(os.path.join(directory, '{}.mdl'.format(num_tot_iters-1)), os.path.join(directory, 'final.mdl'))

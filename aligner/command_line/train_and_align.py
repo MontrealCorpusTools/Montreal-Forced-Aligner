@@ -81,7 +81,7 @@ def align_corpus(args, skip_input=False):
         #a.train_lda_mllt()      # Implemented!
         #a.train_diag_ubm()      # Implemented!
         #a.ivector_extractor()   # Implemented!
-        a.train_nnet_basic()      # NOT YET IMPLEMENTED
+        a.train_nnet_basic()     # Implemented!
         a.export_textgrids()
 
         if args.output_model_path is not None:
