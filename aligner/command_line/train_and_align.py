@@ -140,6 +140,7 @@ def validate_args(args):
 
 
 if __name__ == '__main__':  # pragma: no cover
+#def main():
     mp.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_directory', help='Full path to the source directory to align')

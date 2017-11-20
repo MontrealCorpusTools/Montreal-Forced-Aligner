@@ -136,10 +136,6 @@ def acc_stats(iteration, directory, split_directory, num_jobs, fmllr=False, do_l
     if do_lda_mllt == True:
         feat_name = 'cmvnsplicetransformfeats'
 
-    #if lda_mllt:
-    #    feat_name = 'cmvnsplicetransformfeats'
-        #feat_name += '_lda_mllt'
-
     feat_name += '.{}'
 
     jobs = [(directory, iteration, x, os.path.join(split_directory, feat_name.format(x)))
@@ -467,7 +463,6 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    print("RUNNING")
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
@@ -479,14 +474,12 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
                                        "ark:" + fst_path, "ark:" + feat_path, "ark:-"],
                                       stderr=logf,
                                       stdout=outf)
-        logf.write("hello")
         align_proc.communicate()
 
 def align_no_pool(iteration, directory, split_directory, optional_silence, num_jobs, config, feature_name=None):
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
-    print("Safe mdl path:", make_path_safe(mdl_path))
 
     feat_name = feature_name + '.{}'
 
@@ -525,21 +518,14 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
-    print("Safe mdl path:", make_path_safe(mdl_path))
-
-    #if feature_name == None:
     feat_name = 'cmvndeltafeats'
 
     if config.do_lda_mllt:
-        #feat_name += '_lda_mllt'
-        #feat_name += '.{}_sub'
-
         feat_name = 'cmvnsplicetransformfeats.{}'
     else:
         feat_name += '.{}'
     jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)))
             for x in range(num_jobs)]
-    print("JOBS FROM ALIGN:", jobs)
 
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(align_func, args=i) for i in jobs]
@@ -663,14 +649,8 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
 def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  # pragma: no cover
     context_opts = []
     log_path = os.path.join(directory, 'log', 'acc_tree.{}.log'.format(job_name))
-    print("TREE LOG PATH:", log_path)
 
     treeacc_path = os.path.join(directory, '{}.treeacc'.format(job_name))
-
-    print("TREEACC PATH:", treeacc_path)
-    print("TREE MDL:", mdl)
-    print("TREE ALI PATH:", ali_path)
-    print("TREE FEAT PATH:", feat_path)
 
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
@@ -713,20 +693,9 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
     if fmllr:
         feat_name += '_fmllr'
 
-    #feat_name += '.{}'
-
-    #if feature_name == None:
     feat_name += '.{}'
-    #else:
-    #    feat_name += '.{}_sub'
-
-    print("feature name:", feature_name)
     mdl_path = os.path.join(align_directory, 'final.mdl')
-    #if feature_name == None:
-    #    print(":)")
-    #    mdl_path = os.path.join(directory, 'final.mdl')
-    #    align_directory = directory
-    print("mdl path for tree:", mdl_path)
+
     jobs = [(directory, ci_phones, mdl_path,
              os.path.join(split_directory, feat_name.format(x)),
              os.path.join(align_directory, 'ali.{}'.format(x)), x)
@@ -804,8 +773,6 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
         tmp_trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
     post_path = os.path.join(directory, 'post.{}'.format(job_name))
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
-    print("FROM CALC FMLLR, INITIAL?", initial)
-    print("FROM CALC FMLLR, FEAT PATH:", feat_path)
     with open(log_path, 'w') as logf:
         subprocess.call([thirdparty_binary('ali-to-post'),
                          "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
@@ -886,6 +853,46 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(calc_fmllr_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+
+def lda_acc_stats_func(directory, split_dir, align_directory, config, ci_phones, i):
+    log_path = os.path.join(directory, 'log', 'ali_to_post.{}.log'.format(i))
+    with open(log_path, 'w') as logf:
+        spliced_feat_path = os.path.join(split_dir, 'cmvnsplicefeats.{}'.format(i))
+        ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                            'ark:' + align_directory + '/ali.{}'.format(i),
+                                            'ark:-'],
+                                            stderr=logf, stdout=subprocess.PIPE)
+        weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
+                                                    str(config.boost_silence), ci_phones,
+                                                    align_directory +'/final.mdl',
+                                                    'ark:-', 'ark:-'],
+                                                    stdin=ali_to_post_proc.stdout,
+                                                    stderr=logf, stdout=subprocess.PIPE)
+        acc_lda_post_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
+                                            '--rand-prune=' + str(config.randprune),
+                                            align_directory + '/final.mdl',
+                                            'ark:'+spliced_feat_path, # Unsure about this
+                                            'ark,s,cs:-',
+                                            directory + '/lda.{}.acc'.format(i)],
+                                            stdin=weight_silence_post_proc.stdout,
+                                            stderr=logf)
+        acc_lda_post_proc.communicate()
+
+    log_path = os.path.join(directory, 'log', 'lda_est.{}.log'.format(i))
+    with open(log_path, 'w') as logf:
+        est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
+                                         '--write-full-matrix=' + directory + '/full.mat',
+                                         '--dim=' + str(config.dim),
+                                         directory + '/0.mat',
+                                         directory + '/lda.{}.acc'.format(i)],
+                                         stderr=logf)
+        est_lda_proc.communicate()
+
+def lda_acc_stats(directory, split_dir, align_directory, config, ci_phones, num_jobs):
+    jobs = [(directory, split_dir, align_directory, config, ci_phones, x) for x in range(num_jobs)]
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(lda_acc_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
 
@@ -1053,6 +1060,7 @@ def acc_ivector_stats_func(directory, config, feat_path, num_jobs, x, iteration)
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w') as logf:
         # There is weird threading/array stuff here, so come back if necessary
+        # (but seems to be working)
         acc_stats_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
                                           os.path.join(directory, '{}.ie'.format(iteration)),
                                           'ark:' + feat_path,
@@ -1067,7 +1075,6 @@ def acc_ivector_stats_func(directory, config, feat_path, num_jobs, x, iteration)
         else:
             accinits = [os.path.join(directory, 'accinit.{}.{}'.format(iteration, j))
                          for j in range(x)]
-        print("accinits:", accinits)
         sum_accs_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
                                          '--parallel=true']
                                          + accinits
@@ -1114,6 +1121,7 @@ def extract_ivectors(directory, training_dir, ieconf, config, num_jobs):
 def get_egs_helper(nnet_dir, label, feats, ivector_period, to_filter, ivector_dir, ivector_randomize_prob, logf, x):
     new_feats = os.path.join(nnet_dir, '{}_helped.{}'.format(label, x))
     with open(new_feats, 'w') as outf:
+        # N.B.: Hacky paths
         #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
         filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
         filter_proc = subprocess.Popen([filter_scp_path,
@@ -1156,6 +1164,7 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_di
     cmvn_opts = []
 
     # Deal with ivector stuff
+    # N.B.: Hacky paths
     #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
     filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
     log_path = os.path.join(nnet_dir, 'log', 'get_egs_feats.{}.log'.format(x))
@@ -1196,6 +1205,8 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_di
                                                 stderr=logf)
             apply_cmvn_proc.communicate()
 
+        # Pertains to development/validation in get_egs
+        # Left commented out for now in case we ever integrate this
         """# Gets "train_subset_feats" (Kaldi)
         egs_train_subset_feats = os.path.join(nnet_dir, 'egstrainsubsetfeats.{}'.format(x))
         with open(egs_train_subset_feats, 'w') as outf:
@@ -1316,6 +1327,7 @@ def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, f
         ivector_period = 3000
         new_splice_feats = os.path.join(nnet_dir, 'newsplicefeats.{}'.format(x))
         with open(new_splice_feats, 'w') as outf:
+            # N.B.: Hacky paths
             #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
             filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
@@ -1454,14 +1466,16 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config,
                                           stderr=logf
                                          )
             cmvn_proc.communicate()
-        print("dim proc cmvn:")
-        dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                     'ark:'+first_feats,
-                                     '-'],
-                                    stderr=logf)
+
+        # Debugging
+        #dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+        #                             'ark:'+first_feats,
+        #                             '-'],
+        #                            stderr=logf)
 
         new_feats = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
         with open(new_feats, 'w') as outf:
+            # N.B.: Hacky paths
             #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
             filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
@@ -1494,11 +1508,12 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config,
                                                 stderr=logf)
             paste_feats_proc.communicate()
 
-            print("dim proc after:")
-            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                         'ark:'+new_feats,
-                                         '-'],
-                                        stderr=logf)
+            # Debugging
+            #dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+            #                             'ark:'+new_feats,
+            #                             '-'],
+            #                            stderr=logf)
+
 def nnet_get_align_feats(nnet_dir, split_dir, lda_dir, ivector_dir, config, num_jobs):
     jobs = [(nnet_dir, split_dir, lda_dir, ivector_dir, config, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
@@ -1513,12 +1528,13 @@ def nnet_align_func(i, nnet_dir, mdl_path, config, x):
 
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
-        print("dim proc sanity check:")
-        dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                     'ark:'+feat_path,
-                                     '-'],
-                                    stderr=logf)
-        dim_proc.communicate()
+        # Debugging
+        #print("dim proc sanity check:")
+        #dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+        #                             'ark:'+feat_path,
+        #                             '-'],
+        #                            stderr=logf)
+        #dim_proc.communicate()
         align_proc = subprocess.Popen([thirdparty_binary('nnet-align-compiled'),
                                        '--beam={}'.format(config.beam),
                                        '--retry-beam={}'.format(config.retry_beam),
@@ -1533,8 +1549,7 @@ def nnet_align(i, nnet_dir, optional_silence, num_jobs, config, mdl=None):
         mdl_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
     else:
         mdl_path = mdl
-        print("!!!")
-    # No nnet equivalent to boost silence (yet?)
+
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('nnet2-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
 

@@ -10,6 +10,7 @@ from ..helper import thirdparty_binary, make_path_safe
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
                                convert_ali_to_textgrids, calc_fmllr,
+                               lda_acc_stats,
                                calc_lda_mllt, gmm_gselect, acc_global_stats,
                                gauss_to_post, acc_ivector_stats, get_egs,
                                get_lda_nnet, nnet_train_trans, nnet_train,
@@ -77,6 +78,7 @@ class TrainableAligner(BaseAligner):
         '''
         Perform triphone training
         '''
+        # N.B.: Left commented out for development
         #if os.path.exists(self.tri_final_model_path):
         #    print('Triphone training already done, using previous final.mdl')
         #    return
@@ -140,6 +142,7 @@ class TrainableAligner(BaseAligner):
         Perform monophone training
         '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
+        # N.B.: Left commented out for development
         #if os.path.exists(final_mdl):
         #    print('Monophone training already done, using previous final.mdl')
         #    return
@@ -153,13 +156,11 @@ class TrainableAligner(BaseAligner):
         '''
         Initialize LDA + MLLT training.
         '''
-        #log_dir = os.path.join(self.lda_mllt_directory, 'log')
-        #os.makedirs(log_dir, exist_ok=True)
-
         config = self.lda_mllt_config
         directory = self.lda_mllt_directory
         align_directory = self.tri_fmllr_ali_directory  # The previous
         mdl_dir = self.tri_fmllr_directory
+        # N.B.: Left commented out for development
         #if os.path.exists(os.path.join(directory, '1.mdl')):
         #    return
         print('Initializing LDA + MLLT training...')
@@ -180,40 +181,7 @@ class TrainableAligner(BaseAligner):
         final_mdl_path = os.path.join(self.tri_fmllr_directory)
 
         # Accumulate LDA stats
-        log_path = os.path.join(directory, 'log', 'ali_to_post.log')
-        with open(log_path, 'w') as logf:
-            for i in range(self.num_jobs):
-                spliced_feat_path = os.path.join(self.corpus.split_directory, 'cmvnsplicefeats.{}'.format(i))
-                ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
-                                                    'ark:' + align_directory + '/ali.{}'.format(i),
-                                                    'ark:-'],
-                                                    stderr=logf, stdout=subprocess.PIPE)
-                weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                            str(config.boost_silence), ci_phones,
-                                                            align_directory +'/final.mdl',
-                                                            'ark:-', 'ark:-'],
-                                                            stdin=ali_to_post_proc.stdout,
-                                                            stderr=logf, stdout=subprocess.PIPE)
-                acc_lda_post_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
-                                                    '--rand-prune=' + str(config.randprune),
-                                                    align_directory + '/final.mdl',
-                                                    'ark:'+spliced_feat_path, # Unsure about this
-                                                    'ark,s,cs:-',
-                                                    directory + '/lda.{}.acc'.format(i)],
-                                                    stdin=weight_silence_post_proc.stdout,
-                                                    stderr=logf)
-                acc_lda_post_proc.communicate()
-
-        log_path = os.path.join(directory, 'log', 'lda_est.log')
-        with open(log_path, 'w') as logf:
-            for i in range(self.num_jobs):
-                est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
-                                                 '--write-full-matrix=' + directory + '/full.mat',
-                                                 '--dim=' + str(config.dim),
-                                                 directory + '/0.mat',
-                                                 directory + '/lda.{}.acc'.format(i)],
-                                                 stderr=logf)
-                est_lda_proc.communicate()
+        lda_acc_stats(directory, self.corpus.split_directory, align_directory, config, ci_phones, self.num_jobs)
 
         # Accumulating tree stats
         self.corpus._norm_splice_transform_feats(self.lda_mllt_directory)
@@ -274,7 +242,6 @@ class TrainableAligner(BaseAligner):
         log_dir = os.path.join(self.lda_mllt_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         feat_name = "cmvnsplicetransformfeats"
-        #model_directory = self.lda_mllt_directory
         model_directory = self.tri_fmllr_directory  # Get final.mdl from here
         output_directory = self.lda_mllt_ali_directory  # Alignments end up here
         self._align_si(fmllr=False, lda_mllt=True, feature_name=feat_name)
@@ -298,24 +265,30 @@ class TrainableAligner(BaseAligner):
         '''
         Perform LDA + MLLT training
         '''
+        # N.B.: Left commented out for development
         #if os.path.exists(self.lda_mllt_final_model_path):
         #    print('LDA + MLLT training already done, using previous final.mdl')
         #    return
 
-        #if not os.path.exists(self.lta_mllt_ali_directory):
+        # N.B: The function _align_lda_mllt() is half-developed, but there doesn't seem to
+        # be a reason for it to actually ever be called (since people will always have
+        # fmllr done immediately before in the pipeline. Can clean/delete later if determined
+        # that we need to actually use it somewhere or not).
+        #if not os.path.exists(self.lda_mllt_ali_directory):
         #    self._align_lda_mllt()
-        #self._align_lda_mllt()  # NOT implemented, can come back later or make people run from fmllr
+        #self._align_lda_mllt()  # half implemented, can come back later or make people run from fmllr
 
         os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
 
-        self._init_lda_mllt()   # Implemented!
-        self._do_lda_mllt_training()    # Implemented!
+        self._init_lda_mllt()
+        self._do_lda_mllt_training()
 
     def train_diag_ubm(self):
         '''
         Train a diagonal UBM on the LDA + MLLT model
         '''
-        #if os.path.exists(self.diag_ubm_final_model_path):  # What actually is this?
+        # N.B.: Left commented out for development
+        #if os.path.exists(self.diag_ubm_final_model_path):
         #    print('Diagonal UBM training already done; using previous model')
         #    return
         log_dir = os.path.join(self.diag_ubm_directory, 'log')
@@ -438,24 +411,15 @@ class TrainableAligner(BaseAligner):
         '''
         Train iVector extractor
         '''
-        os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
-        self._train_ivector_extractor()
-        #self._extract_ivectors()
-
-        # YET TO BE IMPLEMENTED
-        #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
-
+        # N.B.: Left commented out for development
         #if os.path.exists(self.ivector_extractor_final_model_path):
         #    print('iVector training already done, using previous final.mdl')
         #    return
-
-        #if not os.path.exists(self.lta_mllt_ali_directory):
-        #    self._align_lda_mllt()
-        #self._align_lda_mllt()  # NOT implemented, can come back later or make people run from fmllr
-
-        #os.makedirs(os.path.join(self.lda_mllt_directory, 'log'), exist_ok=True)
+        os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
+        self._train_ivector_extractor()
 
     def _train_ivector_extractor(self):
+        # N.B.: Left commented out for development
         #if os.path.exists(self.ivector_extractor_final_model_path):
         #    print('iVector extractor training already done, using previous final.ie')
         #    return
@@ -571,6 +535,7 @@ class TrainableAligner(BaseAligner):
         shutil.copy(os.path.join(directory, '{}.ie'.format(config.num_iters)), os.path.join(directory, 'final.ie'))
 
     def _extract_ivectors(self):
+        # N.B.: Left commented out for development
         #if os.path.exists(self.ivector_extractor_final_model_path):
         #    print('iVector extractor training already done, using previous final.ie')
         #    return
@@ -578,6 +543,7 @@ class TrainableAligner(BaseAligner):
         log_dir = os.path.join(self.extracted_ivector_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
+        # N.B.: These paths are hacky and need to be correctly integrated
         directory = self.extracted_ivector_directory
         ivector_extractor_dir = "/data/acoles/acoles/Montreal-Forced-Aligner/ivector_extractor"
         #ivector_extractor_dir = "../../ivector_extractor"
@@ -594,6 +560,7 @@ class TrainableAligner(BaseAligner):
         training_directory = self.corpus.output_directory
 
         # Need to make a directory for corpus with just 2 utterances per speaker
+        # (left commented out in case we ever decide to do this)
         #max2_dir = os.path.join(directory, 'max2')
         #os.makedirs(max2_dir, exist_ok=True)
         #mfa_working_dir = os.getcwd()
@@ -716,6 +683,7 @@ class TrainableAligner(BaseAligner):
         os.makedirs(egs_directory, exist_ok=True)
 
         # # Get valid uttlist and train subset uttlist
+        # (same issue with hacky paths throughout)
         #shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
         shuffle_list_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/shuffle_list.pl"
         #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
