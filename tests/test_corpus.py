@@ -3,7 +3,6 @@ import pytest
 import shutil
 
 from aligner.corpus import Corpus
-from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
 
 
@@ -57,7 +56,7 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir):
         for f in files:
             name, ext = os.path.splitext(f)
             assert (any(name in x for x in c.groups))
-    c.create_mfccs()
+    c.generate_features()
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
             name, ext = os.path.splitext(f)
@@ -71,8 +70,18 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir):
         for f in files:
             name, ext = os.path.splitext(f)
             assert (any(name in x for x in c.groups))
-    c.create_mfccs()
+    c.generate_features()
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
             name, ext = os.path.splitext(f)
             assert (any(name in x for x in c.feat_mapping))
+
+def test_subset(large_prosodylab_format_directory, temp_dir, large_dataset_dictionary):
+    output_directory = os.path.join(temp_dir, 'large_subset')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    d = Dictionary(large_dataset_dictionary, output_directory)
+    d.write()
+    c = Corpus(large_prosodylab_format_directory, output_directory)
+    c.initialize_corpus(d)
+    sd = c.split_directory(10)
+    assert os.path.exists(sd)

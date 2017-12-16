@@ -1,0 +1,10 @@
+beam: 10
+retry_beam: 40
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+  pitch: false
+
+

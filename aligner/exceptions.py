@@ -85,3 +85,9 @@ class PronunciationOrthographyMismatchError(AlignerError):
 
 class ArgumentError(MFAError):
     pass
+
+class ConfigError(MFAError):
+    pass
+
+class TrainerError(MFAError):
+    pass

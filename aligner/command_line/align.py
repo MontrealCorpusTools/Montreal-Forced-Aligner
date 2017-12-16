@@ -11,7 +11,7 @@ from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
 from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
-from aligner.config import TEMP_DIR
+from aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
 
 
 class DummyArgs(object):
@@ -81,29 +81,30 @@ def align_corpus(args):
                 'dictionary_path': args.dictionary_path}
     if getattr(args, 'clean', False) \
             or conf['dirty'] or conf['type'] != 'align' \
-            or conf['corpus_directory'] != args.corpus_directory\
-            or conf['version'] != __version__\
+            or conf['corpus_directory'] != args.corpus_directory \
+            or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
         shutil.rmtree(args.output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
-    use_speaker_info = not args.no_speaker_adaptation
     try:
         corpus = Corpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
                         num_jobs=args.num_jobs,
-                        use_speaker_information=use_speaker_info,
                         ignore_exceptions=getattr(args, 'ignore_exceptions', False))
         print(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path)
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
         acoustic_model.validate(dictionary)
         begin = time.time()
-        a = PretrainedAligner(corpus, dictionary, acoustic_model, args.output_directory, temp_directory=data_directory,
-                              num_jobs=getattr(args, 'num_jobs', 3),
-                              speaker_independent=getattr(args, 'no_speaker_adaptation', False),
+        if args.config_path:
+            align_config = align_yaml_to_config(args.config_path)
+        else:
+            align_config = load_basic_align()
+        a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config, args.output_directory,
+                              temp_directory=data_directory, num_jobs=getattr(args, 'num_jobs', 3),
                               debug=getattr(args, 'debug', False), skip_input=getattr(args, 'quiet', False))
         if getattr(args, 'errors', False):
             check = a.test_utterance_transcriptions()
@@ -114,14 +115,14 @@ def align_corpus(args):
         if args.debug:
             print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
-        utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
+        utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
-        oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
+        oov_path = os.path.join(corpus.split_directory(), 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
         begin = time.time()
-        a.do_align()
+        a.align()
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
         begin = time.time()
@@ -177,17 +178,17 @@ if __name__ == '__main__':  # pragma: no cover
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
     parser.add_argument('-j', '--num_jobs', type=int, default=3,
                         help='Number of cores to use while aligning')
-    parser.add_argument('-v', '--verbose', help="Output debug messages about alignment", action='store_true')
-    parser.add_argument('-n', '--no_speaker_adaptation',
-                        help="Only use speaker independent models, with no speaker adaptation", action='store_true')
+    parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
     parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
-    parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+    parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
     parser.add_argument('-e', '--errors', help="Test for transcription errors in files to be aligned",
                         action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
-    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
+    parser.add_argument('-q', '--quiet', help='Prevent aligner from asking for input',
                         action='store_true')
+    parser.add_argument('--config_path', type=str, default='',
+                        help='Path to config file to use for alignment')
     args = parser.parse_args()
     try:
         args.speaker_characters = int(args.speaker_characters)

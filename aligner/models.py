@@ -77,48 +77,46 @@ class AcousticModel(Archive):
 
     @property
     def meta(self):
+        default_features = {'type': 'mfcc',
+                            'use_energy': False,
+                            'frame_shift': 10,
+                            'pitch': False}
         if not self._meta:
             meta_path = os.path.join(self.dirname, 'meta.yaml')
             if not os.path.exists(meta_path):
                 self._meta = {'version': '0.9.0',
-                              'architecture': 'gmm-hmm'}
+                              'architecture': 'gmm-hmm',
+                              'features': default_features
+                              }
             else:
                 with open(meta_path, 'r', encoding='utf8') as f:
                     self._meta = yaml.load(f)
+                if self._meta['features'] == 'mfcc+deltas':
+                    self._meta['features'] = default_features
+            if 'uses_lda' not in self._meta: # Backwards compat
+                self._meta['uses_lda'] = False
+            if 'uses_sat' not in self._meta:
+                self._meta['uses_sat'] = False
+            if 'phone_type' not in self._meta:
+                self._meta['phone_type'] = 'triphone'
             self._meta['phones'] = set(self._meta.get('phones', []))
         return self._meta
 
-    def add_triphone_model(self, source):
+    def add_model(self, source):
         """
         Add file into archive
         """
-        copyfile(os.path.join(source, 'final.mdl'), os.path.join(self.dirname, 'ali-final.mdl'))
-        copyfile(os.path.join(source, 'final.occs'), os.path.join(self.dirname, 'ali-final.occs'))
-        copyfile(os.path.join(source, 'tree'), os.path.join(self.dirname, 'ali-tree'))
+        copyfile(os.path.join(source, 'final.mdl'), os.path.join(self.dirname, 'final.mdl'))
+        copyfile(os.path.join(source, 'final.occs'), os.path.join(self.dirname, 'final.occs'))
+        copyfile(os.path.join(source, 'tree'), os.path.join(self.dirname, 'tree'))
 
-    def add_triphone_fmllr_model(self, source):
-        """
-        Add file into archive
-        """
-        copy(os.path.join(source, 'final.mdl'), self.dirname)
-        copy(os.path.join(source, 'final.occs'), self.dirname)
-        copy(os.path.join(source, 'tree'), self.dirname)
-
-    def export_triphone_model(self, destination):
+    def export_model(self, destination):
         """
         """
         os.makedirs(destination, exist_ok=True)
         copyfile(os.path.join(self.dirname, 'final.mdl'), os.path.join(destination, 'final.mdl'))
         copyfile(os.path.join(self.dirname, 'final.occs'), os.path.join(destination, 'final.occs'))
         copyfile(os.path.join(self.dirname, 'tree'), os.path.join(destination, 'tree'))
-
-    def export_triphone_fmllr_model(self, destination):
-        """
-        """
-        os.makedirs(destination, exist_ok=True)
-        copy(os.path.join(self.dirname, 'final.mdl'), destination)
-        copy(os.path.join(self.dirname, 'final.occs'), destination)
-        copy(os.path.join(self.dirname, 'tree'), destination)
 
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):

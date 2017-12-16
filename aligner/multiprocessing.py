@@ -7,8 +7,6 @@ from .helper import make_path_safe, thirdparty_binary
 
 from .textgrid import ctm_to_textgrid, parse_ctm
 
-from .config import *
-
 from .exceptions import CorpusError
 
 
@@ -41,7 +39,7 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):  # pra
         copy_proc.wait()
 
 
-def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_configs):
+def mfcc(mfcc_directory, log_directory, num_jobs, feature_config, mfcc_configs):
     """
     Multiprocessing function that converts wav files into MFCCs
 
@@ -69,7 +67,13 @@ def mfcc(mfcc_directory, log_directory, num_jobs, mfcc_configs):
         If the files per speaker exceeds the number of files that are
         allowed to be open on the computer (for Unix-based systems)
     """
-    jobs = [(mfcc_directory, log_directory, x, mfcc_configs[x].path)
+    if feature_config is None:
+        from .config import MfccConfig
+        feature_config = MfccConfig()
+    paths = []
+    for j, p in mfcc_configs:
+        paths.append(feature_config.write(mfcc_directory, j, p))
+    jobs = [(mfcc_directory, log_directory, x, paths[x])
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         r = False
@@ -311,7 +315,8 @@ def mono_align_equal(mono_directory, split_directory, num_jobs):
         output = [p.get() for p in results]
 
 
-def compile_utterance_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):  # pragma: no cover
+def compile_utterance_train_graphs_func(directory, lang_directory, split_directory, job_name,
+                                        debug=False):  # pragma: no cover
     disambig_int_path = os.path.join(lang_directory, 'phones', 'disambig.int')
     tree_path = os.path.join(directory, 'tree')
     mdl_path = os.path.join(directory, 'final.mdl')
@@ -381,8 +386,8 @@ def test_utterances(aligner):
 
     from .corpus import load_scp
 
-    split_directory = aligner.corpus.split_directory
-    model_directory = aligner.tri_directory
+    split_directory = aligner.corpus.split_directory()
+    model_directory = aligner.model_directory
     lang_directory = aligner.dictionary.output_directory
     with mp.Pool(processes=aligner.num_jobs) as pool:
         jobs = [(model_directory, lang_directory, split_directory, x)
@@ -450,10 +455,10 @@ def test_utterances(aligner):
     return False
 
 
-def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragma: no cover
+def align_func(directory, iteration, job_name, mdl, config, feat_path, output_directory):  # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
-    log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
-    ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
+    log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
+    ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
@@ -467,7 +472,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -494,15 +499,17 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     config : :class:`~aligner.config.MonophoneConfig`, :class:`~aligner.config.TriphoneConfig` or :class:`~aligner.config.TriphoneFmllrConfig`
         Configuration object for training
     """
+    if output_directory is None:
+        output_directory = directory
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
 
     feat_name = 'cmvndeltafeats'
-    if config.do_fmllr:
+    if getattr(config, 'do_fmllr', False):
         feat_name += '_fmllr'
     feat_name += '.{}'
-    jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)))
+    jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)), output_directory)
             for x in range(num_jobs)]
 
     with mp.Pool(processes=num_jobs) as pool:
@@ -510,8 +517,8 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
         output = [p.get() for p in results]
 
 
-def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, job_name):  # pragma: no cover
-    text_int_path = os.path.join(corpus.split_directory, 'text.{}.int'.format(job_name))
+def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_name):  # pragma: no cover
+    text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
@@ -519,7 +526,7 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
 
-    frame_shift = corpus.mfcc_configs[0].config_dict['frame-shift'] / 1000
+    frame_shift = align_config.feature_config.frame_shift / 1000
     with open(log_path, 'w') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
@@ -548,7 +555,41 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
         nbest_proc.communicate()
 
 
-def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corpus, num_jobs):
+def compile_information_func(log_directory, corpus, job_num):
+    align_path = os.path.join(log_directory, 'align.final.{}.log'.format(job_num))
+    unaligned = {}
+    with open(align_path, 'r', encoding='utf8') as f:
+        for line in f:
+            m = re.search(r'Did not successfully decode file (.*?),', line)
+            if m is not None:
+                utt = m.groups()[0]
+                unaligned[utt] = 'Could not decode (beam too narrow)'
+    features_path = os.path.join(corpus.features_log_directory, 'make_mfcc.{}.log'.format(job_num))
+    with open(features_path, 'r', encoding='utf8') as f:
+        for line in f:
+            m = re.search(r'Segment (.*?) too short', line)
+            if m is not None:
+                utt = m.groups()[0]
+                unaligned[utt] = 'Too short to get features'
+    return unaligned
+
+
+def compile_information(model_directory, corpus, num_jobs):
+    log_dir = os.path.join(model_directory, 'log')
+
+    jobs = [(log_dir, corpus, x)
+            for x in range(num_jobs)]
+
+    with mp.Pool(processes=num_jobs) as pool:
+        results = [pool.apply_async(compile_information_func, args=i) for i in jobs]
+        output = [p.get() for p in results]
+    unaligned = {}
+    for o in output:
+        unaligned.update(o)
+    return unaligned
+
+
+def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -586,7 +627,7 @@ def convert_ali_to_textgrids(output_directory, model_directory, dictionary, corp
         allowed to be open on the computer (for Unix-based systems)
 
     """
-    jobs = [(output_directory, model_directory, dictionary, corpus, x)
+    jobs = [(align_config, model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
 
     with mp.Pool(processes=num_jobs) as pool:

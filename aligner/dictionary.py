@@ -172,7 +172,7 @@ class Dictionary(object):
         self.words_mapping['<s>'] = i + 2
         self.words_mapping['</s>'] = i + 3
 
-        self.oovs_found = set()
+        self.oovs_found = Counter()
         self.add_disambiguation()
 
     def add_disambiguation(self):
@@ -228,7 +228,7 @@ class Dictionary(object):
             return None
         item = self._lookup(item)
         if item not in self.words_mapping:
-            self.oovs_found.add(item)
+            self.oovs_found.update([item])
             return self.oov_int
         return self.words_mapping[item]
 
@@ -241,9 +241,11 @@ class Dictionary(object):
         directory : str
             Path to directory to save ``oovs_found.txt``
         """
-        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding='utf8') as f:
-            for oov in sorted(self.oovs_found):
+        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding='utf8') as f,\
+            open(os.path.join(directory, 'oov_counts.txt'), 'w', encoding='utf8') as cf:
+            for oov in sorted(self.oovs_found.keys(), key=lambda x: (-self.oovs_found[x], x)):
                 f.write(oov + '\n')
+                cf.write('{}\t{}\n'.format(oov, self.oovs_found[oov]))
         self.oovs_found = set()
 
     def _lookup(self, item):
@@ -808,5 +810,5 @@ class OrthographicDictionary(Dictionary):
         self.words_mapping['<s>'] = i + 2
         self.words_mapping['</s>'] = i + 3
 
-        self.oovs_found = set()
+        self.oovs_found = Counter()
         self.add_disambiguation()

@@ -69,3 +69,7 @@ docs/build/
 
 # PyBuilder
 target/
+
+*.exe
+
+*.dll

@@ -6,6 +6,7 @@ import shutil
 import struct
 import wave
 import logging
+import random
 from collections import defaultdict, Counter
 from textgrid import TextGrid, IntervalTier
 
@@ -16,7 +17,7 @@ from .exceptions import SampleRateError, CorpusError
 
 from .dictionary import sanitize
 
-from .config import MfccConfig
+from .config import FeatureConfig
 
 
 def output_mapping(mapping, path):
@@ -227,8 +228,6 @@ class Corpus(object):
         Directory of the dataset to align
     output_directory : str
         Directory to store generated data for the Kaldi binaries
-    mfcc_config : MfccConfig
-        Configuration object for how to calculate MFCCs
     speaker_characters : int, optional
         Number of characters in the filenames to count as the speaker ID,
         if not specified, speaker IDs are generated from directory names
@@ -245,7 +244,6 @@ class Corpus(object):
     '''
 
     def __init__(self, directory, output_directory,
-                 use_speaker_information=True,
                  speaker_characters=0,
                  num_jobs=3, debug=False,
                  ignore_exceptions=False):
@@ -285,6 +283,7 @@ class Corpus(object):
         self.ignored_utterances = []
         self.wav_files = []
         self.wav_durations = {}
+        self.utterance_lengths = {}
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -367,7 +366,8 @@ class Corpus(object):
                         tg.read(tg_path)
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
-                        textgrid_read_errors[tg_path] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        textgrid_read_errors[tg_path] = '\n'.join(
+                            traceback.format_exception(exc_type, exc_value, exc_traceback))
                     n_channels = get_n_channels(wav_path)
                     num_tiers = len(tg.tiers)
                     if n_channels == 2:
@@ -393,7 +393,7 @@ class Corpus(object):
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             label = interval.mark.lower().strip()
-                            #label = sanitize(label)
+                            # label = sanitize(label)
                             words = [sanitize(x) for x in label.split()]
                             words = [x for x in words if x not in ['', '-', "'"]]
                             if not words:
@@ -507,15 +507,13 @@ class Corpus(object):
             jobs_per_sample_rate[addable[0]] += 1
             remaining_jobs -= 1
         self.speaker_groups = []
-        self.mfcc_configs = []
+        self.feature_configs = []
         job_num = 0
         for k, v in jobs_per_sample_rate.items():
             speakers = sorted(self.sample_rates[k])
             groups = [[] for x in range(v)]
 
-            configs = [MfccConfig(self.mfcc_directory, job=job_num + x, kwargs={'sample-frequency': k,
-                                                                                'low-freq': 20,
-                                                                                'high-freq': 7800}) for x in range(v)]
+            configs = [(job_num + x, {'sample-frequency': k, 'low-freq': 20, 'high-freq': 7800}) for x in range(v)]
             ind = 0
             while speakers:
                 s = speakers.pop(0)
@@ -526,7 +524,7 @@ class Corpus(object):
 
             job_num += v
             self.speaker_groups.extend(groups)
-            self.mfcc_configs.extend(configs)
+            self.feature_configs.extend(configs)
         self.groups = []
         for x in self.speaker_groups:
             g = []
@@ -543,7 +541,7 @@ class Corpus(object):
         root_logger.info(msg)
         return msg
 
-    def parse_mfcc_logs(self):
+    def parse_features_logs(self):
         pass
 
     @property
@@ -551,12 +549,12 @@ class Corpus(object):
         return len(self.utt_speak_mapping)
 
     @property
-    def mfcc_directory(self):
-        return os.path.join(self.output_directory, 'mfcc')
+    def features_directory(self):
+        return os.path.join(self.output_directory, 'features')
 
     @property
-    def mfcc_log_directory(self):
-        return os.path.join(self.mfcc_directory, 'log')
+    def features_log_directory(self):
+        return os.path.join(self.features_directory, 'log')
 
     @property
     def grouped_wav(self):
@@ -753,9 +751,13 @@ class Corpus(object):
             nframes = soundf.getnframes()
         return nframes / sr
 
-    @property
-    def split_directory(self):
-        return os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+    def split_directory(self, subset=None):
+        if subset is None or subset > self.num_utterances:
+            return os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+        directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
+        if not os.path.exists(directory):
+            self.create_subset(subset)
+        return directory
 
     def write(self):
         self._write_speak_utt()
@@ -834,17 +836,20 @@ class Corpus(object):
         pattern = 'cmvn.{}.scp'
         save_groups(self.grouped_cmvn, directory, pattern)
 
-    def create_mfccs(self):
-        log_directory = self.mfcc_log_directory
+    def generate_features(self, feature_config=None):
+        if feature_config is None:
+            feature_config = FeatureConfig()
+        log_directory = self.features_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        if os.path.exists(os.path.join(self.mfcc_directory, 'cmvn')):
+        if os.path.exists(os.path.join(self.features_directory, 'cmvn')):
             print("Using previous MFCCs")
             return
         print('Calculating MFCCs...')
-        self._split_wavs(self.mfcc_log_directory)
-        self._split_segments(self.mfcc_log_directory)
-        mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_configs)
-        self.parse_mfcc_logs()
+        self._split_wavs(self.features_log_directory)
+        self._split_segments(self.features_log_directory)
+        if feature_config.type == 'mfcc':
+            mfcc(self.features_directory, log_directory, self.num_jobs, feature_config, self.feature_configs)
+        self.parse_features_logs()
         self._combine_feats()
         print('Calculating CMVN...')
         self._calc_cmvn()
@@ -855,7 +860,7 @@ class Corpus(object):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         with open(feat_path, 'w') as outf:
             for i in range(self.num_jobs):
-                path = os.path.join(self.mfcc_directory, 'raw_mfcc.{}.scp'.format(i))
+                path = os.path.join(self.features_directory, 'raw_mfcc.{}.scp'.format(i))
                 with open(path, 'r') as inf:
                     for line in inf:
                         line = line.strip()
@@ -890,11 +895,22 @@ class Corpus(object):
                     pass
             for k, v in self.speak_utt_mapping.items():
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
+        with open(os.devnull, 'w') as devnull:
+            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+                                         'scp:' + feat_path, 'ark,t:-'],
+                                        stdout=subprocess.PIPE,
+                                        stderr=devnull)
+            stdout, stderr = dim_proc.communicate()
+            feats = stdout.decode('utf8').strip()
+            for line in feats.splitlines():
+                line = line.strip()
+                line = line.split()
+                self.utterance_lengths[line[0]] = int(line[1])
 
     def _calc_cmvn(self):
         spk2utt = os.path.join(self.output_directory, 'spk2utt')
         feats = os.path.join(self.output_directory, 'feats.scp')
-        cmvn_directory = os.path.join(self.mfcc_directory, 'cmvn')
+        cmvn_directory = os.path.join(self.features_directory, 'cmvn')
         os.makedirs(cmvn_directory, exist_ok=True)
         cmvn_ark = os.path.join(cmvn_directory, 'cmvn.ark')
         cmvn_scp = os.path.join(cmvn_directory, 'cmvn.scp')
@@ -908,7 +924,7 @@ class Corpus(object):
         self.cmvn_mapping = load_scp(cmvn_scp)
 
     def _split_and_norm_feats(self):
-        split_dir = self.split_directory
+        split_dir = self.split_directory()
         log_dir = os.path.join(split_dir, 'log')
         os.makedirs(log_dir, exist_ok=True)
         with open(os.path.join(log_dir, 'norm.log'), 'w') as logf:
@@ -939,9 +955,8 @@ class Corpus(object):
                                         stdin=inf, stderr=logf, stdout=outf)
 
     def get_feat_dim(self):
-        directory = self.split_directory
 
-        path = os.path.join(self.split_directory, 'cmvndeltafeats.0')
+        path = os.path.join(self.split_directory(), 'cmvndeltafeats.0')
         with open(path, 'rb') as f, open(os.devnull, 'w') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          'ark,s,cs:-', '-'],
@@ -952,9 +967,9 @@ class Corpus(object):
             feats = stdout.decode('utf8').strip()
         return feats
 
-    def initialize_corpus(self, dictionary, skip_input=True):
+    def initialize_corpus(self, dictionary, skip_input=True, feature_config=None):
         root_logger = logging.getLogger()
-        split_dir = self.split_directory
+        split_dir = self.split_directory()
         self.write()
         split = False
         if not os.path.exists(split_dir):
@@ -972,8 +987,43 @@ class Corpus(object):
                 'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
             if user_input.lower() == 'y':
                 sys.exit(1)
-        self.create_mfccs()
+        elif dictionary.oovs_found:
+            print('There were words not found in the dictionary, ignoring...')
+        self.generate_features(feature_config)
         if split:
             self._split_feats(split_dir)
             self._split_cmvns(split_dir)
             self._split_and_norm_feats()
+
+    def create_subset(self, subset):
+        larger_subset_num = subset * 10
+        if larger_subset_num < self.num_utterances:
+            utts = sorted(self.utterance_lengths.keys(), key=lambda x: self.utterance_lengths[x])
+            larger_subset = utts[:larger_subset_num]
+        else:
+            larger_subset = self.utterance_lengths.keys()
+        subset_utts = set(random.sample(larger_subset, subset))
+        split_directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+        subset_directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
+        log_dir = os.path.join(subset_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        subset_utt_path = os.path.join(subset_directory, 'included_utts.txt')
+        with open(subset_utt_path, 'w', encoding='utf8') as f:
+            for u in subset_utts:
+                f.write('{}\n'.format(u))
+        for j in range(self.num_jobs):
+            for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
+                with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
+                        open(os.path.join(subset_directory, fn.format(j)), 'w', encoding='utf8') as outf:
+                    for line in inf:
+                        s = line.split()
+                        if s[0] not in subset_utts:
+                            continue
+                        outf.write(line)
+            log_file = os.path.join(log_dir, 'subset.{}.log'.format(j))
+            with open(os.path.join(split_directory, 'cmvndeltafeats.{}'.format(j)), 'rb') as inf, \
+                    open(os.path.join(subset_directory, 'cmvndeltafeats.{}'.format(j)), 'wb') as outf, \
+                    open(log_file, 'w') as logf:
+                subprocess.call([thirdparty_binary("subset-feats"),
+                                 "--include=" + subset_utt_path, "ark:-", "ark:-"],
+                                stdin=inf, stderr=logf, stdout=outf)

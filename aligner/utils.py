@@ -22,7 +22,7 @@ def no_dictionary(corpus_object, output_directory):
 
     Returns
     -------
-    dictionary
+    OrthographicDictionary
         Orthographic dictionary created from the corpus
 
     """
