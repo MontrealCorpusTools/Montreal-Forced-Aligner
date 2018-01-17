@@ -1,5 +1,6 @@
 import os
 import shutil
+import glob
 import subprocess
 import re
 from tqdm import tqdm
@@ -335,18 +336,23 @@ class BaseAligner(object):
         Align the dataset using speaker-adapted transforms
         '''
         model_directory = self.tri_directory        # Get final.mdl from here
-        output_directory = self.tri_fmllr_ali_directory
-        self._align_si(fmllr=True)
+        first_output_directory = self.tri_ali_directory
+        second_output_directory = self.tri_fmllr_ali_directory
+        self._align_si(fmllr=False)
         sil_phones = self.dictionary.silence_csl
 
-        log_dir = os.path.join(output_directory, 'log')
+        log_dir = os.path.join(first_output_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
-        calc_fmllr(output_directory, self.corpus.split_directory,
+        calc_fmllr(first_output_directory, self.corpus.split_directory,
                    sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
         optional_silence = self.dictionary.optional_silence_csl
-        align(0, model_directory, self.corpus.split_directory,
+        align(0, first_output_directory, self.corpus.split_directory,
               optional_silence, self.num_jobs, self.tri_fmllr_config)
+
+        # Copy into the "correct" tri_fmllr_ali output directory
+        for file in glob.glob(os.path.join(first_output_directory, 'ali.*')):
+            shutil.copy(file, second_output_directory)
 
     def _init_tri(self, fmllr=False):
         if fmllr:
