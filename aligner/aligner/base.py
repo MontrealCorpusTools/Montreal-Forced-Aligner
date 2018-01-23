@@ -264,6 +264,9 @@ class BaseAligner(object):
         oov = self.dictionary.oov_int
 
         log_dir = os.path.join(output_directory, 'log')
+        os.makedirs(self.tri_fmllr_ali_directory, exist_ok=True)
+        os.makedirs(self.lda_mllt_ali_directory, exist_ok=True)
+
         os.makedirs(log_dir, exist_ok=True)
 
         shutil.copyfile(os.path.join(model_directory, 'tree'),
@@ -353,12 +356,16 @@ class BaseAligner(object):
         # Copy into the "correct" tri_fmllr_ali output directory
         for file in glob.glob(os.path.join(first_output_directory, 'ali.*')):
             shutil.copy(file, second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'tree'), second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'final.mdl'), second_output_directory)
+
 
     def _init_tri(self, fmllr=False):
         if fmllr:
             config = self.tri_fmllr_config
             directory = self.tri_fmllr_directory
-            align_directory = self.tri_fmllr_ali_directory
+            #align_directory = self.tri_fmllr_ali_directory
+            align_directory = self.tri_ali_directory
         else:
             config = self.tri_config
             directory = self.tri_directory
@@ -421,7 +428,7 @@ class BaseAligner(object):
                              '--mix-up={}'.format(config.initial_gauss_count),
                              mdl_path, occs_path, mdl_path], stderr=logf)
 
-        os.remove(treeacc_path)
+        #os.remove(treeacc_path)
 
         compile_train_graphs(directory, self.dictionary.output_directory,
                              self.corpus.split_directory, self.num_jobs)
