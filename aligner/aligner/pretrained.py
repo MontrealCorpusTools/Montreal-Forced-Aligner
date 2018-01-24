@@ -2,8 +2,10 @@ import os
 import shutil
 from tqdm import tqdm
 import re
+import glob
 
-from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
+from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig, LdaMlltConfig, iVectorExtractorConfig, NnetBasicConfig
+#from .trainable import train_lda_mllt, train_nnet_basic
 
 from ..exceptions import PronunciationAcousticMismatchError
 
@@ -80,12 +82,17 @@ class PretrainedAligner(BaseAligner):
         if self.call_back is None:
             self.call_back = print
         self.verbose = False
+
         self.tri_fmllr_config = TriphoneFmllrConfig(**{'realign_iters': [1, 2],
                                                        'fmllr_iters': [1],
                                                        'num_iters': 3,
                                                        # 'boost_silence': 0
                                                        })
         self.tri_config = TriphoneConfig()
+        self.lda_mllt_config = LdaMlltConfig()
+        self.ivector_extractor_config = iVectorExtractorConfig()
+        self.nnet_basic_config = NnetBasicConfig()
+
         if self.debug:
             mdl_path = os.path.join(self.tri_directory, 'final.mdl')
             tree_path = os.path.join(self.tri_directory, 'tree')
@@ -130,23 +137,31 @@ class PretrainedAligner(BaseAligner):
         '''
         Align the dataset using speaker-adapted transforms
         '''
-        model_directory = self.tri_directory
-        output_directory = self.tri_ali_directory
-        os.makedirs(output_directory, exist_ok=True)
+        model_directory = self.tri_directory        # Get final.mdl from here
+        first_output_directory = self.tri_ali_directory
+        second_output_directory = self.tri_fmllr_ali_directory
+        os.makedirs(first_output_directory, exist_ok=True)
+        os.makedirs(second_output_directory, exist_ok=True)
         if self.debug:
             shutil.copyfile(os.path.join(self.tri_directory, 'triphones.txt'),
                             os.path.join(self.tri_ali_directory, 'triphones.txt'))
         self._align_si(fmllr=False)
         sil_phones = self.dictionary.silence_csl
 
-        log_dir = os.path.join(output_directory, 'log')
+        log_dir = os.path.join(first_output_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         if not self.speaker_independent:
-            calc_fmllr(output_directory, self.corpus.split_directory,
+            calc_fmllr(first_output_directory, self.corpus.split_directory,
                        sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
             optional_silence = self.dictionary.optional_silence_csl
-            align(0, output_directory, self.corpus.split_directory,
+            align(0, first_output_directory, self.corpus.split_directory,
                   optional_silence, self.num_jobs, self.tri_fmllr_config)
+
+        # Copy into the "correct" tri_fmllr_ali output directory
+        for file in glob.glob(os.path.join(first_output_directory, 'ali.*')):
+            shutil.copy(file, second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'tree'), second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'final.mdl'), second_output_directory)
 
     def _init_tri(self):
         if not os.path.exists(self.tri_ali_directory):

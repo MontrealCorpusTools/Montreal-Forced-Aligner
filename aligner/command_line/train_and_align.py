@@ -147,7 +147,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use', nargs='?', default='')
     parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
 
-    parser.add_argument('-n', '--neural_net', action='store_true')
+    parser.add_argument('-a', '--artificial_neural_net', action='store_true')
 
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')

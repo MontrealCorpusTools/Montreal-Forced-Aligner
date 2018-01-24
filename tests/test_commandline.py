@@ -21,6 +21,7 @@ class DummyArgs(object):
         self.debug = False
         self.errors = False
         self.temp_directory = None
+        self.artificial_neural_net = False
 
 
 class G2PDummyArgs(object):
@@ -64,6 +65,15 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
+    align_included_model(args, skip_input=True)
+
+def test_pretrained_nnet(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.acoustic_model_path = 'english'
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'basic_output')
+    args.artificial_neural_net = True
     align_included_model(args, skip_input=True)
 
 

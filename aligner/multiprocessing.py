@@ -1122,8 +1122,8 @@ def get_egs_helper(nnet_dir, label, feats, ivector_period, to_filter, ivector_di
     new_feats = os.path.join(nnet_dir, '{}_helped.{}'.format(label, x))
     with open(new_feats, 'w') as outf:
         # N.B.: Hacky paths
-        #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-        filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
         filter_proc = subprocess.Popen([filter_scp_path,
                                         to_filter,
                                         os.path.join(ivector_dir, 'ivector_online.scp')],
@@ -1165,8 +1165,8 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_di
 
     # Deal with ivector stuff
     # N.B.: Hacky paths
-    #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-    filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+    filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+    #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
     log_path = os.path.join(nnet_dir, 'log', 'get_egs_feats.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         # Gets "feats" (Kaldi)
@@ -1328,8 +1328,8 @@ def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, f
         new_splice_feats = os.path.join(nnet_dir, 'newsplicefeats.{}'.format(x))
         with open(new_splice_feats, 'w') as outf:
             # N.B.: Hacky paths
-            #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-            filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
                                             os.path.join(split_dir, 'utt2spk.{}'.format(x)),
                                             os.path.join(ivector_dir, 'ivector_online.scp')],
@@ -1476,8 +1476,8 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config,
         new_feats = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
         with open(new_feats, 'w') as outf:
             # N.B.: Hacky paths
-            #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-            filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
                                             os.path.join(split_dir, 'utt2spk.{}'.format(x)),
                                             os.path.join(ivector_dir, 'ivector_online.scp')],

@@ -13,6 +13,8 @@ from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
 from aligner.config import TEMP_DIR
 
+#from .trainable import train_lda_mllt, train_nnet_basic
+
 
 class DummyArgs(object):
     def __init__(self):
@@ -128,6 +130,16 @@ def align_corpus(args, skip_input=False):
         a.do_align()
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
+
+        # Begin nnet
+        if args.artificial_neural_net:
+            begin = time.time()
+            a.train_lda_mllt()
+            a.train_nnet_basic()
+            print('Performed nnet functions in {} seconds'.format(time.time() - begin))
+
+
+
         begin = time.time()
         a.export_textgrids()
         if args.debug:
@@ -190,6 +202,8 @@ if __name__ == '__main__':  # pragma: no cover
                         action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
+    parser.add_argument('-a', '--artificial_neural_net', action='store_true')
+
     args = parser.parse_args()
     try:
         args.speaker_characters = int(args.speaker_characters)
