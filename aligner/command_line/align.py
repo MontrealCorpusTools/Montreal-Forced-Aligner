@@ -105,7 +105,8 @@ def align_corpus(args, skip_input=False):
         a = PretrainedAligner(corpus, dictionary, acoustic_model, args.output_directory, temp_directory=data_directory,
                               num_jobs=getattr(args, 'num_jobs', 3),
                               speaker_independent=getattr(args, 'no_speaker_adaptation', False),
-                              debug=getattr(args, 'debug', False))
+                              debug=getattr(args, 'debug', False),
+                              nnet=getattr(args, 'artificial_neural_net', False))
         if getattr(args, 'errors', False):
             check = a.test_utterance_transcriptions()
             if not skip_input and not check:
@@ -126,17 +127,21 @@ def align_corpus(args, skip_input=False):
                 'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
             if user_input.lower() == 'y':
                 return
+
         begin = time.time()
-        a.do_align()
+        if not args.artificial_neural_net:
+            a.do_align()
+        else:
+            a.do_align_nnet()
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
 
         # Begin nnet
-        if args.artificial_neural_net:
+        """if args.artificial_neural_net:
             begin = time.time()
             a.train_lda_mllt()
             a.train_nnet_basic()
-            print('Performed nnet functions in {} seconds'.format(time.time() - begin))
+            print('Performed nnet functions in {} seconds'.format(time.time() - begin))"""
 
 
 

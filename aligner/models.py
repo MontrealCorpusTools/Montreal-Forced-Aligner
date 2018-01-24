@@ -1,6 +1,7 @@
 import os
 import pickle
 import yaml
+import glob
 
 from tempfile import mkdtemp
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
@@ -104,6 +105,17 @@ class AcousticModel(Archive):
         copy(os.path.join(source, 'final.occs'), self.dirname)
         copy(os.path.join(source, 'tree'), self.dirname)
 
+    def add_nnet_model(self, source):
+        """
+        Add file into archive
+        """
+        copy(os.path.join(source, 'final.mdl'), self.dirname)
+        copy(os.path.join(source, 'tree'), self.dirname)
+        for file in glob.glob(os.path.join(source, 'alignfeats.*')):
+            copy(os.path.join(source, file), self.dirname)
+        for file in glob.glob(os.path.join(source, 'fsts.*')):
+            copy(os.path.join(source, file), self.dirname)
+
     def export_triphone_model(self, destination):
         """
         """
@@ -119,6 +131,15 @@ class AcousticModel(Archive):
         copy(os.path.join(self.dirname, 'final.mdl'), destination)
         copy(os.path.join(self.dirname, 'final.occs'), destination)
         copy(os.path.join(self.dirname, 'tree'), destination)
+
+    def export_nnet_model(self, destination):
+        os.makedirs(destination, exist_ok=True)
+        copy(os.path.join(self.dirname, 'final.mdl'), destination)
+        copy(os.path.join(self.dirname, 'tree'), destination)
+        for file in glob.glob(os.path.join(self.dirname, 'alignfeats.*')):
+            copy(os.path.join(self.dirname, file), destination)
+        for file in glob.glob(os.path.join(self.dirname, 'fsts.*')):
+            copy(os.path.join(self.dirname, file), destination)
 
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):

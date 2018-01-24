@@ -10,7 +10,7 @@ from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig, Ld
 from ..exceptions import PronunciationAcousticMismatchError
 
 from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
-                               convert_ali_to_textgrids)
+                               convert_ali_to_textgrids, nnet_align)
 
 
 def parse_transitions(path, phones_path):
@@ -60,8 +60,9 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, output_directory,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
-                 call_back=None, debug=False):
+                 call_back=None, debug=False, nnet=False):
         self.debug = debug
+        self.nnet = nnet
         if temp_directory is None:
             temp_directory = TEMP_DIR
         self.acoustic_model = acoustic_model
@@ -71,8 +72,13 @@ class PretrainedAligner(BaseAligner):
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
         self.setup()
-        self.acoustic_model.export_triphone_model(self.tri_directory)
-        log_dir = os.path.join(self.tri_directory, 'log')
+
+        if not nnet:
+            self.acoustic_model.export_triphone_model(self.tri_directory)
+            log_dir = os.path.join(self.tri_directory, 'log')
+        else:
+            self.acoustic_model.export_nnet_model(self.nnet_basic_directory)
+            log_dir = os.path.join(self.nnet_basic_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
         if self.corpus.num_jobs != num_jobs:
@@ -124,6 +130,15 @@ class PretrainedAligner(BaseAligner):
         super(PretrainedAligner, self).setup()
     def test_utterance_transcriptions(self):
         return test_utterances(self)
+
+    def do_align_nnet(self):
+        '''
+        Perform alignment using a previous DNN model
+        '''
+        # Commented out for development
+        #if not os.path.exists(self.nnet_basic_ali_directory):
+        optional_silence = self.dictionary.optional_silence_csl
+        nnet_align(0, self.nnet_basic_directory, optional_silence, self.num_jobs, self.nnet_basic_config, mdl=None)
 
     def do_align(self):
         '''
@@ -210,5 +225,7 @@ class PretrainedAligner(BaseAligner):
             model_directory = self.tri_ali_directory
         else:
             model_directory = self.tri_fmllr_directory
+        if self.nnet:
+            model_directory = self.nnet_basic_directory
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
