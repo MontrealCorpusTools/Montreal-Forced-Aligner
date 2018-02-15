@@ -62,7 +62,8 @@ class BaseAligner(object):
                  tri_fmllr_params=None, lda_mllt_params=None,
                  diag_ubm_params=None, ivector_extractor_params=None,
                  nnet_basic_params=None,
-                 debug=False):
+                 debug=False, nnet=False):
+        self.nnet = nnet
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
@@ -377,8 +378,8 @@ class BaseAligner(object):
             directory = self.tri_directory
             align_directory = self.mono_ali_directory
         # N.B.: Commented out for development
-        #if os.path.exists(os.path.join(directory, '1.mdl')):
-        #    return
+        if os.path.exists(os.path.join(directory, '1.mdl')):
+            return
         if fmllr:
             print('Initializing speaker-adapted triphone training...')
         else:
@@ -493,8 +494,8 @@ class BaseAligner(object):
             occs_path = os.path.join(directory, '{}.occs'.format(i + 1))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
             # N.B.: Commented out for development
-            #if os.path.exists(next_model_path):
-            #    continue
+            if os.path.exists(next_model_path):
+                continue
             if i in config.realign_iters:
                 align(i, directory, self.corpus.split_directory,
                       self.dictionary.optional_silence_csl,
@@ -556,9 +557,9 @@ class BaseAligner(object):
         Perform LDA + MLLT training
         '''
         # N.B.: Left commented out for development
-        #if os.path.exists(self.lda_mllt_final_model_path):
-        #    print('LDA + MLLT training already done, using previous final.mdl')
-        #    return
+        if os.path.exists(self.lda_mllt_final_model_path):
+            print('LDA + MLLT training already done, using previous final.mdl')
+            return
 
         # N.B: The function _align_lda_mllt() is half-developed, but there doesn't seem to
         # be a reason for it to actually ever be called (since people will always have
@@ -582,8 +583,8 @@ class BaseAligner(object):
         align_directory = self.tri_fmllr_ali_directory  # The previous
         mdl_dir = self.tri_fmllr_directory
         # N.B.: Left commented out for development
-        #if os.path.exists(os.path.join(directory, '1.mdl')):
-        #    return
+        if os.path.exists(os.path.join(directory, '1.mdl')):
+            return
         print('Initializing LDA + MLLT training...')
 
         context_opts = []
@@ -727,10 +728,10 @@ class BaseAligner(object):
 
         # # Get valid uttlist and train subset uttlist
         # (same issue with hacky paths throughout)
-        shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
-        #shuffle_list_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/shuffle_list.pl"
-        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-        #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+        #shuffle_list_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/shuffle_list.pl"
+        shuffle_list_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/shuffle_list.pl"
+        #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
         valid_uttlist = os.path.join(directory, 'valid_uttlist')
         train_subset_uttlist = os.path.join(directory, 'train_subset_uttlist')
         training_feats = os.path.join(directory, 'nnet_training_feats')
@@ -905,7 +906,7 @@ class BaseAligner(object):
                              self.corpus.split_directory, self.num_jobs)
 
         # Get alignment feats
-        nnet_get_align_feats(directory, self.corpus.split_directory, lda_directory, fixed_ivector_dir, config, self.num_jobs)
+        nnet_get_align_feats(directory, self.corpus.split_directory, fixed_ivector_dir, config, self.num_jobs)
 
         # Do alignment
         nnet_align("final", directory,
@@ -914,24 +915,24 @@ class BaseAligner(object):
 
     def _extract_ivectors(self):
         # N.B.: Left commented out for development
-        #if os.path.exists(self.ivector_extractor_final_model_path):
-        #    print('iVector extractor training already done, using previous final.ie')
-        #    return
+        if os.path.exists(self.ivector_extractor_final_model_path):
+            print('iVector extractor training already done, using previous final.ie')
+            return
 
         log_dir = os.path.join(self.extracted_ivector_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
         # N.B.: These paths are hacky and need to be correctly integrated
         directory = self.extracted_ivector_directory
-        #ivector_extractor_dir = "/data/acoles/acoles/Montreal-Forced-Aligner/ivector_extractor"
+        ivector_extractor_dir = "/data/acoles/acoles/Montreal-Forced-Aligner/ivector_extractors/ivector_extractor_ls_medium"
         #ivector_extractor_dir = "../../ivector_extractor"
-        ivector_extractor_dir = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/ivector_extractor"
-        #diag_ubm_path = "/data/acoles/acoles/Montreal-Forced-Aligner/diag_ubm"
+        #ivector_extractor_dir = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/ivector_extractor"
+        diag_ubm_path = "/data/acoles/acoles/Montreal-Forced-Aligner/diag_ubm"
         #diag_ubm_path = "../../diag_ubm"
-        diag_ubm_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/diag_ubm"
-        #lda_mllt_path = "/data/acoles/acoles/Montreal-Forced-Aligner/lda_mllt"
+        #diag_ubm_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/diag_ubm"
+        lda_mllt_path = "/data/acoles/acoles/Montreal-Forced-Aligner/lda_mllt"
         #lda_mllt_path = "../../lda_mllt"
-        lda_mllt_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/lda_mllt"
+        #lda_mllt_path = "/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner/lda_mllt"
         split_dir = self.corpus.split_directory
         train_dir = self.corpus.output_directory
         config = self.ivector_extractor_config

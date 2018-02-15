@@ -63,7 +63,8 @@ def align_corpus(args, skip_input=False):
         a = TrainableAligner(corpus, dictionary, args.output_directory,
                              temp_directory=data_directory,
                              mono_params=mono_params, tri_params=tri_params,
-                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs)
+                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs,
+                             nnet=getattr(args, 'artificial_neural_net', False))
         a.verbose = args.verbose
 
         # GMM training (looks like it needs to be done either way, as a starter for nnet)
@@ -76,13 +77,13 @@ def align_corpus(args, skip_input=False):
 
         print("doing new stuff")
         # nnet training
-        #if getattr(args, 'neural_net', True):
-        # Do nnet training
-        a.train_lda_mllt()      # Implemented!
-        #a.train_diag_ubm()      # Implemented!
-        #a.ivector_extractor()   # Implemented!
-        a.train_nnet_basic()     # Implemented!
-        a.export_textgrids()
+        if args.artificial_neural_net:
+            # Do nnet training
+            a.train_lda_mllt()      # Implemented!
+            #a.train_diag_ubm()      # Implemented!
+            #a.ivector_extractor()   # Implemented!
+            a.train_nnet_basic()     # Implemented!
+            a.export_textgrids()
 
         if args.output_model_path is not None:
             a.save(args.output_model_path)

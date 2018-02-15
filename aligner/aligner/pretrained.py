@@ -10,7 +10,7 @@ from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig, Ld
 from ..exceptions import PronunciationAcousticMismatchError
 
 from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
-                               convert_ali_to_textgrids, nnet_align)
+                               convert_ali_to_textgrids, compile_train_graphs, nnet_get_align_feats, nnet_align)
 
 
 def parse_transitions(path, phones_path):
@@ -100,6 +100,7 @@ class PretrainedAligner(BaseAligner):
         self.nnet_basic_config = NnetBasicConfig()
 
         if self.debug:
+            os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok=True)
             mdl_path = os.path.join(self.tri_directory, 'final.mdl')
             tree_path = os.path.join(self.tri_directory, 'tree')
             occs_path = os.path.join(self.tri_directory, 'final.occs')
@@ -137,8 +138,22 @@ class PretrainedAligner(BaseAligner):
         '''
         # Commented out for development
         #if not os.path.exists(self.nnet_basic_ali_directory):
+        print("doing align nnet")
+        print("nnet basic directory is: {}".format(self.nnet_basic_directory))
         optional_silence = self.dictionary.optional_silence_csl
-        nnet_align(0, self.nnet_basic_directory, optional_silence, self.num_jobs, self.nnet_basic_config, mdl=None)
+
+        # Extract iVectors
+        self._extract_ivectors()
+
+        # Compile train graphs (gets fsts.{} for alignment)
+        compile_train_graphs(self.nnet_basic_directory, self.dictionary.output_directory,
+                             self.corpus.split_directory, self.num_jobs, mdl='final')
+
+        # Get alignment feats
+        nnet_get_align_feats(self.nnet_basic_directory, self.corpus.split_directory, self.extracted_ivector_directory, self.nnet_basic_config, self.num_jobs)
+
+        # Do nnet alignment
+        nnet_align(0, self.nnet_basic_directory, optional_silence, self.num_jobs, self.nnet_basic_config, mdl='final')
 
     def do_align(self):
         '''
@@ -229,3 +244,5 @@ class PretrainedAligner(BaseAligner):
             model_directory = self.nnet_basic_directory
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
+        print("Exported textgrids to {}".format(self.output_directory))
+        print("Log of export at {}".format(model_directory))

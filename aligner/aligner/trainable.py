@@ -64,7 +64,10 @@ class TrainableAligner(BaseAligner):
         acoustic_model = AcousticModel.empty(basename)
         acoustic_model.add_meta_file(self)
         #acoustic_model.add_triphone_model(self.tri_fmllr_directory)
-        acoustic_model.add_triphone_fmllr_model(self.tri_fmllr_directory)
+        if not self.nnet:
+            acoustic_model.add_triphone_fmllr_model(self.tri_fmllr_directory)
+        else:
+            acoustic_model.add_nnet_model(self.nnet_basic_directory)
         os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
         acoustic_model.dump(basename)
@@ -79,9 +82,9 @@ class TrainableAligner(BaseAligner):
         Perform triphone training
         '''
         # N.B.: Left commented out for development
-        #if os.path.exists(self.tri_final_model_path):
-        #    print('Triphone training already done, using previous final.mdl')
-        #    return
+        if os.path.exists(self.tri_final_model_path):
+            print('Triphone training already done, using previous final.mdl')
+            return
         if not os.path.exists(self.mono_ali_directory):
             self._align_si()
 
@@ -143,9 +146,9 @@ class TrainableAligner(BaseAligner):
         '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
         # N.B.: Left commented out for development
-        #if os.path.exists(final_mdl):
-        #    print('Monophone training already done, using previous final.mdl')
-        #    return
+        if os.path.exists(final_mdl):
+            print('Monophone training already done, using previous final.mdl')
+            return
         os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok=True)
 
         self._init_mono()
@@ -178,7 +181,7 @@ class TrainableAligner(BaseAligner):
 
 
 
-    
+
 
     def train_diag_ubm(self):
         '''

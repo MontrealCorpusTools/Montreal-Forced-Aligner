@@ -136,8 +136,9 @@ class AcousticModel(Archive):
         os.makedirs(destination, exist_ok=True)
         copy(os.path.join(self.dirname, 'final.mdl'), destination)
         copy(os.path.join(self.dirname, 'tree'), destination)
-        for file in glob.glob(os.path.join(self.dirname, 'alignfeats.*')):
-            copy(os.path.join(self.dirname, file), destination)
+        print(self.dirname)
+        #for file in glob.glob(os.path.join(self.dirname, 'alignfeats.*')):
+        #    copy(os.path.join(self.dirname, file), destination)
         for file in glob.glob(os.path.join(self.dirname, 'fsts.*')):
             copy(os.path.join(self.dirname, file), destination)
 

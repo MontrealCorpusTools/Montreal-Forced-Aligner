@@ -167,10 +167,13 @@ def parse_transitions(path, phones_path):
                 current += 1
 
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False):  # pragma: no cover
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=False, mdl=None):  # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(directory, 'tree')
-    mdl_path = os.path.join(directory, '0.mdl')
+    if not mdl:
+        mdl_path = os.path.join(directory, '0.mdl')
+    elif mdl == 'final':
+        mdl_path = os.path.join(directory, 'final.mdl')
 
     log_path = os.path.join(directory, 'log', 'show_transition.log')
     transition_path = os.path.join(directory, 'transitions.txt')
@@ -244,7 +247,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                         pass
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False, mdl=None):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -267,7 +270,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, d
         The number of processes to use
     """
     os.makedirs(os.path.join(directory, 'log'), exist_ok=True)
-    jobs = [(directory, lang_directory, split_directory, x, debug)
+    jobs = [(directory, lang_directory, split_directory, x, debug, mdl)
             for x in range(num_jobs)]
 
     with mp.Pool(processes=num_jobs) as pool:
@@ -1122,8 +1125,8 @@ def get_egs_helper(nnet_dir, label, feats, ivector_period, to_filter, ivector_di
     new_feats = os.path.join(nnet_dir, '{}_helped.{}'.format(label, x))
     with open(new_feats, 'w') as outf:
         # N.B.: Hacky paths
-        filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-        #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+        #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+        filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
         filter_proc = subprocess.Popen([filter_scp_path,
                                         to_filter,
                                         os.path.join(ivector_dir, 'ivector_online.scp')],
@@ -1165,8 +1168,8 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_di
 
     # Deal with ivector stuff
     # N.B.: Hacky paths
-    filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-    #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+    #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+    filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
     log_path = os.path.join(nnet_dir, 'log', 'get_egs_feats.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         # Gets "feats" (Kaldi)
@@ -1328,8 +1331,8 @@ def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, f
         new_splice_feats = os.path.join(nnet_dir, 'newsplicefeats.{}'.format(x))
         with open(new_splice_feats, 'w') as outf:
             # N.B.: Hacky paths
-            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-            #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+            #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
                                             os.path.join(split_dir, 'utt2spk.{}'.format(x)),
                                             os.path.join(ivector_dir, 'ivector_online.scp')],
@@ -1449,7 +1452,7 @@ def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
         results = [pool.apply_async(nnet_train_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
-def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config, x):
+def nnet_get_align_feats_func(nnet_dir, split_dir, ivector_dir, config, x):
     log_path = os.path.join(nnet_dir, 'log', 'alignment_features{}.log'.format(x))
     with open(log_path, 'w') as logf:
         first_feats = os.path.join(nnet_dir, 'alignfeats_first.{}'.format(x))
@@ -1476,8 +1479,8 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config,
         new_feats = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
         with open(new_feats, 'w') as outf:
             # N.B.: Hacky paths
-            filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
-            #filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
+            #filter_scp_path = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/utils/filter_scp.pl"
+            filter_scp_path = "/data/acoles/acoles/kaldi/egs/wsj/s5/utils/filter_scp.pl"
             filter_proc = subprocess.Popen([filter_scp_path,
                                             os.path.join(split_dir, 'utt2spk.{}'.format(x)),
                                             os.path.join(ivector_dir, 'ivector_online.scp')],
@@ -1514,8 +1517,8 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, lda_dir, ivector_dir, config,
             #                             '-'],
             #                            stderr=logf)
 
-def nnet_get_align_feats(nnet_dir, split_dir, lda_dir, ivector_dir, config, num_jobs):
-    jobs = [(nnet_dir, split_dir, lda_dir, ivector_dir, config, x) for x in range(num_jobs)]
+def nnet_get_align_feats(nnet_dir, split_dir, ivector_dir, config, num_jobs):
+    jobs = [(nnet_dir, split_dir, ivector_dir, config, x) for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
         results = [pool.apply_async(nnet_get_align_feats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
@@ -1525,6 +1528,7 @@ def nnet_align_func(i, nnet_dir, mdl_path, config, x):
     fst_path = os.path.join(nnet_dir, 'fsts.{}'.format(x))
     log_path = os.path.join(nnet_dir, 'log', 'align.{}.{}.log'.format(i, x))
     ali_path = os.path.join(nnet_dir, 'ali.{}'.format(x))
+    print(log_path)
 
     with open(log_path, 'w') as logf, \
             open(ali_path, 'wb') as outf:
@@ -1545,8 +1549,12 @@ def nnet_align_func(i, nnet_dir, mdl_path, config, x):
         align_proc.communicate()
 
 def nnet_align(i, nnet_dir, optional_silence, num_jobs, config, mdl=None):
+    print("here i am, at nnet_align")
     if mdl == None:
         mdl_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
+    elif mdl == 'final':
+        print("!!!")
+        mdl_path = os.path.join(nnet_dir, 'final.mdl')
     else:
         mdl_path = mdl
 

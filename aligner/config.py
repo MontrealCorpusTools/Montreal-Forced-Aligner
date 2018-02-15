@@ -310,7 +310,7 @@ class NnetBasicConfig(object):
         self.iters_per_epoch = 2
 
         self.beam = 10
-        self.retry_beam = 15000000
+        self.retry_beam = 150
 
         self.initial_learning_rate=0.04
         self.final_learning_rate=0.004
