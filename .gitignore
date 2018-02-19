@@ -14,7 +14,37 @@ thirdparty
 !thirdparty/*.md
 !thirdparty/*.py
 
+# MFA generated files
+*.exe
+*.dll
 *.fst
+*.0
+*.1
+*.2
+*.3
+*.4
+*.5
+*.6
+*.7
+*.8
+*.9
+*.acc
+*.mdl
+*.mat
+*.macc
+*.new
+*.treeacc
+*.occs
+*.fgmm
+*.dubm
+*.stats
+*.ie
+tree
+treeacc
+*.int
+*.qst
+
+
 
 # C extensions
 *.so
