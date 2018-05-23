@@ -2,13 +2,14 @@ import os
 import shutil
 from tqdm import tqdm
 import re
+import glob
 
-from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig
+from .base import BaseAligner, TEMP_DIR, TriphoneFmllrConfig, TriphoneConfig, LdaMlltConfig, iVectorExtractorConfig, NnetBasicConfig
 
 from ..exceptions import PronunciationAcousticMismatchError
 
 from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
-                               convert_ali_to_textgrids)
+                               convert_ali_to_textgrids, compile_train_graphs, nnet_get_align_feats, nnet_align)
 
 
 def parse_transitions(path, phones_path):
@@ -58,8 +59,9 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, output_directory,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
-                 call_back=None, debug=False, skip_input=False):
+                 call_back=None, debug=False, nnet=False):
         self.debug = debug
+        self.nnet = nnet
         if temp_directory is None:
             temp_directory = TEMP_DIR
         self.acoustic_model = acoustic_model
@@ -68,19 +70,23 @@ class PretrainedAligner(BaseAligner):
         self.corpus = corpus
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
-        self.verbose = False
-        self.skip_input = skip_input
-        self.num_jobs = num_jobs
+        self.setup()
+
+        if not nnet:
+            self.acoustic_model.export_triphone_model(self.tri_directory)
+            log_dir = os.path.join(self.tri_directory, 'log')
+        else:
+            self.acoustic_model.export_nnet_model(self.nnet_basic_directory)
+            log_dir = os.path.join(self.nnet_basic_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+
         if self.corpus.num_jobs != num_jobs:
-            self.num_jobs = self.corpus.num_jobs
+            num_jobs = self.corpus.num_jobs
+        self.num_jobs = num_jobs
         self.call_back = call_back
         if self.call_back is None:
             self.call_back = print
-
-        self.setup()
-        self.acoustic_model.export_triphone_model(self.tri_directory)
-        log_dir = os.path.join(self.tri_directory, 'log')
-        os.makedirs(log_dir, exist_ok=True)
+        self.verbose = False
 
         self.tri_fmllr_config = TriphoneFmllrConfig(**{'realign_iters': [1, 2],
                                                        'fmllr_iters': [1],
@@ -88,7 +94,12 @@ class PretrainedAligner(BaseAligner):
                                                        # 'boost_silence': 0
                                                        })
         self.tri_config = TriphoneConfig()
+        self.lda_mllt_config = LdaMlltConfig()
+        self.ivector_extractor_config = iVectorExtractorConfig()
+        self.nnet_basic_config = NnetBasicConfig()
+
         if self.debug:
+            os.makedirs(os.path.join(self.tri_directory, 'log'), exist_ok=True)
             mdl_path = os.path.join(self.tri_directory, 'final.mdl')
             tree_path = os.path.join(self.tri_directory, 'tree')
             occs_path = os.path.join(self.tri_directory, 'final.occs')
@@ -117,9 +128,32 @@ class PretrainedAligner(BaseAligner):
     def setup(self):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
-
     def test_utterance_transcriptions(self):
         return test_utterances(self)
+
+    def do_align_nnet(self):
+        '''
+        Perform alignment using a previous DNN model
+        '''
+
+       # N.B.: This if ought to be commented out when developing.
+        #if not os.path.exists(self.nnet_basic_ali_directory):
+        print("doing align nnet")
+        print("nnet basic directory is: {}".format(self.nnet_basic_directory))
+        optional_silence = self.dictionary.optional_silence_csl
+
+        # Extract i-vectors
+        self._extract_ivectors()
+
+        # Compile train graphs (gets fsts.{} for alignment)
+        compile_train_graphs(self.nnet_basic_directory, self.dictionary.output_directory,
+                             self.corpus.split_directory, self.num_jobs, mdl='final')
+
+        # Get alignment feats
+        nnet_get_align_feats(self.nnet_basic_directory, self.corpus.split_directory, self.extracted_ivector_directory, self.nnet_basic_config, self.num_jobs)
+
+        # Do nnet alignment
+        nnet_align(0, self.nnet_basic_directory, optional_silence, self.num_jobs, self.nnet_basic_config, mdl='final')
 
     def do_align(self):
         '''
@@ -133,23 +167,31 @@ class PretrainedAligner(BaseAligner):
         '''
         Align the dataset using speaker-adapted transforms
         '''
-        model_directory = self.tri_directory
-        output_directory = self.tri_ali_directory
-        os.makedirs(output_directory, exist_ok=True)
+        model_directory = self.tri_directory        # Get final.mdl from here
+        first_output_directory = self.tri_ali_directory
+        second_output_directory = self.tri_fmllr_ali_directory
+        os.makedirs(first_output_directory, exist_ok=True)
+        os.makedirs(second_output_directory, exist_ok=True)
         if self.debug:
             shutil.copyfile(os.path.join(self.tri_directory, 'triphones.txt'),
                             os.path.join(self.tri_ali_directory, 'triphones.txt'))
         self._align_si(fmllr=False)
         sil_phones = self.dictionary.silence_csl
 
-        log_dir = os.path.join(output_directory, 'log')
+        log_dir = os.path.join(first_output_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         if not self.speaker_independent:
-            calc_fmllr(output_directory, self.corpus.split_directory,
+            calc_fmllr(first_output_directory, self.corpus.split_directory,
                        sil_phones, self.num_jobs, self.tri_fmllr_config, initial=True)
             optional_silence = self.dictionary.optional_silence_csl
-            align(0, output_directory, self.corpus.split_directory,
+            align(0, first_output_directory, self.corpus.split_directory,
                   optional_silence, self.num_jobs, self.tri_fmllr_config)
+
+        # Copy into the "correct" tri_fmllr_ali output directory
+        for file in glob.glob(os.path.join(first_output_directory, 'ali.*')):
+            shutil.copy(file, second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'tree'), second_output_directory)
+        shutil.copy(os.path.join(first_output_directory, 'final.mdl'), second_output_directory)
 
     def _init_tri(self):
         if not os.path.exists(self.tri_ali_directory):
@@ -198,5 +240,9 @@ class PretrainedAligner(BaseAligner):
             model_directory = self.tri_ali_directory
         else:
             model_directory = self.tri_fmllr_directory
+        if self.nnet:
+            model_directory = self.nnet_basic_directory
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
+        print("Exported textgrids to {}".format(self.output_directory))
+        print("Log of export at {}".format(model_directory))
