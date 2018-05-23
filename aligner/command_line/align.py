@@ -13,6 +13,8 @@ from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
 from aligner.config import TEMP_DIR
 
+#from .trainable import train_lda_mllt, train_nnet_basic
+
 
 class DummyArgs(object):
     def __init__(self):
@@ -37,11 +39,10 @@ def fix_path():
     else:
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
-    old_path = os.environ.get('PATH', '')
     if sys.platform == 'win32':
-        os.environ['PATH'] = thirdparty_dir + ';' + old_path
+        os.environ['PATH'] = thirdparty_dir + ';' + os.environ['PATH']
     else:
-        os.environ['PATH'] = thirdparty_dir + ':' + old_path
+        os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
         os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 
 
@@ -57,7 +58,7 @@ def unfix_path():
 PRETRAINED_LANGUAGES = ['english']
 
 
-def align_corpus(args):
+def align_corpus(args, skip_input=False):
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -104,10 +105,11 @@ def align_corpus(args):
         a = PretrainedAligner(corpus, dictionary, acoustic_model, args.output_directory, temp_directory=data_directory,
                               num_jobs=getattr(args, 'num_jobs', 3),
                               speaker_independent=getattr(args, 'no_speaker_adaptation', False),
-                              debug=getattr(args, 'debug', False), skip_input=getattr(args, 'quiet', False))
+                              debug=getattr(args, 'debug', False),
+                              nnet=getattr(args, 'artificial_neural_net', False))
         if getattr(args, 'errors', False):
             check = a.test_utterance_transcriptions()
-            if not getattr(args, 'quiet', False) and not check:
+            if not skip_input and not check:
                 user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
                 if user_input.lower() == 'y':
                     return
@@ -120,10 +122,29 @@ def align_corpus(args):
         oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
+        if not skip_input and a.dictionary.oovs_found:
+            user_input = input(
+                'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
+            if user_input.lower() == 'y':
+                return
+
         begin = time.time()
-        a.do_align()
+        if not args.artificial_neural_net:
+            a.do_align()
+        else:
+            a.do_align_nnet()
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
+
+        # Begin nnet
+        """if args.artificial_neural_net:
+            begin = time.time()
+            a.train_lda_mllt()
+            a.train_nnet_basic()
+            print('Performed nnet functions in {} seconds'.format(time.time() - begin))"""
+
+
+
         begin = time.time()
         a.export_textgrids()
         if args.debug:
@@ -137,7 +158,7 @@ def align_corpus(args):
             yaml.dump(conf, f)
 
 
-def align_included_model(args):
+def align_included_model(args, skip_input=False):
     if getattr(sys, 'frozen', False):
         root_dir = os.path.dirname(os.path.dirname(sys.executable))
     else:
@@ -145,7 +166,7 @@ def align_included_model(args):
         root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
     pretrained_dir = os.path.join(root_dir, 'pretrained_models')
     args.acoustic_model_path = os.path.join(pretrained_dir, '{}.zip'.format(args.acoustic_model_path.lower()))
-    align_corpus(args)
+    align_corpus(args, skip_input=skip_input)
 
 
 def validate_args(args):
@@ -186,8 +207,8 @@ if __name__ == '__main__':  # pragma: no cover
                         action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
-    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
-                        action='store_true')
+    parser.add_argument('-a', '--artificial_neural_net', action='store_true')
+
     args = parser.parse_args()
     try:
         args.speaker_characters = int(args.speaker_characters)
