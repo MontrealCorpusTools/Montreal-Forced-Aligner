@@ -21,7 +21,7 @@ class DummyArgs(object):
         self.debug = False
         self.errors = False
         self.temp_directory = None
-        self.quiet = True
+        self.artificial_neural_net = False
 
 
 class G2PDummyArgs(object):
@@ -55,9 +55,8 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = sick_dict_path
     args.output_directory = os.path.join(generated_dir, 'basic_output')
-    args.quiet = True
     with pytest.raises(PronunciationAcousticMismatchError):
-        align_included_model(args)
+        align_included_model(args, skip_input=True)
 
     #args.clean = False
     #args.acoustic_model_path = 'english'
@@ -66,41 +65,77 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
-    align_included_model(args)
+    align_included_model(args, skip_input=True)
 
+def test_pretrained_nnet(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    #args.acoustic_model_path = '/Users/mlml/Documents/test_models/test_model2'
+    args.acoustic_model_path = '/Users/mlml/Documents/test_models/nnet_basic_output.zip'
+    args.corpus_directory = basic_corpus_dir
+    print(basic_corpus_dir)
+    args.dictionary_path = large_dataset_dictionary
+    #args.output_directory = os.path.join(generated_dir, 'basic_output')
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_trained_on_same')
+    args.artificial_neural_net = True
+    args.debug = True
+    align_included_model(args, skip_input=True)
+    assert(1==2)
+
+def test_nnet_export_model(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.artificial_neural_net = True
+    args.debug = True
+    #args.output_model_path = '/Users/mlml/Documents/test_models/test_model2.zip'
+    args.output_model_path = '/Users/mlml/Documents/test_models/nnet_basic_output.zip'
+    #args.corpus_directory = large_prosodylab_format_directory
+    args.corpus_directory = basic_corpus_dir
+    #args.dictionary_path = large_dataset_dictionary
+    args.dictionary_path = '/Users/mlml/Downloads/cmudict-master/cmudict.dict'
+    #args.output_directory = os.path.join(generated_dir, 'basic_output')
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained_outputting_model3')
+    train_and_align_corpus(args, skip_input=True)
+    assert(1==2)
+
+def test_train_align_nnet(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.artificial_neural_net = True
+    args.debug = True
+    #args.output_model_path = None
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained')
+    train_and_align_corpus(args, skip_input=True)
+    assert(1==2)
 
 def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.errors = True
-    args.quiet = True
     args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
-    align_included_model(args)
+    align_included_model(args, skip_input=True)
 
 
 def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
     args.debug = True
-    args.quiet = True
     args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
-    align_included_model(args)
+    align_included_model(args, skip_input=True)
 
 
 @large
 def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_output_directory,
                                 large_dataset_dictionary):
     args = DummyArgs()
-    args.quiet = True
     args.acoustic_model_path = 'english'
     args.corpus_directory = large_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
-    align_included_model(args)
+    align_included_model(args, skip_input=True)
     # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
 
 
@@ -111,18 +146,17 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.quiet = True
     args.corpus_directory = large_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     args.output_model_path = prosodylab_output_model_path
     args.temp_directory = temp_dir
-    train_and_align_corpus(args)
+    train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
     assert (os.path.exists(args.output_model_path))
 
     args.clean = False
-    train_and_align_corpus(args)
+    train_and_align_corpus(args, skip_input=True)
 
 
 @large
@@ -133,12 +167,11 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     args = DummyArgs()
     args.num_jobs = 2
     args.fast = True
-    args.quiet = True
     args.corpus_directory = single_speaker_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
     args.output_model_path = prosodylab_output_model_path
-    train_and_align_corpus(args)
+    train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
     assert (os.path.exists(args.output_model_path))
 
@@ -148,12 +181,11 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
 @large
 def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory, large_dataset_dictionary):
     args = DummyArgs()
-    args.quiet = True
     args.acoustic_model_path = 'english'
     args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
     args.dictionary_path = large_dataset_dictionary
-    align_included_model(args)
+    align_included_model(args, skip_input=True)
     # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
 
 
@@ -168,7 +200,7 @@ def test_train_large_textgrid(large_textgrid_format_directory,
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = textgrid_output_directory
     args.output_model_path = textgrid_output_model_path
-    train_and_align_corpus(args)
+    train_and_align_corpus(args, skip_input=True)
     # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert (os.path.exists(args.output_model_path))
 
@@ -183,7 +215,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
     args.corpus_directory = large_textgrid_format_directory
     args.output_directory = textgrid_output_directory
     args.output_model_path = textgrid_output_model_path
-    align_corpus_no_dict(args)
+    align_corpus_no_dict(args, skip_input=True)
     # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
     assert (os.path.exists(args.output_model_path))
 

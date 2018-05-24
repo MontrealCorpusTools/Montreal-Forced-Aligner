@@ -1,11 +1,12 @@
 import os
+import sys
 import pytest
 import shutil
 
+sys.path.insert(0,"/Users/mlml/Documents/GitHub/Montreal-Forced-Aligner")
 from aligner.corpus import Corpus
 from aligner.config import MfccConfig
 from aligner.dictionary import Dictionary
-
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
@@ -13,6 +14,7 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'basic')
     d = Corpus(basic_corpus_dir, output_directory)
     d.initialize_corpus(dictionary)
+    #assert(1==2)    # Dumb assert to make print
     assert (d.get_feat_dim() == '39')
 
 
@@ -27,7 +29,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = Corpus(stereo_corpus_dir, temp)
-    d.initialize_corpus(dictionary, skip_input=True)
+    d.initialize_corpus(dictionary)
     assert (d.get_feat_dim() == '39')
 
 
@@ -36,7 +38,7 @@ def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir):
     dictionary = Dictionary(basic_dict_path, temp)
     dictionary.write()
     corpus = Corpus(shortsegments_corpus_dir, temp)
-    corpus.initialize_corpus(dictionary, skip_input=True)
+    corpus.initialize_corpus(dictionary)
     assert (len(corpus.feat_mapping.keys()) == 2)
     assert (len(corpus.utt_speak_mapping.keys()) == 2)
     assert (len(corpus.speak_utt_mapping.keys()) == 1)

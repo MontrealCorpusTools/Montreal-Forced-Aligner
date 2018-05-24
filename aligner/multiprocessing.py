@@ -2167,8 +2167,8 @@ def relabel_egs_func(i, nnet_dir, egs_in, alignments, egs_out, x):
 
 def relabel_egs(i, nnet_dir, egs_in, alignments, egs_out, num_jobs):
     """
-    Multiprocessing function that gets average posterior for purposes of computing priors
-
+    Multiprocessing function Multiprocessing function that relabels training examples
+    
     See:
 
     - http://kaldi-asr.org/doc/ali-to-pdf_8cc.html
