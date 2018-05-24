@@ -26,7 +26,7 @@ from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                get_lda_nnet, nnet_train_trans, nnet_train,
                                nnet_align, nnet_get_align_feats, extract_ivectors,
                                compute_prob, get_average_posteriors, relabel_egs)
-from ..accuracy_graph import get_accuracy_graph
+#from ..accuracy_graph import get_accuracy_graph
 
 
 from ..exceptions import NoSuccessfulAlignments

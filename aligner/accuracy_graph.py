@@ -7,7 +7,7 @@ import sys
 import os
 import glob
 import numpy as np
-from matplotlib import pyplot as plt
+#from matplotlib import pyplot as plt
 
 def get_accuracy_graph(log_dir, export_dir):
     os.chdir(log_dir)
