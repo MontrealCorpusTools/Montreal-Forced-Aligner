@@ -53,6 +53,5 @@ def test_sick_nnet_basic(sick_dict, sick_corpus, generated_dir):
     a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),
                          temp_directory=os.path.join(generated_dir, 'sickcorpus'))
     a.train_nnet_basic()
-    print("Now going to export textgrids")
     a.export_textgrids()
     #assert(1==2)
