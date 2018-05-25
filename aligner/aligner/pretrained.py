@@ -59,7 +59,7 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, output_directory,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
-                 call_back=None, debug=False, nnet=False):
+                 call_back=None, debug=False, skip_input=False, nnet=False):
         self.debug = debug
         self.nnet = nnet
         if temp_directory is None:
@@ -70,6 +70,7 @@ class PretrainedAligner(BaseAligner):
         self.corpus = corpus
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
+        self.skip_input = skip_input
         self.setup()
 
         if not nnet:

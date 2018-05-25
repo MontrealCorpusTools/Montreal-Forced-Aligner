@@ -63,7 +63,6 @@ class TrainableAligner(BaseAligner):
         basename, _ = os.path.splitext(filename)
         acoustic_model = AcousticModel.empty(basename)
         acoustic_model.add_meta_file(self)
-        #acoustic_model.add_triphone_model(self.tri_fmllr_directory)
         if not self.nnet:
             acoustic_model.add_triphone_fmllr_model(self.tri_fmllr_directory)
         else:
@@ -82,10 +81,11 @@ class TrainableAligner(BaseAligner):
         Perform triphone training
         '''
 
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(self.tri_final_model_path):
-            print('Triphone training already done, using previous final.mdl')
-            return
+        if not self.debug:
+            if os.path.exists(self.tri_final_model_path):
+                print('Triphone training already done, using previous final.mdl')
+                return
+
         if not os.path.exists(self.mono_ali_directory):
             self._align_si()
 
@@ -147,10 +147,11 @@ class TrainableAligner(BaseAligner):
         '''
         final_mdl = os.path.join(self.mono_directory, 'final.mdl')
 
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(final_mdl):
-            print('Monophone training already done, using previous final.mdl')
-            return
+        if not self.debug:
+            if os.path.exists(final_mdl):
+                print('Monophone training already done, using previous final.mdl')
+                return
+
         os.makedirs(os.path.join(self.mono_directory, 'log'), exist_ok=True)
 
         self._init_mono()
@@ -190,10 +191,10 @@ class TrainableAligner(BaseAligner):
         Train a diagonal UBM on the LDA + MLLT model
         '''
         
-       # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(self.diag_ubm_final_model_path):
-            print('Diagonal UBM training already done; using previous model')
-            return
+        if not self.debug:
+            if os.path.exists(self.diag_ubm_final_model_path):
+                print('Diagonal UBM training already done; using previous model')
+                return
         log_dir = os.path.join(self.diag_ubm_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
@@ -315,19 +316,19 @@ class TrainableAligner(BaseAligner):
         Train i-vector extractor
         '''
 
-        # N.B.: This block ought to be commented out when developing.
-        #if os.path.exists(self.ivector_extractor_final_model_path):
-        #    print('i-vector training already done, using previous final.mdl')
-        #    return
+        if not self.debug:
+            if os.path.exists(self.ivector_extractor_final_model_path):
+                print('i-vector training already done, using previous final.mdl')
+                return
 
         os.makedirs(os.path.join(self.ivector_extractor_directory, 'log'), exist_ok=True)
         self._train_ivector_extractor()
 
     def _train_ivector_extractor(self):
-        # N.B.: This block ought to be commented out when developing.
-        #if os.path.exists(self.ivector_extractor_final_model_path):
-        #    print('i-vector extractor training already done, using previous final.ie')
-        #    return
+        if not self.debug:
+            if os.path.exists(self.ivector_extractor_final_model_path):
+                print('i-vector extractor training already done, using previous final.ie')
+                return
 
         log_dir = os.path.join(self.ivector_extractor_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
