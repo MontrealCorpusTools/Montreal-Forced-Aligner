@@ -69,7 +69,7 @@ class BaseAligner(object):
                  tri_fmllr_params=None, lda_mllt_params=None,
                  diag_ubm_params=None, ivector_extractor_params=None,
                  nnet_basic_params=None,
-                 debug=False, nnet=False):
+                 debug=False, skip_input=False, nnet=False):
         self.nnet = nnet
         if mono_params is None:
             mono_params = {}
@@ -1034,7 +1034,7 @@ class BaseAligner(object):
         # Librispeech 100 chosen because of large number of speakers, not necessarily longer length. 
         # Thesis results tentatively confirmed that more speakers in ivector extractor => better results.
         ivector_extractor = IvectorExtractor("../pretrained_models/ls_100_ivector_extractor.zip")
-        ivector_extractor_directory = "ivector_extractor_directory"
+        ivector_extractor_directory = os.path.join(self.temp_directory, 'ivector_extractor')
         ivector_extractor.export_ivector_extractor(ivector_extractor_directory)
 
         split_dir = self.corpus.split_directory

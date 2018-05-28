@@ -35,9 +35,13 @@ class Archive(object):
             (head, tail, _) = next(os.walk(base))
             if not tail:
                 raise ValueError("'{}' is empty.".format(source))
+            name = tail[0]
             if len(tail) > 1:
-                raise ValueError("'{}' is a bomb.".format(source))
-            self.dirname = os.path.join(head, tail[0])
+                if tail[0] != '__MACOSX':   # Zipping from Mac adds a directory
+                    raise ValueError("'{}' is a bomb.".format(source))
+                else:
+                    name = tail[1]
+            self.dirname = os.path.join(head, name)
             self.is_tmpdir = True  # ignore caller
 
     @classmethod

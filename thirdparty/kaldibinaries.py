@@ -46,7 +46,8 @@ included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
                       'nnet-am-init', 'sum-lda-accs', 'matrix-dim', 'nnet-info',
                       'nnet-train-parallel', 'nnet-insert', 'ivector-extract-online2',
                       'ivector-randomize', 'feat-to-len', 'nnet2-boost-silence', 'nnet-am-mixup',
-                      'nnet-compute-prob', 'vector_sum', 'nnet-to-raw-nnet', 'nnet-relabel-egs']
+                      'nnet-compute-prob', 'vector_sum', 'nnet-to-raw-nnet', 'nnet-relabel-egs',
+                      'lattice-oracle']
 
 linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libfstscript.so.7', 'libfstfarscript.so.7',

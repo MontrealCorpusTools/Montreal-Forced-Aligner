@@ -36,10 +36,12 @@ def test_sick_diag_ubm(sick_dict, sick_corpus, generated_dir):
                          temp_directory=os.path.join(generated_dir, 'sickcorpus'))
     a.train_diag_ubm()
 
-def test_sick_ivectors(sick_dict, sick_corpus, generated_dir):
+# Test to be integrated in future, when user training of the i-vector extractor is supported.
+# Currently, the test corpus is too small.
+"""def test_sick_ivectors(sick_dict, sick_corpus, generated_dir):
     a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),
                          temp_directory=os.path.join(generated_dir, 'sickcorpus'))
-    a.ivectors()
+    a.ivector_extractor()"""
 
 def test_sick_nnet_basic(sick_dict, sick_corpus, generated_dir):
     a = TrainableAligner(sick_corpus, sick_dict, os.path.join(generated_dir, 'sick_output'),

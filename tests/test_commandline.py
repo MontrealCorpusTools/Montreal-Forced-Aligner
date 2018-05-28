@@ -60,46 +60,38 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     with pytest.raises(PronunciationAcousticMismatchError):
         align_included_model(args)
 
-    #args.clean = False
-    #args.acoustic_model_path = 'english'
-    #align_included_model(args, skip_input=True)
     args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args)
 
+def test_nnet_export_model(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.artificial_neural_net = True
+    args.debug = True
+    args.output_model_path = os.path.join(generated_dir, 'nnet_test_model.zip')
+    args.corpus_directory = large_prosodylab_format_directory
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained_outputting_model3')
+    train_and_align_corpus(args)
+
 def test_pretrained_nnet(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary):
     args = DummyArgs()
-    args.acoustic_model_path = '/Users/mlml/Documents/test_models/nnet_basic_output.zip'
+    args.acoustic_model_path = os.path.join(generated_dir, 'nnet_test_model')
     args.corpus_directory = basic_corpus_dir
     print(basic_corpus_dir)
     args.dictionary_path = large_dataset_dictionary
-    #args.output_directory = os.path.join(generated_dir, 'basic_output')
     args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_trained_on_same')
     args.artificial_neural_net = True
     args.debug = True
     align_included_model(args)
 
-def test_nnet_export_model(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
-    args = DummyArgs()
-    args.artificial_neural_net = True
-    args.debug = True
-    #args.output_model_path = '/Users/mlml/Documents/test_models/test_model2.zip'
-    args.output_model_path = '/Users/mlml/Documents/test_models/nnet_basic_output.zip'
-    #args.corpus_directory = large_prosodylab_format_directory
-    args.corpus_directory = basic_corpus_dir
-    #args.dictionary_path = large_dataset_dictionary
-    args.dictionary_path = '/Users/mlml/Downloads/cmudict-master/cmudict.dict'
-    #args.output_directory = os.path.join(generated_dir, 'basic_output')
-    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained_outputting_model3')
-    train_and_align_corpus(args)
-
 def test_train_align_nnet(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
     args = DummyArgs()
     args.artificial_neural_net = True
     args.debug = True
-    #args.output_model_path = None
+    args.output_model_path = None
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained')
