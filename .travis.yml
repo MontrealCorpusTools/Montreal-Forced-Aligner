@@ -18,7 +18,7 @@ addons:
       - libstdc++6
 
 before_install:
-  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   - sudo apt-get update
   - sudo apt-get upgrade
   - sudo apt-get dist-upgrade
