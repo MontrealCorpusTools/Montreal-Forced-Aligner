@@ -32,7 +32,7 @@ def download(args):
         plat = 'linux'
     print('Downloading precompiled binaries for {}...'.format(plat))
 
-    download_link = 'http://mlmlab.org/mfa/precompiled_binaries/mfa_thirdparty_{}.zip'.format(
+    download_link = 'http://mcqll.org/MFA_thirdparty/mfa_thirdparty_{}.zip'.format(
         plat)
     path = os.path.join(temp_dir, '{}.zip'.format(plat))
     if not os.path.exists(path):
