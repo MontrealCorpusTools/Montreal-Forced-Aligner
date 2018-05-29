@@ -19,8 +19,6 @@ addons:
 
 before_install:
   - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-  - sudo apt-get update
-  - sudo apt-get upgrade
   - pwd
   - sudo rm -rf /dev/shm
   - sudo ln -s /run/shm /dev/shm
