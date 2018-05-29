@@ -15,10 +15,6 @@ addons:
     packages:
       - libatlas3-base
       - libstdc++6
-      - gcc-4.9
-      - g++-4.9
-      - gcc-4.9-multilib
-      - g++-4.9-multilib
 
 before_install:
   - pwd
