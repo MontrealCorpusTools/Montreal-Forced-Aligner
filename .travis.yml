@@ -29,7 +29,7 @@ before_install:
   - sudo apt-get install --reinstall postgresql-contrib-9.6
   - sudo apt-get update
   - sudo apt-get -y dist-upgrade
-  - pwd
+  - pwd 
   - sudo rm -rf /dev/shm
   - sudo ln -s /run/shm /dev/shm
   - sudo ln -s -f bash /bin/sh
