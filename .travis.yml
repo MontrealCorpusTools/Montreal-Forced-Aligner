@@ -12,10 +12,10 @@ dist: trusty
 
 addons:
   apt:
+    update: true
     packages:
       - libatlas3-base
       - libstdc++6
-      - libstdc++-4.9-dev
 
 before_install:
   - pwd
