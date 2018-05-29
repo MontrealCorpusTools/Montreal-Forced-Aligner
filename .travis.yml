@@ -19,6 +19,14 @@ addons:
       - libstdc++6
 
 before_install:
+  - sudo apt-get install --reinstall postgresql-9.3
+  - sudo apt-get install --reinstall postgresql-contrib-9.3
+  - sudo apt-get install --reinstall postgresql-9.4
+  - sudo apt-get install --reinstall postgresql-contrib-9.4
+  - sudo apt-get install --reinstall postgresql-9.5
+  - sudo apt-get install --reinstall postgresql-contrib-9.5
+  - sudo apt-get install --reinstall postgresql-9.6
+  - sudo apt-get install --reinstall postgresql-contrib-9.6
   - sudo apt-get update
   - sudo apt-get -y dist-upgrade
   - pwd
