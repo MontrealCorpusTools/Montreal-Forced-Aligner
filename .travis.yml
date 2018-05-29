@@ -16,6 +16,7 @@ addons:
     packages:
       - libatlas3-base
       - libstdc++6
+      - gcc-5.0
 
 before_install:
   - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
