@@ -20,6 +20,7 @@ addons:
 
 before_install:
   - sudo apt-get update
+  - sudo apt-get -y dist-upgrade
   - pwd
   - sudo rm -rf /dev/shm
   - sudo ln -s /run/shm /dev/shm
