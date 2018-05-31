@@ -33,6 +33,8 @@ def awk_like(path, column):
 	return col
 
 def filter_scp(valid_uttlist, scp, exclude=False):
+	# Modelled after https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/utils/filter_scp.pl
+	# Used in DNN recipes
 	# Scp could be either a path or just the list
 
 	# Get lines of scp file
