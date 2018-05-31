@@ -24,7 +24,6 @@ class Archive(object):
 
     def __init__(self, source, is_tmpdir=False):
         self._meta = {}
-        print(source)
         self.name, _ = os.path.splitext(os.path.basename(source))
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
@@ -141,9 +140,6 @@ class AcousticModel(Archive):
         os.makedirs(destination, exist_ok=True)
         copy(os.path.join(self.dirname, 'final.mdl'), destination)
         copy(os.path.join(self.dirname, 'tree'), destination)
-        print(self.dirname)
-        #for file in glob.glob(os.path.join(self.dirname, 'alignfeats.*')):
-        #    copy(os.path.join(self.dirname, file), destination)
         for file in glob.glob(os.path.join(self.dirname, 'fsts.*')):
             copy(os.path.join(self.dirname, file), destination)
 

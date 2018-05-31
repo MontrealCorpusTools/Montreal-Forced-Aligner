@@ -5,7 +5,7 @@ import shutil
 import re
 import glob
 
-from .helper import make_path_safe, thirdparty_binary
+from .helper import make_path_safe, thirdparty_binary, filter_scp
 
 from .textgrid import ctm_to_textgrid, parse_ctm
 
@@ -1206,8 +1206,8 @@ def gauss_to_post(directory, config, diag_ubm_directory, gmm_feats, num_jobs):
 def acc_ivector_stats_func(directory, config, feat_path, num_jobs, x, iteration):
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w') as logf:
-        # There is weird threading/array stuff here, so come back if necessary
-        # (but seems to be working)
+        # Dont thread on me
+        # Kaldi splits jobs here further, probably due to i-vector corpora being extremely large; just keep the same processes
         acc_stats_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
                                           os.path.join(directory, '{}.ie'.format(iteration)),
                                           'ark:' + feat_path,
@@ -1323,17 +1323,16 @@ def extract_ivectors(directory, training_dir, ieconf, config, num_jobs):
 
 def get_egs_helper(nnet_dir, label, feats, ivector_period, to_filter, ivector_dir, ivector_randomize_prob, logf, x):
     new_feats = os.path.join(nnet_dir, '{}_helped.{}'.format(label, x))
+    filtered = filter_scp(to_filter, os.path.join(ivector_dir, 'ivector_online.{}.scp'.format(x)))
+    filter_path = to_filter + '_helped_filtered.{}.scp'.format(x)
+    with open(filter_path, 'w') as outf:
+        for item in filtered:
+            outf.write(item)
     with open(new_feats, 'w') as outf:
-        filter_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), 'helper_scripts/filter_scp.py'),
-                                        to_filter,
-                                        os.path.join(ivector_dir, 'ivector_online.{}.scp'.format(x))],
-                                        stdout=subprocess.PIPE,
-                                        stderr=logf)
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                 '--n={}'.format(-10),
-                                                'scp:-',
+                                                'scp:{}'.format(filter_path),
                                                 'ark:-'],
-                                                stdin=filter_proc.stdout,
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
         ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
@@ -1367,36 +1366,36 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, ivector_di
     with open(log_path, 'w') as logf:
         # Gets "feats" (Kaldi)
         egs_feats = os.path.join(nnet_dir, 'egsfeats.{}'.format(x))
+        filtered = filter_scp(valid_uttlist, os.path.join(split_dir, 'feats.{}.scp'.format(x)))
+        filter_path = valid_uttlist[:-3] + '_egsfeats_filtered.{}.scp'.format(x)
+        with open(filter_path, 'w') as outf:
+            for item in filtered:
+                outf.write(item)
         with open(egs_feats, 'w') as outf:
-            filter_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), 'helper_scripts/filter_scp.py'),
-                                            valid_uttlist,
-                                            os.path.join(split_dir, 'feats.{}.scp'.format(x))],
-                                            stdout=subprocess.PIPE,
-                                            stderr=logf)
             apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
                                                 + cmvn_opts
                                                 + ['--utt2spk=ark:{}'.format(os.path.join(split_dir, 'utt2spk.{}'.format(x))),
                                                 'scp:' + os.path.join(split_dir, 'cmvn.{}.scp'.format(x)),
-                                                'scp:-', 'ark:-'],
-                                                stdin=filter_proc.stdout,
+                                                'scp:{}'.format(filter_path), 
+                                                'ark:-'],
                                                 stdout=outf,
                                                 stderr=logf)
             apply_cmvn_proc.communicate()
 
         # Gets "valid_feats" (Kaldi)
         egs_valid_feats = os.path.join(nnet_dir, 'egsvalidfeats.{}'.format(x))
+        filtered = filter_scp(valid_uttlist, os.path.join(training_dir, 'feats.scp'.format(x)))
+        filter_path = valid_uttlist[:-3] + '_egsvalidfeats_filtered.{}.scp'.format(x)
+        with open(filter_path, 'w') as outf:
+            for item in filtered:
+                outf.write(item)
         with open(egs_valid_feats, 'w') as outf:
-            filter_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), 'helper_scripts/filter_scp.py'),
-                                            valid_uttlist,
-                                            os.path.join(training_dir, 'feats.scp')],
-                                            stdout=subprocess.PIPE,
-                                            stderr=logf)
             apply_cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn')]
                                                 + cmvn_opts
                                                 + ['--utt2spk=ark:{}'.format(os.path.join(training_dir, 'utt2spk')),
                                                 'scp:' + os.path.join(training_dir, 'cmvn.scp'),
-                                                'scp:-', 'ark:-'],
-                                                stdin=filter_proc.stdout,
+                                                'scp:{}'.format(filter_path),
+                                                'ark:-'],
                                                 stdout=outf,
                                                 stderr=logf)
             apply_cmvn_proc.communicate()
@@ -1559,17 +1558,16 @@ def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, f
         # Add iVector functionality
         ivector_period = 3000
         new_splice_feats = os.path.join(nnet_dir, 'newsplicefeats.{}'.format(x))
+        filtered = filter_scp(os.path.join(split_dir, 'utt2spk.{}'.format(x)), os.path.join(ivector_dir, 'ivector_online.{}.scp'.format(x)))
+        filter_path = os.path.join(nnet_dir, 'utt2spk_newsplicefeats_filtered.{}.scp'.format(x))
+        with open(filter_path, 'w') as outf:
+            for item in filtered:
+                outf.write(item)
         with open(new_splice_feats, 'w') as outf:
-            filter_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), 'helper_scripts/filter_scp.py'),
-                                            os.path.join(split_dir, 'utt2spk.{}'.format(x)),
-                                            os.path.join(ivector_dir, 'ivector_online.scp')],
-                                            stdout=subprocess.PIPE,
-                                            stderr=logf)
             subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                     '--n={}'.format(-10),
-                                                    'scp:-',
+                                                    'scp:{}'.format(filter_path),
                                                     'ark:-'],
-                                                    stdin=filter_proc.stdout,
                                                     stdout=subprocess.PIPE,
                                                     stderr=logf)
             ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
@@ -1592,7 +1590,7 @@ def get_lda_nnet_func(nnet_dir, ali_dir, ivector_dir, training_dir, split_dir, f
 
             splice_feats = new_splice_feats
 
-        # Get iVector dimension
+        # Get i-vector dimension
         ivector_dim_path = os.path.join(nnet_dir, 'ivector_dim')
         with open(ivector_dim_path, 'w') as outf:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
@@ -1785,17 +1783,16 @@ def nnet_get_align_feats_func(nnet_dir, split_dir, ivector_dir, config, x):
             cmvn_proc.communicate()
 
         new_feats = os.path.join(nnet_dir, 'alignfeats.{}'.format(x))
+        filtered = filter_scp(os.path.join(split_dir, 'utt2spk.{}'.format(x)), os.path.join(ivector_dir, 'ivector_online.{}.scp'.format(x)))
+        filter_path = os.path.join(nnet_dir, 'utt2spk_alignfeats_filtered.{}.scp'.format(x))
+        with open(filter_path, 'w') as outf:
+            for item in filtered:
+                outf.write(item)
         with open(new_feats, 'w') as outf:
-            filter_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), 'helper_scripts/filter_scp.py'),
-                                            os.path.join(split_dir, 'utt2spk.{}'.format(x)),
-                                            os.path.join(ivector_dir, 'ivector_online.scp')],
-                                            stdout=subprocess.PIPE,
-                                            stderr=logf)
             subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                     '--n={}'.format(-10),
-                                                    'scp:-',
+                                                    'scp:{}'.format(filter_path),
                                                     'ark:-'],
-                                                    stdin=filter_proc.stdout,
                                                     stdout=subprocess.PIPE,
                                                     stderr=logf)
             ivector_random_proc = subprocess.Popen([thirdparty_binary('ivector-randomize'),
@@ -2167,7 +2164,7 @@ def relabel_egs_func(i, nnet_dir, egs_in, alignments, egs_out, x):
 
 def relabel_egs(i, nnet_dir, egs_in, alignments, egs_out, num_jobs):
     """
-    Multiprocessing function Multiprocessing function that relabels training examples
+    Multiprocessing function that relabels training examples
     
     See:
 

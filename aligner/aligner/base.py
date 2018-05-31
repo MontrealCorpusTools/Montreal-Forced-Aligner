@@ -10,8 +10,9 @@ from tqdm import tqdm
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 from contextlib import redirect_stdout
 from aligner.models import IvectorExtractor
+from random import shuffle
 
-from ..helper import thirdparty_binary, make_path_safe
+from ..helper import thirdparty_binary, make_path_safe, awk_like, filter_scp
 
 from ..config import (MonophoneConfig, TriphoneConfig, TriphoneFmllrConfig,
                       LdaMlltConfig, DiagUbmConfig, iVectorExtractorConfig,
@@ -534,26 +535,16 @@ class BaseAligner(object):
             self.parse_log_directory(log_directory, i)
             if i < config.max_iter_inc:
                 num_gauss += inc_gauss
-        # Debugging
-        #print("dir where final.mdl is:", directory)
+
         shutil.copy(os.path.join(directory, '{}.mdl'.format(config.num_iters)),
                     os.path.join(directory, 'final.mdl'))
-        #print("gmm info:")
-        #gmm_info_proc = subprocess.Popen([thirdparty_binary('gmm-info'),
-        #                                 os.path.join(directory, 'final.mdl')])
-        #gmm_info_proc.communicate()
 
-        #print("moving final occs:")
         shutil.copy(os.path.join(directory, '{}.occs'.format(config.num_iters)),
                     os.path.join(directory, 'final.occs'))
 
         if config.do_lda_mllt:
-            #print("moving final mat:")
             shutil.copy(os.path.join(directory, '{}.mat'.format(config.num_iters-1)),
                         os.path.join(directory, 'final.mat'))
-
-
-    # Big paste (clean up/refactor later)
 
     def train_lda_mllt(self):
         '''
@@ -658,9 +649,9 @@ class BaseAligner(object):
         compile_train_graphs(directory, self.dictionary.output_directory,
                              self.corpus.split_directory, self.num_jobs)
 
-        if os.path.exists(os.path.join(align_directory, 'trans.0')):            # ?
-            for i in range(self.num_jobs):                                      # ?
-                shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),# ?
+        if os.path.exists(os.path.join(align_directory, 'trans.0')):            
+            for i in range(self.num_jobs):                                      
+                shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
                             os.path.join(directory, 'trans.{}'.format(i)))
 
     def _do_lda_mllt_training(self):
@@ -741,47 +732,40 @@ class BaseAligner(object):
         training_feats = os.path.join(directory, 'nnet_training_feats')
         num_utts_subset = 300
         log_path = os.path.join(directory, 'log', 'training_egs_feats.log')
+
         with open(log_path, 'w') as logf:
             with open(valid_uttlist, 'w') as outf:
-                valid_uttlist_proc = subprocess.Popen(['awk', '{print $1}',
-                                                      os.path.join(training_directory, 'utt2spk')],
-                                                      stdout=subprocess.PIPE,
-                                                      stderr=logf)
-                shuffle_list_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), '../helper_scripts/shuffle.py')],
-                                                     stdin=valid_uttlist_proc.stdout,
-                                                     stdout=subprocess.PIPE,
-                                                     stderr=logf)
-                head_proc = subprocess.Popen(['head', '-{}'.format(num_utts_subset)],
-                                             stdin=shuffle_list_proc.stdout,
-                                             stdout=outf,
-                                             stderr=logf)
-                head_proc.communicate()
+                # Get first column from utt2spk (awk-like)
+                utt2spk_col = awk_like(os.path.join(training_directory, 'utt2spk'), 0)
+                # Shuffle the list from the column
+                shuffle(utt2spk_col)
+                # Take only the first num_utts_subset lines
+                utt2spk_col = utt2spk_col[:num_utts_subset]
+                # Write the result to file
+                for line in utt2spk_col:
+                    outf.write(line)
+                    outf.write('\n')
 
             with open(train_subset_uttlist, 'w') as outf:
-                awk_proc = subprocess.Popen(['awk', '{print $1}',
-                                             os.path.join(training_directory, 'utt2spk')],
-                                             stdout=subprocess.PIPE,
-                                             stderr=logf)
-                filter_scp_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), '../helper_scripts/filter_scp.py'),
-                                                    '--exclude', valid_uttlist],
-                                                    stdin=awk_proc.stdout,
-                                                    stdout=subprocess.PIPE,
-                                                    stderr=logf)
-                shuffle_list_proc = subprocess.Popen(['python3', os.path.join(os.path.dirname(__file__), '../helper_scripts/shuffle.py')],
-                                                     stdin=filter_scp_proc.stdout,
-                                                     stdout=subprocess.PIPE,
-                                                     stderr=logf)
-                head_proc = subprocess.Popen(['head', '-{}'.format(num_utts_subset)],
-                                             stdin=shuffle_list_proc.stdout,
-                                             stdout=outf,
-                                             stderr=logf)
-                head_proc.communicate()
+                # Get first column from utt2spk (awk-like)
+                utt2spk_col = awk_like(os.path.join(training_directory, 'utt2spk'), 0)
+                # Filter by the scp list
+                filtered = filter_scp(valid_uttlist, utt2spk_col, exclude=True)
+                # Shuffle the list
+                shuffle(filtered)
+                # Take only the first num_utts_subset lines
+                filtered = filtered[:num_utts_subset]
+                # Write the result to a file
+                for line in filtered:
+                    outf.write(line)
+                    outf.write('\n')
 
         get_egs(directory, egs_directory, training_directory, split_directory, align_directory,
                 fixed_ivector_dir, training_feats, valid_uttlist,
                 train_subset_uttlist, config, self.num_jobs)
 
         # Initialize neural net
+        print('Beginning DNN training...')
         stddev = float(1.0/config.pnorm_input_dim**0.5)
         online_preconditioning_opts = 'alpha={} num-samples-history={} update-period={} rank-in={} rank-out={} max-change-per-sample={}'.format(config.alpha, config.num_samples_history, config.update_period, config.precondition_rank_in, config.precondition_rank_out, config.max_change_per_sample)
         nnet_config_path = os.path.join(directory, 'nnet.config')
@@ -806,20 +790,23 @@ class BaseAligner(object):
             nc.write('NormalizeComponent dim={}\n'.format(config.pnorm_output_dim))
 
         log_path = os.path.join(directory, 'log', 'nnet_init.log')
+        nnet_info_path = os.path.join(directory, 'log', 'nnet_info.log')
         with open(log_path, 'w') as logf:
-            nnet_am_init_proc = subprocess.Popen([thirdparty_binary('nnet-am-init'),
-                                                 os.path.join(align_directory, 'tree'),
-                                                 topo_path,
-                                                 "{} {} -|".format(thirdparty_binary('nnet-init'),
-                                                                   nnet_config_path),
-                                                os.path.join(directory, '0.mdl')],
-                                                stderr=logf)
-            nnet_am_init_proc.communicate()
+            with open(nnet_info_path, 'w') as outf:
+                nnet_am_init_proc = subprocess.Popen([thirdparty_binary('nnet-am-init'),
+                                                     os.path.join(align_directory, 'tree'),
+                                                     topo_path,
+                                                     "{} {} -|".format(thirdparty_binary('nnet-init'),
+                                                                       nnet_config_path),
+                                                    os.path.join(directory, '0.mdl')],
+                                                    stderr=logf)
+                nnet_am_init_proc.communicate()
 
-            nnet_am_info = subprocess.Popen([thirdparty_binary('nnet-am-info'),
-                                            os.path.join(directory, '0.mdl')],
-                                            stderr=logf)
-            nnet_am_info.communicate()
+                nnet_am_info = subprocess.Popen([thirdparty_binary('nnet-am-info'),
+                                                os.path.join(directory, '0.mdl')],
+                                                stdout=outf,
+                                                stderr=logf)
+                nnet_am_info.communicate()
 
 
         # Train transition probabilities and set priors
@@ -849,7 +836,6 @@ class BaseAligner(object):
 
         # Training loop
         for i in range(num_tot_iters):
-            print("On iteration {} of {}...".format(i, num_tot_iters))
             model_path = os.path.join(directory, '{}.mdl'.format(i))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
 
@@ -871,8 +857,12 @@ class BaseAligner(object):
                 compute_prob_proc = subprocess.Popen([thirdparty_binary('nnet-compute-prob'),
                                                      model_path,
                                                      'ark:{}/all_egs.egs'.format(egs_directory)],
+                                                     stdout=subprocess.PIPE,
                                                      stderr=logf)
+                log_prob = compute_prob_proc.stdout.read().decode('utf-8').strip()
                 compute_prob_proc.communicate()
+
+            print("Iteration {} of {} \t\t Log-probability: {}".format(i+1, num_tot_iters, log_prob))
 
             # Pull out and save graphs
             # This is not quite working when done automatically - to be worked out with unit testing.
@@ -1016,11 +1006,7 @@ class BaseAligner(object):
         '''
         Extracts i-vectors from a corpus using the trained i-vector extractor.
         '''
-
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(self.ivector_extractor_final_model_path):
-            print('i-vector extractor training already done, using previous final.ie')
-            return
+        print('Extracting i-vectors...')
 
         log_dir = os.path.join(self.extracted_ivector_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
@@ -1042,20 +1028,20 @@ class BaseAligner(object):
         config = self.ivector_extractor_config
         training_directory = self.corpus.output_directory
 
-        # Need to make a directory for corpus with just 2 utterances per speaker
+        # To make a directory for corpus with just 2 utterances per speaker
         # (left commented out in case we ever decide to do this)
-        #max2_dir = os.path.join(directory, 'max2')
-        #os.makedirs(max2_dir, exist_ok=True)
-        #mfa_working_dir = os.getcwd()
-        #os.chdir("/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2")
-        #opy_data_sh = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2/copy_data_dir.sh"
-        #log_path = os.path.join(directory, 'log', 'max2.log')
-        #with open(log_path, 'w') as logf:
-        #    command = [copy_data_sh, '--utts-per-spk-max', '2', train_dir, max2_dir]
-        #    max2_proc = subprocess.Popen(command,
-        #                                 stderr=logf)
-        #    max2_proc.communicate()
-        #os.chdir(mfa_working_dir)
+        """max2_dir = os.path.join(directory, 'max2')
+        os.makedirs(max2_dir, exist_ok=True)
+        mfa_working_dir = os.getcwd()
+        os.chdir("/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2")
+        copy_data_sh = "/Users/mlml/Documents/Project/kaldi2/egs/wsj/s5/steps/online/nnet2/copy_data_dir.sh"
+        log_path = os.path.join(directory, 'log', 'max2.log')
+        with open(log_path, 'w') as logf:
+            command = [copy_data_sh, '--utts-per-spk-max', '2', train_dir, max2_dir]
+            max2_proc = subprocess.Popen(command,
+                                         stderr=logf)
+            max2_proc.communicate()
+        os.chdir(mfa_working_dir)"""
 
         # Write a "cmvn config" file (this is blank in the actual kaldi code, but it needs the argument passed)
         cmvn_config = os.path.join(directory, 'online_cmvn.conf')
