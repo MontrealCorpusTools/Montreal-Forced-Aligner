@@ -71,6 +71,7 @@ class PretrainedAligner(BaseAligner):
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
         self.skip_input = skip_input
+
         self.setup()
 
         if not nnet:
@@ -129,6 +130,7 @@ class PretrainedAligner(BaseAligner):
     def setup(self):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
+
     def test_utterance_transcriptions(self):
         return test_utterances(self)
 

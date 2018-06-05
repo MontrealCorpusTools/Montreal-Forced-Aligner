@@ -1,0 +1,3 @@
+[
+  "tests/test_aligner.py::test_sick_nnet_basic"
+]

@@ -29,6 +29,19 @@ class DummyArgs(object):
         self.temp_directory = None
 
 
+class DummyArgs(object):
+    def __init__(self):
+        self.speaker_characters = 0
+        self.num_jobs = 0
+        self.verbose = False
+        self.clean = True
+        self.fast = True
+        self.no_speaker_adaptation = False
+        self.debug = False
+        self.errors = False
+        self.temp_directory = None
+
+
 def fix_path():
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
@@ -61,7 +74,7 @@ def unfix_path():
 PRETRAINED_LANGUAGES = ['english']
 
 
-def align_corpus(args, skip_input=False):
+def align_corpus(args):
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -148,7 +161,7 @@ def align_corpus(args, skip_input=False):
             yaml.dump(conf, f)
 
 
-def align_included_model(args, skip_input=False):
+def align_included_model(args):
     if getattr(sys, 'frozen', False):
         root_dir = os.path.dirname(os.path.dirname(sys.executable))
     else:

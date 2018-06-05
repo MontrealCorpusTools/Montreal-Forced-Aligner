@@ -56,5 +56,6 @@ if __name__ == '__main__':
     parser.add_argument('temp_directory', nargs='?', default='', help='Full path to the directory to save to')
     parser.add_argument('--keep', action='store_true')
     parser.add_argument('--redownload', action='store_true')
+
     args = parser.parse_args()
     download(args)

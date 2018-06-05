@@ -72,6 +72,7 @@ class BaseAligner(object):
                  nnet_basic_params=None,
                  debug=False, skip_input=False, nnet=False):
         self.nnet = nnet
+
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
@@ -100,9 +101,9 @@ class BaseAligner(object):
         self.corpus = corpus
         self.dictionary = dictionary
         self.output_directory = output_directory
-        if self.corpus.num_jobs != num_jobs:
-            num_jobs = self.corpus.num_jobs
         self.num_jobs = num_jobs
+        if self.corpus.num_jobs != num_jobs:
+            self.num_jobs = self.corpus.num_jobs
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
@@ -111,11 +112,12 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = False
         self.debug = debug
+        self.skip_input = skip_input
         self.setup()
 
     def setup(self):
         self.dictionary.write()
-        self.corpus.initialize_corpus(self.dictionary)
+        self.corpus.initialize_corpus(self.dictionary, skip_input=self.skip_input)
         print(self.corpus.speaker_utterance_info())
 
     @property
@@ -440,7 +442,7 @@ class BaseAligner(object):
             subprocess.call([thirdparty_binary('gmm-mixup'),
                              '--mix-up={}'.format(config.initial_gauss_count),
                              mdl_path, occs_path, mdl_path], stderr=logf)
-
+            
         #os.remove(treeacc_path)
 
         compile_train_graphs(directory, self.dictionary.output_directory,

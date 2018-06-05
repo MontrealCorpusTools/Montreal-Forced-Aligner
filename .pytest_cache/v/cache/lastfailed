@@ -1,0 +1,4 @@
+{
+  "tests/test_aligner.py::test_sick_ivectors": true,
+  "tests/test_aligner.py::test_sick_nnet_basic": true
+}

@@ -140,6 +140,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
     args.quiet = True
     args.num_jobs = 2
     args.fast = True
+    args.quiet = True
     args.corpus_directory = large_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory
@@ -162,6 +163,7 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
     args.quiet = True
     args.num_jobs = 2
     args.fast = True
+    args.quiet = True
     args.corpus_directory = single_speaker_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = prosodylab_output_directory

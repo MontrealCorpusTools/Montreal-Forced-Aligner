@@ -264,6 +264,8 @@ class Corpus(object):
             raise CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory))
         if num_jobs < 1:
             num_jobs = 1
+
+        print('Setting up corpus information...')
         root_logger.info('Setting up corpus information...')
         self.directory = directory
         self.output_directory = os.path.join(output_directory, 'train')
@@ -1036,7 +1038,6 @@ class Corpus(object):
             user_input = input('There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
             if user_input.lower() == 'y':
                     sys.exit(1)
-
         self.create_mfccs()
         if split:
             self._split_feats(split_dir)

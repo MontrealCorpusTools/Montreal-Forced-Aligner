@@ -123,6 +123,7 @@ def align_corpus_no_dict(args):
                          mono_params=mono_params, tri_params=tri_params,
                          tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug,
                          skip_input=getattr(args,'quiet', False))
+
     a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
