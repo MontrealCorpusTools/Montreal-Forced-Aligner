@@ -13,7 +13,7 @@ dist: trusty
 addons:
   apt:
     sources:
-      - ubuntu-toolchain-r-test
+      - ubuntu-toolchain-r-test 
     packages:
       - libatlas3-base
       - libstdc++6
