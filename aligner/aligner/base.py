@@ -442,7 +442,7 @@ class BaseAligner(object):
             subprocess.call([thirdparty_binary('gmm-mixup'),
                              '--mix-up={}'.format(config.initial_gauss_count),
                              mdl_path, occs_path, mdl_path], stderr=logf)
-            
+
         #os.remove(treeacc_path)
 
         compile_train_graphs(directory, self.dictionary.output_directory,
@@ -1021,7 +1021,7 @@ class BaseAligner(object):
         # Only one option for now - make this an argument eventually.
         # Librispeech 100 chosen because of large number of speakers, not necessarily longer length. 
         # Thesis results tentatively confirmed that more speakers in ivector extractor => better results.
-        ivector_extractor = IvectorExtractor("../pretrained_models/ls_100_ivector_extractor.zip")
+        ivector_extractor = IvectorExtractor(os.path.join(os.path.dirname(__file__), '../../pretrained_models/ls_100_ivector_extractor.zip'))
         ivector_extractor_directory = os.path.join(self.temp_directory, 'ivector_extractor')
         ivector_extractor.export_ivector_extractor(ivector_extractor_directory)
 
