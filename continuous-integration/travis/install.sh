@@ -21,7 +21,7 @@ fi
 cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
 source activate test-environment
 pip install -r requirements.txt
-python thirdparty/download_binaries.py $HOME/tools --keep --redownload 
+python thirdparty/download_binaries.py $HOME/tools --keep --redownload
 
 if [ ! -d "$HOME/tools/mfa_test_data" ]; then
   cd $HOME/tools
