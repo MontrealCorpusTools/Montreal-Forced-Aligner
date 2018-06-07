@@ -195,15 +195,15 @@ Pretrained G2P models
 
 Included with MFA is a separate tool to generate a dictionary from a preexisting model. This should be used if you're
 aligning a dataset for which you have no pronunciation dictionary or the orthography is very transparent. We have pretrained models for several languages,
-which can be downloaded below. These models were generated using Phonetisaurus
+which can be downloaded below. These models were generated using
 `Phonetisaurus`_ and the GlobalPhone dataset. This  means that they will only work for transcriptions which use the same
-alphabet. Current language options are: Arabic, Bulgarian, Mandarin, Czech, Polish, Russian, Swahili, Ukrainian,
-and Vietnamese, with the following accuracies when trained on 90% of the data and tested on 10%:
+alphabet. Current language options are listed below, with the following accuracies when trained on 90% of the data and 
+tested on 10%:
 
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
 | Language        | Link                                          | Accuracy | Orthography system     | Phone set       |
 +=================+===============================================+==========+========================+=================+
-| Arabic          | `Arabic G2P model`_                           |   95.4   |   Romanized    [1]_    |   GlobalPhone   |
+| Arabic          | `Arabic G2P model`_                           |   95.4   |   Romanized    [2]_    |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+
 | Bulgarian       | `Bulgarian G2P model`_                        |   97.3   |   Cyrillic alphabet    |   GlobalPhone   |
 +-----------------+-----------------------------------------------+----------+------------------------+-----------------+

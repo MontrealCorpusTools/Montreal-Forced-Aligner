@@ -384,9 +384,9 @@ class BaseAligner(object):
             directory = self.tri_directory
             align_directory = self.mono_ali_directory
 
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(os.path.join(directory, '1.mdl')):
-            return
+        if not self.debug:
+            if os.path.exists(os.path.join(directory, '1.mdl')):
+                return
 
         if fmllr:
             print('Initializing speaker-adapted triphone training...')
@@ -464,10 +464,10 @@ class BaseAligner(object):
         '''
         Perform speaker-adapted triphone training
         '''
-        # Commented out for testing
-        if os.path.exists(self.tri_fmllr_final_model_path):
-            print('Triphone FMLLR training already done, using previous final.mdl')
-            return
+        if not self.debug:
+            if os.path.exists(self.tri_fmllr_final_model_path):
+                print('Triphone FMLLR training already done, using previous final.mdl')
+                return
 
         if not os.path.exists(self.tri_ali_directory):
             self._align_fmllr()
@@ -498,9 +498,9 @@ class BaseAligner(object):
             occs_path = os.path.join(directory, '{}.occs'.format(i + 1))
             next_model_path = os.path.join(directory, '{}.mdl'.format(i + 1))
 
-            # N.B.: This block ought to be commented out when developing.
-            if os.path.exists(next_model_path):
-                continue
+            if not self.debug:
+                if os.path.exists(next_model_path):
+                    continue
 
             if i in config.realign_iters:
                 align(i, directory, self.corpus.split_directory,
@@ -553,10 +553,10 @@ class BaseAligner(object):
         Perform LDA + MLLT training
         '''
 
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(self.lda_mllt_final_model_path):
-            print('LDA + MLLT training already done, using previous final.mdl')
-            return
+        if not self.debug:
+            if os.path.exists(self.lda_mllt_final_model_path):
+                print('LDA + MLLT training already done, using previous final.mdl')
+                return
 
         # N.B: The function _align_lda_mllt() is half-developed, but there doesn't seem to
         # be a reason for it to actually ever be called (since people will always have
@@ -580,9 +580,9 @@ class BaseAligner(object):
         align_directory = self.tri_fmllr_ali_directory  # The previous
         mdl_dir = self.tri_fmllr_directory
 
-        # N.B.: This block ought to be commented out when developing.
-        if os.path.exists(os.path.join(directory, '1.mdl')):
-            return
+        if not self.debug:
+            if os.path.exists(os.path.join(directory, '1.mdl')):
+                return
 
         print('Initializing LDA + MLLT training...')
 
@@ -696,7 +696,7 @@ class BaseAligner(object):
         num_leaves = tree_info[1]
         num_leaves = num_leaves.decode("utf-8")
 
-        lda_dim = 40 # Hard coded, could paramaterize this/make safer, but it's always 40 for LDA
+        lda_dim = self.lda_mllt_config.dim 
 
         # Extract iVectors
         self._extract_ivectors()

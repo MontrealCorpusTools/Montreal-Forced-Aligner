@@ -36,7 +36,7 @@ Forced alignment is a technique to take an orthographic transcription of
 an audio file and generate a time-aligned version using a pronunciation
 dictionary to look up phones for words.
 
-Many languages have pretrained acoustic models available for download and use (:ref:`pretrained_acoustic`)
+Many languages have :ref:`pretrained_acoustic` available for download and use.
 
 
 Montreal Forced Aligner
@@ -52,6 +52,12 @@ models, where context on either side of a phone is taken into account for
 acoustic models.  The final pass enhances the triphone model by taking
 into account speaker differences, and calculates a transformation of the
 mel frequency cepstrum coefficients (MFCC) features for each speaker.
+
+The Montreal Forced Aligner can also train using deep neural networks (DNNs).
+This training constitutes another pass, in addition to the first three passes.
+
+For more technical information about the structure of the aligner, see
+:ref:`api_reference`.
 
 If you run into any issues, please check the `mailing list`_ for fixes/workarounds or to post a new issue.
 
@@ -85,7 +91,7 @@ Most tools for forced alignment used by linguists rely on the HMM Toolkit
 * Prosodylab-aligner (`Prosodylab-aligner homepage`_)
 * Penn Phonetics Forced Aligner (P2FA, `P2FA homepage`_)
 * FAVE-align (`FAVE-align homepage`_)
-* (Web) MAUS(`MAUS homepage`_)
+* (Web) MAUS (`MAUS homepage`_)
 
 EasyAlign (`EasyAlign homepage`_) is a Praat (`Praat homepage`_) plug-in for forced alignment as well.
 
@@ -105,6 +111,7 @@ Contributors
 * Michaela Socolof
 * Elias Stengel-Eskin
 * Sarah Mihuc
+* Arlie Coles
 * Michael Wagner
 * Morgan Sonderegger
 
