@@ -418,7 +418,7 @@ class NnetBasicConfig(object):
 
     '''
     def __init__(self, **kwargs):
-        self.num_epochs = 15
+        self.num_epochs = 4
         self.num_epochs_extra = 5
         self.num_iters_final = 20
         self.iters_per_epoch = 2
