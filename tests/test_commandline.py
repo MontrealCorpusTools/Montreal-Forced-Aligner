@@ -22,6 +22,7 @@ class DummyArgs(object):
         self.errors = False
         self.temp_directory = None
         self.quiet = True
+        self.artificial_neural_net = False
 
 
 class G2PDummyArgs(object):
@@ -59,15 +60,42 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     with pytest.raises(PronunciationAcousticMismatchError):
         align_included_model(args)
 
-    #args.clean = False
-    #args.acoustic_model_path = 'english'
-    #align_included_model(args, skip_input=True)
     args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = large_dataset_dictionary
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     align_included_model(args)
 
+def test_nnet_export_model(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.artificial_neural_net = True
+    args.debug = True
+    args.output_model_path = os.path.join(generated_dir, 'nnet_test_model.zip')
+    args.corpus_directory = large_prosodylab_format_directory
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained_outputting_model3')
+    train_and_align_corpus(args)
+
+def test_pretrained_nnet(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.acoustic_model_path = os.path.join(generated_dir, 'nnet_test_model')
+    args.corpus_directory = basic_corpus_dir
+    print(basic_corpus_dir)
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_trained_on_same')
+    args.artificial_neural_net = True
+    args.debug = True
+    align_included_model(args)
+
+def test_train_align_nnet(basic_corpus_dir, large_prosodylab_format_directory, sick_dict_path, generated_dir, large_dataset_dictionary):
+    args = DummyArgs()
+    args.artificial_neural_net = True
+    args.debug = True
+    args.output_model_path = None
+    args.corpus_directory = basic_corpus_dir
+    args.dictionary_path = large_dataset_dictionary
+    args.output_directory = os.path.join(generated_dir, 'nnet_basic_output_selftrained')
+    train_and_align_corpus(args)
 
 def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generated_dir):
     args = DummyArgs()
@@ -109,6 +137,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
                                 large_dataset_dictionary, prosodylab_output_directory,
                                 prosodylab_output_model_path, temp_dir):
     args = DummyArgs()
+    args.quiet = True
     args.num_jobs = 2
     args.fast = True
     args.quiet = True
@@ -131,6 +160,7 @@ def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_direct
                                          prosodylab_output_directory,
                                          prosodylab_output_model_path):
     args = DummyArgs()
+    args.quiet = True
     args.num_jobs = 2
     args.fast = True
     args.quiet = True
@@ -162,6 +192,7 @@ def test_train_large_textgrid(large_textgrid_format_directory,
                               large_dataset_dictionary, textgrid_output_directory,
                               textgrid_output_model_path):
     args = DummyArgs()
+    args.quiet = True
     args.num_jobs = 2
     args.fast = True
     args.corpus_directory = large_textgrid_format_directory
@@ -178,6 +209,7 @@ def test_train_large_textgrid_nodict(large_textgrid_format_directory,
                                      textgrid_output_directory,
                                      textgrid_output_model_path):
     args = DummyArgs()
+    args.quiet = True
     args.num_jobs = 2
     args.fast = True
     args.corpus_directory = large_textgrid_format_directory

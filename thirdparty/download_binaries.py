@@ -32,10 +32,10 @@ def download(args):
         plat = 'linux'
     print('Downloading precompiled binaries for {}...'.format(plat))
 
-    download_link = 'http://mlmlab.org/mfa/precompiled_binaries/mfa_thirdparty_{}.zip'.format(
+    download_link = 'http://mcqll.org/MFA_thirdparty/mfa_thirdparty_{}.zip'.format(
         plat)
     path = os.path.join(temp_dir, '{}.zip'.format(plat))
-    if not os.path.exists(path):
+    if args.redownload or not os.path.exists(path):
         with tqdm(unit='B', unit_scale=True, miniters=1) as t:
             filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
     shutil.unpack_archive(path, base_dir)
@@ -55,5 +55,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('temp_directory', nargs='?', default='', help='Full path to the directory to save to')
     parser.add_argument('--keep', action='store_true')
+    parser.add_argument('--redownload', action='store_true')
+
     args = parser.parse_args()
     download(args)

@@ -12,11 +12,15 @@ dist: trusty
 
 addons:
   apt:
+    sources:
+      - ubuntu-toolchain-r-test 
     packages:
       - libatlas3-base
+      - libstdc++6
 
 before_install:
-  - pwd
+  - sudo apt-get update
+  - pwd 
   - sudo rm -rf /dev/shm
   - sudo ln -s /run/shm /dev/shm
   - sudo ln -s -f bash /bin/sh

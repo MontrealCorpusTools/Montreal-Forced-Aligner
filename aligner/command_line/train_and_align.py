@@ -63,14 +63,28 @@ def align_corpus(args):
         a = TrainableAligner(corpus, dictionary, args.output_directory,
                              temp_directory=data_directory,
                              mono_params=mono_params, tri_params=tri_params,
-                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, skip_input=getattr(args,'quiet', False))
+                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs,
+                             skip_input=getattr(args,'quiet', False),
+                             nnet=getattr(args, 'artificial_neural_net', False))
         a.verbose = args.verbose
+
+        # GMM training (looks like it needs to be done either way, as a starter for nnet)
         a.train_mono()
         a.export_textgrids()
         a.train_tri()
         a.export_textgrids()
         a.train_tri_fmllr()
         a.export_textgrids()
+
+        # nnet training
+        if args.artificial_neural_net:
+            # Do nnet training
+            a.train_lda_mllt()      
+            #a.train_diag_ubm()      # Uncomment to train i-vector extractor
+            #a.ivector_extractor()   # Uncomment to train i-vector extractor (integrate with argument eventually)
+            a.train_nnet_basic()     
+            a.export_textgrids()
+
         if args.output_model_path is not None:
             a.save(args.output_model_path)
     except:
@@ -107,7 +121,9 @@ def align_corpus_no_dict(args):
     a = TrainableAligner(corpus, dictionary, args.output_directory,
                          temp_directory=data_directory,
                          mono_params=mono_params, tri_params=tri_params,
-                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug, skip_input=getattr(args,'quiet', False))
+                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug,
+                         skip_input=getattr(args,'quiet', False))
+
     a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
@@ -132,6 +148,9 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('corpus_directory', help='Full path to the source directory to align')
     parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use', nargs='?', default='')
     parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
+
+    parser.add_argument('-a', '--artificial_neural_net', action='store_true')
+
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')
     parser.add_argument('-s', '--speaker_characters', type=str, default='0',
