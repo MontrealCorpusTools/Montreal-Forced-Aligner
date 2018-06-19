@@ -4,7 +4,7 @@
 Sound files
 ***********
 
-The currently only support format for sound files is ``.wav``.  Sound files
+Currently, the only supported format for sound files is ``.wav``.  Sound files
 must adhere to the following conditions:
 
 .. note ::
