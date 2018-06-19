@@ -4,8 +4,7 @@
 Sound files
 ***********
 
-The currently only support format for sound files is ``.wav``.  Sound files
-must adhere to the following conditions:
+Currently the only supported format for sound files is ``.wav``.  Sound files must adhere to the following conditions:
 
 .. note ::
    Sound files will be ignored if there is no ``.lab`` or ``.TextGrid`` with the same name as the sound file. The aligner
