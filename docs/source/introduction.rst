@@ -7,7 +7,7 @@
 
 .. _`P2FA homepage`: https://www.ling.upenn.edu/phonetics/old_website_2015/p2fa/
 
-.. _`FAVE-align homepage`: http://fave.ling.upenn.edu/FAAValign.html
+.. _`FAVE-align homepage`: https://github.com/JoFrhwld/FAVE/wiki/FAVE-align
 
 .. _`MAUS homepage`: http://www.bas.uni-muenchen.de/Bas/BasMAUS.html
 
@@ -131,4 +131,6 @@ Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
 
 Funding
 =======
+
+We acknowledge funding from Social Sciences and Humanities Research Council (SSHRC) #430-2014-00018, Fonds de Recherche du Québec – Société et Culture (FRQSC) #183356 and Canada Foundation for Innovation (CFI) #32451 to Morgan Sonderegger.
 
