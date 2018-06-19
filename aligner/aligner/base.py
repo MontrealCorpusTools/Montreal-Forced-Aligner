@@ -777,7 +777,7 @@ class BaseAligner(object):
             ivector_dim = inf.read().strip()
         feat_dim = 13 + int(ivector_dim)
 
-        with open(nnet_config_path, 'w') as nc:
+        with open(nnet_config_path, 'w', newline='') as nc:
             nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(feat_dim, config.splice_width, config.splice_width, ivector_dim))
             nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
             nc.write('AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(lda_dim, config.pnorm_input_dim, online_preconditioning_opts, config.initial_learning_rate, stddev, config.bias_stddev))
@@ -786,7 +786,7 @@ class BaseAligner(object):
             nc.write('AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(config.pnorm_output_dim, num_leaves, online_preconditioning_opts, config.initial_learning_rate, stddev, config.bias_stddev))
             nc.write('SoftmaxComponent dim={}\n'.format(num_leaves))
 
-        with open(hidden_config_path, 'w') as nc:
+        with open(hidden_config_path, 'w', newline='') as nc:
             nc.write('AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(config.pnorm_output_dim, config.pnorm_input_dim, online_preconditioning_opts, config.initial_learning_rate, stddev, config.bias_stddev))
             nc.write('PnormComponent input-dim={} output-dim={} p={}\n'.format(config.pnorm_input_dim, config.pnorm_output_dim, config.p))
             nc.write('NormalizeComponent dim={}\n'.format(config.pnorm_output_dim))
