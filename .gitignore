@@ -72,3 +72,5 @@ target/
 *.exe
 
 *.dll
+
+\.pytest_cache/
