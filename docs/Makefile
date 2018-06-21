@@ -6,6 +6,7 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = build
+PYREVERSE	  = pyreverse
 
 # Internal variables.
 PAPEROPT_a4     = -D latex_paper_size=a4
@@ -18,6 +19,7 @@ I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
 	@echo "  html       to make standalone HTML files"
+	@echo "	 diagrams	to make UML diagrams for the API reference"
 	@echo "  dirhtml    to make HTML files named index.html in directories"
 	@echo "  singlehtml to make a single large HTML file"
 	@echo "  pickle     to make pickle files"
@@ -47,6 +49,42 @@ help:
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)/*
+
+.PHONY: diagrams
+diagrams:
+	# UML class diagram for all of MFA
+	cat ../aligner/corpus.py ../aligner/config.py ../aligner/dictionary.py ../aligner/models.py ../aligner/aligner/base.py ../aligner/aligner/pretrained.py ../aligner/aligner/trainable.py ../aligner/aligner/base.py > ../aligner/generalUML.py
+	sed -i '' '/^def/,/class/{/class/!d;}' ../aligner/generalUML.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/generalUML.py 
+	$(PYREVERSE) -o svg -AS -k ../aligner/generalUML.py
+	mv classes.svg $(BUILDDIR)/generalUML.svg; chmod 777 $(BUILDDIR)/generalUML.svg; rm ../aligner/generalUML.py
+	mv $(BUILDDIR)/generalUML.svg $(BUILDDIR)/html/_images 
+
+	# UML class diagram for aligner API
+	cat ../aligner/aligner/pretrained.py ../aligner/aligner/trainable.py ../aligner/aligner/base.py > ../aligner/all_aligner.py
+	sed -i '' '/^def/,/class/{/class/!d;}' ../aligner/all_aligner.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/all_aligner.py
+	$(PYREVERSE) -o svg -AS ../aligner/all_aligner.py
+	mv classes.svg $(BUILDDIR)/alignerUML.svg; chmod 777 $(BUILDDIR)/alignerUML.svg; rm ../aligner/all_aligner.py
+	mv $(BUILDDIR)/alignerUML.svg $(BUILDDIR)/html/_images
+
+	# UML class diagram for corpus API
+	$(PYREVERSE) -o svg -AS ../aligner/corpus.py
+	mv classes.svg $(BUILDDIR)/corpusUML.svg; chmod 777 $(BUILDDIR)/corpusUML.svg
+	mv $(BUILDDIR)/corpusUML.svg $(BUILDDIR)/html/_images
+
+	# UML class diagram for dictionary API
+	$(PYREVERSE) -o svg -AS ../aligner/dictionary.py
+	mv classes.svg $(BUILDDIR)/dictionaryUML.svg; chmod 777 $(BUILDDIR)/dictionaryUML.svg
+	mv $(BUILDDIR)/dictionaryUML.svg $(BUILDDIR)/html/_images
+
+	# UML class diagram for model API
+	$(PYREVERSE) -o svg -AS ../aligner/models.py
+	mv classes.svg $(BUILDDIR)/modelUML.svg; chmod 777 $(BUILDDIR)/modelUML.svg
+	mv $(BUILDDIR)/modelUML.svg $(BUILDDIR)/html/_images
+
+	# UML class diagram for config API
+	$(PYREVERSE) -o svg -AS ../aligner/config.py
+	mv classes.svg $(BUILDDIR)/configUML.svg; chmod 777 $(BUILDDIR)/configUML.svg
+	mv $(BUILDDIR)/configUML.svg $(BUILDDIR)/html/_images
 
 .PHONY: html
 html:

@@ -2,13 +2,14 @@ import os
 import shutil
 from tqdm import tqdm
 import re
+import glob
 
 from .base import BaseAligner
 
 from ..exceptions import PronunciationAcousticMismatchError
 
 from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
-                               convert_ali_to_textgrids)
+                               convert_ali_to_textgrids, compile_train_graphs, nnet_get_align_feats, nnet_align)
 
 
 def parse_transitions(path, phones_path):

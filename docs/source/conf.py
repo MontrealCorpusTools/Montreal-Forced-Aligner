@@ -26,7 +26,7 @@ MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
                 'tqdm', 'yaml',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',
-                'librosa', 'librosa.core.spectrum',]
+                'librosa', 'librosa.core.spectrum', 'matplotlib']
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
@@ -38,7 +38,7 @@ import aligner
 
 # If your documentation needs a minimal Sphinx version, state it here.
 #
-# needs_sphinx = '1.0'
+#needs_sphinx = '1.4'
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -74,7 +74,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'Montreal Forced Aligner'
-copyright = '2016, Montreal Corpus Tools'
+copyright = '2018, Montreal Corpus Tools'
 author = 'Montreal Corpus Tools'
 
 # The version info for the project you're documenting, acts as replacement for

@@ -13,6 +13,21 @@ from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
 from aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
 
+#from .trainable import train_lda_mllt, train_nnet_basic
+
+
+class DummyArgs(object):
+    def __init__(self):
+        self.speaker_characters = 0
+        self.num_jobs = 0
+        self.verbose = False
+        self.clean = True
+        self.fast = True
+        self.no_speaker_adaptation = False
+        self.debug = False
+        self.errors = False
+        self.temp_directory = None
+
 
 class DummyArgs(object):
     def __init__(self):
@@ -39,8 +54,10 @@ def fix_path():
         thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
     old_path = os.environ.get('PATH', '')
     if sys.platform == 'win32':
+        #os.environ['PATH'] = thirdparty_dir + ';' + os.environ['PATH']
         os.environ['PATH'] = thirdparty_dir + ';' + old_path
     else:
+        #os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
         os.environ['PATH'] = thirdparty_dir + ':' + old_path
         os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 
@@ -121,10 +138,12 @@ def align_corpus(args):
         oov_path = os.path.join(corpus.split_directory(), 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
+
         begin = time.time()
         a.align()
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
+
         begin = time.time()
         a.export_textgrids()
         if args.debug:

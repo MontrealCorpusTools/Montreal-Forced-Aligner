@@ -1,6 +1,8 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*.exe
+*.zip
 
 .idea/
 # Mac BS
@@ -10,11 +12,7 @@ __pycache__/
 tests/data/generated
 docs/source/generated
 
-thirdparty
-!thirdparty/*.md
-!thirdparty/*.py
 
-*.fst
 
 # C extensions
 *.so
@@ -36,6 +34,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+thirdparty/bin
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

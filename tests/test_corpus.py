@@ -1,10 +1,10 @@
 import os
+import sys
 import pytest
 import shutil
 
 from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
-
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))

@@ -20,6 +20,7 @@ Contents:
    g2p.rst
    pretrained_models.rst
    changelog.rst
+   alignment_techniques.rst
    apireference.rst
 
 

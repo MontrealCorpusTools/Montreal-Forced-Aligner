@@ -1,15 +1,32 @@
 import os
 import shutil
+import glob
 import subprocess
 import re
+import io
+import math
+import numpy as np
 from tqdm import tqdm
+from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
+from contextlib import redirect_stdout
+from aligner.models import IvectorExtractor
+from random import shuffle
 
-from ..helper import thirdparty_binary, make_path_safe
+from ..helper import thirdparty_binary, make_path_safe, awk_like, filter_scp
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
                                convert_ali_to_textgrids, calc_fmllr,
+                               lda_acc_stats,
+                               calc_lda_mllt, gmm_gselect, acc_global_stats,
+                               gauss_to_post, acc_ivector_stats, get_egs,
+                               get_lda_nnet, nnet_train_trans, nnet_train,
+                               nnet_align, nnet_get_align_feats, extract_ivectors,
+                               compute_prob, get_average_posteriors, relabel_egs)
+#from ..accuracy_graph import get_accuracy_graph
+                               convert_ali_to_textgrids, calc_fmllr,
                                compile_information)
+
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -91,12 +108,15 @@ class BaseAligner(object):
         '''
         Export a TextGrid file for every sound file in the dataset
         '''
-        if os.path.exists(self.tri_fmllr_final_model_path):
+        if os.path.exists(self.nnet_basic_final_model_path):
+            model_directory = self.nnet_basic_directory
+        elif os.path.exists(self.tri_fmllr_final_model_path):
             model_directory = self.tri_fmllr_directory
         elif os.path.exists(self.tri_final_model_path):
             model_directory = self.tri_directory
         elif os.path.exists(self.mono_final_model_path):
             model_directory = self.mono_directory
+
         convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
                                  self.corpus, self.num_jobs)
         self.compile_information(model_directory)

@@ -2,13 +2,19 @@ import os
 import shutil
 import subprocess
 import re
+import math
 from tqdm import tqdm
 
 from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids, calc_fmllr)
+                               convert_ali_to_textgrids, calc_fmllr,
+                               lda_acc_stats,
+                               calc_lda_mllt, gmm_gselect, acc_global_stats,
+                               gauss_to_post, acc_ivector_stats, get_egs,
+                               get_lda_nnet, nnet_train_trans, nnet_train,
+                               nnet_align, nnet_get_align_feats, extract_ivectors)
 
 from ..exceptions import NoSuccessfulAlignments
 

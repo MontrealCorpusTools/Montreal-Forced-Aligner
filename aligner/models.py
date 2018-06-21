@@ -1,6 +1,7 @@
 import os
 import pickle
 import yaml
+import glob
 
 from tempfile import mkdtemp
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
@@ -33,9 +34,13 @@ class Archive(object):
             (head, tail, _) = next(os.walk(base))
             if not tail:
                 raise ValueError("'{}' is empty.".format(source))
+            name = tail[0]
             if len(tail) > 1:
-                raise ValueError("'{}' is a bomb.".format(source))
-            self.dirname = os.path.join(head, tail[0])
+                if tail[0] != '__MACOSX':   # Zipping from Mac adds a directory
+                    raise ValueError("'{}' is a bomb.".format(source))
+                else:
+                    name = tail[1]
+            self.dirname = os.path.join(head, name)
             self.is_tmpdir = True  # ignore caller
 
     @classmethod
@@ -124,6 +129,9 @@ class AcousticModel(Archive):
         else:
             missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
         if missing_phones:
+            #print('dictionary phones: {}'.format(dictionary.meta['phones']))
+            print('dictionary phones: {}'.format(dictionary.nonsil_phones))
+            print('model phones: {}'.format(self.meta['phones']))
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
@@ -166,3 +174,14 @@ class G2PModel(Archive):
 
     def validate(self, corpus):
         return True  # FIXME add actual validation
+
+class IvectorExtractor(Archive):
+    '''
+    Archive for i-vector extractors (used with DNNs)
+    '''
+    def export_ivector_extractor(self, destination):
+        os.makedirs(destination, exist_ok=True)
+        copy(os.path.join(self.dirname, 'final.ie'), destination)           # i-vector extractor itself
+        copy(os.path.join(self.dirname, 'global_cmvn.stats'), destination)  # Stats from diag UBM
+        copy(os.path.join(self.dirname, 'final.dubm'), destination)         # Diag UBM itself
+        copy(os.path.join(self.dirname, 'final.mat'), destination)          # LDA matrix
