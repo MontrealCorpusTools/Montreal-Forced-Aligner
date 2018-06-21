@@ -17,15 +17,14 @@ from ..helper import thirdparty_binary, make_path_safe, awk_like, filter_scp
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
                                convert_ali_to_textgrids, calc_fmllr,
-                               lda_acc_stats,
+                               lda_acc_stats,compile_information,
                                calc_lda_mllt, gmm_gselect, acc_global_stats,
                                gauss_to_post, acc_ivector_stats, get_egs,
                                get_lda_nnet, nnet_train_trans, nnet_train,
                                nnet_align, nnet_get_align_feats, extract_ivectors,
                                compute_prob, get_average_posteriors, relabel_egs)
 #from ..accuracy_graph import get_accuracy_graph
-                               convert_ali_to_textgrids, calc_fmllr,
-                               compile_information)
+
 
 
 from ..exceptions import NoSuccessfulAlignments
