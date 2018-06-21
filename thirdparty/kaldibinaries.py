@@ -57,7 +57,7 @@ linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
-                      'win32': ['openfst64.dll', 'libopenblas.dll'],
+                      'win32': ['openfst64.dll', 'libopenblas.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll', 'libquadmath-0.dll'],
                       'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
                                  'libfstfar.7.dylib', 'libfstngram.7.dylib',
                                  'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
