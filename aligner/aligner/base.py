@@ -5,7 +5,6 @@ import subprocess
 import re
 import io
 import math
-import numpy as np
 from tqdm import tqdm
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 from contextlib import redirect_stdout
@@ -832,9 +831,10 @@ class BaseAligner(object):
         realign_iters = []
         if config.realign_times != 0:
             div = config.realign_times + 1 # (e.g. realign 2 times = iterations split into 3 sets)
-            split_iters = np.array_split(range(num_tot_iters), div)
-            for group in split_iters:
-                realign_iters.append(group[0])
+            step = num_tot_iters / div
+            for i in range(0, num_tot_iters, step):
+                if i == 0 or i == num_tot_iters - 1:
+                    realign_iters.append(i)
 
         # Training loop
         for i in range(num_tot_iters):
