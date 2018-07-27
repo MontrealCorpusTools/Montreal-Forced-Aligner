@@ -1,33 +1,9 @@
 import os
-import shutil
-import glob
-import subprocess
-import re
-import io
-import math
-import numpy as np
-from tqdm import tqdm
-from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
-from contextlib import redirect_stdout
-from aligner.models import IvectorExtractor
-from random import shuffle
 
-from ..helper import thirdparty_binary, make_path_safe, awk_like, filter_scp
 
-from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
-                               acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids, calc_fmllr,
-                               lda_acc_stats,compile_information,
-                               calc_lda_mllt, gmm_gselect, acc_global_stats,
-                               gauss_to_post, acc_ivector_stats, get_egs,
-                               get_lda_nnet, nnet_train_trans, nnet_train,
-                               nnet_align, nnet_get_align_feats, extract_ivectors,
-                               compute_prob, get_average_posteriors, relabel_egs)
+from ..multiprocessing import (convert_ali_to_textgrids,
+                               compile_information)
 #from ..accuracy_graph import get_accuracy_graph
-
-
-
-from ..exceptions import NoSuccessfulAlignments
 
 from .. import __version__
 
@@ -57,15 +33,12 @@ class BaseAligner(object):
         Specifies a call back function for alignment
     '''
 
-    def __init__(self, corpus, dictionary, align_config, output_directory, temp_directory=None, num_jobs=3,
-                 call_back=None, debug=False, skip_input=False, verbose=False):
+    def __init__(self, corpus, dictionary, align_config, output_directory, temp_directory=None,
+                 call_back=None, debug=False, verbose=False):
         self.align_config = align_config
         self.corpus = corpus
         self.dictionary = dictionary
         self.output_directory = output_directory
-        self.num_jobs = num_jobs
-        if self.corpus.num_jobs != num_jobs:
-            self.num_jobs = self.corpus.num_jobs
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
@@ -74,13 +47,12 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = verbose
         self.debug = debug
-        self.skip_input = skip_input
         self.setup()
 
     def setup(self):
         self.dictionary.write()
-        self.corpus.initialize_corpus(self.dictionary, skip_input=self.skip_input, feature_config=self.align_config.feature_config)
-        print(self.corpus.speaker_utterance_info())
+        self.corpus.initialize_corpus(self.dictionary)
+        self.align_config.feature_config.generate_features(self.corpus)
 
     @property
     def meta(self):
@@ -91,9 +63,8 @@ class BaseAligner(object):
                 }
         return data
 
-
     def compile_information(self, model_directory):
-        issues = compile_information(model_directory, self.corpus, self.num_jobs)
+        issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs)
         if issues:
             issue_path = os.path.join(self.output_directory, 'unaligned.txt')
             with open(issue_path, 'w', encoding='utf8') as f:
@@ -107,16 +78,5 @@ class BaseAligner(object):
         '''
         Export a TextGrid file for every sound file in the dataset
         '''
-        if os.path.exists(self.nnet_basic_final_model_path):
-            model_directory = self.nnet_basic_directory
-        elif os.path.exists(self.tri_fmllr_final_model_path):
-            model_directory = self.tri_fmllr_directory
-        elif os.path.exists(self.tri_final_model_path):
-            model_directory = self.tri_directory
-        elif os.path.exists(self.mono_final_model_path):
-            model_directory = self.mono_directory
-
-        convert_ali_to_textgrids(self.output_directory, model_directory, self.dictionary,
-                                 self.corpus, self.num_jobs)
-        self.compile_information(model_directory)
+        raise NotImplementedError
 

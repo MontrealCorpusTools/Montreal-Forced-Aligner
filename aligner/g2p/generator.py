@@ -4,8 +4,10 @@ import subprocess
 import sys
 import tempfile
 import logging
+from textgrid import TextGrid, IntervalTier
+import traceback
 
-from ..corpus import Corpus
+from ..corpus import parse_transcription, load_text
 
 from ..helper import thirdparty_binary
 
@@ -41,8 +43,6 @@ class PhonetisaurusDictionaryGenerator(object):
             Corpus object to get word list from
         outfile: str
             destination for the dictionary
-        korean:bool
-            default to False, to be used if using a Korean corpus in Hangul
     """
 
     def __init__(self, g2p_model, word_set, outfile, use_unk = False, temp_directory=None):
@@ -63,7 +63,6 @@ class PhonetisaurusDictionaryGenerator(object):
         handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
         handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         self.logger.addHandler(handler)
-
         with open(self.word_list_path, 'w', encoding='utf8') as f:
             for word in word_set:
                 f.write(word.strip() + '\n')
@@ -83,10 +82,13 @@ class PhonetisaurusDictionaryGenerator(object):
                                  '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path],
                                 stderr=subprocess.PIPE,
                                 stdout=subprocess.PIPE)
+        print([thirdparty_binary('phonetisaurus-g2pfst'),
+                                 '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path])
         stdout, stderr = proc.communicate()
         results = stdout.decode('utf8')
         errors = stderr.decode('utf8')
-
+        print(results)
+        print(errors)
         missing_symbols = parse_errors(errors)
         if missing_symbols:
             print("There were {} unmatched symbols in your transcriptions, "

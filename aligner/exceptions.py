@@ -58,6 +58,12 @@ class AlignerError(MFAError):
     """
     pass
 
+class AlignmentError(MFAError):
+    """
+    Class for errors during alignment
+    """
+    pass
+
 
 class NoSuccessfulAlignments(AlignerError):
     """
@@ -90,4 +96,7 @@ class ConfigError(MFAError):
     pass
 
 class TrainerError(MFAError):
+    pass
+
+class G2PError(MFAError):
     pass

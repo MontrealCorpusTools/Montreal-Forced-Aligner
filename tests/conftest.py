@@ -325,6 +325,11 @@ def g2p_sick_output(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def orth_sick_output(generated_dir):
+    return os.path.join(generated_dir, 'orth_sick.txt')
+
+
+@pytest.fixture(scope='session')
 def example_output_model_path(generated_dir):
     return os.path.join(generated_dir, 'example_output_model.zip')
 
@@ -372,3 +377,13 @@ def sat_train_config(config_directory):
 @pytest.fixture(scope='session')
 def lda_sat_train_config(config_directory):
     return train_yaml_to_config(os.path.join(config_directory, 'lda_sat_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def ivector_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'ivector_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def nnet_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'nnet_train.yaml'))

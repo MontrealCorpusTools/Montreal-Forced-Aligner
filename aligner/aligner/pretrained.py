@@ -1,15 +1,9 @@
 import os
-import shutil
-from tqdm import tqdm
 import re
-import glob
 
 from .base import BaseAligner
 
-from ..exceptions import PronunciationAcousticMismatchError
-
-from ..multiprocessing import (align, calc_fmllr, test_utterances, thirdparty_binary, subprocess,
-                               convert_ali_to_textgrids, compile_train_graphs, nnet_get_align_feats, nnet_align)
+from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs, nnet_align)
 
 
 def parse_transitions(path, phones_path):
@@ -60,14 +54,14 @@ class PretrainedAligner(BaseAligner):
     '''
 
     def __init__(self, corpus, dictionary, acoustic_model, align_config, output_directory,
-                 temp_directory=None, num_jobs=3,
-                 call_back=None, debug=False, skip_input=False, verbose=False):
+                 temp_directory=None,
+                 call_back=None, debug=False, verbose=False):
         self.acoustic_model = acoustic_model
-        super(PretrainedAligner, self).__init__(corpus, dictionary, align_config, output_directory, temp_directory, num_jobs,
-                 call_back, debug, skip_input, verbose)
-
-        self.acoustic_model.export_model(self.model_directory)
-        log_dir = os.path.join(self.model_directory, 'log')
+        super(PretrainedAligner, self).__init__(corpus, dictionary, align_config, output_directory, temp_directory,
+                 call_back, debug, verbose)
+        self.align_config.data_directory = corpus.split_directory()
+        self.acoustic_model.export_model(self.align_directory)
+        log_dir = os.path.join(self.align_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
         print('Done with setup.')
@@ -84,16 +78,19 @@ class PretrainedAligner(BaseAligner):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
 
-    def test_utterance_transcriptions(self):
-        return test_utterances(self)
-
     def align(self, call_back=None):
-        data_directory = self.corpus.split_directory()
+        compile_train_graphs(self.align_directory, self.dictionary.output_directory,
+                             self.align_config.data_directory, self.corpus.num_jobs)
+        self.acoustic_model.feature_config.generate_features(self.corpus)
         log_dir = os.path.join(self.align_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
-        align('final', self.model_directory, data_directory,
+        if self.acoustic_model.meta['architecture'] == 'nnet':
+            nnet_align("final", self.align_config, self.align_directory, self.align_directory,
+                       self.corpus.num_jobs)
+        else:
+            align('final', self.align_directory, self.align_config.data_directory,
               self.dictionary.optional_silence_csl,
-              self.corpus.num_jobs, self.align_config, self.align_directory)
+              self.corpus.num_jobs, self.align_config)
 
     def export_textgrids(self):
         '''
@@ -101,5 +98,5 @@ class PretrainedAligner(BaseAligner):
         '''
         ali_directory = self.align_directory
         convert_ali_to_textgrids(self.align_config, self.output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.num_jobs)
+                                 self.corpus, self.corpus.num_jobs)
         self.compile_information(ali_directory)

@@ -1,0 +1,15 @@
+beam: 10
+retry_beam: 40
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+  pitch: false
+
+training:
+  - monophone:
+      num_iterations: 40
+      max_gaussians: 1000
+      subset: 10000
+

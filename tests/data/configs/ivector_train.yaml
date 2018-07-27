@@ -31,14 +31,8 @@ training:
           splice_left_context: 3
           splice_right_context: 3
 
-  - sat:
+  - ivector:
       num_iterations: 5
-      num_leaves: 5000
-      max_gaussians: 100000
-      fmllr_power: 0.2
-      silence_weight: 0.0
-      fmllr_update_type: "full"
-      subset: 100000
+      gaussian_min_count: 2
       features:
           lda: true
-

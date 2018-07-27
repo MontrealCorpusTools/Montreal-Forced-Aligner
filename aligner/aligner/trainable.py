@@ -9,12 +9,7 @@ from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids, calc_fmllr,
-                               lda_acc_stats,
-                               calc_lda_mllt, gmm_gselect, acc_global_stats,
-                               gauss_to_post, acc_ivector_stats, get_egs,
-                               get_lda_nnet, nnet_train_trans, nnet_train,
-                               nnet_align, nnet_get_align_feats, extract_ivectors)
+                               convert_ali_to_textgrids)
 
 from ..exceptions import NoSuccessfulAlignments
 
@@ -49,9 +44,9 @@ class TrainableAligner(BaseAligner):
     '''
 
     def __init__(self, corpus, dictionary, training_config, align_config, output_directory, temp_directory=None,
-                 num_jobs=3, call_back=None, debug=False, skip_input=False, verbose=False):
+                 call_back=None, debug=False, verbose=False):
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, output_directory, temp_directory,
-                                               num_jobs, call_back, debug, skip_input, verbose)
+                                               call_back, debug, verbose)
         self.training_config = training_config
 
     def save(self, path):
@@ -63,14 +58,7 @@ class TrainableAligner(BaseAligner):
         path : str
             Path to save acoustic model and dictionary
         '''
-        directory, filename = os.path.split(path)
-        basename, _ = os.path.splitext(filename)
-        acoustic_model = AcousticModel.empty(basename)
-        acoustic_model.add_meta_file(self)
-        acoustic_model.add_model(self.training_config.values()[-1].train_directory)
-        os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(path)
-        acoustic_model.dump(basename)
+        self.training_config.values()[-1].save(path)
         print('Saved model to {}'.format(path))
 
     @property
@@ -81,8 +69,6 @@ class TrainableAligner(BaseAligner):
                 'architecture': self.training_config.values()[-1].architecture,
                 'phone_type': self.training_config.values()[-1].phone_type,
                 'features': self.training_config.feature_config.params(),
-                'uses_lda': self.training_config.uses_lda,
-                'uses_sat': self.training_config.uses_sat,
                 }
         return data
 
@@ -92,7 +78,7 @@ class TrainableAligner(BaseAligner):
             if previous is not None:
                 previous.align(trainer.subset)
             trainer.init_training(identifier, self.temp_directory, self.corpus, self.dictionary, previous)
-            trainer.train()
+            trainer.train(call_back=print)
             previous = trainer
         previous.align(None)
 
@@ -102,5 +88,5 @@ class TrainableAligner(BaseAligner):
         '''
         ali_directory = self.training_config.values()[-1].align_directory
         convert_ali_to_textgrids(self.align_config, self.output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.num_jobs)
+                                 self.corpus, self.corpus.num_jobs)
         self.compile_information(ali_directory)

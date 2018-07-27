@@ -13,6 +13,10 @@ def compile_graphemes(graphemes):
         base = r'^\W*([-{}]+)\W*'
     else:
         base = r'^\W*([{}]+)\W*'
+    graphemes = list(graphemes)
+    for i in range(len(graphemes)):
+        if graphemes[i] == ']':
+            graphemes[i] = r'\]'
     string = ''.join(x for x in graphemes if x != '-')
     try:
         return re.compile(base.format(string))
@@ -21,7 +25,14 @@ def compile_graphemes(graphemes):
         raise
 
 
-brackets = [('[', ']'), ('{', '}'), ('<', '>')]
+brackets = [('[', ']'), ('{', '}'), ('<', '>'), ('(', ')')]
+
+
+def check_bracketed(word):
+    for b in brackets:
+        if word[0] == b[0] and word[-1] == b[-1]:
+            return True
+    return False
 
 
 def sanitize(item):
@@ -138,6 +149,8 @@ class Dictionary(object):
                 if word in self.words and pron in set(x[0] for x in self.words[word]):
                     continue
                 self.words[word].append((pron, prob))
+        if not self.graphemes:
+            raise DictionaryFileError('No words were found in the dictionary path {}'.format(input_path))
         self.word_pattern = compile_graphemes(self.graphemes)
         self.phone_mapping = {}
         self.words_mapping = {}
@@ -241,8 +254,8 @@ class Dictionary(object):
         directory : str
             Path to directory to save ``oovs_found.txt``
         """
-        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding='utf8') as f,\
-            open(os.path.join(directory, 'oov_counts.txt'), 'w', encoding='utf8') as cf:
+        with open(os.path.join(directory, 'oovs_found.txt'), 'w', encoding='utf8') as f, \
+                open(os.path.join(directory, 'oov_counts.txt'), 'w', encoding='utf8') as cf:
             for oov in sorted(self.oovs_found.keys(), key=lambda x: (-self.oovs_found[x], x)):
                 f.write(oov + '\n')
                 cf.write('{}\t{}\n'.format(oov, self.oovs_found[oov]))

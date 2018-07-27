@@ -6,13 +6,9 @@ from ..exceptions import ConfigError
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer
+from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer, IvectorExtractorTrainer, NnetTrainer
 
-
-def make_safe(value):
-    if isinstance(value, bool):
-        return str(value).lower()
-    return str(value)
+from ..features.config import FeatureConfig
 
 
 class BaseConfig(object):
@@ -68,62 +64,18 @@ class TrainingConfig(BaseConfig):
 
 class AlignConfig(BaseConfig):
     def __init__(self, feature_config):
-        self.scale_opts = ['--transition-scale=1.0',
-                           '--acoustic-scale=0.1',
-                           '--self-loop-scale=0.1']
+        self.transition_scale = 1.0
+        self.acoustic_scale = 0.1
+        self.self_loop_scale = 0.1
         self.feature_config = feature_config
         self.boost_silence = 1.0
         self.beam = 10
         self.retry_beam = 40
+        self.data_directory = None # Gets set later
 
-
-class FeatureConfig(BaseConfig):
-    '''
-    Class to store configuration information about MFCC generation
-
-    The ``config_dict`` currently stores one key ``'use-energy'`` which
-    defaults to False
-
-    Parameters
-    ----------
-    output_directory : str
-        Path to directory to save configuration files for Kaldi
-    kwargs : dict, optional
-        If specified, updates ``config_dict`` with this dictionary
-
-    Attributes
-    ----------
-    config_dict : dict
-        Dictionary of configuration parameters
-    '''
-
-    def __init__(self):
-        self.type = 'mfcc'
-        self.use_energy = False
-        self.frame_shift = 10
-        self.pitch = False
-
-    def write(self, output_directory, job, extra_params=None):
-        '''
-        Write configuration dictionary to a file for use in Kaldi binaries
-        '''
-        f = '{}.{}.conf'.format(self.type, job)
-        path = os.path.join(output_directory, 'config')
-        os.makedirs(path, exist_ok=True)
-        path = os.path.join(path, f)
-        with open(path, 'w', encoding='utf8') as f:
-            f.write('--{}={}\n'.format('use-energy', make_safe(self.use_energy)))
-            f.write('--{}={}\n'.format('frame-shift', make_safe(self.frame_shift)))
-            if extra_params is not None:
-                for k, v in extra_params.items():
-                    f.write('--{}={}\n'.format(k, make_safe(v)))
-        return path
-
-    def params(self):
-        return {'type': self.type,
-                'use_energy': self.use_energy,
-                'frame_shift': self.frame_shift,
-                'pitch': self.pitch}
+    @property
+    def feature_file_base_name(self):
+        return self.feature_config.feature_id
 
 
 def train_yaml_to_config(path):
@@ -138,13 +90,17 @@ def train_yaml_to_config(path):
                 for t in v:
                     for k2, v2 in t.items():
                         if k2 == 'monophone':
-                            training.append(MonophoneTrainer())
+                            training.append(MonophoneTrainer(feature_config))
                         elif k2 == 'triphone':
-                            training.append(TriphoneTrainer())
+                            training.append(TriphoneTrainer(feature_config))
                         elif k2 == 'lda':
-                            training.append(LdaTrainer())
+                            training.append(LdaTrainer(feature_config))
                         elif k2 == 'sat':
-                            training.append(SatTrainer())
+                            training.append(SatTrainer(feature_config))
+                        elif k2 == 'ivector':
+                            training.append(IvectorExtractorTrainer(feature_config))
+                        elif k2 == 'nnet':
+                            training.append(NnetTrainer(feature_config))
                         training_params.append(v2)
             elif k == 'features':
                 feature_config.update(v)
@@ -187,4 +143,10 @@ def load_basic_align():
 def load_basic_train():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train.yaml'))
+    return training_config, align_config
+
+
+def load_test_config():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'test_config.yaml'))
     return training_config, align_config

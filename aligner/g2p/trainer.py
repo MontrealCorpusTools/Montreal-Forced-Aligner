@@ -1,6 +1,7 @@
 import subprocess
 import os
 import random
+import re
 import tempfile
 from ..dictionary import Dictionary
 
@@ -9,6 +10,8 @@ from ..helper import thirdparty_binary
 from ..config import TEMP_DIR
 
 from ..models import G2PModel
+
+from ..exceptions import G2PError
 
 
 class PhonetisaurusTrainer(object):
@@ -44,6 +47,8 @@ class PhonetisaurusTrainer(object):
             word_dict = self.dictionary.words
         with open(input_path, "w", encoding='utf8') as f2:
             for word, v in word_dict.items():
+                if re.match(r'\W', word) is not None:
+                    continue
                 for v2 in v:
                     f2.write(word + "\t" + " ".join(v2[0]) + "\n")
 
@@ -55,25 +60,68 @@ class PhonetisaurusTrainer(object):
         arpa_path = os.path.join(self.temp_directory, 'full.arpa')
         fst_path = os.path.join(self.temp_directory, 'model.fst')
 
-        subprocess.call([thirdparty_binary('phonetisaurus-align'),
-                         '--seq1_max={}'.format(self.grapheme_window_size),
-                         '--seq2_max={}'.format(self.phoneme_window_size),
-                         '--input=' + input_path, '--ofile=' + corpus_path])
+        align_proc = subprocess.Popen([thirdparty_binary('phonetisaurus-align'),
+                                       '--seq1_max={}'.format(self.grapheme_window_size),
+                                       '--seq2_max={}'.format(self.phoneme_window_size),
+                                       '--input=' + input_path, '--ofile=' + corpus_path],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE)
+        stdout, stderr = align_proc.communicate()
+        #if stderr:
+        #    raise G2PError('There was an error in {}: {}'.format('phonetisaurus-align', stderr.decode('utf8')))
 
-        subprocess.call([thirdparty_binary('ngramsymbols'), corpus_path, sym_path])
+        ngramsymbols_proc = subprocess.Popen([thirdparty_binary('ngramsymbols'),
+                                              corpus_path, sym_path],
+                                             stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE)
+        stdout, stderr = ngramsymbols_proc.communicate()
+        if stderr:
+            raise G2PError('There was an error in {}: {}'.format('ngramsymbols', stderr.decode('utf8')))
 
-        subprocess.call(
-            [thirdparty_binary('farcompilestrings'), '--symbols=' + sym_path, '--keep_symbols=1',
-             corpus_path, far_path])
+        farcompile_proc = subprocess.Popen([thirdparty_binary('farcompilestrings'),
+                                            '--symbols=' + sym_path, '--keep_symbols=1',
+                                            corpus_path, far_path],
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+        stdout, stderr = farcompile_proc.communicate()
+        print([thirdparty_binary('farcompilestrings'),
+                                            '--symbols=' + sym_path, '--keep_symbols=1',
+                                            corpus_path, far_path])
+        if stderr:
+            raise G2PError('There was an error in {}: {}'.format('farcompilestrings', stderr.decode('utf8')))
 
-        subprocess.call([thirdparty_binary('ngramcount'), '--order=7', far_path, cnts_path])
+        ngramcount_proc = subprocess.Popen([thirdparty_binary('ngramcount'),
+                                            '--order=7', far_path, cnts_path],
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+        stdout, stderr = ngramcount_proc.communicate()
+        if stderr:
+            raise G2PError('There was an error in {}: {}'.format('ngramcount', stderr.decode('utf8')))
 
-        subprocess.call([thirdparty_binary('ngrammake'), '--method=kneser_ney', cnts_path, mod_path])
+        ngrammake_proc = subprocess.Popen([thirdparty_binary('ngrammake'),
+                                           '--method=kneser_ney', cnts_path, mod_path],
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE)
+        stdout, stderr = ngrammake_proc.communicate()
+        if stderr:
+            raise G2PError('There was an error in {}: {}'.format('ngrammake', stderr.decode('utf8')))
 
-        subprocess.call([thirdparty_binary('ngramprint'), '--ARPA', mod_path, arpa_path])
+        ngramprint_proc = subprocess.Popen([thirdparty_binary('ngramprint'),
+                                            '--ARPA', mod_path, arpa_path],
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+        stdout, stderr = ngramprint_proc.communicate()
+        if stderr:
+            raise G2PError('There was an error in {}: {}'.format('ngramprint', stderr.decode('utf8')))
 
-        subprocess.call(
-            [thirdparty_binary('phonetisaurus-arpa2wfst'), '--lm=' + arpa_path, '--ofile=' + fst_path])
+        arpa2wfst_proc = subprocess.Popen([thirdparty_binary('phonetisaurus-arpa2wfst'),
+                                           '--lm=' + arpa_path, '--ofile=' + fst_path],
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE)
+        stdout, stderr = arpa2wfst_proc.communicate()
+
+        #if stderr:
+        #    raise G2PError('There was an error in {}: {}'.format('phonetisaurus-arpa2wfst', stderr.decode('utf8')))
 
         directory, filename = os.path.split(self.model_path)
         basename, _ = os.path.splitext(filename)
