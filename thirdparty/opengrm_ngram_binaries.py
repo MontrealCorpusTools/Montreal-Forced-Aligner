@@ -24,7 +24,7 @@ included_libraries = {'linux': linux_libraries,
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def CollectBinaries(directory):
+def collect_binaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok=True)
@@ -81,4 +81,4 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    CollectBinaries(directory)
+    collect_binaries(directory)

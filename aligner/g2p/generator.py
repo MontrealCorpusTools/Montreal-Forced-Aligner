@@ -64,7 +64,7 @@ class PhonetisaurusDictionaryGenerator(object):
         handler.setFormatter = logging.Formatter('%(name)s %(message)s')
         self.logger.addHandler(handler)
         with open(self.word_list_path, 'w', encoding='utf8') as f:
-            for word in word_set:
+            for word in sorted(word_set):
                 f.write(word.strip() + '\n')
 
         self.outfile = outfile

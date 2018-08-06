@@ -1,5 +1,4 @@
 import os
-import re
 import math
 import glob
 from tqdm import tqdm
@@ -9,16 +8,17 @@ from random import shuffle
 
 from .base import BaseTrainer
 from ..models import AcousticModel
-from ..helper import thirdparty_binary, make_path_safe, filter_scp
+from ..helper import thirdparty_binary, filter_scp
 
 from ..multiprocessing import (get_lda_nnet, get_egs, nnet_train_trans, compile_train_graphs,
-                               nnet_align, nnet_train, relabel_egs, get_average_posteriors, compute_alignment_improvement)
-
+                               nnet_align, nnet_train, relabel_egs, get_average_posteriors,
+                               compute_alignment_improvement)
 
 
 class NnetTrainer(BaseTrainer):
-    '''
+    """
     Configuration class for neural network training
+
     Attributes
     ----------
     num_epochs : int
@@ -67,7 +67,8 @@ class NnetTrainer(BaseTrainer):
         Relates to online preconditioning
     preconditioning_rank_out : int
         Relates to online preconditioning
-    '''
+    """
+
     def __init__(self, default_feature_config):
         super(NnetTrainer, self).__init__(default_feature_config)
         self.num_epochs = 4
@@ -79,8 +80,8 @@ class NnetTrainer(BaseTrainer):
         self.beam = 10
         self.retry_beam = 15000000
 
-        self.initial_learning_rate=0.32
-        self.final_learning_rate=0.032
+        self.initial_learning_rate = 0.32
+        self.final_learning_rate = 0.032
         self.bias_stddev = 0.5
 
         self.pnorm_input_dim = 3000
@@ -106,7 +107,7 @@ class NnetTrainer(BaseTrainer):
         self.randprune = 4.0
         self.alpha = 4.0
         self.max_change = 10.0
-        self.mix_up = 12000 # From run_nnet2.sh
+        self.mix_up = 12000  # From run_nnet2.sh
         self.prior_subset_size = 10000
         self.boost_silence = 0.5
 
@@ -154,7 +155,7 @@ class NnetTrainer(BaseTrainer):
 
         topo_path = os.path.join(self.dictionary.output_directory, 'topo')
         tree_info_proc = subprocess.Popen([thirdparty_binary('tree-info'),
-                                          os.path.join(previous_trainer.align_directory, 'tree')],
+                                           os.path.join(previous_trainer.align_directory, 'tree')],
                                           stdout=subprocess.PIPE)
         tree_info = tree_info_proc.stdout.read()
         tree_info = tree_info.split()
@@ -186,7 +187,8 @@ class NnetTrainer(BaseTrainer):
         # Take only the first num_utts_subset lines
         valid_uttlist = filtered[:num_utts_subset]
 
-        get_egs(self.train_directory, self.egs_directory, self.corpus.output_directory, self.data_directory, previous_trainer.align_directory,
+        get_egs(self.train_directory, self.egs_directory, self.corpus.output_directory, self.data_directory,
+                previous_trainer.align_directory,
                 training_feats, valid_uttlist,
                 train_subset_uttlist, self, self.corpus.num_jobs)
 
@@ -209,11 +211,13 @@ class NnetTrainer(BaseTrainer):
 
         with open(nnet_config_path, 'w', newline='') as nc:
             nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
-                feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context, ivector_dim))
+                feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context,
+                ivector_dim))
             nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
             nc.write(
                 'AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(
-                    self.lda_dimension, self.pnorm_input_dim, online_preconditioning_opts, self.initial_learning_rate, stddev,
+                    self.lda_dimension, self.pnorm_input_dim, online_preconditioning_opts, self.initial_learning_rate,
+                    stddev,
                     self.bias_stddev))
             nc.write('PnormComponent input-dim={} output-dim={} p={}\n'.format(self.pnorm_input_dim,
                                                                                self.pnorm_output_dim, self.p))
@@ -264,7 +268,6 @@ class NnetTrainer(BaseTrainer):
         compile_train_graphs(self.train_directory, self.dictionary.output_directory,
                              self.data_directory, self.corpus.num_jobs)
         print('Initialization complete!')
-
 
     @property
     def egs_directory(self):
@@ -402,7 +405,8 @@ class NnetTrainer(BaseTrainer):
                 with open(log_path, 'w') as logf:
                     nnet_adjust_priors_proc = subprocess.Popen([thirdparty_binary('nnet-adjust-priors'),
                                                                 os.path.join(self.train_directory, '{}.mdl'.format(i)),
-                                                                os.path.join(self.train_directory, 'post.{}.vec'.format(i)),
+                                                                os.path.join(self.train_directory,
+                                                                             'post.{}.vec'.format(i)),
                                                                 os.path.join(self.train_directory, '{}.mdl'.format(i))],
                                                                stderr=logf)
                     nnet_adjust_priors_proc.communicate()
@@ -411,7 +415,7 @@ class NnetTrainer(BaseTrainer):
 
                 #       Do alignment
                 nnet_align("final", self, self.train_directory, self.train_directory,
-                   self.corpus.num_jobs)
+                           self.corpus.num_jobs)
                 compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
 
                 #     Finally, relabel the egs
@@ -422,10 +426,12 @@ class NnetTrainer(BaseTrainer):
                         with open(os.path.join(self.train_directory, ali_file), 'rb') as infile:
                             for line in infile:
                                 outfile.write(line)
-                relabel_egs(i, self.train_directory, prev_egs_directory, alignments, egs_directory, self.corpus.num_jobs)
+                relabel_egs(i, self.train_directory, prev_egs_directory, alignments, egs_directory,
+                            self.corpus.num_jobs)
 
         # Rename the final model
-        shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations - 1)), os.path.join(self.train_directory, 'final.mdl'))
+        shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations - 1)),
+                    os.path.join(self.train_directory, 'final.mdl'))
 
     def align(self, subset, call_back=None):
 

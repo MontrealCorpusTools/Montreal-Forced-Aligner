@@ -95,6 +95,22 @@ results in a zip folder. A class diagram of the Model API can be found below:
    G2PModel
    IvectorExtractor
 
+.. _feature_processing_api:
+
+Feature processing API
+======================
+
+.. currentmodule:: aligner.features.processing
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   mfcc
+   apply_cmvn
+   add_deltas
+   apply_lda
+
 .. _multiprocessing_api:
 
 Multiprocessing API
@@ -110,7 +126,6 @@ dataset.
    :toctree: generated/
    :template: function.rst
 
-   mfcc
    compile_train_graphs
    mono_align_equal
    align
@@ -140,16 +155,15 @@ For use with DNNs
    get_lda_nnet
    nnet_train_trans
    nnet_train
-   nnet_get_align_feats
    nnet_align
    compute_prob
    get_average_posteriors
    relabel_egs
 
-Configuration API
-=================
+Trainer API
+===========
 
-These Configuration classes contain information about configuring data preparation and
+These Trainer classes contain information about configuring data preparation and
 training. A class diagram of the Configuration API can be found below:
 
 .. image:: ../build/html/_images/configUML.svg
@@ -157,18 +171,16 @@ training. A class diagram of the Configuration API can be found below:
          :width: 800 px
          :align: center
 
-.. currentmodule:: aligner.config
+.. currentmodule:: aligner.trainers
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   MfccConfig
-   MonophoneConfig
-   TriphoneConfig
-   TriphoneFmllrConfig
-   LdaMlltConfig
-   DiagUbmConfig
-   iVectorExtractorConfig
-   NnetBasicConfig
+   MonophoneTrainer
+   TriphoneTrainer
+   LdaTrainer
+   SatTrainer
+   IvectorExtractorTrainer
+   NnetTrainer
 

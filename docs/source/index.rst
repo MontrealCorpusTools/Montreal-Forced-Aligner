@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 3
 
    introduction.rst
+   whats_new_1.1.rst
    installation.rst
    data_prep.rst
    aligning.rst

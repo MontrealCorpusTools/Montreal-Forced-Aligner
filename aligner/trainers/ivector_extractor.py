@@ -1,5 +1,4 @@
 import os
-import re
 from tqdm import tqdm
 import subprocess
 import shutil
@@ -13,8 +12,9 @@ from ..models import IvectorExtractor
 
 
 class IvectorExtractorTrainer(BaseTrainer):
-    '''
+    """
     Configuration class for i-vector extractor training
+
     Attributes
     ----------
     ivector_dim : int
@@ -33,7 +33,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         Speeds up training; training on every x'th feature
     max_count : int
         The use of this option (e.g. --max-count 100) can make iVectors more consistent for different lengths of utterance, by scaling up the prior term when the data-count exceeds this value. The data-count is after posterior-scaling, so assuming the posterior-scale is 0.1, --max-count 100 starts having effect after 1000 frames, or 10 seconds of data.
-    '''
+    """
 
     def __init__(self, default_feature_config):
         super(IvectorExtractorTrainer, self).__init__(default_feature_config)

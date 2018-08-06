@@ -14,50 +14,38 @@ else:
     exe_ext = ''
     lib_ext = ['.so', '.so.1']
 
-included_filenames = ['compute-mfcc-feats', 'copy-feats', 'gmm-acc-stats-ali',
-                      'compile-train-graphs', 'compile-train-graphs-fsts', 'align-equal-compiled', 'gmm-acc-stats-ali',
-                      'gmm-align-compiled', 'gmm-boost-silence', 'linear-to-nbest',
-                      'lattice-align-words', 'nbest-to-ctm', 'lattice-to-phone-lattice',
-                      'acc-tree-stats', 'sum-tree-stats', 'convert-ali',
-                      'weight-silence-post', 'gmm-est-fmllr', 'compose-transforms',
-                      'transform-feats', 'gmm-est', 'gmm-sum-accs', 'gmm-init-mono',
-                      'cluster-phones', 'compile-questions', 'build-tree', 'gmm-init-model',
-                      'gmm-mixup', 'gmm-info', 'fstcompile', 'fstarcsort', 'fstcopy', 'dot', 'compute-cmvn-stats',
-                      'apply-cmvn', 'add-deltas', 'feat-to-dim', 'subset-feats',
-                      'extract-segments', 'openblas', 'openfst64', 'gmm-latgen-faster',
-                      'draw-tree', 'fstdraw', 'show-transitions', 'ali-to-post', 'farcompilestrings',
-                      'acc-lda', 'est-lda', 'gmm-acc-mllt', 'est-mllt',
-                      'gmm-transform-means', 'ali-to-phones', 'matrix-sum',
-                      'apply-cvmn-online', 'gmm-global-init-from-feats', 'gmm-gselect',
-                      'gmm-global-acc-stats', 'gmm-global-est', 'splice-feats',
-                      'ivector-extractor-init', 'gmm-global-get-post', 'scale-post',
-                      'ivector-extractor-sum-accs', 'ivector-extractor-est',
-                      'ivector-extract-online-2', 'sum-lda-accs,', 'nnet-get-feature-transform',
-                      'paste-feats', 'copy-int-vector', 'nnet-get-egs', 'nnet-subset-egs',
-                      'nnet-copy-egs', 'nnet-shuffle-egs', 'nnet-train-transitions',
-                      'post-to-tacc', 'nnet-am-info', 'nnet-init', 'nnet-compute-from-egs',
-                      'matrix-sum-rows', 'vector-sum', 'nnet-adjust-priors', 'nnet-align-compiled',
-                      'nnet-relabel-egs', 'nnet-compute-prob', 'nnet-show-progress',
-                      'nnet-am-copy', 'nnet-train', 'nnet-am-average', 'nnet-am-fix',
-                      'nnet-combine-fast', 'online2-wav-nnet2-latgen-threaded',
-                      'online2-wav-ivector-config-latgen-faster', 'apply-cmvn-online',
-                      'subsample-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
-                      'ivector-extractor-acc-stats', 'tree-info', 'am-info', 'ali-to-pdf',
-                      'nnet-am-init', 'sum-lda-accs', 'matrix-dim', 'nnet-info',
-                      'nnet-train-parallel', 'nnet-insert', 'ivector-extract-online2',
-                      'ivector-randomize', 'feat-to-len', 'nnet2-boost-silence', 'nnet-am-mixup',
-                      'nnet-compute-prob', 'vector_sum', 'nnet-to-raw-nnet', 'nnet-relabel-egs',
-                      'lattice-oracle', 'concat-feats']
+included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 'ali-to-post', 'align-equal-compiled',
+                      'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
+                      'compile-train-graphs', 'compile-train-graphs-fsts', 'compose-transforms', 'compute-cmvn-stats',
+                      'compute-mfcc-feats', 'convert-ali', 'copy-feats', 'dot', 'est-lda', 'est-mllt',
+                      'extract-segments', 'farcompilestrings', 'feat-to-dim', 'feat-to-len', 'fstarcsort', 'fstcompile',
+                      'fstcopy', 'fstdraw', 'gmm-acc-mllt', 'gmm-acc-stats-ali', 'gmm-align-compiled',
+                      'gmm-boost-silence', 'gmm-est', 'gmm-est-fmllr', 'gmm-global-acc-stats', 'gmm-global-est',
+                      'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
+                      'gmm-gselect', 'gmm-info', 'gmm-init-model', 'gmm-init-mono', 'gmm-latgen-faster', 'gmm-mixup',
+                      'gmm-sum-accs', 'gmm-transform-means', 'ivector-extract', 'ivector-extractor-acc-stats',
+                      'ivector-extractor-est', 'ivector-extractor-init', 'ivector-extractor-sum-accs',
+                      'lattice-align-words', 'lattice-oracle', 'lattice-to-phone-lattice', 'linear-to-nbest',
+                      'matrix-sum-rows', 'nbest-to-ctm',
+                      'nnet-adjust-priors', 'nnet-align-compiled', 'nnet-am-average', 'nnet-am-copy', 'nnet-am-info',
+                      'nnet-am-init', 'nnet-am-mixup', 'nnet-compute-from-egs', 'nnet-compute-prob', 'nnet-copy-egs',
+                      'nnet-get-egs', 'nnet-get-feature-transform', 'nnet-init', 'nnet-insert', 'nnet-relabel-egs',
+                      'nnet-shuffle-egs', 'nnet-subset-egs', 'nnet-to-raw-nnet', 'nnet-train-parallel',
+                      'nnet-train-transitions', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
+                      'show-transitions',
+                      'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
+                      'tree-info', 'vector-sum', 'weight-silence-post']
 
 linux_libraries = ['libfst.so.7', 'libfstfar.so.7', 'libngram.so.2',
                    'libfstscript.so.7', 'libfstfarscript.so.7',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
-                   'libkaldi-feat.so', 'libkaldi-transform.so','libkaldi-lm.so',
+                   'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so']
 included_libraries = {'linux': linux_libraries,
-                      'win32': ['openfst64.dll', 'libopenblas.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll', 'libquadmath-0.dll'],
+                      'win32': ['openfst64.dll', 'libopenblas.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
+                                'libquadmath-0.dll'],
                       'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
                                  'libfstfar.7.dylib', 'libfstngram.7.dylib',
                                  'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
@@ -69,7 +57,7 @@ included_libraries = {'linux': linux_libraries,
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def CollectBinaries(directory):
+def collect_binaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok=True)
@@ -160,4 +148,4 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    CollectBinaries(directory)
+    collect_binaries(directory)

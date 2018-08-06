@@ -142,7 +142,7 @@ def add_deltas(directory, num_jobs, config):
         output = [p.get() for p in results]
 
 
-def calc_lda_func(directory, job_name, config):
+def apply_lda_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     ark_path = os.path.join(directory, config.feature_id + '.{}.ark'.format(job_name))
     scp_path = os.path.join(directory, config.feature_id + '.{}.scp'.format(job_name))
@@ -190,9 +190,9 @@ def calc_lda_func(directory, job_name, config):
             splice_feats_proc.communicate()
 
 
-def calc_lda(directory, num_jobs, config):
+def apply_lda(directory, num_jobs, config):
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
     with mp.Pool(processes=num_jobs) as pool:
-        results = [pool.apply_async(calc_lda_func, args=i) for i in jobs]
+        results = [pool.apply_async(apply_lda_func, args=i) for i in jobs]
         output = [p.get() for p in results]

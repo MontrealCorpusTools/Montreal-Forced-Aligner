@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 from ..exceptions import ConfigError
-from .processing import mfcc, add_deltas, apply_cmvn, calc_lda
+from .processing import mfcc, add_deltas, apply_cmvn, apply_lda
 
 from ..helper import thirdparty_binary, load_scp, save_groups
 
@@ -154,4 +154,4 @@ class FeatureConfig(object):
         if self.deltas:
             add_deltas(data_directory, corpus.num_jobs, self)
         elif self.lda:
-            calc_lda(data_directory, corpus.num_jobs, self)
+            apply_lda(data_directory, corpus.num_jobs, self)

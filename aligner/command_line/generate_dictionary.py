@@ -24,17 +24,24 @@ def generate_g2p_dict(args):
         temp_dir = os.path.join(temp_dir, 'G2P')
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    input_dir = os.path.expanduser(args.corpus_directory)
-    corpus_name = os.path.basename(args.corpus_directory)
-    if corpus_name == '':
-        args.corpus_directory = os.path.dirname(args.corpus_directory)
-        corpus_name = os.path.basename(args.corpus_directory)
-    data_directory = os.path.join(temp_dir, corpus_name)
+    if os.path.isdir(args.input_path):
+        input_dir = os.path.expanduser(args.input_path)
+        corpus_name = os.path.basename(args.input_path)
+        if corpus_name == '':
+            args.input_path = os.path.dirname(args.input_path)
+            corpus_name = os.path.basename(args.input_path)
+        data_directory = os.path.join(temp_dir, corpus_name)
 
-    corpus = Corpus(input_dir, data_directory)
+        corpus = Corpus(input_dir, data_directory)
+
+        word_set = get_word_set(corpus, args.include_bracketed)
+
+    else:
+        word_set = set()
+        with open(args.input_path, 'r', encoding='utf8') as f:
+            for line in f:
+                word_set.update(line.strip().split())
     model = G2PModel(args.g2p_model_path)
-
-    word_set = get_word_set(corpus, args.include_bracketed)
     gen = PhonetisaurusDictionaryGenerator(model, word_set, args.output_path, temp_directory=temp_dir)
     gen.generate()
 
@@ -45,17 +52,27 @@ def generate_orthography_dict(args):
         temp_dir = os.path.join(temp_dir, 'G2P')
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    input_dir = os.path.expanduser(args.corpus_directory)
-    corpus_name = os.path.basename(args.corpus_directory)
-    if corpus_name == '':
-        args.corpus_directory = os.path.dirname(args.corpus_directory)
-        corpus_name = os.path.basename(args.corpus_directory)
-    data_directory = os.path.join(temp_dir, corpus_name)
 
-    corpus = Corpus(input_dir, data_directory)
-    word_set = get_word_set(corpus, args.include_bracketed)
+    if os.path.isdir(args.input_path):
+        input_dir = os.path.expanduser(args.input_path)
+        corpus_name = os.path.basename(args.input_path)
+        if corpus_name == '':
+            args.input_path = os.path.dirname(args.input_path)
+            corpus_name = os.path.basename(args.input_path)
+        data_directory = os.path.join(temp_dir, corpus_name)
+
+        corpus = Corpus(input_dir, data_directory)
+
+        word_set = get_word_set(corpus, args.include_bracketed)
+
+    else:
+        word_set = set()
+        with open(args.input_path, 'r', encoding='utf8') as f:
+            for line in f:
+                word_set.update(line.strip().split())
+
     with open(args.output_path, "w", encoding='utf8') as f:
-        for word in word_set:
+        for word in sorted(word_set):
             pronunciation = list(word)
             if list(word)[0] != '[' and list(word)[0] != '{' and list(word)[0] != '<':
                 f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
@@ -113,10 +130,8 @@ def validate(args):
     if not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip'):
         raise (ArgumentError('The specified G2P model path ({}) is not a zip file.'.format(args.g2p_model_path)))
 
-    if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
-    if not os.path.isdir(args.corpus_directory):
-        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
+    if not os.path.exists(args.input_path):
+        raise (ArgumentError('Could not find the input path {}.'.format(args.input_path)))
 
 
 if __name__ == '__main__':
@@ -124,7 +139,7 @@ if __name__ == '__main__':
 
     parser.add_argument("g2p_model_path", help="Path to the trained G2P model", nargs='?')
 
-    parser.add_argument("corpus_directory", help="Corpus to base word list on")
+    parser.add_argument("input_path", help="Corpus to base word list on or a text file of words to generate pronunciations")
 
     parser.add_argument("output_path", help="Path to save output dictionary")
 
