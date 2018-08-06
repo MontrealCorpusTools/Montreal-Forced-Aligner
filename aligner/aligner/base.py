@@ -79,4 +79,3 @@ class BaseAligner(object):
         Export a TextGrid file for every sound file in the dataset
         '''
         raise NotImplementedError
-
