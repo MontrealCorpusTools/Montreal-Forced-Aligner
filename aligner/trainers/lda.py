@@ -65,10 +65,7 @@ class LdaTrainer(TriphoneTrainer):
         self.feature_config.deltas = True
 
     def compute_calculated_properties(self):
-        for i in range(0, self.num_iterations, 10):
-            if i == 0:
-                continue
-            self.realignment_iterations.append(i)
+        super(LdaTrainer, self).compute_calculated_properties()
         self.mllt_iterations = []
         max_mllt_iter = int(self.num_iterations/2) - 1
         for i in range(1, max_mllt_iter):

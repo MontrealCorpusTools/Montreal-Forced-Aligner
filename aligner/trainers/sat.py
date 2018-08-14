@@ -65,10 +65,7 @@ class SatTrainer(TriphoneTrainer):
         self.feature_config.fmllr = True
 
     def compute_calculated_properties(self):
-        for i in range(0, self.num_iterations, 10):
-            if i == 0:
-                continue
-            self.realignment_iterations.append(i)
+        super(SatTrainer, self).compute_calculated_properties()
         self.fmllr_iterations = []
         max_fmllr_iter = int(self.num_iterations/2) - 1
         for i in range(1, max_fmllr_iter):
