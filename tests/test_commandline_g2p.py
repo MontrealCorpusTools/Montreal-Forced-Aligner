@@ -28,7 +28,7 @@ def test_train_g2p(sick_dict_path, sick_g2p_model_path, temp_dir):
 def test_generate_dict(basic_corpus_dir, sick_g2p_model_path, g2p_sick_output, temp_dir):
     args = G2PDummyArgs()
     args.g2p_model_path = sick_g2p_model_path
-    args.corpus_directory = basic_corpus_dir
+    args.input_path = basic_corpus_dir
     args.output_path = g2p_sick_output
     args.temp_directory = temp_dir
     generate_g2p_dict(args)
@@ -40,7 +40,7 @@ def test_generate_dict(basic_corpus_dir, sick_g2p_model_path, g2p_sick_output, t
 def test_generate_orthography_dict(basic_corpus_dir, orth_sick_output, temp_dir):
     args = G2PDummyArgs()
     args.g2p_model_path = None
-    args.corpus_directory = basic_corpus_dir
+    args.input_path = basic_corpus_dir
     args.output_path = orth_sick_output
     args.temp_directory = temp_dir
     generate_orthography_dict(args)

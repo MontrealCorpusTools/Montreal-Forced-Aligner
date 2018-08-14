@@ -15,9 +15,10 @@ Contents:
    whats_new_1.1.rst
    installation.rst
    data_prep.rst
+   data_validation.rst
    aligning.rst
    example.rst
-   commonerrors.rst
+   configuration.rst
    g2p.rst
    pretrained_models.rst
    changelog.rst

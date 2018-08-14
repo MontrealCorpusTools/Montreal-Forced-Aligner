@@ -1,6 +1,5 @@
-.. _validating_data:
 
-.. _`LibriSpeech corpus`: http://www.openslr.org/12/
+.. _validating_data:
 
 ***************
 Validating data

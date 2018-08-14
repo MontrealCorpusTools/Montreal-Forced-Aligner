@@ -75,7 +75,8 @@ Steps to align:
    be smarter about cleaning up TextGrids from previous runs without removing the directory.
 
 .. note::
-   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` currently works for the English acoustic model trained on the `Librispeech corpus`_.
+   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` currently works for the English
+   acoustic model trained on the `Librispeech corpus`_.
 
 Extra options (in addition to the common ones listed above):
 

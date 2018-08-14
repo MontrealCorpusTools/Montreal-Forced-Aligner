@@ -5,13 +5,34 @@
 What's new in 1.1
 *****************
 
-Version 1.1 of the Montreal Forced aligner represents several overhauls to the workflow and customizability of alignment.
+Version 1.1 of the Montreal Forced aligner represents several overhauls to the workflow and ability to customize model
+training and alignment.
 
 .. _1.1_training_configurations:
 
 Training configurations
 -----------------------
 
+A major new feature is the ability to specify and customize configuration for training and alignment. Prior to 1.1,
+the training procedure for new models was:
+
+- Monophone training
+- Triphone training
+- Speaker-adapted triphone training (could be disabled)
+
+The parameters for each of these training blocks were fixed and not changeable.
+
+In 1.1, the following training procedures are available:
+
+- Monophone training
+- Triphone training
+- LDA+MLLT training
+- Speaker-adapted triphone training
+- Ivector extractor training
+- Nnet2 training
+
+Each of these blocks (as well as their inclusion) can be customized through a YAML config file.  In addition to training parameters,
+global alignment and feature configuration parameters are available. See :ref:`configuration` for more details.
 
 
 .. _1.1_data_validation:

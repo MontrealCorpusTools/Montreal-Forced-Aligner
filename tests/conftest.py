@@ -40,6 +40,7 @@ def textgrid_dir(test_dir):
 @pytest.fixture(scope='session')
 def generated_dir(test_dir):
     generated = os.path.join(test_dir, 'generated')
+    shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):
         os.makedirs(generated)
     return generated

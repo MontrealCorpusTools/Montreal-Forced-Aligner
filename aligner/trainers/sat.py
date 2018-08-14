@@ -48,8 +48,6 @@ class SatTrainer(TriphoneTrainer):
         Type of fMLLR estimation, defaults to ``'full'``
     fmllr_iterations : list
         List of iterations to perform fMLLR estimation
-    fmllr_power : float
-        Defaults to 0.2
     silence_weight : float
         Weight on silence in fMLLR estimation
     '''
@@ -57,10 +55,26 @@ class SatTrainer(TriphoneTrainer):
     def __init__(self, default_feature_config):
         super(SatTrainer, self).__init__(default_feature_config)
         self.fmllr_update_type = 'full'
-        self.fmllr_iterations = [2, 4, 6, 12]
-        self.fmllr_power = 0.2
+        self.fmllr_iterations = []
+        max_fmllr_iter = int(self.num_iterations/2) - 1
+        for i in range(1, max_fmllr_iter):
+            if i < max_fmllr_iter /2 and i % 2 == 0:
+                self.fmllr_iterations.append(i)
+        self.fmllr_iterations.append(max_fmllr_iter)
         self.silence_weight = 0.0
         self.feature_config.fmllr = True
+
+    def compute_calculated_properties(self):
+        for i in range(0, self.num_iterations, 10):
+            if i == 0:
+                continue
+            self.realignment_iterations.append(i)
+        self.fmllr_iterations = []
+        max_fmllr_iter = int(self.num_iterations/2) - 1
+        for i in range(1, max_fmllr_iter):
+            if i < max_fmllr_iter /2 and i % 2 == 0:
+                self.fmllr_iterations.append(i)
+        self.fmllr_iterations.append(max_fmllr_iter)
 
     @property
     def train_type(self):
