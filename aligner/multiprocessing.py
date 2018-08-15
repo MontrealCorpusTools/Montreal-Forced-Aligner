@@ -1569,7 +1569,7 @@ def get_lda_nnet_func(config, align_directory, x):
     sil_phones = config.dictionary.optional_silence_csl
     log_path = os.path.join(config.train_directory, 'log', 'lda_acc.{}.log'.format(x))
 
-    base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
+    base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name.replace('_ivector', '') + '.{}.scp'.format(x))
     spliced_feature_ark = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.ark'.format(x))
     spliced_feature_scp = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.scp'.format(x))
     ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
