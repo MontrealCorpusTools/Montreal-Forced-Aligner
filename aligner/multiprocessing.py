@@ -1478,6 +1478,7 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
     log_path = os.path.join(nnet_dir, 'log', 'get_egs.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs'),
+                                              ivectors_opt,
                                               '--left-context=' + str(config.feature_config.splice_left_context),
                                               '--right-context=' + str(config.feature_config.splice_right_context),
                                               'scp:' + training_features_path,
