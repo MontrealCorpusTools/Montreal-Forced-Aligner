@@ -1447,15 +1447,16 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
 
         if not valid_uttlist:
             valid_uttlist = train_subset_uttlist
+        base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
         filtered = filter_scp(train_subset_uttlist,
-                              os.path.join(config.data_directory, 'features_for_nnet.{}.scp'.format(x)))
+                              os.path.join(config.data_directory, base_feature_scp))
         training_features_path = os.path.join(config.train_directory, 'features_for_nnet_train.{}.scp'.format(x))
         with open(training_features_path, 'w') as outf:
             for item in filtered:
                 outf.write(item)
 
         # Gets "valid_feats" (Kaldi)
-        filtered = filter_scp(valid_uttlist, os.path.join(config.train_directory, 'features_for_nnet.{}.scp'.format(x)))
+        filtered = filter_scp(valid_uttlist, os.path.join(config.train_directory, base_feature_scp))
         validation_features_path = os.path.join(config.train_directory, 'features_for_nnet_valid.{}.scp'.format(x))
         with open(validation_features_path, 'w') as outf:
             for item in filtered:
@@ -1489,7 +1490,7 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
                                              stderr=logf)
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                'ark:-',
-                                               'ark:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x))],
+                                               'ark,t:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x))],
                                               stdin=nnet_get_egs_proc.stdout,
                                               stderr=logf)
         nnet_copy_egs_proc.communicate()
@@ -1569,8 +1570,8 @@ def get_lda_nnet_func(config, align_directory, x):
     log_path = os.path.join(config.train_directory, 'log', 'lda_acc.{}.log'.format(x))
 
     base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
-    spliced_feature_ark = os.path.join(config.data_directory, 'features_for_nnet.{}.ark'.format(x))
-    spliced_feature_scp = os.path.join(config.data_directory, 'features_for_nnet.{}.scp'.format(x))
+    spliced_feature_ark = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.ark'.format(x))
+    spliced_feature_scp = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.scp'.format(x))
     ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
     ivector_period = 10
     with open(log_path, 'w') as logf:
