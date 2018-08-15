@@ -207,7 +207,7 @@ class NnetTrainer(BaseTrainer):
         feat_dim_path = os.path.join(self.train_directory, 'feat_dim')
         with open(feat_dim_path, 'r') as inf:
             feat_dim = int(inf.read().strip())
-        feat_dim = feat_dim + ivector_dim
+        feat_dim = feat_dim
 
         with open(nnet_config_path, 'w', newline='') as nc:
             nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
@@ -287,7 +287,7 @@ class NnetTrainer(BaseTrainer):
             # Combine all examples (could integrate validation diagnostics, etc., later-- see egs functions)
             egs_files = []
             for file in os.listdir(egs_directory):
-                if file.startswith('egs'):
+                if file.startswith('egs.'):
                     egs_files.append(file)
             with open(os.path.join(egs_directory, 'all_egs.egs'), 'wb') as outfile:
                 for egs_file in egs_files:
@@ -301,7 +301,7 @@ class NnetTrainer(BaseTrainer):
             with open(log_path, 'w') as logf:
                 compute_prob_proc = subprocess.Popen([thirdparty_binary('nnet-compute-prob'),
                                                       model_path,
-                                                      'ark:{}/all_egs.egs'.format(egs_directory)],
+                                                      'ark:'+os.path.join(egs_directory,'all_egs.egs')],
                                                      stdout=subprocess.PIPE,
                                                      stderr=logf)
                 log_prob = compute_prob_proc.stdout.read().decode('utf-8').strip()
@@ -330,7 +330,7 @@ class NnetTrainer(BaseTrainer):
                                                              stdout=subprocess.PIPE,
                                                              stderr=logf)
                         tmp_mdl_ins_proc = subprocess.Popen([thirdparty_binary('nnet-insert'),
-                                                             os.path.join(self.train_directory, '{}.mdl'.format(i)),
+                                                             model_path,
                                                              '-', '-'],
                                                             stdin=tmp_mdl_init_proc.stdout,
                                                             stdout=outf,
@@ -364,10 +364,12 @@ class NnetTrainer(BaseTrainer):
                 nnet_copy_proc = subprocess.Popen([thirdparty_binary('nnet-am-copy'),
                                                    '--learning-rate={}'.format(learning_rate),
                                                    '-',
-                                                   os.path.join(self.train_directory, '{}.mdl'.format(i + 1))],
+                                                   next_model_path],
                                                   stdin=nnet_avg_proc.stdout,
                                                   stderr=logf)
                 nnet_copy_proc.communicate()
+            if not os.path.exists(next_model_path):
+                raise(Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
 
             # If it's the right time, do mixing up
             if self.mix_up > 0 and i == self.mix_up_iteration:
@@ -376,8 +378,8 @@ class NnetTrainer(BaseTrainer):
                     nnet_am_mixup_proc = subprocess.Popen([thirdparty_binary('nnet-am-mixup'),
                                                            '--min-count=10',
                                                            '--num-mixtures={}'.format(self.mix_up),
-                                                           os.path.join(self.train_directory, '{}.mdl'.format(i + 1)),
-                                                           os.path.join(self.train_directory, '{}.mdl'.format(i + 1))],
+                                                           next_model_path,
+                                                           next_model_path],
                                                           stderr=logf)
                     nnet_am_mixup_proc.communicate()
 

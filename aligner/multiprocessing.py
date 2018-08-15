@@ -1495,23 +1495,20 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
         nnet_copy_egs_proc.communicate()
 
     # Rearranging training examples
-    log_path = os.path.join(nnet_dir, 'log', 'nnet_copy_egs.{}.log'.format(x))
+    log_path = os.path.join(nnet_dir, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                '--srand=' + str(x),
                                                'ark:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x)),
-                                               'ark:' + os.path.join(egs_dir, 'egs_temp.{}'.format(x))],
-                                              stderr=logf)
-        nnet_copy_egs_proc.communicate()
-
-    # Shuffling training examples
-    log_path = os.path.join(nnet_dir, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
-    with open(log_path, 'w') as logf:
+                                               'ark:-'],
+                                              stderr=logf,
+                                              stdout=subprocess.PIPE)
         nnet_shuffle_egs_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
                                                   '--srand=' + str(x),
-                                                  'ark:' + os.path.join(egs_dir, 'egs_temp.{}'.format(x)),
+                                                  'ark:-',
                                                   'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x))],
-                                                 stderr=logf)
+                                                 stderr=logf,
+                                                 stdin=nnet_copy_egs_proc.stdout)
         nnet_shuffle_egs_proc.communicate()
 
 

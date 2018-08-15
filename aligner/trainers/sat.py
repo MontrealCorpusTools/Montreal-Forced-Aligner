@@ -118,6 +118,8 @@ class SatTrainer(TriphoneTrainer):
                                              next_model_path],
                                             stderr=logf)
                 est_proc.communicate()
+            if not os.path.exists(next_model_path):
+                raise(Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
             if not self.debug:
                 for f in acc_files:
                     os.remove(f)

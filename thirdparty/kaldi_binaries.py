@@ -119,8 +119,6 @@ def collect_binaries(directory):
             ext = os.path.splitext(name)
             (key, value) = ext
             bin_name = os.path.join(bin_out, name)
-            if key == 'libkaldi-hmm':
-                print(name, value == lib_ext)
             if value == exe_ext:
                 if key not in included_filenames:
                     continue
