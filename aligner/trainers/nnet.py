@@ -46,7 +46,11 @@ class NnetTrainer(BaseTrainer):
     samples_per_iter : int
         Number of samples seen per job per each iteration; used when getting examples
     shuffle_buffer_size : int
-        This "buffer_size" variable controls randomization of the samples on each iter.  You could set it to 0 or to a large value for complete randomization, but this would both consume memory and cause spikes in disk I/O.  Smaller is easier on disk and memory but less random.  It's not a huge deal though, as samples are anyway randomized right at the start. (the point of this is to get data in different minibatches on different iterations, since in the preconditioning method, 2 samples in the same minibatch can affect each others' gradients.
+        This "buffer_size" variable controls randomization of the samples on each iter.  You could set it to 0 or to a
+        large value for complete randomization, but this would both consume memory and cause spikes in disk I/O.
+        Smaller is easier on disk and memory but less random.  It's not a huge deal though, as samples are anyway randomized
+        right at the start. (the point of this is to get data in different minibatches on different iterations, since in the
+        preconditioning method, 2 samples in the same minibatch can affect each others' gradients.
     add_layers_period : int
         Number of iterations between addition of a new layer
     num_hidden_layers : int
@@ -210,9 +214,8 @@ class NnetTrainer(BaseTrainer):
         feat_dim = feat_dim
 
         with open(nnet_config_path, 'w', newline='') as nc:
-            nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
-                feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context,
-                ivector_dim))
+            nc.write('SpliceComponent input-dim={} left-context={} right-context={}\n'.format(
+                feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context))
             nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
             nc.write(
                 'AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(
