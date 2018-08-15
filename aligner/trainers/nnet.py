@@ -207,7 +207,7 @@ class NnetTrainer(BaseTrainer):
         feat_dim_path = os.path.join(self.train_directory, 'feat_dim')
         with open(feat_dim_path, 'r') as inf:
             feat_dim = int(inf.read().strip())
-        feat_dim = feat_dim
+        feat_dim += ivector_dim
 
         with open(nnet_config_path, 'w', newline='') as nc:
             nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
