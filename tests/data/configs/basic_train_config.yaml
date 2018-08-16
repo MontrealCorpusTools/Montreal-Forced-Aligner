@@ -32,7 +32,7 @@ training:
   - sat:
       num_leaves: 5000
       max_gaussians: 100000
-      fmllr_power: 0.2
+      power: 0.2
       silence_weight: 0.0
       fmllr_update_type: "full"
       subset: 100000
