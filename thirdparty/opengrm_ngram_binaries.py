@@ -16,7 +16,7 @@ else:
 
 included_filenames = ['ngramcount', 'ngrammake', 'ngramsymbols', 'ngramprint']
 
-linux_libraries = ['libngram.so', 'libngramhist.so']
+linux_libraries = ['libngram.so.134', 'libngramhist.so.134']
 included_libraries = {'linux': linux_libraries,
                       'win32': [],
                       'darwin': ['libngram.2.dylib', 'libngramhist.2.dylib']}
