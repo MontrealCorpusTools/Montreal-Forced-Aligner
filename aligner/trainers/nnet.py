@@ -466,7 +466,8 @@ class NnetTrainer(BaseTrainer):
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.train_directory)
         acoustic_model.add_lda_matrix(self.corpus.output_directory)
-        acoustic_model.add_ivector_model(self.corpus.ivector_directory)
+        if self.feature_config.ivectors:
+            acoustic_model.add_ivector_model(self.corpus.ivector_directory)
         os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
         acoustic_model.dump(basename)

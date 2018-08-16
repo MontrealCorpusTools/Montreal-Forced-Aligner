@@ -1488,7 +1488,7 @@ def get_egs_func(config, align_directory, valid_uttlist,
                                              stderr=logf)
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                'ark:-',
-                                               'ark,t:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x))],
+                                               'ark:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x))],
                                               stdin=nnet_get_egs_proc.stdout,
                                               stderr=logf)
         nnet_copy_egs_proc.communicate()
