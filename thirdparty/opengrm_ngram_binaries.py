@@ -16,7 +16,7 @@ else:
 
 included_filenames = ['ngramcount', 'ngrammake', 'ngramsymbols', 'ngramprint']
 
-linux_libraries = []
+linux_libraries = ['libngram.so', 'libngramhist.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': [],
                       'darwin': ['libngram.2.dylib', 'libngramhist.2.dylib']}
@@ -53,28 +53,33 @@ def collect_binaries(directory):
                             continue
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-    if sys.platform == 'darwin':
+    if sys.platform != 'win32':
         lib_dir = os.path.join(directory, 'src', 'lib', '.libs')
-        for f in os.listdir(lib_dir):
-            for lib in included_libraries[sys.platform]:
-                if f == lib:
-                    bin_name = os.path.join(bin_out, lib)
-                    shutil.copyfile(os.path.join(lib_dir, f), bin_name)
-                    if sys.platform == 'darwin':
-                        p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                             stderr=subprocess.PIPE)
-                        output, err = p.communicate()
-                        rc = p.returncode
-                        output = output.decode()
-                        libs = dylib_pattern.findall(output)
-                        for l in libs:
-                            if l.startswith('/usr') and not l.startswith('/usr/local'):
-                                continue
-                            print(l)
-                            lib = os.path.basename(l)
-                            subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-                    break
-
+        for name in os.listdir(lib_dir):
+            if os.path.islink(os.path.join(lib_dir, name)):
+                continue
+            c = False
+            for l in included_libraries[sys.platform]:
+                if name.startswith(l):
+                    c = True
+                    new_name = l
+            if not c:
+                continue
+            bin_name = os.path.join(bin_out, new_name)
+            shutil.copyfile(os.path.join(lib_dir, name), bin_name)
+            if sys.platform == 'darwin':
+                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                output, err = p.communicate()
+                rc = p.returncode
+                output = output.decode()
+                libs = dylib_pattern.findall(output)
+                for l in libs:
+                    if l.startswith('/usr') and not l.startswith('/usr/local'):
+                        continue
+                    print(l)
+                    lib = os.path.basename(l)
+                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

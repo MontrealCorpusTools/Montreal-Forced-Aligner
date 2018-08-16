@@ -1430,18 +1430,17 @@ def extract_ivectors(config, num_jobs):
         output = [p.get() for p in results]
 
 
-def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, feats, valid_uttlist,
-                 train_subset_uttlist, config, x):
+def get_egs_func(config, align_directory, valid_uttlist,
+                 train_subset_uttlist,  x):
     # Create training examples
-    iters_per_epoch = config.iters_per_epoch
-    ivector_dim = 100  # Make safe later
-    ivectors_opt = '--const-feat-dim={}'.format(ivector_dim)
-    ivector_period = 3000
-    ivector_randomize_prob = 0.0
-    cmvn_opts = []
+    ivectors_opt = []
+    if config.feature_config.ivectors:
+        ivector_dim = 100  # Make safe later
+        ivectors_opt.append('--const-feat-dim={}'.format(ivector_dim))
+
 
     # Deal with ivector stuff
-    log_path = os.path.join(nnet_dir, 'log', 'get_egs_feats.{}.log'.format(x))
+    log_path = os.path.join(config.train_directory, 'log', 'get_egs_feats.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         # Gets "feats" (Kaldi)
 
@@ -1462,7 +1461,7 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
             for item in filtered:
                 outf.write(item)
 
-    log_path = os.path.join(nnet_dir, 'log', 'ali_to_post.{}.log'.format(x))
+    log_path = os.path.join(config.train_directory, 'log', 'ali_to_post.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         ali_to_pdf_proc = subprocess.Popen([thirdparty_binary('ali-to-pdf'),
                                             os.path.join(align_directory, 'final.mdl'),
@@ -1476,11 +1475,10 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
                                             stderr=logf,
                                             stdout=subprocess.PIPE)
 
-    log_path = os.path.join(nnet_dir, 'log', 'get_egs.{}.log'.format(x))
+    log_path = os.path.join(config.train_directory, 'log', 'get_egs.{}.log'.format(x))
     with open(log_path, 'w') as logf:
-        nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs'),
-                                              ivectors_opt,
-                                              '--left-context=' + str(config.feature_config.splice_left_context),
+        nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs')]+ ivectors_opt +
+                                              ['--left-context=' + str(config.feature_config.splice_left_context),
                                               '--right-context=' + str(config.feature_config.splice_right_context),
                                               'scp:' + training_features_path,
                                               'ark:-',
@@ -1490,31 +1488,31 @@ def get_egs_func(nnet_dir, egs_dir, training_dir, split_dir, align_directory, fe
                                              stderr=logf)
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                'ark:-',
-                                               'ark,t:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x))],
+                                               'ark,t:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x))],
                                               stdin=nnet_get_egs_proc.stdout,
                                               stderr=logf)
         nnet_copy_egs_proc.communicate()
 
     # Rearranging training examples
-    log_path = os.path.join(nnet_dir, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
+    log_path = os.path.join(config.train_directory, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
     with open(log_path, 'w') as logf:
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                '--srand=' + str(x),
-                                               'ark:' + os.path.join(egs_dir, 'egs_orig.{}'.format(x)),
+                                               'ark:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x)),
                                                'ark:-'],
                                               stderr=logf,
                                               stdout=subprocess.PIPE)
         nnet_shuffle_egs_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
                                                   '--srand=' + str(x),
                                                   'ark:-',
-                                                  'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x))],
+                                                  'ark:' + os.path.join(config.egs_directory, 'egs.{}'.format(x))],
                                                  stderr=logf,
                                                  stdin=nnet_copy_egs_proc.stdout)
         nnet_shuffle_egs_proc.communicate()
 
 
-def get_egs(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, feats, valid_uttlist,
-            train_subset_uttlist, config, num_jobs):
+def get_egs(config, ali_dir, valid_uttlist,
+            train_subset_uttlist):
     """
     Multiprocessing function that gets training examples for the neural net
 
@@ -1558,9 +1556,9 @@ def get_egs(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, feats, valid_ut
         The number of processes to use in calculation
     """
 
-    jobs = [(nnet_dir, egs_dir, training_dir, split_dir, ali_dir, feats, valid_uttlist,
-             train_subset_uttlist, config, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    jobs = [(config, ali_dir, valid_uttlist,
+             train_subset_uttlist,  x) for x in range(config.corpus.num_jobs)]
+    with mp.Pool(processes=config.corpus.num_jobs) as pool:
         results = [pool.apply_async(get_egs_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1575,34 +1573,42 @@ def get_lda_nnet_func(config, align_directory, x):
     ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
     ivector_period = 10
     with open(log_path, 'w') as logf:
-        splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+        if config.feature_config.ivectors:
+            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
                                         '--left-context={}'.format(config.feature_config.splice_left_context),
                                         '--right-context={}'.format(config.feature_config.splice_right_context),
                                         'scp:' + base_feature_scp,
                                         'ark:-'],
                                        stdout=subprocess.PIPE,
                                        stderr=logf)
-        paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
-                                       'ark:-',
-                                       'scp:' + ivector_scp_path,
-                                       'ark,scp:{},{}'.format(spliced_feature_ark, spliced_feature_scp)],
-                                      stdin=splice_proc.stdout,
-                                      stderr=logf)
-        paste_proc.communicate()
+            paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
+                                           'ark:-',
+                                           'scp:' + ivector_scp_path,
+                                           'ark,scp:{},{}'.format(spliced_feature_ark, spliced_feature_scp)],
+                                          stdin=splice_proc.stdout,
+                                          stderr=logf)
+            paste_proc.communicate()
+            # Get i-vector dimension
+            ivector_dim_path = os.path.join(config.train_directory, 'ivector_dim')
+            with open(ivector_dim_path, 'w') as outf:
+                dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
+                                             'scp:' + ivector_scp_path,
+                                             '-'],
+                                            stderr=logf,
+                                            stdout=outf)
+        else:
+            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                        '--left-context={}'.format(config.feature_config.splice_left_context),
+                                        '--right-context={}'.format(config.feature_config.splice_right_context),
+                                        'scp:' + base_feature_scp,
+                                           'ark,scp:{},{}'.format(spliced_feature_ark, spliced_feature_scp)],
+                                       stderr=logf)
+            splice_proc.communicate()
 
         feat_dim_path = os.path.join(config.train_directory, 'feat_dim')
         with open(feat_dim_path, 'w') as outf:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          'scp:' + base_feature_scp,
-                                         '-'],
-                                        stderr=logf,
-                                        stdout=outf)
-
-        # Get i-vector dimension
-        ivector_dim_path = os.path.join(config.train_directory, 'ivector_dim')
-        with open(ivector_dim_path, 'w') as outf:
-            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                         'scp:' + ivector_scp_path,
                                          '-'],
                                         stderr=logf,
                                         stdout=outf)

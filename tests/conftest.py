@@ -388,3 +388,8 @@ def ivector_train_config(config_directory):
 @pytest.fixture(scope='session')
 def nnet_train_config(config_directory):
     return train_yaml_to_config(os.path.join(config_directory, 'nnet_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def nnet_ivectors_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'nnet_ivectors_train.yaml'))

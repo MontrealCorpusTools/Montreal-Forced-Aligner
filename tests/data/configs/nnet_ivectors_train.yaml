@@ -31,9 +31,18 @@ training:
           splice_left_context: 3
           splice_right_context: 3
 
+  - ivector:
+      num_iterations: 5
+      gaussian_min_count: 2
+      features:
+          lda: true
+          splice_left_context: 3
+          splice_right_context: 3
+
   - nnet:
       num_epochs: 25
       features:
           lda: true
+          ivectors: true
           splice_left_context: 3
           splice_right_context: 3

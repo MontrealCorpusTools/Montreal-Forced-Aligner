@@ -171,7 +171,6 @@ class NnetTrainer(BaseTrainer):
         os.makedirs(self.egs_directory, exist_ok=True)
 
         # # Get valid uttlist and train subset uttlist
-        training_feats = os.path.join(self.train_directory, 'nnet_training_feats')
         num_utts_subset = 300
         log_path = os.path.join(self.train_directory, 'log', 'training_egs_feats.log')
 
@@ -187,10 +186,10 @@ class NnetTrainer(BaseTrainer):
         # Take only the first num_utts_subset lines
         valid_uttlist = filtered[:num_utts_subset]
 
-        get_egs(self.train_directory, self.egs_directory, self.corpus.output_directory, self.data_directory,
+        get_egs(self,
                 previous_trainer.align_directory,
-                training_feats, valid_uttlist,
-                train_subset_uttlist, self, self.corpus.num_jobs)
+                valid_uttlist,
+                train_subset_uttlist)
 
         # Initialize neural net
         print('Initializing DNN training...')
@@ -201,18 +200,23 @@ class NnetTrainer(BaseTrainer):
             self.precondition_rank_out, self.max_change_per_sample)
         nnet_config_path = os.path.join(self.train_directory, 'nnet.config')
         hidden_config_path = os.path.join(self.train_directory, 'hidden.config')
-        ivector_dim_path = os.path.join(self.train_directory, 'ivector_dim')
-        with open(ivector_dim_path, 'r') as inf:
-            ivector_dim = int(inf.read().strip())
         feat_dim_path = os.path.join(self.train_directory, 'feat_dim')
         with open(feat_dim_path, 'r') as inf:
             feat_dim = int(inf.read().strip())
-        feat_dim += ivector_dim
+        if self.feature_config.ivectors:
+            ivector_dim_path = os.path.join(self.train_directory, 'ivector_dim')
+            with open(ivector_dim_path, 'r') as inf:
+                ivector_dim = int(inf.read().strip())
+            feat_dim += ivector_dim
 
         with open(nnet_config_path, 'w', newline='') as nc:
-            nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
-                feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context,
-                ivector_dim))
+            if self.feature_config.ivectors:
+                nc.write('SpliceComponent input-dim={} left-context={} right-context={} const-component-dim={}\n'.format(
+                    feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context,
+                    ivector_dim))
+            else:
+                nc.write('SpliceComponent input-dim={} left-context={} right-context={}\n'.format(
+                    feat_dim, self.feature_config.splice_left_context, self.feature_config.splice_right_context))
             nc.write('FixedAffineComponent matrix={}\n'.format(lda_mat_path))
             nc.write(
                 'AffineComponentPreconditionedOnline input-dim={} output-dim={} {} learning-rate={} param-stddev={} bias-stddev={}\n'.format(

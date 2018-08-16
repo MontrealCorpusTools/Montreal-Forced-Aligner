@@ -17,6 +17,18 @@ def test_sick_nnet(sick_dict, sick_corpus, generated_dir, nnet_train_config):
     a.train()
 
 
+def test_sick_nnet_ivectors(sick_dict, sick_corpus, generated_dir, nnet_ivectors_train_config):
+    shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
+    os.makedirs(sick_corpus.output_directory, exist_ok=True)
+    nnet_train_config, align_config = nnet_ivectors_train_config
+    data_directory = os.path.join(generated_dir, 'temp', 'nnet_test')
+    shutil.rmtree(data_directory, ignore_errors=True)
+    a = TrainableAligner(sick_corpus, sick_dict, nnet_train_config, align_config,
+                         os.path.join(generated_dir, 'sick_output'),
+                         temp_directory=data_directory)
+    a.train()
+
+
 def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
