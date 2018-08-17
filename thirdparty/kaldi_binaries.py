@@ -36,6 +36,9 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'vector-sum', 'weight-silence-post']
 
+open_blas_library = {'linux': 'libopenblas.so.0',
+                     'win32': 'libopenblas.dll'}
+
 linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
                    'libfstscript.so.13', 'libfstfarscript.so.13',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
@@ -44,7 +47,7 @@ linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so', 'libkaldi-ivector.so']
 included_libraries = {'linux': linux_libraries,
-                      'win32': ['openfst64.dll', 'libopenblas.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
+                      'win32': ['openfst64.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
                                 'libquadmath-0.dll'],
                       'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
                                  'libfstfar.7.dylib', 'libfstngram.7.dylib',
@@ -57,11 +60,12 @@ included_libraries = {'linux': linux_libraries,
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def collect_openfst_binaries(directory):
+def collect_tools_binaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok=True)
-    openfst_dir = os.path.join(directory, 'tools', 'openfst')
+    tools_dir = os.path.join(directory, 'tools')
+    openfst_dir = os.path.join(tools_dir, 'openfst')
     bin_dir = os.path.join(openfst_dir, 'bin')
     lib_dir = os.path.join(openfst_dir, 'lib')
     for name in os.listdir(bin_dir):
@@ -111,6 +115,12 @@ def collect_openfst_binaries(directory):
                             continue
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+    for root, dirs, files in os.walk(tools_dir, followlinks=True):
+        for name in files:
+            if name == open_blas_library[sys.platform]:
+                bin_name = os.path.join(bin_out, new_name)
+                shutil.copyfile(os.path.join(root, name), bin_name)
+                break
 
 
 def collect_kaldi_binaries(directory):
@@ -156,5 +166,5 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    collect_openfst_binaries(directory)
+    collect_tools_binaries(directory)
     collect_kaldi_binaries(directory)
