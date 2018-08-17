@@ -29,10 +29,7 @@ def collect_binaries(directory):
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok=True)
 
-    if sys.platform == 'win32':
-        src_dir = directory
-    else:
-        src_dir = os.path.join(directory, 'src', 'bin', '.libs')
+    src_dir = directory
     for root, dirs, files in os.walk(src_dir, followlinks=True):
         cur_dir = os.path.basename(root)
         for name in files:
