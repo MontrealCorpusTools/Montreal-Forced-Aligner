@@ -39,8 +39,6 @@ def collect_binaries(directory):
                 out_path = os.path.join(bin_out, name)
                 in_path = os.path.join(root, name)
                 if os.path.exists(out_path): # Get the smallest file size when multiples exist
-                    print(in_path)
-                    print(os.path.getsize(in_path),os.path.getsize(out_path))
                     if os.path.getsize(in_path) > os.path.getsize(out_path):
                         continue
                 shutil.copyfile(in_path, out_path)
