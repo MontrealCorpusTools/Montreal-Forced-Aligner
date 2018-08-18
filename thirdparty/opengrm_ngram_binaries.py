@@ -4,31 +4,49 @@ import argparse
 import subprocess
 import re
 
+outdirectory = os.path.dirname(os.path.realpath(__file__))
+bin_out = os.path.join(outdirectory, 'bin')
+os.makedirs(bin_out, exist_ok=True)
+
 if sys.platform == 'win32':
     exe_ext = '.exe'
     lib_ext = '.dll'
 elif sys.platform == 'darwin':
     exe_ext = ''
     lib_ext = ['.dylib']
+    libraries = ['libngram.2.dylib', 'libngramhist.2.dylib']
 else:
     exe_ext = ''
     lib_ext = ['.so', '.so.1']
+    libraries = ['libngram.so.134', 'libngramhist.so.134']
 
 included_filenames = ['ngramcount', 'ngrammake', 'ngramsymbols', 'ngramprint']
 
-linux_libraries = ['libngram.so.134', 'libngramhist.so.134']
-included_libraries = {'linux': linux_libraries,
-                      'win32': [],
-                      'darwin': ['libngram.2.dylib', 'libngramhist.2.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def collect_binaries(directory):
-    outdirectory = os.path.dirname(os.path.realpath(__file__))
-    bin_out = os.path.join(outdirectory, 'bin')
-    os.makedirs(bin_out, exist_ok=True)
+def collect_linux_binaries(directory):
+    lib_dir = os.path.join(directory,'install', 'lib')
+    bin_dir = os.path.join(directory,'install', 'bin')
+    for name in os.listdir(bin_dir):
+        ext = os.path.splitext(name)
+        (key, value) = ext
+        if value == exe_ext and key in included_filenames:
+            out_path = os.path.join(bin_out, name)
+            in_path = os.path.join(bin_dir, name)
+            shutil.copyfile(in_path, out_path)
+    for name in os.listdir(lib_dir):
+        if name in libraries:
+            actual_lib = os.path.join(lib_dir, name)
+            while os.path.islink(actual_lib):
+                linkto = os.readlink(actual_lib)
+                actual_lib = os.path.join(lib_dir, linkto)
+            bin_name = os.path.join(bin_out, name)
+            shutil.copyfile(actual_lib, bin_name)
 
+
+def collect_binaries(directory):
     src_dir = directory
     for root, dirs, files in os.walk(src_dir, followlinks=True):
         cur_dir = os.path.basename(root)
@@ -60,7 +78,7 @@ def collect_binaries(directory):
             if os.path.islink(os.path.join(lib_dir, name)):
                 continue
             c = False
-            for l in included_libraries[sys.platform]:
+            for l in libraries:
                 if name.startswith(l):
                     c = True
                     new_name = l
@@ -87,4 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    collect_binaries(directory)
+    if sys.platform == 'linux':
+        collect_linux_binaries(directory)
+    else:
+        collect_binaries(directory)
