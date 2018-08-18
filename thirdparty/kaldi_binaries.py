@@ -45,7 +45,7 @@ linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
                    'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
-                   'libkaldi-fstext.so', 'libkaldi-ivector.so', 'libkaldi-nnet2.so']
+                   'libkaldi-fstext.so', 'libkaldi-ivector.so', 'libkaldi-nnet2.so', 'libkaldi-cudamatrix.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
                                 'libquadmath-0.dll'],
