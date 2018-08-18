@@ -39,8 +39,8 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
 open_blas_library = {'linux': 'libopenblas.so.0',
                      'win32': 'libopenblas.dll'}
 
-linux_libraries = ['libfst.so', 'libfstfar.so', 'libngram.so',
-                   'libfstscript.so', 'libfstfarscript.so',
+linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
+                   'libfstscript.so.13', 'libfstfarscript.so.13',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
                    'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
@@ -101,13 +101,8 @@ def collect_tools_binaries(directory):
                     c = True
                     new_name = l
             if c:
-                in_path = os.path.join(lib_dir, name)
-                bin_name = os.path.join(bin_out, name)
-                if os.path.islink(in_path):
-                    linkto = os.readlink(in_path)
-                    os.symlink(linkto, bin_name)
-                else:
-                    shutil.copyfile(in_path, bin_name)
+                bin_name = os.path.join(bin_out, new_name)
+                shutil.copyfile(os.path.join(lib_dir, name), bin_name)
                 if sys.platform == 'darwin':
                     p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE)
