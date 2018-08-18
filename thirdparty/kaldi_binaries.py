@@ -6,13 +6,11 @@ import re
 
 if sys.platform == 'win32':
     exe_ext = '.exe'
-    lib_ext = '.dll'
 elif sys.platform == 'darwin':
     exe_ext = ''
-    lib_ext = ['.dylib']
 else:
     exe_ext = ''
-    lib_ext = ['.so', '.so.1']
+    open_blas_library = 'libopenblas.so.0'
 
 included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 'ali-to-post', 'align-equal-compiled',
                       'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
@@ -36,9 +34,6 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'vector-sum', 'weight-silence-post']
 
-open_blas_library = {'linux': 'libopenblas.so.0',
-                     'win32': 'libopenblas.dll'}
-
 linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
                    'libfstscript.so.13', 'libfstfarscript.so.13',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
@@ -48,7 +43,7 @@ linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
                    'libkaldi-fstext.so', 'libkaldi-ivector.so', 'libkaldi-nnet2.so', 'libkaldi-cudamatrix.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
-                                'libquadmath-0.dll'],
+                                'libquadmath-0.dll', 'libopenblas.dll'],
                       'darwin': ['libfst.7.dylib', 'libfstfarscript.7.dylib', 'libfstscript.7.dylib',
                                  'libfstfar.7.dylib', 'libfstngram.7.dylib',
                                  'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
@@ -60,7 +55,7 @@ included_libraries = {'linux': linux_libraries,
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def collect_tools_binaries(directory):
+def collect_linux_tools_binaries(directory):
     outdirectory = os.path.dirname(os.path.realpath(__file__))
     bin_out = os.path.join(outdirectory, 'bin')
     os.makedirs(bin_out, exist_ok=True)
@@ -116,8 +111,8 @@ def collect_tools_binaries(directory):
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
     openblas_dir = os.path.join(tools_dir, 'OpenBLAS','install', 'lib')
-    lib_file = os.path.join(openblas_dir, open_blas_library[sys.platform])
-    out_lib = os.path.join(bin_out, open_blas_library[sys.platform])
+    lib_file = os.path.join(openblas_dir, open_blas_library)
+    out_lib = os.path.join(bin_out, open_blas_library)
     if os.path.islink(lib_file):
         linkto = os.readlink(lib_file)
         actual_lib = os.path.join(openblas_dir, linkto)
@@ -169,5 +164,6 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    collect_tools_binaries(directory)
+    if sys.platform == 'linux':
+        collect_linux_tools_binaries(directory)
     collect_kaldi_binaries(directory)
