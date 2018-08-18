@@ -19,9 +19,6 @@ before_install:
 # Install packages
 install:
   - docker exec -t ubuntu-test bash -c "apt-get update;
-    rm -rf /dev/shm;
-    ln -s /run/shm /dev/shm;
-    sudo ln -s -f bash /bin/sh;
     bash continuous-integration/travis/install.sh;
     export PATH="$HOME/miniconda/miniconda/bin:$PATH";
     source activate test-environment;
