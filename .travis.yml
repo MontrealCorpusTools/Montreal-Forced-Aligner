@@ -42,6 +42,10 @@ script:
 after_success:
   - coveralls
 
+after_failure:
+  - ls tests/data/generated/sickcorpus/corpus_data/split2/log
+  - cat tests/data/generated/sickcorpus/corpus_data/split2/log/make_mfcc.0.log
+
 cache:
   directories:
     - $HOME/miniconda
