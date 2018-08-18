@@ -95,26 +95,26 @@ def collect_tools_binaries(directory):
         if name in included_libraries[sys.platform]:
             if sys.platform == 'win32':
                 shutil.copy(os.path.join(lib_dir, name), bin_out)
-        else:
-            actual_lib = os.path.join(lib_dir, name)
-            while os.path.islink(actual_lib):
-                linkto = os.readlink(actual_lib)
-                actual_lib = os.path.join(lib_dir, linkto)
+            else:
+                actual_lib = os.path.join(lib_dir, name)
+                while os.path.islink(actual_lib):
+                    linkto = os.readlink(actual_lib)
+                    actual_lib = os.path.join(lib_dir, linkto)
 
-            bin_name = os.path.join(bin_out, name)
-            shutil.copyfile(actual_lib, bin_name)
-            if sys.platform == 'darwin':
-                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
-                output, err = p.communicate()
-                rc = p.returncode
-                output = output.decode()
-                libs = dylib_pattern.findall(output)
-                for l in libs:
-                    if l.startswith('/usr') and not l.startswith('/usr/local'):
-                        continue
-                    lib = os.path.basename(l)
-                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+                bin_name = os.path.join(bin_out, name)
+                shutil.copyfile(actual_lib, bin_name)
+                if sys.platform == 'darwin':
+                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE)
+                    output, err = p.communicate()
+                    rc = p.returncode
+                    output = output.decode()
+                    libs = dylib_pattern.findall(output)
+                    for l in libs:
+                        if l.startswith('/usr') and not l.startswith('/usr/local'):
+                            continue
+                        lib = os.path.basename(l)
+                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
     openblas_dir = os.path.join(tools_dir, 'OpenBLAS','install', 'lib')
     lib_file = os.path.join(openblas_dir, open_blas_library[sys.platform])
     out_lib = os.path.join(bin_out, open_blas_library[sys.platform])
