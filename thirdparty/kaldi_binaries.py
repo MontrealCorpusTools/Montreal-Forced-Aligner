@@ -39,13 +39,13 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
 open_blas_library = {'linux': 'libopenblas.so.0',
                      'win32': 'libopenblas.dll'}
 
-linux_libraries = ['libfst.so.13', 'libfstfar.so.13', 'libngram.so.13',
-                   'libfstscript.so.13', 'libfstfarscript.so.13',
+linux_libraries = ['libfst.so', 'libfstfar.so', 'libngram.so',
+                   'libfstscript.so', 'libfstfarscript.so',
                    'libkaldi-hmm.so', 'libkaldi-util.so', 'libkaldi-thread.so',
                    'libkaldi-base.so', 'libkaldi-tree.so', 'libkaldi-matrix.so',
                    'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
-                   'libkaldi-fstext.so', 'libkaldi-ivector.so']
+                   'libkaldi-fstext.so', 'libkaldi-ivector.so', 'libkaldi-nnet2.so']
 included_libraries = {'linux': linux_libraries,
                       'win32': ['openfst64.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
                                 'libquadmath-0.dll'],
@@ -101,7 +101,7 @@ def collect_tools_binaries(directory):
                     c = True
                     new_name = l
             if c:
-                bin_name = os.path.join(bin_out, new_name)
+                bin_name = os.path.join(bin_out, name)
                 shutil.copyfile(os.path.join(lib_dir, name), bin_name)
                 if sys.platform == 'darwin':
                     p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
