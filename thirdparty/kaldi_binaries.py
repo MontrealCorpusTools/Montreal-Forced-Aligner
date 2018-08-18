@@ -101,8 +101,13 @@ def collect_tools_binaries(directory):
                     c = True
                     new_name = l
             if c:
-                bin_name = os.path.join(bin_out, name)
-                shutil.copyfile(os.path.join(lib_dir, name), bin_name)
+                in_path = os.path.join(lib_dir, name)
+                if os.path.islink(in_path):
+                    linkto = os.readlink(in_path)
+                    print(linkto)
+                else:
+                    bin_name = os.path.join(bin_out, name)
+                    shutil.copyfile(in_path, bin_name)
                 if sys.platform == 'darwin':
                     p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE)
