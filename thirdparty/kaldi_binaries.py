@@ -92,35 +92,38 @@ def collect_tools_binaries(directory):
                     lib = os.path.basename(l)
                     subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, out_path])
     for name in os.listdir(lib_dir):
-        if sys.platform == 'win32' and name in included_libraries[sys.platform]:
-            shutil.copy(os.path.join(lib_dir, name), bin_out)
-        elif sys.platform != 'win32':
-            c = False
-            for l in included_libraries[sys.platform]:
-                if name.startswith(l):
-                    c = True
-                    new_name = l
-            if c:
-                bin_name = os.path.join(bin_out, new_name)
-                shutil.copyfile(os.path.join(lib_dir, name), bin_name)
-                if sys.platform == 'darwin':
-                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE)
-                    output, err = p.communicate()
-                    rc = p.returncode
-                    output = output.decode()
-                    libs = dylib_pattern.findall(output)
-                    for l in libs:
-                        if l.startswith('/usr') and not l.startswith('/usr/local'):
-                            continue
-                        lib = os.path.basename(l)
-                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-    for root, dirs, files in os.walk(tools_dir, followlinks=True):
-        for name in files:
-            if name == open_blas_library[sys.platform]:
-                bin_name = os.path.join(bin_out, new_name)
-                shutil.copyfile(os.path.join(root, name), bin_name)
-                break
+        if name in included_libraries[sys.platform]:
+            if sys.platform == 'win32':
+                shutil.copy(os.path.join(lib_dir, name), bin_out)
+        else:
+            actual_lib = os.path.join(lib_dir, name)
+            while os.path.islink(actual_lib):
+                linkto = os.readlink(actual_lib)
+                actual_lib = os.path.join(lib_dir, linkto)
+
+            bin_name = os.path.join(bin_out, name)
+            shutil.copyfile(actual_lib, bin_name)
+            if sys.platform == 'darwin':
+                p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                output, err = p.communicate()
+                rc = p.returncode
+                output = output.decode()
+                libs = dylib_pattern.findall(output)
+                for l in libs:
+                    if l.startswith('/usr') and not l.startswith('/usr/local'):
+                        continue
+                    lib = os.path.basename(l)
+                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
+    openblas_dir = os.path.join(tools_dir, 'OpenBLAS','install', 'lib')
+    lib_file = os.path.join(openblas_dir, open_blas_library[sys.platform])
+    out_lib = os.path.join(bin_out, open_blas_library[sys.platform])
+    if os.path.islink(lib_file):
+        linkto = os.readlink(lib_file)
+        actual_lib = os.path.join(openblas_dir, linkto)
+        shutil.copyfile(actual_lib, out_lib)
+    else:
+        shutil.copyfile(lib_file, out_lib)
 
 
 def collect_kaldi_binaries(directory):
