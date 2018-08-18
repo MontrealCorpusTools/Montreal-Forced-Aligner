@@ -16,6 +16,7 @@ addons:
       - ubuntu-toolchain-r-test
     packages:
       - libstdc++6
+      - gfortran
 
 before_install:
   - sudo apt-get update
