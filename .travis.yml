@@ -20,9 +20,9 @@ addons:
 before_install:
   - sudo apt-get update
   - pwd
-  - sudo rm -rf /dev/shm
-  - sudo ln -s /run/shm /dev/shm
-  - sudo ln -s -f bash /bin/sh
+  #- sudo rm -rf /dev/shm
+  #- sudo ln -s /run/shm /dev/shm
+  #- sudo ln -s -f bash /bin/sh
   - bash continuous-integration/travis/install.sh
 
 # Install packages
