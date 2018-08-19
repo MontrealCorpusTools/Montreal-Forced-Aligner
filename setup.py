@@ -46,6 +46,7 @@ if __name__ == '__main__':
                     'aligner.g2p',
                     'aligner.command_line',
                     'aligner.config',
+                    'aligner.features',
                     'aligner.trainers',
                     'aligner.gui'],
           install_requires=[

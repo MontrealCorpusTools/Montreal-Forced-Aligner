@@ -40,7 +40,7 @@ training:
           splice_right_context: 3
 
   - nnet:
-      num_epochs: 5
+      num_iterations: 6
       features:
           lda: true
           ivectors: true

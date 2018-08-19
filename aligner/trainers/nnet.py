@@ -71,10 +71,6 @@ class NnetTrainer(BaseTrainer):
 
     def __init__(self, default_feature_config):
         super(NnetTrainer, self).__init__(default_feature_config)
-        self.num_epochs = 4
-        self.num_epochs_extra = 5
-        self.num_iters_final = 20
-        self.iters_per_epoch = 2
         self.realign_times = 0
 
         self.beam = 10
@@ -120,7 +116,6 @@ class NnetTrainer(BaseTrainer):
         self.lda_dimension = 40
         self.lda_random_prune = 4.0
 
-        self.num_iterations = self.num_epochs * self.iters_per_epoch
         finish_add_layers_iter = self.num_hidden_layers * self.add_layers_period
         self.first_modify_iteration = finish_add_layers_iter + self.add_layers_period
         self.mix_up_iteration = (self.num_iterations + finish_add_layers_iter) / 2
@@ -132,7 +127,6 @@ class NnetTrainer(BaseTrainer):
         self.architecture = 'nnet'
 
     def compute_calculated_properties(self):
-        self.num_iterations = self.num_epochs * self.iters_per_epoch
         finish_add_layers_iter = self.num_hidden_layers * self.add_layers_period
         self.first_modify_iteration = finish_add_layers_iter + self.add_layers_period
         self.mix_up_iteration = (self.num_iterations + finish_add_layers_iter) / 2
@@ -156,7 +150,7 @@ class NnetTrainer(BaseTrainer):
         topo_path = os.path.join(self.dictionary.output_directory, 'topo')
         tree_info_proc = subprocess.Popen([thirdparty_binary('tree-info'),
                                            os.path.join(previous_trainer.align_directory, 'tree')],
-                                          stdout=subprocess.PIPE)
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         tree_info = tree_info_proc.stdout.read()
         tree_info = tree_info.split()
         num_leaves = tree_info[1]

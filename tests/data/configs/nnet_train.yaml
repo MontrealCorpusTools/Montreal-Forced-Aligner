@@ -32,7 +32,7 @@ training:
           splice_right_context: 3
 
   - nnet:
-      num_epochs: 25
+      num_iterations: 6
       features:
           lda: true
           splice_left_context: 3
