@@ -103,7 +103,6 @@ def align_corpus(args):
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
-        shutil.rmtree(args.output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
