@@ -57,7 +57,7 @@ else:
         if i == 0:
             shutil.move(orig_dir, lib_dir)
         else:
-            shutil.move(os.path.join(orig_dir, e + exe_ext), os.path.join(lib_dir, 'mfa_' + e + exe_ext))
+            shutil.move(os.path.join(orig_dir, e + exe_ext), os.path.join(lib_dir, e + exe_ext))
         os.symlink(os.path.join(lib_dir, e + exe_ext), os.path.join(bin_dir, 'mfa_' + e + exe_ext))
 
 # Copy thirdparty binaries
