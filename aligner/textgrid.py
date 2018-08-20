@@ -99,7 +99,8 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
             try:
                 speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
                 tg = TextGrid(maxTime=maxtime)
-                for speaker, words in speaker_dict.items():
+                for speaker in corpus.speaker_ordering[filename]:
+                    words = speaker_dict[speaker]
                     word_tier_name = '{} - words'.format(speaker)
                     phone_tier_name = '{} - phones'.format(speaker)
                     word_tier = IntervalTier(name=word_tier_name, maxTime=maxtime)

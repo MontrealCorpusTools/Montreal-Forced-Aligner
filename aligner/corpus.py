@@ -268,6 +268,7 @@ class Corpus(object):
         self.textgrid_read_errors = {}
         self.transcriptions_without_wavs = []
         self.file_directory_mapping = {}
+        self.speaker_ordering = {}
         self.tg_count = 0
         self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):
@@ -347,12 +348,14 @@ class Corpus(object):
                         A_path, B_path = extract_temp_channels(wav_path, self.temp_directory)
                     elif n_channels > 2:
                         raise (Exception('More than two channels'))
+                    self.speaker_ordering[file_name] = []
                     if not self.speaker_directories:
                         if isinstance(speaker_characters, int):
                             speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
                             speaker_name = f.split('_')[1]
                         speaker_name = speaker_name.strip().replace(' ', '_')
+                        self.speaker_ordering[file_name].append(speaker_name)
                     for i, ti in enumerate(tg.tiers):
                         if ti.name.lower() == 'notes':
                             continue
@@ -360,6 +363,7 @@ class Corpus(object):
                             continue
                         if self.speaker_directories:
                             speaker_name = ti.name.strip().replace(' ', '_')
+                            self.speaker_ordering[file_name].append(speaker_name)
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
                             text = interval.mark.lower().strip()
