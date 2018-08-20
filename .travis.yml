@@ -8,23 +8,24 @@ notifications:
   email: false
 
 sudo: true
-dist: trusty
+dist: xenial
 
 addons:
   apt:
     sources:
-      - ubuntu-toolchain-r-test 
+      - ubuntu-toolchain-r-test
     packages:
-      - libatlas3-base
       - libstdc++6
+      - gfortran
 
 before_install:
   - sudo apt-get update
-  - pwd 
-  - sudo rm -rf /dev/shm
-  - sudo ln -s /run/shm /dev/shm
-  - sudo ln -s -f bash /bin/sh
+  - pwd
+  #- sudo rm -rf /dev/shm
+  #- sudo ln -s /run/shm /dev/shm
+  #- sudo ln -s -f bash /bin/sh
   - bash continuous-integration/travis/install.sh
+  - ls thirdparty/bin -al
 
 # Install packages
 install:
@@ -41,6 +42,10 @@ script:
 # Calculate coverage
 after_success:
   - coveralls
+
+after_failure:
+  - ls tests/data/generated/sickcorpus/corpus_data/split2/log
+  - cat tests/data/generated/sickcorpus/corpus_data/split2/log/make_mfcc.0.log
 
 cache:
   directories:

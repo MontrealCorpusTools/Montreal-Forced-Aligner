@@ -10,8 +10,9 @@ from aligner import __version__
 from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
 from aligner.aligner import TrainableAligner
-from aligner.utils import no_dictionary
-from aligner.config import TEMP_DIR
+from aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train
+
+from aligner.exceptions import ArgumentError
 
 
 def align_corpus(args):
@@ -41,7 +42,6 @@ def align_corpus(args):
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
-        shutil.rmtree(args.output_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
@@ -50,41 +50,25 @@ def align_corpus(args):
                         num_jobs=getattr(args, 'num_jobs', 3),
                         debug=getattr(args, 'debug', False),
                         ignore_exceptions=getattr(args, 'ignore_exceptions', False))
+        if corpus.issues_check:
+            print('WARNING: Some issues parsing the corpus were detected. '
+                  'Please run the validator to get more information.')
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
-        utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
+        utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
-        oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
+        oov_path = os.path.join(corpus.split_directory(), 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
-        mono_params = {'align_often': not args.fast}
-        tri_params = {'align_often': not args.fast}
-        tri_fmllr_params = {'align_often': not args.fast}
-        a = TrainableAligner(corpus, dictionary, args.output_directory,
-                             temp_directory=data_directory,
-                             mono_params=mono_params, tri_params=tri_params,
-                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs,
-                             skip_input=getattr(args,'quiet', False),
-                             nnet=getattr(args, 'artificial_neural_net', False))
+        if args.config_path:
+            train_config, align_config = train_yaml_to_config(args.config_path)
+        else:
+            train_config, align_config = load_basic_train()
+        a = TrainableAligner(corpus, dictionary, train_config, align_config, args.output_directory,
+                             temp_directory=data_directory)
         a.verbose = args.verbose
-
-        # GMM training (looks like it needs to be done either way, as a starter for nnet)
-        a.train_mono()
+        a.train()
         a.export_textgrids()
-        a.train_tri()
-        a.export_textgrids()
-        a.train_tri_fmllr()
-        a.export_textgrids()
-
-        # nnet training
-        if args.artificial_neural_net:
-            # Do nnet training
-            a.train_lda_mllt()      
-            #a.train_diag_ubm()      # Uncomment to train i-vector extractor
-            #a.ivector_extractor()   # Uncomment to train i-vector extractor (integrate with argument eventually)
-            a.train_nnet_basic()     
-            a.export_textgrids()
-
         if args.output_model_path is not None:
             a.save(args.output_model_path)
     except:
@@ -95,61 +79,24 @@ def align_corpus(args):
             yaml.dump(conf, f)
 
 
-def align_corpus_no_dict(args):
-    if not args.temp_directory:
-        temp_dir = TEMP_DIR
-    else:
-        temp_dir = os.path.expanduser(args.temp_directory)
-    corpus_name = os.path.basename(args.corpus_directory)
-    data_directory = os.path.join(temp_dir, corpus_name)
-    if args.clean:
-        shutil.rmtree(data_directory, ignore_errors=True)
-        shutil.rmtree(args.output_directory, ignore_errors=True)
-
-    os.makedirs(data_directory, exist_ok=True)
-    os.makedirs(args.output_directory, exist_ok=True)
-
-    corpus = Corpus(args.corpus_directory, data_directory, args.speaker_characters,
-                    num_jobs=getattr(args, 'num_jobs', 3),
-                    debug=getattr(args, 'debug', False),
-                    ignore_exceptions=getattr(args, 'ignore_exceptions', False))
-    print(corpus.speaker_utterance_info())
-    dictionary = no_dictionary(corpus, data_directory)
-    mono_params = {'align_often': not args.fast}
-    tri_params = {'align_often': not args.fast}
-    tri_fmllr_params = {'align_often': not args.fast}
-    a = TrainableAligner(corpus, dictionary, args.output_directory,
-                         temp_directory=data_directory,
-                         mono_params=mono_params, tri_params=tri_params,
-                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug,
-                         skip_input=getattr(args,'quiet', False))
-
-    a.verbose = args.verbose
-    a.train_mono()
-    a.export_textgrids()
-    a.train_tri()
-    a.export_textgrids()
-    a.train_tri_fmllr()
-    a.export_textgrids()
-    if args.output_model_path is not None:
-        a.save(args.output_model_path)
-
-
 def validate_args(args):
-    if not args.no_dict and args.dictionary_path == '':
-        raise (Exception('Must specify dictionary or no_dict option'))
-    if args.no_dict and args.dictionary_path != '':
-        raise (Exception('Dict_path cannot be specified with no_dict option'))
+    if not os.path.exists(args.corpus_directory):
+        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
+    if not os.path.isdir(args.corpus_directory):
+        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
+    if not os.path.exists(args.dictionary_path):
+        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
+    if not os.path.isfile(args.dictionary_path):
+        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     parser = argparse.ArgumentParser()
     parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-    parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use', nargs='?', default='')
+    parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use',
+                        default='')
     parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
-
-    parser.add_argument('-a', '--artificial_neural_net', action='store_true')
 
     parser.add_argument('-o', '--output_model_path', type=str, default='',
                         help='Full path to save resulting acoustic and dictionary model')
@@ -158,30 +105,28 @@ if __name__ == '__main__':  # pragma: no cover
                              'default is to use directory names')
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
-    parser.add_argument('-f', '--fast', help="Perform a quick alignment with half the number of alignment iterations",
-                        action='store_true')
     parser.add_argument('-j', '--num_jobs', type=int, default=3,
                         help='Number of cores to use while aligning')
     parser.add_argument('-v', '--verbose', help="Output debug messages about alignment", action='store_true')
-    parser.add_argument('--no_dict', help="Create a dictionary based on the orthography", action='store_true')
     parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
     parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
-    parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
-                        action='store_true')
-    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
-                        action='store_true')
+    parser.add_argument('--config_path', type=str, default='',
+                        help='Path to config file to use for training and alignment')
     args = parser.parse_args()
     fix_path()
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
-    validate_args(args)
     if not args.output_model_path:
         args.output_model_path = None
+    validate_args(args)
+
+    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
+    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+    if args.corpus_directory == args.output_directory:
+        raise Exception('Corpus directory and output directory cannot be the same folder.')
+
     temp_dir = args.temp_directory
-    if args.no_dict:
-        align_corpus_no_dict(args)
-    else:
-        align_corpus(args)
+    align_corpus(args)
     unfix_path()

@@ -194,7 +194,8 @@ Pretrained G2P models
 
 
 Included with MFA is a separate tool to generate a dictionary from a preexisting model. This should be used if you're
-aligning a dataset for which you have no pronunciation dictionary or the orthography is very transparent. We have pretrained models for several languages,
+aligning a dataset for which you have no pronunciation dictionary or the orthography is very transparent. We have pretrained
+models for several languages,
 which can be downloaded below. These models were generated using
 `Phonetisaurus`_ and the GlobalPhone dataset. This  means that they will only work for transcriptions which use the same
 alphabet. Current language options are listed below, with the following accuracies when trained on 90% of the data and 

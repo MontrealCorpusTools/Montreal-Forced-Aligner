@@ -12,11 +12,6 @@ Running the aligner
 
 Common options for both aligner executables
 -------------------------------------------
-.. cmdoption:: -a
-               --artificial_neural_net
-
-  Use an artificial deep neural network (DNN) to perform alignment.
-
 
 .. cmdoption:: -s NUMBER
                --speaker_characters NUMBER
@@ -54,12 +49,6 @@ Common options for both aligner executables
 
   Display help message for the executable
 
-.. cmdoption:: -i
-               --ignore_exceptions
-
-  Ignore exceptions in loading the corpus. An error will be thrown if two files share the same name, adding this flag will
-  ensure utterance names will be unique by appending numbers to the ends of the file names.
-
 Align using pretrained models
 -----------------------------
 
@@ -86,19 +75,10 @@ Steps to align:
    be smarter about cleaning up TextGrids from previous runs without removing the directory.
 
 .. note::
-   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` currently works for the English acoustic model trained on the `Librispeech corpus`_.
+   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` currently works for the English
+   acoustic model trained on the `Librispeech corpus`_.
 
 Extra options (in addition to the common ones listed above):
-
-.. cmdoption:: -n
-               --no_speaker_adaptation
-
-   Flag to disable using speaker adaptation, useful if aligning a small dataset or if speed is more important
-
-.. cmdoption:: -e
-               --errors
-
-   Flag for whether utterance transcriptions should be checked for errors prior to aligning
 
 
 .. note::
@@ -117,7 +97,8 @@ Align using only the data set
 
 Steps to align:
 
-1. Open Terminal (Mac) or a Command Window (Windows), and change the directory to the root of where you installed the Montreal Forced Aligner:
+1. Open Terminal (Mac) or a Command Window (Windows), and change the directory to the root of where you installed the
+Montreal Forced Aligner:
 
   .. code-block:: bash
 
@@ -138,22 +119,11 @@ Steps to align:
 
 Extra options (in addition to the common ones listed above):
 
-.. cmdoption:: -f
-               --fast
-
-  The aligner will do alignment with half the normal amount of iterations
-
 .. cmdoption:: -o PATH
                --output_model_path PATH
 
   Path to a zip file to save the results' acoustic models (and dictionary)
   from training to use in future aligning
-
-.. cmdoption:: --no_dict
-
-  If this option is specified, the pronunciation for any given word will be
-  the orthography, useful for transparent orthographies that have near one-to-one
-  correspondence between sounds and alphabet symbols
 
 .. note::
 
