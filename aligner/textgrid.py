@@ -81,8 +81,9 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     phonetier.add(*interval)
                 tg.append(wordtier)
                 tg.append(phonetier)
-                if corpus.speaker_directories:
-                    speaker_directory = os.path.join(out_directory, corpus.utt_speak_mapping[k])
+                relative = corpus.file_directory_mapping[k]
+                if relative:
+                    speaker_directory = os.path.join(out_directory, relative)
                 else:
                     speaker_directory = out_directory
                 os.makedirs(speaker_directory, exist_ok=True)
@@ -96,8 +97,10 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
         for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
             maxtime = corpus.get_wav_duration(filename)
             try:
+                speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
                 tg = TextGrid(maxTime=maxtime)
-                for speaker, words in speaker_dict.items():
+                for speaker in corpus.speaker_ordering[filename]:
+                    words = speaker_dict[speaker]
                     word_tier_name = '{} - words'.format(speaker)
                     phone_tier_name = '{} - phones'.format(speaker)
                     word_tier = IntervalTier(name=word_tier_name, maxTime=maxtime)
@@ -116,7 +119,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                             phone_tier.add(*p)
                     tg.append(word_tier)
                     tg.append(phone_tier)
-                tg.write(os.path.join(out_directory, filename + '.TextGrid'))
+                tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_write_errors[filename] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))

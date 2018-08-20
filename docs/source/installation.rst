@@ -48,21 +48,19 @@ The Linux distributions were built on Ubuntu 14.04, and so may not work on
 machines that have older versions of Linux system packages.  If these instructions
 do not work, then the executables will have to be built from source.
 
-1. Ensure the ATLAS package is installed (``sudo apt-get install libatlas3-base``)
-2. Download the tar.gz archive for Linux and untar the folder to any directory
-3. Open a terminal window
-4. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
-5. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align`` (these should print usage messages about the commands)
+1. Download the tar.gz archive for Linux and untar the folder to any directory
+2. Open a terminal window
+3. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
+4. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align`` (these should print usage messages about the commands)
 
 Building from source
 ====================
 
-.. note::
-   These instructions require Python 3 (you may have to replace
-   instances of ``python`` and ``pip`` with ``python3`` and ``pip3`` if Python 3 is
-   not your default Python) and assume Linux in the commands.
+NB: These instructions require Python 3 (you may have to replace
+instances of ``python`` and ``pip`` with ``python3`` and ``pip3`` if Python 3 is
+not your default Python) and assume Linux in the commands.
 
-1. Get Kaldi compiled and working: `Kaldi GitHub repository`_
+1. Get kaldi compiled and working: `Kaldi GitHub repository`_
 2. Download the source zip from the releases page
 3. Open a terminal and go to the unzipped folder (``cd /path/to/Montreal-Forced-Aligner/thirdparty``)
 4. Run the ``thirdparty/kaldibinaries.py`` script, pointing it to where Kaldi was built (``python thirdparty/kaldibinaries.py /path/to/kaldi/root``)

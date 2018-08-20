@@ -5,78 +5,17 @@ import traceback
 import shutil
 import struct
 import wave
+import re
 import logging
+import random
 from collections import defaultdict, Counter
 from textgrid import TextGrid, IntervalTier
 
-from .helper import thirdparty_binary, load_text, make_safe
-from .multiprocessing import mfcc
+from .helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp
 
 from .exceptions import SampleRateError, CorpusError
 
 from .dictionary import sanitize
-
-from .config import MfccConfig
-
-
-def output_mapping(mapping, path):
-    with open(path, 'w', encoding='utf8') as f:
-        for k in sorted(mapping.keys()):
-            v = mapping[k]
-            if isinstance(v, list):
-                v = ' '.join(v)
-            f.write('{} {}\n'.format(k, v))
-
-
-def save_scp(scp, path, sort=True, multiline=False):
-    with open(path, 'w', encoding='utf8') as f:
-        if sort:
-            scp = sorted(scp)
-        for line in scp:
-            if multiline:
-                f.write('{}\n{}\n'.format(make_safe(line[0]), make_safe(line[1])))
-            else:
-                f.write('{}\n'.format(' '.join(map(make_safe, line))))
-
-
-def save_groups(groups, seg_dir, pattern, multiline=False):
-    for i, g in enumerate(groups):
-        path = os.path.join(seg_dir, pattern.format(i))
-        save_scp(g, path, multiline=multiline)
-
-
-def load_scp(path):
-    '''
-    Load a Kaldi script file (.scp)
-
-    See http://kaldi-asr.org/doc/io.html#io_sec_scp_details for more information
-
-    Parameters
-    ----------
-    path : str
-        Path to Kaldi script file
-
-    Returns
-    -------
-    dict
-        Dictionary where the keys are the first couple and the values are all
-        other columns in the script file
-
-    '''
-    scp = {}
-    with open(path, 'r', encoding='utf8') as f:
-        for line in f:
-            line = line.strip()
-            if line == '':
-                continue
-            line_list = line.split()
-            key = line_list.pop(0)
-            if len(line_list) == 1:
-                value = line_list[0]
-            else:
-                value = line_list
-            scp[key] = value
-    return scp
 
 
 def find_lab(filename, files):
@@ -99,6 +38,30 @@ def find_lab(filename, files):
     for f in files:
         fn, fext = os.path.splitext(f)
         if fn == name and fext.lower() == '.lab':
+            return f
+    return None
+
+
+def find_wav(filename, files):
+    '''
+    Finds a .wav file that corresponds to a transcription file
+
+    Parameters
+    ----------
+    filename : str
+        Name of transcription file
+    files : list
+        List of files to search in
+
+    Returns
+    -------
+    str or None
+        If a corresponding .wav file is found, returns it, otherwise returns None
+    '''
+    name, ext = os.path.splitext(filename)
+    for f in files:
+        fn, fext = os.path.splitext(f)
+        if fn == name and fext.lower() == '.wav':
             return f
     return None
 
@@ -210,6 +173,12 @@ def extract_temp_channels(wav_path, temp_directory):
     return A_path, B_path
 
 
+def parse_transcription(text):
+    words = [sanitize(x) for x in text.split()]
+    words = [x for x in words if x not in ['', '-', "'"]]
+    return words
+
+
 class Corpus(object):
     '''
     Class that stores information about the dataset to align.
@@ -227,8 +196,6 @@ class Corpus(object):
         Directory of the dataset to align
     output_directory : str
         Directory to store generated data for the Kaldi binaries
-    mfcc_config : MfccConfig
-        Configuration object for how to calculate MFCCs
     speaker_characters : int, optional
         Number of characters in the filenames to count as the speaker ID,
         if not specified, speaker IDs are generated from directory names
@@ -245,7 +212,6 @@ class Corpus(object):
     '''
 
     def __init__(self, directory, output_directory,
-                 use_speaker_information=True,
                  speaker_characters=0,
                  num_jobs=3, debug=False,
                  ignore_exceptions=False):
@@ -264,16 +230,16 @@ class Corpus(object):
             raise CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory))
         if num_jobs < 1:
             num_jobs = 1
+
         print('Setting up corpus information...')
         root_logger.info('Setting up corpus information...')
         self.directory = directory
-        self.output_directory = os.path.join(output_directory, 'train')
+        self.output_directory = os.path.join(output_directory, 'corpus_data')
         self.temp_directory = os.path.join(self.output_directory, 'temp')
         os.makedirs(self.temp_directory, exist_ok=True)
         self.num_jobs = num_jobs
 
         # Set up mapping dictionaries
-
         self.speak_utt_mapping = defaultdict(list)
         self.utt_speak_mapping = {}
         self.utt_wav_mapping = {}
@@ -285,6 +251,8 @@ class Corpus(object):
         self.ignored_utterances = []
         self.wav_files = []
         self.wav_durations = {}
+        self.utterance_lengths = {}
+        self.utterance_oovs = {}
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -294,38 +262,38 @@ class Corpus(object):
         else:
             self.speaker_directories = False
         self.sample_rates = defaultdict(set)
-        no_transcription_files = []
-        decode_error_files = []
-        unsupported_sample_rate = []
-        ignored_duplicates = False
-        textgrid_read_errors = {}
+        self.no_transcription_files = []
+        self.decode_error_files = []
+        self.unsupported_sample_rate = []
+        self.textgrid_read_errors = {}
+        self.transcriptions_without_wavs = []
+        self.file_directory_mapping = {}
+        self.speaker_ordering = {}
+        self.tg_count = 0
+        self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             for f in sorted(files):
                 file_name, ext = os.path.splitext(f)
                 if ext.lower() != '.wav':
+                    if ext.lower() in ['.lab', '.textgrid']:
+                        wav_path = find_wav(f, files)
+                        if wav_path is None:
+                            self.transcriptions_without_wavs.append(os.path.join(root, f))
                     continue
                 lab_name = find_lab(f, files)
                 wav_path = os.path.join(root, f)
                 sr = get_sample_rate(wav_path)
                 if sr < 16000:
-                    unsupported_sample_rate.append(wav_path)
-                    continue
+                    self.unsupported_sample_rate.append(wav_path)
                 if lab_name is not None:
                     utt_name = file_name
                     if utt_name in self.utt_wav_mapping:
-                        if not ignore_exceptions:
-                            prev_wav = self.utt_wav_mapping[utt_name]
-                            raise CorpusError(
-                                'Files with the same file name are not permitted. Files with the same name are: {}, {}.'.format(
-                                    prev_wav, wav_path))
-                        else:
-                            ignored_duplicates = True
-                            ind = 0
-                            fixed_utt_name = utt_name
-                            while fixed_utt_name not in self.utt_wav_mapping:
-                                ind += 1
-                                fixed_utt_name = utt_name + '_{}'.format(ind)
-                            utt_name = fixed_utt_name
+                        ind = 0
+                        fixed_utt_name = utt_name
+                        while fixed_utt_name not in self.utt_wav_mapping:
+                            ind += 1
+                            fixed_utt_name = utt_name + '_{}'.format(ind)
+                        utt_name = fixed_utt_name
                     if self.feat_mapping and utt_name not in self.feat_mapping:
                         self.ignored_utterances.append(utt_name)
                         continue
@@ -333,10 +301,9 @@ class Corpus(object):
                     try:
                         text = load_text(lab_path)
                     except UnicodeDecodeError:
-                        decode_error_files.append(lab_path)
+                        self.decode_error_files.append(lab_path)
                         continue
-                    words = [sanitize(x) for x in text.split()]
-                    words = [x for x in words if x not in ['', '-', "'"]]
+                    words = parse_transcription(text)
                     if not words:
                         continue
                     self.word_counts.update(words)
@@ -354,10 +321,13 @@ class Corpus(object):
                     self.utt_wav_mapping[utt_name] = wav_path
                     self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                     self.utt_speak_mapping[utt_name] = speaker_name
+                    self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+
+                    self.lab_count += 1
                 else:
                     tg_name = find_textgrid(f, files)
                     if tg_name is None:
-                        no_transcription_files.append(wav_path)
+                        self.no_transcription_files.append(wav_path)
                         continue
                     self.wav_files.append(file_name)
                     self.wav_durations[file_name] = get_wav_duration(wav_path)
@@ -367,7 +337,8 @@ class Corpus(object):
                         tg.read(tg_path)
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
-                        textgrid_read_errors[tg_path] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        self.textgrid_read_errors[tg_path] = '\n'.join(
+                            traceback.format_exception(exc_type, exc_value, exc_traceback))
                     n_channels = get_n_channels(wav_path)
                     num_tiers = len(tg.tiers)
                     if n_channels == 2:
@@ -377,12 +348,14 @@ class Corpus(object):
                         A_path, B_path = extract_temp_channels(wav_path, self.temp_directory)
                     elif n_channels > 2:
                         raise (Exception('More than two channels'))
+                    self.speaker_ordering[file_name] = []
                     if not self.speaker_directories:
                         if isinstance(speaker_characters, int):
                             speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
                             speaker_name = f.split('_')[1]
                         speaker_name = speaker_name.strip().replace(' ', '_')
+                        self.speaker_ordering[file_name].append(speaker_name)
                     for i, ti in enumerate(tg.tiers):
                         if ti.name.lower() == 'notes':
                             continue
@@ -390,12 +363,11 @@ class Corpus(object):
                             continue
                         if self.speaker_directories:
                             speaker_name = ti.name.strip().replace(' ', '_')
+                            self.speaker_ordering[file_name].append(speaker_name)
                         self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
                         for interval in ti:
-                            label = interval.mark.lower().strip()
-                            #label = sanitize(label)
-                            words = [sanitize(x) for x in label.split()]
-                            words = [x for x in words if x not in ['', '-', "'"]]
+                            text = interval.mark.lower().strip()
+                            words = parse_transcription(text)
                             if not words:
                                 continue
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
@@ -404,7 +376,6 @@ class Corpus(object):
                             if n_channels == 1:
                                 if self.feat_mapping and utt_name not in self.feat_mapping:
                                     self.ignored_utterances.append(utt_name)
-                                    continue
                                 self.segments[utt_name] = '{} {} {}'.format(file_name, begin, end)
                                 self.utt_wav_mapping[file_name] = wav_path
                             else:
@@ -412,54 +383,28 @@ class Corpus(object):
                                     utt_name += '_A'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                        continue
                                     self.segments[utt_name] = '{} {} {}'.format(A_name, begin, end)
                                     self.utt_wav_mapping[A_name] = A_path
                                 else:
                                     utt_name += '_B'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                        continue
                                     self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
                                     self.utt_wav_mapping[B_name] = B_path
                             self.text_mapping[utt_name] = ' '.join(words)
                             self.word_counts.update(words)
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
-        if ignored_duplicates:
-            print('At least one duplicate wav file name was found and treated as a different utterance.')
-        if len(self.ignored_utterances) > 0:
-            print('{} utterance(s) were ignored due to lack of features, please see {} for more information.'.format(
-                len(self.ignored_utterances), self.log_file))
-            root_logger.warning(
-                'The following utterances were ignored due to lack of features: {}.  '
-                'See relevant logs for more information'.format(', '.join(self.ignored_utterances)))
-        if len(no_transcription_files) > 0:
-            print(
-                '{} wav file(s) were ignored because neither a .lab file or a .TextGrid file could be found, '
-                'please see {} for more information'.format(len(no_transcription_files), self.log_file))
-            root_logger.warning(
-                'The following wav files were ignored due to lack of of a .lab or a .TextGrid file: {}.'.format(
-                    ', '.join(no_transcription_files)))
-        if textgrid_read_errors:
-            print('{} TextGrid files were ignored due to errors loading them. '
-                  'Please see {} for more information on the errors.'.format(len(textgrid_read_errors), self.log_file))
-            for k, v in textgrid_read_errors.items():
-                root_logger.warning('The TextGrid file {} gave the following error on load:\n\n{}'.format(k, v))
-        if len(unsupported_sample_rate) > 0:
-            print(
-                '{} wav file(s) were ignored because they had a sample rate less than 16000, '
-                'which is not currently supported, please see {} for more information'.format(
-                    len(unsupported_sample_rate), self.log_file))
-            root_logger.warning(
-                'The following wav files were ignored due to a sample rate lower than 16000: {}.'.format(
-                    ', '.join(unsupported_sample_rate)))
-        if decode_error_files:
-            print('There was an issue reading {} text file(s).  '
-                  'Please see {} for more information.'.format(len(decode_error_files), self.log_file))
-            root_logger.warning(
-                'The following lab files were ignored because they could not be parsed with utf8: {}.'.format(
-                    ', '.join(decode_error_files)))
+                    if n_channels == 2:
+                        self.file_directory_mapping[A_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                        self.file_directory_mapping[B_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                    else:
+                        self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                    self.tg_count += 1
+
+        self.issues_check = self.ignored_utterances or self.no_transcription_files or \
+                       self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
+
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
             count = 0
@@ -469,8 +414,8 @@ class Corpus(object):
             if count > 1:
                 bad_speakers.append(speaker)
         if bad_speakers:
-            msg = 'The following speakers had multiple speaking rates: {}.  Please make sure that each speaker has a consistent sampling rate.'.format(
-                ', '.join(bad_speakers))
+            msg = 'The following speakers had multiple speaking rates: {}. ' \
+                  'Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))
             root_logger.error(msg)
             raise (SampleRateError(msg))
 
@@ -478,15 +423,24 @@ class Corpus(object):
             self.num_jobs = len(self.speak_utt_mapping)
         if self.num_jobs < len(self.sample_rates.keys()):
             self.num_jobs = len(self.sample_rates.keys())
-            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset.  If you would like to use fewer parallel jobs, please resample all wav files to the same sample rate.'.format(
-                self.num_jobs)
-            print(msg)
+            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
+                  'If you would like to use fewer parallel jobs, ' \
+                  'please resample all wav files to the same sample rate.'.format(self.num_jobs)
+            print('WARNING: ' + msg)
             root_logger.warning(msg)
         self.find_best_groupings()
 
     @property
+    def ivector_directory(self):
+        return os.path.join(self.output_directory, 'ivectors')
+
+    @property
     def word_set(self):
         return set(self.word_counts)
+
+    @property
+    def utterances(self):
+        return list(self.utt_speak_mapping.keys())
 
     def find_best_groupings(self):
         if self.segments:
@@ -507,15 +461,13 @@ class Corpus(object):
             jobs_per_sample_rate[addable[0]] += 1
             remaining_jobs -= 1
         self.speaker_groups = []
-        self.mfcc_configs = []
+        self.frequency_configs = []
         job_num = 0
         for k, v in jobs_per_sample_rate.items():
             speakers = sorted(self.sample_rates[k])
             groups = [[] for x in range(v)]
 
-            configs = [MfccConfig(self.mfcc_directory, job=job_num + x, kwargs={'sample-frequency': k,
-                                                                                'low-freq': 20,
-                                                                                'high-freq': 7800}) for x in range(v)]
+            configs = [(job_num + x, {'sample-frequency': k, 'low-freq': 20, 'high-freq': 7800}) for x in range(v)]
             ind = 0
             while speakers:
                 s = speakers.pop(0)
@@ -526,7 +478,7 @@ class Corpus(object):
 
             job_num += v
             self.speaker_groups.extend(groups)
-            self.mfcc_configs.extend(configs)
+            self.frequency_configs.extend(configs)
         self.groups = []
         for x in self.speaker_groups:
             g = []
@@ -543,20 +495,26 @@ class Corpus(object):
         root_logger.info(msg)
         return msg
 
-    def parse_mfcc_logs(self):
-        pass
+    def parse_features_logs(self):
+        line_reg_ex = r'Did not find features for utterance (\w+)'
+        missing_features = []
+        with open(os.path.join(self.features_log_directory, 'cmvn.log'), 'r') as f:
+            for line in f:
+                m = re.search(line_reg_ex, line)
+                if m is not None:
+                    missing_features.append(m.groups()[0])
 
     @property
     def num_utterances(self):
         return len(self.utt_speak_mapping)
 
     @property
-    def mfcc_directory(self):
-        return os.path.join(self.output_directory, 'mfcc')
+    def features_directory(self):
+        return os.path.join(self.output_directory, 'features')
 
     @property
-    def mfcc_log_directory(self):
-        return os.path.join(self.mfcc_directory, 'log')
+    def features_log_directory(self):
+        return os.path.join(self.features_directory, 'log')
 
     @property
     def grouped_wav(self):
@@ -565,6 +523,8 @@ class Corpus(object):
             done = set()
             output_g = []
             for u in g:
+                if u in self.ignored_utterances:
+                    continue
                 if not self.segments:
                     try:
                         output_g.append([u, self.utt_wav_mapping[u]])
@@ -587,6 +547,8 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in g:
+                if u in self.ignored_utterances:
+                    continue
                 try:
                     output_g.append([u, self.feat_mapping[u]])
                 except KeyError:
@@ -599,6 +561,8 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in g:
+                if u in self.ignored_utterances:
+                    continue
                 if dictionary is None:
                     try:
                         new_text = self.text_mapping[u]
@@ -621,12 +585,14 @@ class Corpus(object):
 
     def grouped_text_int(self, dictionary):
         oov_code = dictionary.oov_int
-        all_oovs = []
+        self.utterance_oovs = {}
         output = []
         grouped_texts = self.grouped_text(dictionary)
         for g in grouped_texts:
             output_g = []
             for u, text in g:
+                if u in self.ignored_utterances:
+                    continue
                 oovs = []
                 for i in range(len(text)):
                     t = text[i]
@@ -637,11 +603,11 @@ class Corpus(object):
                         oovs.append(t)
                     text[i] = lookup
                 if oovs:
-                    all_oovs.append(u + ' ' + ', '.join(oovs))
+                    self.utterance_oovs[u] = oovs
                 new_text = map(str, (x for x in text if isinstance(x, int)))
                 output_g.append([u, ' '.join(new_text)])
             output.append(output_g)
-        return output, all_oovs
+        return output
 
     @property
     def grouped_cmvn(self):
@@ -667,6 +633,8 @@ class Corpus(object):
         for g in self.groups:
             output_g = []
             for u in sorted(g):
+                if u in self.ignored_utterances:
+                    continue
                 try:
                     output_g.append([u, self.utt_speak_mapping[u]])
                 except KeyError:
@@ -753,9 +721,17 @@ class Corpus(object):
             nframes = soundf.getnframes()
         return nframes / sr
 
-    @property
     def split_directory(self):
-        return os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+        directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+        return directory
+
+    def subset_directory(self, subset, feature_config):
+        if subset is None or subset > self.num_utterances:
+            return self.split_directory()
+        directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
+        if not os.path.exists(directory):
+            self.create_subset(subset, feature_config)
+        return directory
 
     def write(self):
         self._write_speak_utt()
@@ -807,25 +783,13 @@ class Corpus(object):
         pattern = 'wav.{}.scp'
         save_groups(self.grouped_wav, directory, pattern)
 
-    def _split_feats(self, directory):
-        if not self.feat_mapping:
-            feat_path = os.path.join(self.output_directory, 'feats.scp')
-            self.feat_mapping = load_scp(feat_path)
-        pattern = 'feats.{}.scp'
-        save_groups(self.grouped_feat, directory, pattern)
-
     def _split_texts(self, directory, dictionary=None):
         pattern = 'text.{}'
         save_groups(self.grouped_text(dictionary), directory, pattern)
         if dictionary is not None:
             pattern = 'text.{}.int'
-            ints, all_oovs = self.grouped_text_int(dictionary)
+            ints = self.grouped_text_int(dictionary)
             save_groups(ints, directory, pattern)
-            if all_oovs:
-                with open(os.path.join(directory, 'utterance_oovs.txt'), 'w', encoding='utf8') as f:
-                    for oov in sorted(all_oovs):
-                        f.write(oov + '\n')
-            dictionary.save_oovs_found(directory)
 
     def _split_cmvns(self, directory):
         if not self.cmvn_mapping:
@@ -834,28 +798,13 @@ class Corpus(object):
         pattern = 'cmvn.{}.scp'
         save_groups(self.grouped_cmvn, directory, pattern)
 
-    def create_mfccs(self):
-        log_directory = self.mfcc_log_directory
-        os.makedirs(log_directory, exist_ok=True)
-        if os.path.exists(os.path.join(self.mfcc_directory, 'cmvn')):
-            print("Using previous MFCCs")
-            return
-        print('Calculating MFCCs...')
-        self._split_wavs(self.mfcc_log_directory)
-        self._split_segments(self.mfcc_log_directory)
-        mfcc(self.mfcc_directory, log_directory, self.num_jobs, self.mfcc_configs)
-        self.parse_mfcc_logs()
-        self._combine_feats()
-        print('Calculating CMVN...')
-        self._calc_cmvn()
-
-    def _combine_feats(self):
-        root_logger = logging.getLogger()
+    def combine_feats(self):
         self.feat_mapping = {}
+        split_directory = self.split_directory()
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         with open(feat_path, 'w') as outf:
             for i in range(self.num_jobs):
-                path = os.path.join(self.mfcc_directory, 'raw_mfcc.{}.scp'.format(i))
+                path = os.path.join(split_directory, 'feats.{}.scp'.format(i))
                 with open(path, 'r') as inf:
                     for line in inf:
                         line = line.strip()
@@ -864,116 +813,96 @@ class Corpus(object):
                         f = line.split(maxsplit=1)
                         self.feat_mapping[f[0]] = f[1]
                         outf.write(line + '\n')
-                os.remove(path)
         if len(self.feat_mapping.keys()) != len(self.utt_speak_mapping.keys()):
             for k in self.utt_speak_mapping.keys():
                 if k not in self.feat_mapping:
                     self.ignored_utterances.append(k)
-            print('Some utterances were ignored due to lack of features, please see {} for more information.'.format(
-                self.log_file))
-            root_logger.warning(
-                'The following utterances were ignored due to lack of features: {}.  See relevant logs for more information'.format(
-                    ', '.join(self.ignored_utterances)))
-            for k in self.ignored_utterances:
-                del self.utt_speak_mapping[k]
-                try:
-                    del self.utt_wav_mapping[k]
-                except KeyError:
-                    pass
-                try:
-                    del self.segments[k]
-                except KeyError:
-                    pass
-                try:
-                    del self.text_mapping[k]
-                except KeyError:
-                    pass
             for k, v in self.speak_utt_mapping.items():
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
+        self.figure_utterance_lengths()
 
-    def _calc_cmvn(self):
-        spk2utt = os.path.join(self.output_directory, 'spk2utt')
-        feats = os.path.join(self.output_directory, 'feats.scp')
-        cmvn_directory = os.path.join(self.mfcc_directory, 'cmvn')
-        os.makedirs(cmvn_directory, exist_ok=True)
-        cmvn_ark = os.path.join(cmvn_directory, 'cmvn.ark')
-        cmvn_scp = os.path.join(cmvn_directory, 'cmvn.scp')
-        log_path = os.path.join(cmvn_directory, 'cmvn.log')
-        with open(log_path, 'w') as logf:
-            subprocess.call([thirdparty_binary('compute-cmvn-stats'),
-                             '--spk2utt=ark:' + spk2utt,
-                             'scp:' + feats, 'ark,scp:{},{}'.format(cmvn_ark, cmvn_scp)],
-                            stderr=logf)
-        shutil.copy(cmvn_scp, os.path.join(self.output_directory, 'cmvn.scp'))
-        self.cmvn_mapping = load_scp(cmvn_scp)
+    def get_feat_dim(self, feature_config):
 
-    def _split_and_norm_feats(self):
-        split_dir = self.split_directory
-        log_dir = os.path.join(split_dir, 'log')
-        os.makedirs(log_dir, exist_ok=True)
-        with open(os.path.join(log_dir, 'norm.log'), 'w') as logf:
-            for i in range(self.num_jobs):
-                path = os.path.join(split_dir, 'cmvndeltafeats.{}'.format(i))
-                utt2spkpath = os.path.join(split_dir, 'utt2spk.{}'.format(i))
-                cmvnpath = os.path.join(split_dir, 'cmvn.{}.scp'.format(i))
-                featspath = os.path.join(split_dir, 'feats.{}.scp'.format(i))
-                if not os.path.exists(path):
-                    with open(path, 'wb') as outf:
-                        cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
-                                                      '--utt2spk=ark:' + utt2spkpath,
-                                                      'scp:' + cmvnpath,
-                                                      'scp:' + featspath,
-                                                      'ark:-'], stdout=subprocess.PIPE,
-                                                     stderr=logf
-                                                     )
-                        deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
-                                                        'ark:-', 'ark:-'],
-                                                       stdin=cmvn_proc.stdout,
-                                                       stdout=outf,
-                                                       stderr=logf
-                                                       )
-                        deltas_proc.communicate()
-                    with open(path, 'rb') as inf, open(path + '_sub', 'wb') as outf:
-                        subprocess.call([thirdparty_binary("subset-feats"),
-                                         "--n=10", "ark:-", "ark:-"],
-                                        stdin=inf, stderr=logf, stdout=outf)
-
-    def get_feat_dim(self):
-        directory = self.split_directory
-
-        path = os.path.join(self.split_directory, 'cmvndeltafeats.0')
-        with open(path, 'rb') as f, open(os.devnull, 'w') as devnull:
+        path = os.path.join(self.split_directory(), feature_config.feature_id + '.0.scp')
+        with open(os.devnull, 'w') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                         'ark,s,cs:-', '-'],
-                                        stdin=f,
+                                         'scp:' + path, '-'],
                                         stdout=subprocess.PIPE,
                                         stderr=devnull)
             stdout, stderr = dim_proc.communicate()
             feats = stdout.decode('utf8').strip()
-        return feats
+        return int(feats)
 
-    def initialize_corpus(self, dictionary, skip_input=True):
+    def initialize_corpus(self, dictionary):
         root_logger = logging.getLogger()
-        split_dir = self.split_directory
+        split_dir = self.split_directory()
         self.write()
-        split = False
         if not os.path.exists(split_dir):
-            split = True
+            os.makedirs(os.path.join(split_dir, 'log'), exist_ok=True)
             root_logger.info('Setting up training data...')
-            print('Setting up training data...')
-            os.makedirs(split_dir)
+            print('Setting up corpus_data directory...')
             self._split_wavs(split_dir)
             self._split_utt2spk(split_dir)
             self._split_spk2utt(split_dir)
             self._split_texts(split_dir, dictionary)
             self._split_utt2fst(split_dir, dictionary)
-        if not skip_input and dictionary.oovs_found:
-            user_input = input(
-                'There were words not found in the dictionary. Would you like to abort to fix them? (Y/N)')
-            if user_input.lower() == 'y':
-                sys.exit(1)
-        self.create_mfccs()
-        if split:
-            self._split_feats(split_dir)
-            self._split_cmvns(split_dir)
-            self._split_and_norm_feats()
+            self._split_segments(split_dir)
+        self.figure_utterance_lengths()
+
+    def figure_utterance_lengths(self):
+        feat_path = os.path.join(self.output_directory, 'feats.scp')
+        if os.path.exists(feat_path):
+            with open(os.devnull, 'w') as devnull:
+                dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+                                             'scp:' + feat_path, 'ark,t:-'],
+                                            stdout=subprocess.PIPE,
+                                            stderr=devnull)
+                stdout, stderr = dim_proc.communicate()
+                feats = stdout.decode('utf8').strip()
+                for line in feats.splitlines():
+                    line = line.strip()
+                    line = line.split()
+                    self.utterance_lengths[line[0]] = int(line[1])
+
+    def create_subset(self, subset, feature_config):
+        larger_subset_num = subset * 10
+        if larger_subset_num < self.num_utterances:
+            utts = sorted((x for x in self.utterance_lengths.keys() if ' ' in self.text_mapping[x]),
+                          key=lambda x: self.utterance_lengths[x]) # Get all shorter utterances that are not one word long
+            larger_subset = utts[:larger_subset_num]
+        else:
+            larger_subset = self.utterance_lengths.keys()
+
+        subset_utts = set(random.sample(larger_subset, subset))
+        split_directory = self.split_directory()
+        subset_directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
+        log_dir = os.path.join(subset_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        subset_utt_path = os.path.join(subset_directory, 'included_utts.txt')
+        with open(subset_utt_path, 'w', encoding='utf8') as f:
+            for u in subset_utts:
+                f.write('{}\n'.format(u))
+        for j in range(self.num_jobs):
+            for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
+                with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
+                        open(os.path.join(subset_directory, fn.format(j)), 'w', encoding='utf8') as outf:
+                    for line in inf:
+                        s = line.split()
+                        if s[0] not in subset_utts:
+                            continue
+                        outf.write(line)
+            with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
+                    open(os.path.join(subset_directory, 'spk2utt.{}'.format(j)), 'w', encoding='utf8') as outf:
+                for line in inf:
+                    line = line.split()
+                    speaker, utts = line[0], line[1:]
+                    filtered_utts = [x for  x in utts if x in subset_utts]
+                    outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
+            if feature_config is not None:
+                base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(j))
+                subset_scp = os.path.join(subset_directory, feature_config.feature_id + '.{}.scp'.format(j))
+                filtered = filter_scp(subset_utts, base_path)
+                with open(subset_scp, 'w') as f:
+                    for line in filtered:
+                        f.write(line.strip() + '\n')
+

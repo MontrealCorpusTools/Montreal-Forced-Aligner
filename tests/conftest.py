@@ -8,6 +8,7 @@ import pytest
 
 from aligner.corpus import Corpus
 from aligner.dictionary import Dictionary
+from aligner.config import train_yaml_to_config
 
 
 def pytest_addoption(parser):
@@ -39,6 +40,7 @@ def textgrid_dir(test_dir):
 @pytest.fixture(scope='session')
 def generated_dir(test_dir):
     generated = os.path.join(test_dir, 'generated')
+    shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):
         os.makedirs(generated)
     return generated
@@ -87,6 +89,7 @@ def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     shutil.copyfile(os.path.join(textgrid_dir, name + '.TextGrid'), os.path.join(path, name + '.TextGrid'))
     return path
 
+
 @pytest.fixture(scope='session')
 def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, 'short_segments')
@@ -95,6 +98,7 @@ def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     shutil.copyfile(os.path.join(wav_dir, 'dummy.wav'), os.path.join(path, name + '.wav'))
     shutil.copyfile(os.path.join(textgrid_dir, name + '.TextGrid'), os.path.join(path, name + '.TextGrid'))
     return path
+
 
 @pytest.fixture(scope='session')
 def vietnamese_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
@@ -322,6 +326,11 @@ def g2p_sick_output(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def orth_sick_output(generated_dir):
+    return os.path.join(generated_dir, 'orth_sick.txt')
+
+
+@pytest.fixture(scope='session')
 def example_output_model_path(generated_dir):
     return os.path.join(generated_dir, 'example_output_model.zip')
 
@@ -329,3 +338,58 @@ def example_output_model_path(generated_dir):
 @pytest.fixture(scope='session')
 def KO_dict(test_dir):
     return os.path.join(test_dir, "dictionaries", "KO_dict.txt")
+
+
+@pytest.fixture(scope='session')
+def config_directory(test_dir):
+    return os.path.join(test_dir, 'configs')
+
+
+@pytest.fixture(scope='session')
+def basic_train_config(config_directory):
+    return os.path.join(config_directory, 'basic_train_config.yaml')
+
+
+@pytest.fixture(scope='session')
+def basic_align_config(config_directory):
+    return os.path.join(config_directory, 'basic_align_config.yaml')
+
+
+@pytest.fixture(scope='session')
+def mono_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'mono_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def tri_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'tri_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def lda_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'lda_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def sat_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'sat_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def lda_sat_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'lda_sat_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def ivector_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'ivector_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def nnet_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'nnet_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def nnet_ivectors_train_config(config_directory):
+    return train_yaml_to_config(os.path.join(config_directory, 'nnet_ivectors_train.yaml'))
