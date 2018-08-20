@@ -169,18 +169,22 @@ class CorpusValidator(object):
     {}
     '''
 
-    def __init__(self, corpus, dictionary, temp_directory=None, test_transcriptions=False):
+    def __init__(self, corpus, dictionary, temp_directory=None, ignore_acoustics=False, test_transcriptions=False):
         self.dictionary = dictionary
         self.corpus = corpus
         self.temp_directory = temp_directory
         self.test_transcriptions = test_transcriptions
+        self.ignore_acoustics = ignore_acoustics
         self.trainer = MonophoneTrainer(FeatureConfig())
         self.setup()
 
     def setup(self):
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
-        self.trainer.feature_config.generate_features(self.corpus)
+        if self.ignore_acoustics:
+            print('Skipping acoustic feature generation')
+        else:
+            self.trainer.feature_config.generate_features(self.corpus)
 
     def analyze_setup(self):
         total_duration = sum(self.corpus.utterance_lengths.values()) * self.trainer.feature_config.frame_shift
@@ -207,7 +211,7 @@ class CorpusValidator(object):
 
     def analyze_oovs(self):
         output_dir = self.corpus.output_directory
-        oovs = self.dictionary.oovs_found
+        oov_types = self.dictionary.oovs_found
         utterance_oovs = self.corpus.utterance_oovs
         oov_path = os.path.join(output_dir, 'oovs_found.txt')
         utterance_oov_path = os.path.join(output_dir, 'utterance_oovs.txt')
@@ -222,7 +226,7 @@ class CorpusValidator(object):
             total_instances = sum(len(x) for x in utterance_oovs.values())
             message = 'There were {} word types not found in the dictionary with a total of {} instances. ' \
                       'Please see {} for a full list of the word types and {} for a by-utterance breakdown of ' \
-                      'missing words.'.format(len(oovs), total_instances, oov_path, utterance_oov_path)
+                      'missing words.'.format(len(oov_types), total_instances, oov_path, utterance_oov_path)
         else:
             message = 'There were no missing words from the dictionary. If you plan on using the a model trained ' \
                       'on this dataset to align other datasets in the future, it is recommended that there be at ' \
@@ -230,6 +234,8 @@ class CorpusValidator(object):
         return message
 
     def analyze_missing_features(self):
+        if self.ignore_acoustics:
+            return 'Acoustic feature generation was skipped.'
         output_dir = self.corpus.output_directory
         missing_features = self.corpus.ignored_utterances
         if missing_features:
@@ -346,6 +352,9 @@ class CorpusValidator(object):
 
     def validate(self):
         self.analyze_setup()
+        if self.ignore_acoustics:
+            print('Skipping test alignments.')
+            return
         if not isinstance(self.trainer, PretrainedAligner):
             self.trainer.init_training(self.trainer.train_type, self.temp_directory, self.corpus, self.dictionary, None)
             self.trainer.train(call_back=print)

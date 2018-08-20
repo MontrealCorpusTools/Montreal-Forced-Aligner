@@ -5,7 +5,7 @@ import traceback
 
 from textgrid import TextGrid, IntervalTier
 
-from ..corpus import load_text, parse_transcription
+from aligner.corpus import load_text, parse_transcription
 
 from aligner.g2p.generator import PhonetisaurusDictionaryGenerator
 from aligner.corpus import Corpus

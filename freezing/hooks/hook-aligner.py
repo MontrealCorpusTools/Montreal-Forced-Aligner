@@ -5,7 +5,10 @@ from PyInstaller.utils.hooks import (
     collect_data_files, collect_dynamic_libs)
 
 hiddenimports = ['six', 'packaging', 'packaging.version', 'packaging.specifiers',
-                 'packaging.requirements']
+                 'packaging.requirements', 'numpy']
+
+if sys.platform == 'win32':
+    hiddenimports += ['win32api']
 
 #thirdparty_dir = os.path.abspath(os.path.join('thirdparty', 'bin'))
 #binaries = [(os.path.join(thirdparty_dir, x), 'thirdparty/bin')

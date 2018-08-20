@@ -1,16 +1,14 @@
-from .align import fix_path, unfix_path
+from aligner.command_line.align import fix_path, unfix_path, PRETRAINED_LANGUAGES
 import shutil
 import os
 import argparse
 import multiprocessing as mp
 
-
-from ..corpus import Corpus
-from ..dictionary import Dictionary
-from ..validator import CorpusValidator
-from ..exceptions import ArgumentError
-from ..config import TEMP_DIR
-from .align import PRETRAINED_LANGUAGES
+from aligner.corpus import Corpus
+from aligner.dictionary import Dictionary
+from aligner.validator import CorpusValidator
+from aligner.exceptions import ArgumentError
+from aligner.config import TEMP_DIR
 
 
 def validate_corpus(args):
@@ -32,11 +30,14 @@ def validate_corpus(args):
     dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,
+                        ignore_acoustics=getattr(args, 'ignore_acoustics', False),
                         test_transcriptions=getattr(args, 'test_transcriptions', False))
     a.validate()
 
 
 def validate_args(args):
+    if args.test_transcriptions and args.ignore_acoustics:
+        raise ArgumentError('Cannot test transcriptions without acoustic feature generation.')
     if not os.path.exists(args.corpus_directory):
         raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
     if not os.path.isdir(args.corpus_directory):
@@ -62,6 +63,7 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
     parser.add_argument('--test_transcriptions', help="Test accuracy of transcriptions", action='store_true')
+    parser.add_argument('--ignore_acoustics', help="Skip acoustic feature generation and associated validation", action='store_true')
     parser.add_argument('-j', '--num_jobs', type=int, default=3,
                         help='Number of cores to use while aligning')
 

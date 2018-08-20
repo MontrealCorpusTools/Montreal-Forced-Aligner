@@ -6,13 +6,13 @@ import multiprocessing as mp
 import yaml
 import time
 
-from .. import __version__
-from ..corpus import Corpus
-from ..dictionary import Dictionary
-from ..aligner import TrainableAligner
-from ..config import TEMP_DIR, train_yaml_to_config, load_basic_train
+from aligner import __version__
+from aligner.corpus import Corpus
+from aligner.dictionary import Dictionary
+from aligner.aligner import TrainableAligner
+from aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train
 
-from ..exceptions import ArgumentError
+from aligner.exceptions import ArgumentError
 
 
 def align_corpus(args):

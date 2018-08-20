@@ -13,7 +13,7 @@ from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
 from aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
 
-from ..exceptions import ArgumentError
+from aligner.exceptions import ArgumentError
 
 
 class DummyArgs(object):
