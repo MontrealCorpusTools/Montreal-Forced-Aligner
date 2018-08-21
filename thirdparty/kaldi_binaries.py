@@ -51,7 +51,8 @@ included_libraries = {'linux': linux_libraries,
                                  'libkaldi-base.dylib', 'libkaldi-tree.dylib', 'libkaldi-matrix.dylib',
                                  'libkaldi-feat.dylib', 'libkaldi-transform.dylib', 'libkaldi-lm.dylib',
                                  'libkaldi-gmm.dylib', 'libkaldi-lat.dylib', 'libkaldi-decoder.dylib',
-                                 'libkaldi-fstext.dylib']}
+                                 'libkaldi-fstext.dylib', 'libkaldi-rnnlm.dylib', 'libkaldi-nnet2.dylib',
+                                 'libkaldi-ivector.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
