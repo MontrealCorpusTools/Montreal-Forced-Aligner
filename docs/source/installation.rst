@@ -53,6 +53,10 @@ do not work, then the executables will have to be built from source.
 3. Navigate to the ``montreal-forced-aligner`` folder (``cd /path/to/montreal-forced-aligner``)
 4. Test the commands ``bin/mfa_align`` and ``bin/mfa_train_and_align`` (these should print usage messages about the commands)
 
+.. note::
+
+   The `gfortran` system package is required.
+
 Building from source
 ====================
 

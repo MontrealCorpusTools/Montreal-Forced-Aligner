@@ -164,6 +164,6 @@ if __name__ == '__main__':
     parser.add_argument('dir')
     args = parser.parse_args()
     directory = os.path.expanduser(args.dir)
-    if sys.platform == 'linux':
+    if sys.platform in ['linux', 'darwin']:
         collect_linux_tools_binaries(directory)
     collect_kaldi_binaries(directory)
