@@ -8,6 +8,7 @@ if sys.platform == 'win32':
     exe_ext = '.exe'
 elif sys.platform == 'darwin':
     exe_ext = ''
+    open_blas_library = 'libopenblas.dylib'
 else:
     exe_ext = ''
     open_blas_library = 'libopenblas.so.0'
