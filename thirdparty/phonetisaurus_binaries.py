@@ -1,5 +1,5 @@
 import sys
-import shutil, os
+import shutil, os, stat
 import argparse
 import subprocess
 import re
@@ -36,9 +36,9 @@ def collect_binaries(directory):
                 if key not in included_filenames:
                     continue
                 in_path = os.path.join(root, name)
-                if os.path.exists(out_path) and os.path.getsize(in_path) > os.path.getsize(out_path):
-                    continue # Get the smallest file size when multiples exist
                 shutil.copyfile(in_path, out_path)
+                st = os.stat(out_path)
+                os.chmod(out_path, st.st_mode | stat.S_IEXEC)
                 if sys.platform == 'darwin':
                     p = subprocess.Popen(['otool', '-L', out_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE)

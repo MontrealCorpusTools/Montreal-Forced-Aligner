@@ -1,5 +1,5 @@
 import sys
-import shutil, os
+import shutil, os, stat
 import argparse
 import subprocess
 import re
@@ -36,6 +36,8 @@ def collect_linux_binaries(directory):
             out_path = os.path.join(bin_out, name)
             in_path = os.path.join(bin_dir, name)
             shutil.copyfile(in_path, out_path)
+            st = os.stat(out_path)
+            os.chmod(out_path, st.st_mode | stat.S_IEXEC)
     for name in os.listdir(lib_dir):
         if name in libraries:
             actual_lib = os.path.join(lib_dir, name)
@@ -56,10 +58,9 @@ def collect_binaries(directory):
             if value == exe_ext and key in included_filenames:
                 out_path = os.path.join(bin_out, name)
                 in_path = os.path.join(root, name)
-                if os.path.exists(out_path): # Get the smallest file size when multiples exist
-                    if os.path.getsize(in_path) > os.path.getsize(out_path):
-                        continue
                 shutil.copyfile(in_path, out_path)
+                st = os.stat(out_path)
+                os.chmod(out_path, st.st_mode | stat.S_IEXEC)
                 if sys.platform == 'darwin':
                     p = subprocess.Popen(['otool', '-L', out_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE)
