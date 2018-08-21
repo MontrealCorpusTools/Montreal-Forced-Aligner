@@ -52,6 +52,7 @@ included_libraries = {'linux': linux_libraries,
                                  'libkaldi-feat.dylib', 'libkaldi-transform.dylib', 'libkaldi-lm.dylib',
                                  'libkaldi-gmm.dylib', 'libkaldi-lat.dylib', 'libkaldi-decoder.dylib',
                                  'libkaldi-fstext.dylib', 'libkaldi-rnnlm.dylib', 'libkaldi-nnet2.dylib',
+                                 'libkaldi-nnet3.dylib',
                                  'libkaldi-ivector.dylib']}
 
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
@@ -74,7 +75,7 @@ def collect_linux_tools_binaries(directory):
             out_path = os.path.join(bin_out, name)
             in_path = os.path.join(bin_dir, name)
             if os.path.exists(out_path) and os.path.getsize(in_path) > os.path.getsize(out_path):
-                continue # Get the smallest file size when multiples exist
+                continue  # Get the smallest file size when multiples exist
             shutil.copyfile(in_path, out_path)
             st = os.stat(out_path)
             os.chmod(out_path, st.st_mode | stat.S_IEXEC)
@@ -114,7 +115,7 @@ def collect_linux_tools_binaries(directory):
                             continue
                         lib = os.path.basename(l)
                         subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-    openblas_dir = os.path.join(tools_dir, 'OpenBLAS','install', 'lib')
+    openblas_dir = os.path.join(tools_dir, 'OpenBLAS', 'install', 'lib')
     lib_file = os.path.join(openblas_dir, open_blas_library)
     out_lib = os.path.join(bin_out, open_blas_library)
     if os.path.islink(lib_file):
