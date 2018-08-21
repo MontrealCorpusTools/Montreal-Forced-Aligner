@@ -14,7 +14,7 @@ if sys.platform == 'win32':
 elif sys.platform == 'darwin':
     exe_ext = ''
     lib_ext = ['.dylib']
-    libraries = ['libngram.2.dylib', 'libngramhist.2.dylib']
+    libraries = ['libngram.134.dylib', 'libngramhist.134.dylib']
 else:
     exe_ext = ''
     lib_ext = ['.so', '.so.1']
