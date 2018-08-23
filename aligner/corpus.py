@@ -265,6 +265,7 @@ class Corpus(object):
         self.no_transcription_files = []
         self.decode_error_files = []
         self.unsupported_sample_rate = []
+        self.wav_read_errors = []
         self.textgrid_read_errors = {}
         self.transcriptions_without_wavs = []
         self.file_directory_mapping = {}
@@ -282,7 +283,11 @@ class Corpus(object):
                     continue
                 lab_name = find_lab(f, files)
                 wav_path = os.path.join(root, f)
-                sr = get_sample_rate(wav_path)
+                try:
+                    sr = get_sample_rate(wav_path)
+                except wave.Error:
+                    self.wav_read_errors.append(wav_path)
+                    continue
                 if sr < 16000:
                     self.unsupported_sample_rate.append(wav_path)
                 if lab_name is not None:

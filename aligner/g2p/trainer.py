@@ -84,9 +84,6 @@ class PhonetisaurusTrainer(object):
                                            stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE)
         stdout, stderr = farcompile_proc.communicate()
-        print([thirdparty_binary('farcompilestrings'),
-                                            '--symbols=' + sym_path, '--keep_symbols=1',
-                                            corpus_path, far_path])
         if stderr:
             raise G2PError('There was an error in {}: {}'.format('farcompilestrings', stderr.decode('utf8')))
 

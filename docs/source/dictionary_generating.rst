@@ -18,12 +18,33 @@ We have trained several G2P models that are available for download (:ref:`pretra
 Use
 ===
 
-To reconstruct a pronunciation dictionary from your .lab or .TextGrid files, simply input:
+To construct a pronunciation dictionary from your .lab or .TextGrid files, simply input:
 
 .. code-block:: bash
 
-    bin/mfa_generate_dictionary /path/to/model/file.zip /path/to/corpus
+    bin/mfa_generate_dictionary /path/to/model/file.zip /path/to/corpus /path/to/save
 
+In addition to parsing a corpus ready for alignment, dictionaries can also be generated from simple text files (i.e., one
+orthography per line):
+
+.. code-block:: bash
+
+    bin/mfa_generate_dictionary /path/to/model/file.zip /path/to/text/file /path/to/save
+
+.. note::
+
+   This functionality is particularly useful if you would like to generate pronunciations to supplement your existing pronunciation
+   dictionary.  Simply run the validation utility (see :ref:`running_the_validator`), and then use the path to the ``oovs_found.txt``
+   file that it generates.
+
+
+Pronunciation dictionaries can also be generated from the orthographies of the words themselves, rather than relying on
+a trained G2P model.  This functionality should be reserved for languages with transparent orthographies, close to 1-to-1
+grapheme-to-phoneme mapping.
+
+.. code-block:: bash
+
+    bin/mfa_generate_dictionary /path/to/corpus/or/text/file /path/to/save
 
 
 Example
@@ -36,7 +57,7 @@ phonetic transcription for each one of these words, which it will write to a fil
 
 .. code-block:: bash
 
-   bin/mfa_generate_dictionary path/to/mandarin_pinyin_g2p.zip path/to/examples/CH chinese_dict.txt
+   bin/mfa_generate_dictionary path/to/mandarin_pinyin_g2p.zip path/to/examples/CH path/to/examples/CH chinese_dict.txt
 
 This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy
 of the transcription should be near 100%. You can now use this to align your mini corpus:

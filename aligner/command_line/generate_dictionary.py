@@ -125,9 +125,11 @@ def get_word_set(corpus, include_bracketed=False):
 
 
 def validate(args):
+    if not args.g2p_model_path:
+        args.g2p_model_path = None
     if args.g2p_model_path and not os.path.exists(args.g2p_model_path):
         raise (ArgumentError('Could not find the G2P model file {}.'.format(args.g2p_model_path)))
-    if not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip'):
+    if args.g2p_model_path and (not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip')):
         raise (ArgumentError('The specified G2P model path ({}) is not a zip file.'.format(args.g2p_model_path)))
 
     if not os.path.exists(args.input_path):

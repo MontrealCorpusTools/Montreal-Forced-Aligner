@@ -150,7 +150,7 @@ Deep Neural Networks (DNNs)
 
 .. note:: The DNN framework for the Montreal Forced aligner is operational, but may not give a better result than the alignments produced by the standard HMM-GMM pipeline. Preliminary experiments suggest that results may improve when the DNN model used to produce alignments is pre-trained on a corpus similar in quality (conversational vs. clean speech) and longer in length than the test corpus. 
 
-	Since the code is newly developed, if you run into any issues, please contact us on the `mailing list`_ or on `GitHub`_.
+   Since the code is newly developed, if you run into any issues, please contact us on the `mailing list`_ or on `GitHub`_.
 
 The Montreal Forced Aligner also has the capacity to use DNNs for training, thus creating an HMM-DNN framework
 on top of the existing HMM-GMM framework. This functionality is based on Kaldi's `nnet2`_ recipes.
