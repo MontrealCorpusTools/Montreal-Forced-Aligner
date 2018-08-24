@@ -10,6 +10,11 @@
 Alignment techniques
 ********************
 
+.. warning::
+
+   This page is currently out of date with respect to 1.1 and needs updating.  Many of the general statements remain
+   true, but the general pipeline for training was significantly overhauled.  See :ref:`whats_new_1.1` for more details.
+
 This page outlines the actual functioning of the Montreal Forced Aligner, for academics
 and developers interested in modeling techniques.
 
@@ -225,7 +230,6 @@ Finally, an alignment is generated, using the following multiprocessing function
    :template: function.rst
 
    compile_train_graphs
-   nnet_get_align_feats
    nnet_align
 
 The output TextGrids from the DNN alignment are exported by :meth:`aligner.aligner.TrainableAligner.export_textgrids()`.

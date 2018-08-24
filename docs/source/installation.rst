@@ -44,7 +44,7 @@ Windows
 Linux
 =====
 
-The Linux distributions were built on Ubuntu 14.04, and so may not work on
+The Linux distributions were built on Ubuntu 16.04, and so may not work on
 machines that have older versions of Linux system packages.  If these instructions
 do not work, then the executables will have to be built from source.
 
@@ -67,12 +67,15 @@ not your default Python) and assume Linux in the commands.
 1. Get kaldi compiled and working: `Kaldi GitHub repository`_
 2. Download the source zip from the releases page
 3. Open a terminal and go to the unzipped folder (``cd /path/to/Montreal-Forced-Aligner/thirdparty``)
-4. Run the ``thirdparty/kaldibinaries.py`` script, pointing it to where Kaldi was built (``python thirdparty/kaldibinaries.py /path/to/kaldi/root``)
+4. Run the ``thirdparty/kaldi_binaries.py`` script, pointing it to the Kaldi repo (``python thirdparty/kaldi_binaries.py /path/to/kaldi``)
 5. Run ``pip install -r requirements.txt`` to install the requirements for the aligner
-6. Run the build script via ``freezing/freeze.sh``. There will now be a ``montreal-forced-aligner`` folder in the ``dist`` folder. This folder should contain a ``bin`` folder with the two executables ``mfa_align`` and ``mfa_train_and_align`` that should be used for alignment.
+6. Run the build script via ``python freezing/freeze.py``. There will now be a ``montreal-forced-aligner`` folder in the ``dist`` folder. This folder should contain a ``bin`` folder with the two executables ``mfa_align`` and ``mfa_train_and_align`` that should be used for alignment.
 
 If you would like to use the G2P capabilities, you will also have to build the `OpenGrm NGram library`_ and `Phonetisaurus`_
 and then run the ``thirdparty/opengrm_ngram_binaries.py`` and ``thirdparty/phonetisaurus_binaries.py`` pointing at the respective root directories.
+
+There are some additional notes for compiling the various third party binaries available at
+https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/tree/master/thirdparty.
 
 Files created when using the Montreal Forced Aligner
 ====================================================

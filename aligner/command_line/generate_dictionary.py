@@ -19,6 +19,7 @@ from aligner.command_line.align import fix_path, unfix_path
 
 
 def generate_g2p_dict(args):
+    print("Generating pronunciations from G2P model")
     if not args.temp_directory:
         temp_dir = TEMP_DIR
         temp_dir = os.path.join(temp_dir, 'G2P')
@@ -47,6 +48,7 @@ def generate_g2p_dict(args):
 
 
 def generate_orthography_dict(args):
+    print("Generating pronunciations from orthography")
     if not args.temp_directory:
         temp_dir = TEMP_DIR
         temp_dir = os.path.join(temp_dir, 'G2P')
@@ -70,12 +72,13 @@ def generate_orthography_dict(args):
         with open(args.input_path, 'r', encoding='utf8') as f:
             for line in f:
                 word_set.update(line.strip().split())
+        if not args.include_bracketed:
+            word_set = [x for x in word_set if not check_bracketed(x)]
 
     with open(args.output_path, "w", encoding='utf8') as f:
         for word in sorted(word_set):
             pronunciation = list(word)
-            if list(word)[0] != '[' and list(word)[0] != '{' and list(word)[0] != '<':
-                f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
+            f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
 
 
 def get_word_set(corpus, include_bracketed=False):
@@ -141,19 +144,20 @@ if __name__ == '__main__':
 
     parser.add_argument("g2p_model_path", help="Path to the trained G2P model", nargs='?')
 
-    parser.add_argument("input_path", help="Corpus to base word list on or a text file of words to generate pronunciations")
+    parser.add_argument("input_path",
+                        help="Corpus to base word list on or a text file of words to generate pronunciations")
 
     parser.add_argument("output_path", help="Path to save output dictionary")
 
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for dictionary generation, default is ~/Documents/MFA')
-    parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>", action='store_true')
+    parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
+                        action='store_true')
     args = parser.parse_args()
 
     fix_path()
-
     validate(args)
-    if args.g2p_model_path is None:
+    if args.g2p_model_path is not None:
         generate_g2p_dict(args)
     else:
         generate_orthography_dict(args)
