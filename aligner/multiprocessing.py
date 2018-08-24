@@ -484,7 +484,7 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
             results = [pool.apply_async(compute_alignment_improvement_func, args=i) for i in jobs]
             output = [p.get() for p in results]
         except OSError as e:
-            if hasattr(e, 'errno') and e.errorno == 24:
+            if hasattr(e, 'errorno') and e.errorno == 24:
                 r = True
             else:
                 raise

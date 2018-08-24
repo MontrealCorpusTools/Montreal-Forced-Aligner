@@ -6,7 +6,7 @@ API Reference
 
 Below is a diagram of the main classes used in MFA:
 
-.. image:: ../build/html/_images/generalUML.svg
+.. .. image:: ../build/html/_images/generalUML.svg
 
 .. _aligner_api:
 
@@ -17,7 +17,8 @@ There are two main Aligner classes, one for using a pretrained model and
 one for training a model while aligning. A class diagram of the Aligner API can be found below:
 
 
-.. image:: ../build/html/_images/alignerUML.svg
+..
+  .. image:: ../build/html/_images/alignerUML.svg
          :height: 200 px
          :width: 300 px
          :align: center
@@ -39,7 +40,8 @@ Corpus API
 
 The Corpus class contains information about how a dataset is structured. A class diagram of the Corpus API can be found below:
 
-.. image:: ../build/html/_images/corpusUML.svg
+..
+  .. image:: ../build/html/_images/corpusUML.svg
          :height: 200 px
          :width: 300 px
          :align: center
@@ -59,7 +61,8 @@ Dictionary API
 
 The Dictionary class contains pronunciation and orthographic information. A class diagram of the Dictionary API can be found below:
 
-.. image:: ../build/html/_images/dictionaryUML.svg
+..
+  .. image:: ../build/html/_images/dictionaryUML.svg
          :height: 200 px
          :width: 300 px
          :align: center
@@ -80,7 +83,8 @@ Model API
 Output from training a Model is compressed using the Archive class, which
 results in a zip folder. A class diagram of the Model API can be found below:
 
-.. image:: ../build/html/_images/modelUML.svg
+..
+  .. image:: ../build/html/_images/modelUML.svg
          :height: 400 px
          :width: 500 px
          :align: center
@@ -166,7 +170,8 @@ Trainer API
 These Trainer classes contain information about configuring data preparation and
 training. A class diagram of the Configuration API can be found below:
 
-.. image:: ../build/html/_images/configUML.svg
+..
+  .. image:: ../build/html/_images/configUML.svg
          :height: 600 px
          :width: 800 px
          :align: center

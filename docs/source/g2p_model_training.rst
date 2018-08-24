@@ -10,7 +10,7 @@ Training a new G2P model
 ************************
 
 Another tool included with MFA allows you to train a G2P (Grapheme to Phoneme) model automatically from a given pronunciation dictionary.
-This type of model can be used for :doc:`generating dictionaries <dictionary_generating>`.
+This type of model can be used for :doc:`generating dictionaries <g2p_dictionary_generating>`.
 It requires a pronunciation dictionary with each line consisting of the orthographic transcription followed by the
 phonetic transcription. The model is generated using the `Phonetisaurus`_ software, which generates FST (finite state transducer)
 files. The G2P model output will be a .zip file like the acoustic model generated from alignment.
@@ -37,17 +37,6 @@ Extra options:
    Run a validation on the dictionary with 90% of the data as training and 10% as test.  It will output the percentage
    accuracy of pronunciations generated.
 
-Example
-=======
-
-In ``Montreal-Forced-Aligner/examples/`` you will find a small Chinese dictionary. It is too small to generate a usable model, but can provide a helpful example. Inputting
-
-.. code-block:: bash
-
-    bin/mfa_train_g2p Montreal-Forced-Aligner/examples/chinese_dict.txt Montreal-Forced-Aligner/examples/CH_test_model
-
-This should take no more than a few seconds, and should produce a model which could be used for :doc:`generating dictionaries <dictionary_generating>` 
-
 .. note::
 
-   Because there is so little data in chinese_dict.txt, the model produced will not be very accurate. Thus any dictionary generated from it will also be inaccurate.
+   See :ref:`g2p_model_training_example` for an example of how to train a G2P model with a premade toy example.

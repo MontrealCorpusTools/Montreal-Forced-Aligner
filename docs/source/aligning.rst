@@ -6,14 +6,15 @@
 Running the aligner
 *******************
 
-.. note::
-
-   We assume Unix-style slashes in paths here.  If you're using Windows, change the slashes ``/`` to backslashes ``\``.
-
 Common options for both aligner executables
 -------------------------------------------
 
-.. cmdoption:: -s NUMBER
+.. option:: --config PATH
+
+   Path to a YAML config file that will specify either the alignment options or the training configuration. see
+   :ref:`configuration` for more details.
+
+.. option:: -s NUMBER
                --speaker_characters NUMBER
 
    Number of characters to use to identify speakers; if not specified,
@@ -21,30 +22,36 @@ Common options for both aligner executables
    speaker.  Additionally, it accepts the value ``prosodylab`` to use the second field of a ``_`` delimited file name,
    following the convention of labelling production data in the ProsodyLab at McGill.
 
-.. cmdoption:: -t DIRECTORY
+.. option:: -t DIRECTORY
                --temp_directory DIRECTORY
 
    Temporary directory root to use for aligning, default is ``~/Documents/MFA``
 
-.. cmdoption:: -j NUMBER
+.. option:: -j NUMBER
                --num_jobs NUMBER
 
   Number of jobs to use; defaults to 3, set higher if you have more
   processors available and would like to align faster
 
-.. cmdoption:: -v
+.. option:: -v
                --verbose
 
-  The aligner will print out more debugging information if present
+  The aligner will print out more information if present
 
-.. cmdoption:: -c
+.. option:: -d
+               --debug
+
+  The aligner will run in debug mode
+
+.. option:: -c
                --clean
 
-  Temporary files in ``~/Documents/MFA`` and the output directory will be
-  removed prior to aligning.  This is good to use when aligning a new dataset,
-  but it shares a name with a previously aligned dataset.
+  Forces removal of temporary files in ``~/Documents/MFA``
+  prior to aligning.  This is good to use when aligning a new dataset,
+  but it shares a name with a previously aligned dataset.  Cleaning automatically happens if the previous alignment
+  run had an error.
 
-.. cmdoption:: -h
+.. option:: -h
                --help
 
   Display help message for the executable
@@ -68,18 +75,19 @@ Steps to align:
 
      bin/mfa_align corpus_directory dictionary_path acoustic_model_path output_directory
 
+
 .. warning::
 
-   Do not specify an existing directory as the output directory (unless it is from an earlier run of the aligner).  The
-   current functionality of the aligner destroys the output directory prior to generating TextGrids.  Future versions will
-   be smarter about cleaning up TextGrids from previous runs without removing the directory.
+   Aligned TextGrids will overwrite any existing TextGrids (with the same name as the wav files) in the output directory.
+   The aligner will throw an error if the corpus directory is specified as the output directory (to prevent overwriting
+   any input TextGrids).
 
 .. note::
-   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` currently works for the English
-   acoustic model trained on the `Librispeech corpus`_.
 
-Extra options (in addition to the common ones listed above):
-
+   ``acoustic_model_path`` can also be a language that has been pretrained: ``english`` works by default to specify the English
+   acoustic model trained on the `Librispeech corpus`_.  Custom pretrained models can be placed in the ``montreal-forced-aligner/pretrained_models``
+   to allow using them with just their name (without the .zip extension).  I.e., downloading ``german.zip`` and putting it there
+   would allow you to use ``german`` to specify the acoustic model.
 
 .. note::
    On Mac/Unix, to save time typing out the path, you
@@ -112,24 +120,18 @@ Montreal Forced Aligner:
 
 .. warning::
 
-   Do not specify an existing directory as the output directory (unless it is from an earlier run of the aligner).  The
-   current functionality of the aligner destroys the output directory prior to generating TextGrids.  Future versions will
-   be smarter about cleaning up TextGrids from previous runs without removing the directory.
+   Aligned TextGrids will overwrite any existing TextGrids (with the same name as the wav files) in the output directory.
+   The aligner will throw an error if the corpus directory is specified as the output directory (to prevent overwriting
+   any input TextGrids).
 
 
 Extra options (in addition to the common ones listed above):
 
-.. cmdoption:: -o PATH
+.. option:: -o PATH
                --output_model_path PATH
 
-  Path to a zip file to save the results' acoustic models (and dictionary)
+  Path to a zip file to save the results' acoustic models
   from training to use in future aligning
-
-.. note::
-
-   The arguments ``dictionary_path`` and ``--no_dict`` are mutually exclusive
-   and one of the two must be specified to align a data set. Dictionaries can also be generated through using a
-   G2P model with the command ``generate_dictionary``.
 
 Once the aligner finishes, the resulting TextGrids will be in the
 specified output directory.  Training can take several hours for large datasets.

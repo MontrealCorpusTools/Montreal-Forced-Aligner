@@ -16,5 +16,5 @@ always check the resulting dictionary carefully before potentially propagating e
 .. toctree::
    :maxdepth: 3
 
-   dictionary_generating.rst
-   model_training.rst
+   g2p_dictionary_generating.rst
+   g2p_model_training.rst

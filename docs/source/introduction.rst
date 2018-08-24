@@ -1,6 +1,10 @@
 
 .. _`Kaldi homepage`: http://kaldi-asr.org/
 
+.. _`Kaldi feature and model-space transforms page`: http://kaldi-asr.org/doc/transform.html
+
+.. _`Phonetisaurus repository`: https://github.com/AdolfVonKleist/Phonetisaurus
+
 .. _`HTK homepage`: http://htk.eng.cam.ac.uk/
 
 .. _`Prosodylab-aligner homepage`: http://prosodylab.org/tools/aligner/
@@ -45,18 +49,18 @@ Montreal Forced Aligner
 Pipeline of training
 --------------------
 
-The Montreal Forced Aligner goes through three stages of training.  The
+The Montreal Forced Aligner by default goes through four primary stages of training.  The
 first pass of alignment uses monophone models, where each phone is modelled
 the same regardless of phonological context.  The second pass uses triphone
 models, where context on either side of a phone is taken into account for
-acoustic models.  The final pass enhances the triphone model by taking
+acoustic models. The third pass performs LDA+MLLT to learn a transform of the features
+that makes each phone's features maximally different. The final pass enhances the triphone model by taking
 into account speaker differences, and calculates a transformation of the
-mel frequency cepstrum coefficients (MFCC) features for each speaker.
-
+mel frequency cepstrum coefficients (MFCC) features for each speaker.  See the `Kaldi feature and model-space transforms page`_
+for more detail on these final passes.
 The Montreal Forced Aligner can also train using deep neural networks (DNNs).
-This training constitutes another pass, in addition to the first three passes.
 
-For more technical information about the structure of the aligner, see
+For more technical information about the structure of the aligner, see :ref:`alignment_techniques` and
 :ref:`api_reference`.
 
 If you run into any issues, please check the `mailing list`_ for fixes/workarounds or to post a new issue.
@@ -80,7 +84,8 @@ Underlying technology
 The Montreal Forced Aligner uses the Kaldi ASR toolkit
 (`Kaldi homepage`_) to perform forced alignment.
 Kaldi is under active development and uses modern ASR and includes state-of-the-art algorithms for tasks
-in automatic speech recognition beyond forced alignment.
+in automatic speech recognition beyond forced alignment.  For grapheme-to-phoneme capabilities, MFA uses Phonetisaurus
+(`Phonetisaurus repository`_).
 
 Other forced alignment tools
 ============================

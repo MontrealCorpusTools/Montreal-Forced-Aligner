@@ -134,6 +134,10 @@ class CorpusValidator(object):
     ----------
     {}
     
+    SOUND FILE READ ERRORS
+    ----------------------
+    {}
+    
     FEATURE CALCULATION
     -------------------
     {}
@@ -201,6 +205,7 @@ class CorpusValidator(object):
                                                    self.corpus.num_utterances,
                                                    total_duration,
                                                    self.analyze_oovs(),
+                                                   self.analyze_wav_errors(),
                                                    self.analyze_missing_features(),
                                                    self.analyze_files_with_no_transcription(),
                                                    self.analyze_transcriptions_with_no_wavs(),
@@ -231,6 +236,21 @@ class CorpusValidator(object):
             message = 'There were no missing words from the dictionary. If you plan on using the a model trained ' \
                       'on this dataset to align other datasets in the future, it is recommended that there be at ' \
                       'least some missing words.'
+        return message
+
+    def analyze_wav_errors(self):
+        output_dir = self.corpus.output_directory
+        wav_read_errors = self.corpus.wav_read_errors
+        if wav_read_errors:
+            path = os.path.join(output_dir, 'wav_read_errors.csv')
+            with open(path, 'w') as f:
+                for p in wav_read_errors:
+                    f.write('{}\n'.format(p))
+
+            message = 'There were {} sound files that could not be read. ' \
+                      'Please see {} for a list.'.format(len(wav_read_errors), path)
+        else:
+            message = 'There were no sound files that could not be read.'
         return message
 
     def analyze_missing_features(self):

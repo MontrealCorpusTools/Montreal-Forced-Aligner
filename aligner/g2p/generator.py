@@ -82,13 +82,9 @@ class PhonetisaurusDictionaryGenerator(object):
                                  '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path],
                                 stderr=subprocess.PIPE,
                                 stdout=subprocess.PIPE)
-        print([thirdparty_binary('phonetisaurus-g2pfst'),
-                                 '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path])
         stdout, stderr = proc.communicate()
         results = stdout.decode('utf8')
         errors = stderr.decode('utf8')
-        print(results)
-        print(errors)
         missing_symbols = parse_errors(errors)
         if missing_symbols:
             print("There were {} unmatched symbols in your transcriptions, "

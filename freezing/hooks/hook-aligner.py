@@ -10,6 +10,7 @@ hiddenimports = ['six', 'packaging', 'packaging.version', 'packaging.specifiers'
 if sys.platform == 'win32':
     hiddenimports += ['win32api']
 
+datas = collect_data_files('aligner')
 #thirdparty_dir = os.path.abspath(os.path.join('thirdparty', 'bin'))
 #binaries = [(os.path.join(thirdparty_dir, x), 'thirdparty/bin')
 #            for x in os.listdir(thirdparty_dir)

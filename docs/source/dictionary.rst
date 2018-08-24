@@ -27,21 +27,6 @@ A dictionary for English that has good coverage is the lexicon derived
 from the LibriSpeech corpus (`LibriSpeech lexicon`_).
 This lexicon uses the Arpabet transcription format (like the `CMU Pronouncing Dictionary`_).
 
-There is an option when running the aligner for not using a dictionary (``--no_dict``).
-When run in this mode, the aligner will construct pronunciations for words
-in the corpus based on their orthographies.  In this mode, a dataset with an example transcription
-
-::
-
-  WORDA WORDB
-
-for a sound file would have the following dictionary generated:
-
-::
-
-  WORDA W O R D A
-  WORDB W O R D B
-
 The Prosodylab-aligner has two preconstructed dictionaries as well, one
 for English (`Prosodylab-aligner English dictionary`_)
 and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see `dictionaries`_ for a list of supported dictionaries.
@@ -49,7 +34,7 @@ and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see `d
 .. note::
 
    See the page on :doc:`generating dictionaries <dictionary_generating>` for how to use G2P models to generate a dictionary
-   from our pretrained models.
+   from our pretrained models or how to generate pronunciation dictionaries from orthographies.
 
 Non-speech annotations
 ----------------------
