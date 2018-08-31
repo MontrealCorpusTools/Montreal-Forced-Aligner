@@ -88,11 +88,23 @@ for f in os.listdir(pretrained_root_dir):
 
 # Create distributable archive
 
-zip_path = os.path.join(dist_dir, 'montreal-forced-aligner')
+for d in executables:
+    d = os.path.join(dist_dir, d)
+    if os.path.exists(d):
+        shutil.rmtree(d)
+
+if sys.platform == 'win32':
+    plat = 'win64'
+elif sys.platform == 'darwin':
+    plat = 'macosx'
+else:
+    plat = 'linux'
+
+zip_path = os.path.join(dist_dir, 'montreal-forced-aligner_{}'.format(plat))
 
 if sys.platform == 'linux':
     format = 'gztar'
 else:
     format = 'zip'
 
-shutil.make_archive(zip_path, format, mfa_root)
+shutil.make_archive(zip_path, format, dist_dir)
