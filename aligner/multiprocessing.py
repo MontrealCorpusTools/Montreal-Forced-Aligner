@@ -86,13 +86,11 @@ def parse_transitions(path, phones_path):
                 current += 1
 
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=True,
-                              mdl=None):  # pragma: no cover
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=True):  # pragma: no cover
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(directory, 'tree')
-    if not mdl:
-        mdl_path = os.path.join(directory, '0.mdl')
-    elif mdl == 'final':
+    mdl_path = os.path.join(directory, '0.mdl')
+    if not os.path.exists(mdl_path):
         mdl_path = os.path.join(directory, 'final.mdl')
 
     log_path = os.path.join(directory, 'log', 'show_transition.log')
@@ -167,7 +165,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                         pass
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False, mdl=None):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -190,7 +188,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, d
         The number of processes to use
     """
     os.makedirs(os.path.join(directory, 'log'), exist_ok=True)
-    jobs = [(directory, lang_directory, split_directory, x, debug, mdl)
+    jobs = [(directory, lang_directory, split_directory, x, debug)
             for x in range(num_jobs)]
 
     with mp.Pool(processes=num_jobs) as pool:
