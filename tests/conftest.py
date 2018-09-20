@@ -71,6 +71,20 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope='session')
+def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'basic_txt')
+    os.makedirs(path, exist_ok=True)
+    names = [('michael', ['acoustic_corpus']), ('sickmichael', ['cold_corpus', 'cold_corpus3'])]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, name + '.wav'))
+            shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, name + '.txt'))
+    return path
+
+
+@pytest.fixture(scope='session')
 def extra_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, 'extra')
     os.makedirs(path, exist_ok=True)

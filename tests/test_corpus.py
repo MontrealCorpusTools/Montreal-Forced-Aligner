@@ -12,11 +12,23 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
-    d = Corpus(basic_corpus_dir, output_directory)
-    d.initialize_corpus(dictionary)
+    c = Corpus(basic_corpus_dir, output_directory)
+    c.initialize_corpus(dictionary)
     fc = FeatureConfig()
-    fc.generate_features(d)
-    assert d.get_feat_dim(fc) == 39
+    fc.generate_features(c)
+    assert c.get_feat_dim(fc) == 39
+
+
+def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir):
+    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
+    dictionary.write()
+    output_directory = os.path.join(generated_dir, 'basic')
+    c = Corpus(basic_corpus_txt_dir, output_directory)
+    assert len(c.no_transcription_files) == 0
+    c.initialize_corpus(dictionary)
+    fc = FeatureConfig()
+    fc.generate_features(c)
+    assert c.get_feat_dim(fc) == 39
 
 
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):

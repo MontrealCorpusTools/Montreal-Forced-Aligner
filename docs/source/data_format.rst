@@ -20,6 +20,8 @@ text file with the .lab extension).
    you can generate .lab files from it using the relabel function of relabel_clean.py.
    The relabel_clean.py script is currently in the prosodylab.alignertools repository on GitHub.
 
+If no ``.lab`` file is found, then the aligner will look for any matching ``.txt`` files and use those.
+
 In terms of directory structure, the default configuration assumes that
 files are separated into subdirectories based on their speaker (with one
 speaker per file).
@@ -66,7 +68,8 @@ each speaker.
         :align: center
         :alt: Image cannot be displayed in your browser
 
-.. note ::
+.. note::
+
    Intervals in the TextGrid less than 100 milliseconds will not be aligned.
 
 Transcription normalization and dictionary lookup
