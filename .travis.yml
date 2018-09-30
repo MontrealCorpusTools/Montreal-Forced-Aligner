@@ -37,6 +37,7 @@ install:
 
 # Run test
 script:
+  - coverage help
   - travis_wait 120 "coverage run --source=aligner setup.py test"
 
 # Calculate coverage
