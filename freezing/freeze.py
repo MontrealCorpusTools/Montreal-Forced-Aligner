@@ -117,6 +117,6 @@ else:
     format = 'zip'
 
 if sys.platform == 'darwin':
-    subprocess.run(['zip', '-y', '-r', '{}.zip'.format(zip_path), mfa_root])
+    subprocess.run(['zip', '-y', '-r', 'montreal-forced-aligner_{}.zip'.format(plat), 'montreal-forced-aligner'], cwd=dist_dir)
 else:
     shutil.make_archive(zip_path, format, dist_dir)
