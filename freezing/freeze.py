@@ -23,7 +23,7 @@ common_options = ['--clean', '-y',
                   '--exclude-module=matplotlib',
                   '--exclude-module=pytz',
                   '--exclude-module=sphinx',
-                  #'--exclude-module=numpy',
+                  # '--exclude-module=numpy',
                   '--exclude-module=scipy']
 
 executables = ['train_and_align', 'align',
@@ -66,15 +66,24 @@ else:
 orig_thirdparty_dir = os.path.join(root_dir, 'thirdparty', 'bin')
 
 if sys.platform == 'win32':
-    out_dir = os.path.join(root_dir, 'dist', 'montreal-forced-aligner', 'bin', 'thirdparty', 'bin')
+    out_root_dir = os.path.join(root_dir, 'dist', 'montreal-forced-aligner', 'bin')
 else:
-    out_dir = os.path.join(root_dir, 'dist', 'montreal-forced-aligner', 'lib', 'thirdparty', 'bin')
+    out_root_dir = os.path.join(root_dir, 'dist', 'montreal-forced-aligner', 'lib')
+
+out_dir = os.path.join(out_root_dir, 'thirdparty', 'bin')
 
 os.makedirs(out_dir, exist_ok=True)
 
 for f in os.listdir(orig_thirdparty_dir):
-    shutil.copyfile(os.path.join(orig_thirdparty_dir, f), os.path.join(out_dir, f))
-    shutil.copystat(os.path.join(orig_thirdparty_dir, f), os.path.join(out_dir, f))
+    if f.startswith('libopenblas') and sys.platform != 'win32':
+        for f2 in os.listdir(out_root_dir):
+            if f2.startswith('libopenblas'):
+                lib_exe_path = os.path.join(out_root_dir, f2)
+                os.symlink(os.path.relpath(lib_exe_path, out_dir), os.path.join(out_dir, f))
+                break
+    else:
+        shutil.copyfile(os.path.join(orig_thirdparty_dir, f), os.path.join(out_dir, f))
+        shutil.copystat(os.path.join(orig_thirdparty_dir, f), os.path.join(out_dir, f))
 
 # Copy pretrained models
 
@@ -107,4 +116,7 @@ if sys.platform == 'linux':
 else:
     format = 'zip'
 
-shutil.make_archive(zip_path, format, dist_dir)
+if sys.platform == 'darwin':
+    subprocess.run(['zip', '-y', '-r', '{}.zip'.format(zip_path), mfa_root])
+else:
+    shutil.make_archive(zip_path, format, dist_dir)
