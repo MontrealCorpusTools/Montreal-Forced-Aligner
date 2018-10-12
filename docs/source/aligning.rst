@@ -9,7 +9,7 @@ Running the aligner
 Common options for both aligner executables
 -------------------------------------------
 
-.. option:: --config PATH
+.. option:: --config_path PATH
 
    Path to a YAML config file that will specify either the alignment options or the training configuration. see
    :ref:`configuration` for more details.
