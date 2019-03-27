@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import subprocess
+import shutil
 import os
 
 from ..helper import make_path_safe, thirdparty_binary, filter_scp
@@ -36,6 +37,9 @@ def mfcc_func(directory, job_name, mfcc_config_path):  # pragma: no cover
         copy_proc.wait()
 
 
+def init(env):
+    os.environ = env
+
 def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
     """
     Multiprocessing function that converts wav files into MFCCs
@@ -64,19 +68,22 @@ def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
         If the files per speaker exceeds the number of files that are
         allowed to be open on the computer (for Unix-based systems)
     """
+    child_env = os.environ.copy()
+
     os.makedirs(os.path.join(mfcc_directory, 'log'), exist_ok=True)
     paths = []
     for j, p in frequency_configs:
         paths.append(feature_config.write(mfcc_directory, j, p))
     jobs = [(mfcc_directory, x, paths[x])
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(child_env,)) as pool:
         r = False
         try:
             results = [pool.apply_async(mfcc_func, args=i) for i in jobs]
             output = [p.get() for p in results]
         except OSError as e:
-            if e.errorno == 24:
+            print(dir(e))
+            if e.errno == 24:
                 r = True
             else:
                 raise
@@ -104,9 +111,10 @@ def apply_cmvn_func(directory, job_name, config):
 
 
 def apply_cmvn(directory, num_jobs, config):
+    child_env = os.environ.copy()
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(child_env,)) as pool:
         results = [pool.apply_async(apply_cmvn_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -135,9 +143,10 @@ def add_deltas_func(directory, job_name, config):
 
 
 def add_deltas(directory, num_jobs, config):
+    child_env = os.environ.copy()
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(child_env,)) as pool:
         results = [pool.apply_async(add_deltas_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -193,6 +202,6 @@ def apply_lda_func(directory, job_name, config):
 def apply_lda(directory, num_jobs, config):
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(apply_lda_func, args=i) for i in jobs]
         output = [p.get() for p in results]

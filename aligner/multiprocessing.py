@@ -14,13 +14,17 @@ from .textgrid import ctm_to_textgrid, parse_ctm
 from .exceptions import CorpusError, AlignmentError
 
 
+def init(env):
+    os.environ = env
+
+
 def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cover
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
     model_path = os.path.join(directory, '{}.mdl'.format(iteration))
     next_model_path = os.path.join(directory, '{}.mdl'.format(iteration + 1))
     acc_path = os.path.join(directory, '{}.{}.acc'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), model_path,
                                      "scp:" + feat_path, "ark,t:" + ali_path, acc_path],
                                     stderr=logf)
@@ -59,7 +63,7 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
 
     jobs = [(directory, iteration, x, os.path.join(split_directory, feat_name.format(x)))
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(acc_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -99,7 +103,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
     triphones_file_path = os.path.join(directory, 'triphones.txt')
     if debug:
-        with open(log_path, 'w') as logf:
+        with open(log_path, 'w', encoding='utf8') as logf:
             with open(transition_path, 'w', encoding='utf8') as f:
                 subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
                                 stdout=f, stderr=logf)
@@ -110,9 +114,9 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
         phones_file_path = triphones_file_path
     words_file_path = os.path.join(lang_directory, 'words.txt')
 
-    with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r') as inf, \
+    with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
             open(fst_path, 'wb') as outf, \
-            open(log_path, 'w') as logf:
+            open(log_path, 'w', encoding='utf8') as logf:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
                                  '--read-disambig-syms={}'.format(
                                      os.path.join(lang_directory, 'phones', 'disambig.int')),
@@ -131,7 +135,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                     continue
                 utterances.append(utt)
 
-        with open(log_path, 'a') as logf:
+        with open(log_path, 'a', encoding='utf8') as logf:
             fst_ark_path = os.path.join(directory, 'fsts.{}.ark'.format(job_name))
             fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
             proc = subprocess.Popen([thirdparty_binary('fstcopy'),
@@ -141,7 +145,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
             temp_fst_path = os.path.join(directory, 'temp.fst.{}'.format(job_name))
 
-            with open(fst_scp_path, 'r') as f:
+            with open(fst_scp_path, 'r', encoding='utf8') as f:
                 for line in f:
                     line = line.strip()
                     utt = line.split()[0]
@@ -191,7 +195,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, d
     jobs = [(directory, lang_directory, split_directory, x, debug)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(compile_train_graphs_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -204,7 +208,7 @@ def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path):
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
     ali_path = os.path.join(mono_directory, 'ali.{}'.format(job_name))
     acc_path = os.path.join(mono_directory, '0.{}.acc'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "ark:" + fst_path,
                                        'scp:' + feat_path, 'ark:' + ali_path],
                                       stderr=logf)
@@ -238,7 +242,7 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
              os.path.join(split_directory, config.feature_file_base_name + '.{}.scp'.format(x)))
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(mono_align_equal_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -248,7 +252,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path, output_di
     log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
     score_path = os.path.join(output_directory, 'ali.{}.scores'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled'),
                                        '--transition-scale={}'.format(config.transition_scale),
                                        '--acoustic-scale={}'.format(config.acoustic_scale),
@@ -257,7 +261,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path, output_di
                                        '--retry-beam={}'.format(config.retry_beam),
                                        '--careful=false',
                                        mdl,
-                                       "ark:" + fst_path, "scp:" + feat_path, "ark:"+ali_path, "ark,t:"+score_path],
+                                       "ark:" + fst_path, "scp:" + feat_path, "ark,t:"+ali_path, "ark,t:"+score_path],
                                       stderr=logf)
         align_proc.communicate()
 
@@ -305,14 +309,14 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)), output_directory)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(align_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
     error_logs = []
     for i in range(num_jobs):
         log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, i))
-        with open(log_path, 'r') as f:
+        with open(log_path, 'r', encoding='utf8') as f:
             for line in f:
                 if line.strip().startswith('ERROR'):
                     error_logs.append(log_path)
@@ -347,7 +351,7 @@ def compile_information(model_directory, corpus, num_jobs):
     jobs = [(log_dir, corpus, x)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(compile_information_func, args=i) for i in jobs]
         output = [p.get() for p in results]
     unaligned = {}
@@ -366,7 +370,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
         return
 
     frame_shift = config.feature_config.frame_shift / 1000
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
                                      '', '', 'ark:-'],
@@ -389,7 +393,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
         nbest_proc.communicate()
     mapping = config.dictionary.reversed_phone_mapping
     actual_lines = []
-    with open(phone_ctm_path, 'r') as f:
+    with open(phone_ctm_path, 'r', encoding='utf8') as f:
         for line in f:
             line = line.strip()
             if line == '':
@@ -408,7 +412,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                 if label.endswith(p):
                     label = label[:-1 * len(p)]
             actual_lines.append([utt, begin, end, label])
-    with open(phone_ctm_path, 'w') as f:
+    with open(phone_ctm_path, 'w', encoding='utf8') as f:
         for line in actual_lines:
             f.write('{}\n'.format(' '.join(map(str, line))))
 
@@ -417,7 +421,7 @@ def parse_iteration_alignments(directory, iteration, num_jobs):
     data = {}
     for j in range(num_jobs):
         phone_ctm_path = os.path.join(directory, 'phone.{}.{}.ctm'.format(iteration, j))
-        with open(phone_ctm_path, 'r') as f:
+        with open(phone_ctm_path, 'r', encoding='utf8') as f:
             for line in f:
                 line = line.strip()
                 if line == '':
@@ -476,7 +480,7 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
     jobs = [(iteration, config, model_directory, x)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         r = False
         try:
             results = [pool.apply_async(compute_alignment_improvement_func, args=i) for i in jobs]
@@ -506,11 +510,11 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
     utterance_aligned_diff, mean_difference = compare_alignments(previous_alignments, current_alignments,
                                                                  config.feature_config.frame_shift)
     if not os.path.exists(alignment_diff_path):
-        with open(alignment_diff_path, 'w') as f:
+        with open(alignment_diff_path, 'w', encoding='utf8') as f:
             f.write('iteration,number_aligned,number_previously_aligned,'
                     'difference_in_utts_aligned,mean_boundary_change\n')
     if iteration in config.realignment_iterations:
-        with open(alignment_diff_path, 'a') as f:
+        with open(alignment_diff_path, 'a', encoding='utf8') as f:
             f.write('{},{},{},{},{}\n'.format(iteration, len(current_alignments),
                                               len(previous_alignments), utterance_aligned_diff, mean_difference))
     if not config.debug:
@@ -525,18 +529,25 @@ def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
     aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
+    nbest_path = os.path.join(model_directory, 'nbest.{}'.format(job_name))
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
 
     frame_shift = align_config.feature_config.frame_shift / 1000
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
+        lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
+                                     "ark:" + text_int_path,
+                                     '', '', 'ark,t:'+nbest_path],
+                                    stdout=subprocess.PIPE, stderr=logf)
+
+        lin_proc.communicate()
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=logf)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
                                        os.path.join(dictionary.phones_dir, 'word_boundary.int'), model_path,
-                                       'ark:-', 'ark:' + aligned_path],
+                                       'ark:-', 'ark,t:' + aligned_path],
                                       stdin=lin_proc.stdout, stderr=logf)
         align_proc.communicate()
 
@@ -598,7 +609,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     jobs = [(align_config, model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         r = False
         try:
             results = [pool.apply_async(ali_to_textgrid_func, args=i) for i in jobs]
@@ -639,7 +650,7 @@ def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  
 
     treeacc_path = os.path.join(directory, '{}.treeacc'.format(job_name))
 
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
                         ['--ci-phones=' + ci_phones, mdl, "scp:" + feat_path,
                          "ark:" + ali_path,
@@ -683,13 +694,13 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
              os.path.join(split_directory, feat_name.format(x)),
              os.path.join(align_directory, 'ali.{}'.format(x)), x)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(tree_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
     tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
                         tree_accs, stderr=logf)
     # for f in tree_accs:
@@ -704,7 +715,7 @@ def convert_alignments_func(directory, align_directory, job_name):  # pragma: no
     new_ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
 
     log_path = os.path.join(directory, 'log', 'convert.{}.log'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('convert-ali'), ali_mdl_path,
                          mdl_path, tree_path, "ark:" + ali_path,
                          "ark:" + new_ali_path], stderr=logf)
@@ -731,7 +742,7 @@ def convert_alignments(directory, align_directory, num_jobs):
 
     jobs = [(directory, align_directory, x)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(convert_alignments_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -757,7 +768,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
         tmp_trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
     post_path = os.path.join(directory, 'post.{}'.format(job_name))
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('ali-to-post'),
                          "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
 
@@ -843,14 +854,14 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
     jobs = [(directory, split_directory, sil_phones, x, config, initial, model_name)
             for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(calc_fmllr_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
 
 def lda_acc_stats_func(directory, split_dir, align_directory, config, ci_phones, i):
     log_path = os.path.join(directory, 'log', 'ali_to_post.{}.log'.format(i))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         spliced_feat_path = os.path.join(split_dir, config.feature_config.feature_id + '.{}.scp'.format(i))
         ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
                                              'ark:' + os.path.join(align_directory, 'ali.{}'.format(i)),
@@ -907,7 +918,7 @@ def lda_acc_stats(directory, split_dir, align_directory, config, ci_phones, num_
 
     """
     jobs = [(directory, split_dir, align_directory, config, ci_phones, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(lda_acc_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -915,7 +926,7 @@ def lda_acc_stats(directory, split_dir, align_directory, config, ci_phones, num_
     acc_list = []
     for x in range(num_jobs):
         acc_list.append(os.path.join(directory, 'lda.{}.acc'.format(x)))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
                                          '--write-full-matrix=' + os.path.join(directory, 'full.mat'),
                                          '--dim=' + str(config.lda_dimension),
@@ -942,7 +953,7 @@ def calc_lda_mllt_func(directory, split_directory, sil_phones, job_name, config,
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
 
     # Estimating MLLT
-    with open(log_path, 'a') as logf:
+    with open(log_path, 'a', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('ali-to-post'),
                          "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
 
@@ -1002,7 +1013,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config, init
     jobs = [
         (directory, split_directory, sil_phones, x, config, initial, model_name)
         for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(calc_lda_mllt_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1011,7 +1022,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config, init
     previous_mat_path = os.path.join(directory, 'lda.mat')
     new_mat_path = os.path.join(directory, 'lda_new.mat')
     composed_path = os.path.join(directory, 'lda_composed.mat')
-    with open(log_path, 'a') as logf:
+    with open(log_path, 'a', encoding='utf8') as logf:
         macc_list = []
         for x in range(num_jobs):
             macc_list.append(os.path.join(directory, '{}.{}.macc'.format(model_name, x)))
@@ -1042,7 +1053,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config, init
 def gmm_gselect_func(config, x):
     log_path = os.path.join(config.train_directory, 'log', 'gselect.{}.log'.format(x))
     feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config.subsample),
                                                  'scp:' + feat_path,
@@ -1087,7 +1098,7 @@ def gmm_gselect(config, num_jobs):
 
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(gmm_gselect_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1095,7 +1106,7 @@ def gmm_gselect(config, num_jobs):
 def acc_global_stats_func(config, x, iteration):
     log_path = os.path.join(config.train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config.subsample),
                                                  'scp:' + feat_path,
@@ -1142,7 +1153,7 @@ def acc_global_stats(config, num_jobs, iteration):
 
     """
     jobs = [(config, x, iteration) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(acc_global_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1151,7 +1162,7 @@ def gauss_to_post_func(config, x):
     modified_posterior_scale = config.posterior_scale * config.subsample
     log_path = os.path.join(config.train_directory, 'log', 'post.{}.log'.format(x))
     feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config.subsample),
                                                  'scp:' + feat_path,
@@ -1205,7 +1216,7 @@ def gauss_to_post(config, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(gauss_to_post_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1213,7 +1224,7 @@ def gauss_to_post(config, num_jobs):
 def acc_ivector_stats_func(config, x, iteration):
     log_path = os.path.join(config.train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     feat_path = os.path.join(config.data_directory, config.feature_config.feature_id + '.{}.scp'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config.subsample),
                                                  'scp:' + feat_path,
@@ -1261,12 +1272,12 @@ def acc_ivector_stats(config, num_jobs, iteration):
         Iteration to calculate stats for
     """
     jobs = [(config, x, iteration) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(acc_ivector_stats_func, args=i) for i in jobs]
         output = [p.get() for p in results]
     accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in range(num_jobs)]
     log_path = os.path.join(config.train_directory, 'log', 'sum_acc.{}.log'.format(iteration))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         sum_accs_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
                                           '--parallel=true']
                                          + accinits
@@ -1313,7 +1324,7 @@ def extract_ivectors_func(config, x):
     silence_weight = 0.0
     posterior_scale = 0.1
     max_count = 100
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
                                              'ark:' + ali_path, 'ark:-'],
                                             stderr=logf,
@@ -1353,7 +1364,7 @@ def extract_ivectors_func(config, x):
                                         stdin=gmm_global_get_post_proc.stdout)
         extract_proc.communicate()
         utt_ivectors = []
-        with open(ivectors_path, 'r') as f:
+        with open(ivectors_path, 'r', encoding='utf8') as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -1364,13 +1375,13 @@ def extract_ivectors_func(config, x):
                 for utt in config.corpus.speak_utt_mapping[speaker]:
                     utt_ivectors.append([utt] + data)
 
-        with open(ivectors_path, 'w', newline='') as f:
+        with open(ivectors_path, 'w', newline='', encoding='utf8') as f:
             for u in utt_ivectors:
                 f.write(' '.join(u))
                 f.write('\n')
 
         feat_scp_path = os.path.join(config.data_directory, 'feats.{}.scp'.format(x))
-        with open(os.devnull, 'w') as devnull:
+        with open(os.devnull, 'w', encoding='utf8') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          'scp:' + feat_scp_path, '-'],
                                         stdout=subprocess.PIPE,
@@ -1423,7 +1434,7 @@ def extract_ivectors(config, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(extract_ivectors_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1439,7 +1450,7 @@ def get_egs_func(config, align_directory, valid_uttlist,
 
     # Deal with ivector stuff
     log_path = os.path.join(config.train_directory, 'log', 'get_egs_feats.{}.log'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         # Gets "feats" (Kaldi)
 
         if not valid_uttlist:
@@ -1448,19 +1459,19 @@ def get_egs_func(config, align_directory, valid_uttlist,
         filtered = filter_scp(train_subset_uttlist,
                               os.path.join(config.data_directory, base_feature_scp))
         training_features_path = os.path.join(config.train_directory, 'features_for_nnet_train.{}.scp'.format(x))
-        with open(training_features_path, 'w') as outf:
+        with open(training_features_path, 'w', encoding='utf8') as outf:
             for item in filtered:
                 outf.write(item)
 
         # Gets "valid_feats" (Kaldi)
         filtered = filter_scp(valid_uttlist, os.path.join(config.train_directory, base_feature_scp))
         validation_features_path = os.path.join(config.train_directory, 'features_for_nnet_valid.{}.scp'.format(x))
-        with open(validation_features_path, 'w') as outf:
+        with open(validation_features_path, 'w', encoding='utf8') as outf:
             for item in filtered:
                 outf.write(item)
 
     log_path = os.path.join(config.train_directory, 'log', 'ali_to_post.{}.log'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         ali_to_pdf_proc = subprocess.Popen([thirdparty_binary('ali-to-pdf'),
                                             os.path.join(align_directory, 'final.mdl'),
                                             'ark:' + os.path.join(align_directory, 'ali.{}'.format(x)),
@@ -1474,7 +1485,7 @@ def get_egs_func(config, align_directory, valid_uttlist,
                                             stdout=subprocess.PIPE)
 
     log_path = os.path.join(config.train_directory, 'log', 'get_egs.{}.log'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs')]+ ivectors_opt +
                                               ['--left-context=' + str(config.feature_config.splice_left_context),
                                               '--right-context=' + str(config.feature_config.splice_right_context),
@@ -1493,7 +1504,7 @@ def get_egs_func(config, align_directory, valid_uttlist,
 
     # Rearranging training examples
     log_path = os.path.join(config.train_directory, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
                                                '--srand=' + str(x),
                                                'ark:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x)),
@@ -1570,7 +1581,7 @@ def get_lda_nnet_func(config, align_directory, x):
     spliced_feature_scp = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.scp'.format(x))
     ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
     ivector_period = 10
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         if config.feature_config.ivectors:
             splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
                                         '--left-context={}'.format(config.feature_config.splice_left_context),
@@ -1588,7 +1599,7 @@ def get_lda_nnet_func(config, align_directory, x):
             paste_proc.communicate()
             # Get i-vector dimension
             ivector_dim_path = os.path.join(config.train_directory, 'ivector_dim')
-            with open(ivector_dim_path, 'w') as outf:
+            with open(ivector_dim_path, 'w', encoding='utf8') as outf:
                 dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                              'scp:' + ivector_scp_path,
                                              '-'],
@@ -1604,7 +1615,7 @@ def get_lda_nnet_func(config, align_directory, x):
             splice_proc.communicate()
 
         feat_dim_path = os.path.join(config.train_directory, 'feat_dim')
-        with open(feat_dim_path, 'w') as outf:
+        with open(feat_dim_path, 'w', encoding='utf8') as outf:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          'scp:' + base_feature_scp,
                                          '-'],
@@ -1681,11 +1692,11 @@ def get_lda_nnet(config, align_directory, num_jobs):
 
     jobs = [(config, align_directory, x) for x in
             range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(get_lda_nnet_func, args=i) for i in jobs]
         output = [p.get() for p in results]
     log_path = os.path.join(config.train_directory, 'log', 'lda_matrix.log')
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         acc_files = [os.path.join(config.train_directory, 'lda.{}.acc'.format(x))
                      for x in range(config.corpus.num_jobs)]
         sum_lda_accs_proc = subprocess.Popen([thirdparty_binary('sum-lda-accs'),
@@ -1728,7 +1739,7 @@ def nnet_train_trans(nnet_dir, align_dir, prev_ali_path, num_jobs):
         The number of processes to use in calculation
     """
     log_path = os.path.join(nnet_dir, 'log', 'train_trans.log')
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         train_trans_proc = subprocess.Popen([thirdparty_binary('nnet-train-transitions'),
                                              os.path.join(nnet_dir, '0.mdl'),
                                              'ark:' + prev_ali_path,
@@ -1739,7 +1750,7 @@ def nnet_train_trans(nnet_dir, align_dir, prev_ali_path, num_jobs):
 
 def nnet_train_func(nnet_dir, egs_dir, mdl, i, x):
     log_path = os.path.join(nnet_dir, 'log', 'train.{}.{}.log'.format(i, x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         shuffle_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
                                          '--srand={}'.format(i),
                                          'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x)),
@@ -1786,7 +1797,7 @@ def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(nnet_dir, egs_dir, mdl, i, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(nnet_train_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1799,7 +1810,7 @@ def nnet_align_func(i, config, train_directory, align_directory, x):
     ali_path = os.path.join(align_directory, 'ali.{}'.format(x))
     mdl_path = os.path.join(train_directory, '{}.mdl'.format(i))
     ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
-    with open(log_path, 'w') as logf, \
+    with open(log_path, 'w', encoding='utf8') as logf, \
             open(ali_path, 'wb') as outf:
         paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
                                        'scp:' + feat_path,
@@ -1847,14 +1858,14 @@ def nnet_align(i, config, train_directory, align_directory, num_jobs):
     jobs = [(i, config, train_directory, align_directory, x)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(nnet_align_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
 
 def compute_prob_func(i, nnet_dir, egs_dir, model_path, x):
     log_path = os.path.join(nnet_dir, 'log', 'compute_prob_train.{}.{}.log'.format(i, x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         compute_prob_proc = subprocess.Popen([thirdparty_binary('nnet-compute-prob'),
                                               model_path,
                                               'ark:{}/egs.{}'.format(egs_dir, x)],
@@ -1890,7 +1901,7 @@ def compute_prob(i, nnet_dir, egs_dir, model_path, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(i, nnet_dir, egs_dir, model_path, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(compute_prob_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -1907,7 +1918,7 @@ def ali_to_textgrid_kaldi_func(ali_directory, model_directory, lang_dir, split_d
     # Get integers
     log_path = os.path.join(ali_directory, 'log', 'sym2int.{}.log'.format(job_name))
     text_int_path = os.path.join(ali_directory, 'text.{}.int'.format(job_name))
-    with open(log_path, 'w') as logf, open(text_int_path, 'w') as outf:
+    with open(log_path, 'w', encoding='utf8') as logf, open(text_int_path, 'w', encoding='utf8') as outf:
         sym2int_proc = subprocess.Popen([sym2int_script,
                                          '--map-oov', oov, '-f', '2-',
                                          os.path.join(lang_dir, 'words.txt'),
@@ -1917,7 +1928,7 @@ def ali_to_textgrid_kaldi_func(ali_directory, model_directory, lang_dir, split_d
 
     frame_shift = 10 / 1000
     log_path = os.path.join(ali_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
                                      '', '', 'ark:-'],
@@ -1987,7 +1998,7 @@ def convert_ali_to_textgrids_kaldi(ali_directory, model_directory, lang_dir, spl
     jobs = [(ali_directory, model_directory, lang_dir, split_data_dir, sym2int_script, oov, x)
             for x in range(num_jobs)]
 
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         r = False
         try:
             results = [pool.apply_async(ali_to_textgrid_kaldi_func, args=i) for i in jobs]
@@ -2024,7 +2035,7 @@ def convert_ali_to_textgrids_kaldi(ali_directory, model_directory, lang_dir, spl
 
 def get_average_posteriors_func(i, nnet_dir, prev_egs_dir, config, x):
     log_path = os.path.join(nnet_dir, 'log', 'get_post.{}.{}.log'.format(i, x))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         nnet_to_raw_nnet_proc = subprocess.Popen([thirdparty_binary('nnet-to-raw-nnet'),
                                                   os.path.join(nnet_dir, '{}.mdl'.format(i)),
                                                   os.path.join(nnet_dir, '{}_raw.mdl'.format(i))],
@@ -2086,7 +2097,7 @@ def get_average_posteriors(i, nnet_dir, prev_egs_dir, config, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(i, nnet_dir, prev_egs_dir, config, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(get_average_posteriors_func, args=i) for i in jobs]
         output = [p.get() for p in results]
 
@@ -2094,7 +2105,7 @@ def get_average_posteriors(i, nnet_dir, prev_egs_dir, config, num_jobs):
 def relabel_egs_func(i, nnet_dir, egs_in, alignments, egs_out, x):
     log_path = os.path.join(nnet_dir, 'log', 'relabel_egs.{}.log'.format(x))
     model_path = os.path.join(nnet_dir, '{}.mdl'.format(i))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         ali_to_pdf_proc = subprocess.Popen([thirdparty_binary('ali-to-pdf'),
                                             model_path,
                                             'ark:' + alignments, 'ark:-'],
@@ -2139,6 +2150,6 @@ def relabel_egs(i, nnet_dir, egs_in, alignments, egs_out, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(i, nnet_dir, egs_in, alignments, egs_out, x) for x in range(num_jobs)]
-    with mp.Pool(processes=num_jobs) as pool:
+    with mp.Pool(processes=num_jobs, initializer=init, initargs=(os.environ.copy(),)) as pool:
         results = [pool.apply_async(relabel_egs_func, args=i) for i in jobs]
         output = [p.get() for p in results]

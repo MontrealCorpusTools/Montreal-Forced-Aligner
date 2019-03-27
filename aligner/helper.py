@@ -1,8 +1,9 @@
 import os
+import shutil
 
 
 def thirdparty_binary(binary_name):
-    return binary_name
+    return shutil.which(binary_name)
 
 
 def make_path_safe(path):
