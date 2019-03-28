@@ -13,6 +13,9 @@ docs/source/generated
 thirdparty
 !thirdparty/*.md
 !thirdparty/*.py
+thirdparty/*.txt
+thirdparty/*.zip
+thirdparty/bin/
 
 *.fst
 
@@ -36,6 +39,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

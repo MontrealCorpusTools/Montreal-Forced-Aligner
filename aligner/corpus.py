@@ -81,7 +81,7 @@ def load_scp(path):
 
 def find_lab(filename, files):
     '''
-    Finds a .lab file that corresponds to a wav file
+    Finds a .lab or .txt file that corresponds to a wav file.  The .lab extension is given priority.
 
     Parameters
     ----------
@@ -93,12 +93,16 @@ def find_lab(filename, files):
     Returns
     -------
     str or None
-        If a corresponding .lab file is found, returns it, otherwise returns None
+        If a corresponding .lab or .txt file is found, returns it, otherwise returns None
     '''
     name, ext = os.path.splitext(filename)
     for f in files:
         fn, fext = os.path.splitext(f)
         if fn == name and fext.lower() == '.lab':
+            return f
+    for f in files: # Use .txt if no .lab file available
+        fn, fext = os.path.splitext(f)
+        if fn == name and fext.lower() == '.txt':
             return f
     return None
 

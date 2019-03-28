@@ -149,6 +149,8 @@ class BaseAligner(object):
                                     stderr=devnull,
                                     stdout=subprocess.PIPE)
             stdout, stderr = proc.communicate()
+            print(stdout)
+            print(stderr)
             num = stdout.decode('utf8')
             matches = re.search(r'gaussians (\d+)', num)
             num = int(matches.groups()[0])

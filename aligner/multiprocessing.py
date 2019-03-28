@@ -19,7 +19,7 @@ def mfcc_func(mfcc_directory, log_directory, job_name, mfcc_config_path):  # pra
     segment_path = os.path.join(log_directory, 'segments.{}'.format(job_name))
     scp_path = os.path.join(log_directory, 'wav.{}.scp'.format(job_name))
 
-    with open(log_path, 'w') as f:
+    with open(log_path, 'w', encoding='utf8') as f:
         if os.path.exists(segment_path):
             seg_proc = subprocess.Popen([thirdparty_binary('extract-segments'),
                                          'scp,p:' + scp_path, segment_path, 'ark:-'],
@@ -92,7 +92,7 @@ def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cov
     next_model_path = os.path.join(directory, '{}.mdl'.format(iteration + 1))
     acc_path = os.path.join(directory, '{}.{}.acc'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), model_path,
                                      "ark:" + feat_path, "ark,t:" + ali_path, acc_path],
                                     stderr=logf)
@@ -169,7 +169,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
     triphones_file_path = os.path.join(directory, 'triphones.txt')
     if debug:
-        with open(log_path, 'w') as logf:
+        with open(log_path, 'w', encoding='utf8') as logf:
             with open(transition_path, 'w', encoding='utf8') as f:
                 subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
                                 stdout=f, stderr=logf)
@@ -182,7 +182,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
     with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r') as inf, \
             open(fst_path, 'wb') as outf, \
-            open(log_path, 'w') as logf:
+            open(log_path, 'w', encoding='utf8') as logf:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
                                  '--read-disambig-syms={}'.format(
                                      os.path.join(lang_directory, 'phones', 'disambig.int')),
@@ -273,7 +273,7 @@ def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path):
     directory = os.path.join(split_directory, str(job_name))
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
     ali_path = os.path.join(mono_directory, '0.{}.acc'.format(job_name))
-    with open(log_path, 'w') as logf, \
+    with open(log_path, 'w', encoding='utf8') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "ark:" + fst_path,
                                        'ark:' + feat_path, 'ark,t:-'],
@@ -321,7 +321,7 @@ def compile_utterance_train_graphs_func(directory, lang_directory, split_directo
 
     log_path = os.path.join(directory, 'log', 'compile-graphs-fst.0.{}.log'.format(job_name))
 
-    with open(log_path, 'w') as logf, open(fsts_path, 'r', encoding='utf8') as f:
+    with open(log_path, 'w', encoding='utf8') as logf, open(fsts_path, 'r', encoding='utf8') as f:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs-fsts'),
                                  '--transition-scale=1.0', '--self-loop-scale=0.1',
                                  '--read-disambig-syms={}'.format(disambig_int_path),
@@ -356,7 +356,7 @@ def test_utterances_func(directory, lang_directory, split_directory, job_name): 
     lattice_beam = 8.0
     max_active = 750
     lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         latgen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster', ),
                                         '--acoustic-scale={}'.format(acoustic_scale),
                                         '--beam={}'.format(beam),
@@ -403,7 +403,7 @@ def test_utterances(aligner):
         text_path = os.path.join(split_directory, 'text.{}'.format(job))
         texts = load_scp(text_path)
         aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
-        with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
+        with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w', encoding='utf8') as outf:
             for utt, line in sorted(aligned_int.items()):
                 text = []
                 for t in line:
@@ -438,7 +438,7 @@ def test_utterances(aligner):
         print('There were no utterances with transcription issues.')
         return True
     out_path = os.path.join(aligner.output_directory, 'transcription_problems.txt')
-    with open(out_path, 'w') as problemf:
+    with open(out_path, 'w', encoding='utf8') as problemf:
         problemf.write('Utterance\tInsertions\tDeletions\tReference\tDecoded\n')
         for utt, (insertions, deletions, ref_text, text) in sorted(errors.items(),
                                                                    key=lambda x: -1 * (len(x[1][1]) + len(x[1][2]))):
@@ -454,7 +454,7 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path):  # pragm
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
-    with open(log_path, 'w') as logf, \
+    with open(log_path, 'w', encoding='utf8') as logf, \
             open(ali_path, 'wb') as outf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled')] + config.scale_opts +
                                       ['--beam={}'.format(config.beam),
@@ -520,7 +520,7 @@ def ali_to_textgrid_func(output_directory, model_directory, dictionary, corpus, 
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
 
     frame_shift = corpus.mfcc_configs[0].config_dict['frame-shift'] / 1000
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
                                      '', '', 'ark:-'],
@@ -629,7 +629,7 @@ def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  
     log_path = os.path.join(directory, 'log', 'acc_tree.{}.log'.format(job_name))
 
     treeacc_path = os.path.join(directory, '{}.treeacc'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('acc-tree-stats')] + context_opts +
                         ['--ci-phones=' + ci_phones, mdl, "ark:" + feat_path,
                          "ark:" + ali_path,
@@ -676,7 +676,7 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
 
     tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
                         tree_accs, stderr=logf)
     for f in tree_accs:
@@ -691,7 +691,7 @@ def convert_alignments_func(directory, align_directory, job_name):  # pragma: no
     new_ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
 
     log_path = os.path.join(directory, 'log', 'convert.{}.log'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('convert-ali'), ali_mdl_path,
                          mdl_path, tree_path, "ark:" + ali_path,
                          "ark:" + new_ali_path], stderr=logf)
@@ -743,7 +743,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
         tmp_trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
     post_path = os.path.join(directory, 'post.{}'.format(job_name))
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
-    with open(log_path, 'w') as logf:
+    with open(log_path, 'w', encoding='utf8') as logf:
         subprocess.call([thirdparty_binary('ali-to-post'),
                          "ark:" + ali_path, 'ark:' + post_path], stderr=logf)
 
