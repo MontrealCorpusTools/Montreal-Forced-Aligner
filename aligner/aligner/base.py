@@ -47,9 +47,12 @@ class BaseAligner(object):
     '''
 
     def __init__(self, corpus, dictionary, output_directory,
+                 beam=100,
                  temp_directory=None, num_jobs=3, call_back=None,
                  mono_params=None, tri_params=None,
-                 tri_fmllr_params=None, debug=False):
+                 tri_fmllr_params=None, debug=False,
+                 skip_input=False):
+        self.skip_input = skip_input
         if mono_params is None:
             mono_params = {}
         if tri_params is None:
@@ -57,8 +60,14 @@ class BaseAligner(object):
         if tri_fmllr_params is None:
             tri_fmllr_params = {}
         self.mono_config = MonophoneConfig(**mono_params)
+        self.mono_config.beam = beam
+        self.mono_config.retry_beam = beam * 4
         self.tri_config = TriphoneConfig(**tri_params)
+        self.tri_config.beam = beam
+        self.tri_config.retry_beam = beam * 4
         self.tri_fmllr_config = TriphoneFmllrConfig(**tri_fmllr_params)
+        self.tri_fmllr_config.beam = beam
+        self.tri_fmllr_config.retry_beam = beam * 4
         self.corpus = corpus
         self.dictionary = dictionary
         self.output_directory = output_directory
@@ -77,7 +86,7 @@ class BaseAligner(object):
 
     def setup(self):
         self.dictionary.write()
-        self.corpus.initialize_corpus(self.dictionary)
+        self.corpus.initialize_corpus(self.dictionary, skip_input=self.skip_input)
         print(self.corpus.speaker_utterance_info())
 
     @property

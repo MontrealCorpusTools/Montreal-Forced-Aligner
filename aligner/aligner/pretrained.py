@@ -57,8 +57,10 @@ class PretrainedAligner(BaseAligner):
     '''
 
     def __init__(self, corpus, dictionary, acoustic_model, output_directory,
+                 beam=100,
                  temp_directory=None, num_jobs=3, speaker_independent=False,
-                 call_back=None, debug=False):
+                 call_back=None, debug=False, skip_input=False):
+        self.skip_input = skip_input
         self.debug = debug
         if temp_directory is None:
             temp_directory = TEMP_DIR
@@ -68,6 +70,7 @@ class PretrainedAligner(BaseAligner):
         self.corpus = corpus
         self.speaker_independent = speaker_independent
         self.dictionary = dictionary
+        self.beam = beam
         self.setup()
         self.acoustic_model.export_triphone_model(self.tri_directory)
         log_dir = os.path.join(self.tri_directory, 'log')
@@ -86,6 +89,8 @@ class PretrainedAligner(BaseAligner):
                                                        # 'boost_silence': 0
                                                        })
         self.tri_config = TriphoneConfig()
+        self.tri_config.beam = self.beam
+        self.tri_config.retry_beam = self.beam * 4
         if self.debug:
             mdl_path = os.path.join(self.tri_directory, 'final.mdl')
             tree_path = os.path.join(self.tri_directory, 'tree')
@@ -115,6 +120,7 @@ class PretrainedAligner(BaseAligner):
     def setup(self):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
+
     def test_utterance_transcriptions(self):
         return test_utterances(self)
 
@@ -130,6 +136,7 @@ class PretrainedAligner(BaseAligner):
         '''
         Align the dataset using speaker-adapted transforms
         '''
+
         model_directory = self.tri_directory
         output_directory = self.tri_ali_directory
         os.makedirs(output_directory, exist_ok=True)

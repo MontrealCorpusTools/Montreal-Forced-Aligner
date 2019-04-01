@@ -13,6 +13,12 @@ Running the aligner
 Common options for both aligner executables
 -------------------------------------------
 
+.. cmdoption:: -b NUMBER
+               --beam NUMBER
+
+   Beam width to use in aligning (default is 100), higher beam is more permissive for longer files or less accurate transcriptions.
+
+
 .. cmdoption:: -s NUMBER
                --speaker_characters NUMBER
 
@@ -29,31 +35,36 @@ Common options for both aligner executables
 .. cmdoption:: -j NUMBER
                --num_jobs NUMBER
 
-  Number of jobs to use; defaults to 3, set higher if you have more
-  processors available and would like to align faster
+   Number of jobs to use; defaults to 3, set higher if you have more
+   processors available and would like to align faster
 
 .. cmdoption:: -v
                --verbose
 
-  The aligner will print out more debugging information if present
+   The aligner will print out more debugging information if present
 
 .. cmdoption:: -c
                --clean
 
-  Temporary files in ``~/Documents/MFA`` and the output directory will be
-  removed prior to aligning.  This is good to use when aligning a new dataset,
-  but it shares a name with a previously aligned dataset.
+   Temporary files in ``~/Documents/MFA`` and the output directory will be
+   removed prior to aligning.  This is good to use when aligning a new dataset,
+   but it shares a name with a previously aligned dataset.
 
 .. cmdoption:: -h
                --help
 
-  Display help message for the executable
+   Display help message for the executable
 
 .. cmdoption:: -i
                --ignore_exceptions
 
   Ignore exceptions in loading the corpus. An error will be thrown if two files share the same name, adding this flag will
   ensure utterance names will be unique by appending numbers to the ends of the file names.
+
+.. cmdoption:: -q
+               --quiet
+
+   Flag to ignore stop checks like having OOV items
 
 Align using pretrained models
 -----------------------------

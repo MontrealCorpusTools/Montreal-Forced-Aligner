@@ -14,7 +14,7 @@ from aligner.utils import no_dictionary
 from aligner.config import TEMP_DIR
 
 
-def align_corpus(args, skip_input=False):
+def align_corpus(args):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -61,9 +61,10 @@ def align_corpus(args, skip_input=False):
         tri_params = {'align_often': not args.fast}
         tri_fmllr_params = {'align_often': not args.fast}
         a = TrainableAligner(corpus, dictionary, args.output_directory,
+                              beam=getattr(args, 'beam', 100),
                              temp_directory=data_directory,
                              mono_params=mono_params, tri_params=tri_params,
-                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs)
+                             tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, skip_input=getattr(args,'quiet', False))
         a.verbose = args.verbose
         a.train_mono()
         a.export_textgrids()
@@ -81,7 +82,7 @@ def align_corpus(args, skip_input=False):
             yaml.dump(conf, f)
 
 
-def align_corpus_no_dict(args, skip_input=False):
+def align_corpus_no_dict(args):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -105,9 +106,10 @@ def align_corpus_no_dict(args, skip_input=False):
     tri_params = {'align_often': not args.fast}
     tri_fmllr_params = {'align_often': not args.fast}
     a = TrainableAligner(corpus, dictionary, args.output_directory,
+                              beam=getattr(args, 'beam', 100),
                          temp_directory=data_directory,
                          mono_params=mono_params, tri_params=tri_params,
-                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug)
+                         tri_fmllr_params=tri_fmllr_params, num_jobs=args.num_jobs, debug=args.debug, skip_input=getattr(args,'quiet', False))
     a.verbose = args.verbose
     a.train_mono()
     a.export_textgrids()
@@ -137,6 +139,8 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                         help='Number of characters of filenames to use for determining speaker, '
                              'default is to use directory names')
+    parser.add_argument('-b', '--beam', type=int, default=100,
+                        help='Beam width to use for alignment. Retry beam width will always be 4 times as large.')
     parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
     parser.add_argument('-f', '--fast', help="Perform a quick alignment with half the number of alignment iterations",
@@ -148,6 +152,8 @@ if __name__ == '__main__':  # pragma: no cover
     parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
     parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
+                        action='store_true')
+    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
                         action='store_true')
     args = parser.parse_args()
     fix_path()
