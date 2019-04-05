@@ -19,7 +19,7 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
     corpus = Corpus(extra_corpus_dir, output_directory, num_jobs=2)
-    corpus.initialize_corpus(sick_dict)
+    corpus.initialize_corpus(sick_dict, skip_input=True)
 
 
 def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir):
