@@ -175,7 +175,7 @@ if __name__ == '__main__':  # pragma: no cover
                         action='store_true')
     parser.add_argument('-i', '--ignore_exceptions', help='Ignore exceptions raised when parsing data',
                         action='store_true')
-    parser.add_argument('-q', '--quiet', help='Ignore exceptions raised when parsing data',
+    parser.add_argument('-q', '--quiet', help='Disable prompts for user input',
                         action='store_true')
     args = parser.parse_args()
     try:
