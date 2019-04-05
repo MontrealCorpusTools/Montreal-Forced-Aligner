@@ -12,7 +12,7 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
     d = Corpus(basic_corpus_dir, output_directory)
-    d.initialize_corpus(dictionary)
+    d.initialize_corpus(dictionary, skip_input=True)
     assert (d.get_feat_dim() == '39')
 
 
