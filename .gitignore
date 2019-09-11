@@ -14,7 +14,7 @@ report.txt
 tests/data/generated
 docs/source/generated
 
-
+pretrained_models/
 
 # C extensions
 *.so
