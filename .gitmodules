@@ -1,3 +1,0 @@
-[submodule "pretrained_models"]
-    path = pretrained_models
-    url = https://github.com/MontrealCorpusTools/mfa-models

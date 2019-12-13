@@ -1,8 +1,8 @@
 .. example:
 
-.. _`LibriSpeech lexicon`: http://www.openslr.org/resources/11/librispeech-lexicon.txt
+.. _`LibriSpeech lexicon`: https://drive.google.com/open?id=1dAvxdsHWbtA1ZIh3Ex9DPn9Nemx9M1-L
 
-.. _`LibriSpeech data set`: https://www.dropbox.com/s/i08yunn7yqnbv0h/LibriSpeech.zip?dl=0
+.. _`LibriSpeech data set`: https://drive.google.com/open?id=1MNlwIv5VyMemrXcZCcC6hENSZpojkdpm
 
 *******
 Example
