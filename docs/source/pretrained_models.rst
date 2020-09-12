@@ -1,110 +1,110 @@
-.. _`Arabic acoustic model`: http://mlmlab.org/mfa/mfa-models/arabic.zip
+.. _`Arabic acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/arabic.zip
 
-.. _`Bulgarian acoustic model`: http://mlmlab.org/mfa/mfa-models/bulgarian.zip
+.. _`Bulgarian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/bulgarian.zip
 
-.. _`Croatian acoustic model`: http://mlmlab.org/mfa/mfa-models/croatian.zip
+.. _`Croatian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/croatian.zip
 
-.. _`Czech acoustic model`: http://mlmlab.org/mfa/mfa-models/czech.zip
+.. _`Czech acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/czech.zip
 
-.. _`English acoustic model`: http://mlmlab.org/mfa/mfa-models/english.zip
+.. _`English acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/english.zip
 
-.. _`French (FR) acoustic model`: http://mlmlab.org/mfa/mfa-models/french.zip
+.. _`French (FR) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french.zip
 
-.. _`French (Prosodylab) acoustic model`: http://mlmlab.org/mfa/mfa-models/french_prosodylab.zip
+.. _`French (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french_prosodylab.zip
 
-.. _`French (QC) acoustic model`: http://mlmlab.org/mfa/mfa-models/french_qc.zip
+.. _`French (QC) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french_qc.zip
 
-.. _`German acoustic model`: http://mlmlab.org/mfa/mfa-models/german.zip
+.. _`German acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/german.zip
 
-.. _`German (Prosodylab) acoustic model`: http://mlmlab.org/mfa/mfa-models/german_prosodylab.zip
+.. _`German (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/german_prosodylab.zip
 
-.. _`Hausa acoustic model`: http://mlmlab.org/mfa/mfa-models/hausa.zip
+.. _`Hausa acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/hausa.zip
 
-.. _`Japanese acoustic model`: http://mlmlab.org/mfa/mfa-models/japanese.zip
+.. _`Japanese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/japanese.zip
 
-.. _`Korean acoustic model`: http://mlmlab.org/mfa/mfa-models/korean.zip
+.. _`Korean acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/korean.zip
 
-.. _`Mandarin acoustic model`: http://mlmlab.org/mfa/mfa-models/mandarin.zip
+.. _`Mandarin acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/mandarin.zip
 
-.. _`Polish acoustic model`: http://mlmlab.org/mfa/mfa-models/polish.zip
+.. _`Polish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/polish.zip
 
-.. _`Portuguese acoustic model`: http://mlmlab.org/mfa/mfa-models/portuguese.zip
+.. _`Portuguese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/portuguese.zip
 
-.. _`Russian acoustic model`: http://mlmlab.org/mfa/mfa-models/russian.zip
+.. _`Russian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/russian.zip
 
-.. _`Spanish acoustic model`: http://mlmlab.org/mfa/mfa-models/spanish.zip
+.. _`Spanish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/spanish.zip
 
-.. _`Swahili acoustic model`: http://mlmlab.org/mfa/mfa-models/swahili.zip
+.. _`Swahili acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/swahili.zip
 
-.. _`Swedish acoustic model`: http://mlmlab.org/mfa/mfa-models/swedish.zip
+.. _`Swedish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/swedish.zip
 
-.. _`Tamil acoustic model`: http://mlmlab.org/mfa/mfa-models/tamil.zip
+.. _`Tamil acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/tamil.zip
 
-.. _`Thai acoustic model`: http://mlmlab.org/mfa/mfa-models/thai.zip
+.. _`Thai acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/thai.zip
 
-.. _`Turkish acoustic model`: http://mlmlab.org/mfa/mfa-models/turkish.zip
+.. _`Turkish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/turkish.zip
 
-.. _`Ukrainian acoustic model`: http://mlmlab.org/mfa/mfa-models/ukrainian.zip
+.. _`Ukrainian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/ukrainian.zip
 
-.. _`Vietnamese acoustic model`: http://mlmlab.org/mfa/mfa-models/vietnamese.zip
+.. _`Vietnamese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/vietnamese.zip
 
-.. _`Vietnamese (vPhon) acoustic model`: http://mlmlab.org/mfa/mfa-models/vietnamese_vphon.zip
+.. _`Vietnamese (vPhon) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/vietnamese_vphon.zip
 
-.. _`Wu acoustic model`: http://mlmlab.org/mfa/mfa-models/wu.zip
+.. _`Wu acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/wu.zip
 
 
 .. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
 
 
-.. _`Arabic G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/arabic_g2p.zip
+.. _`Arabic G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/arabic_g2p.zip
 
-.. _`Bulgarian G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/bulgarian_g2p.zip
+.. _`Bulgarian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/bulgarian_g2p.zip
 
-.. _`Croatian G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/croatian_g2p.zip
+.. _`Croatian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/croatian_g2p.zip
 
-.. _`Czech G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/czech_g2p.zip
+.. _`Czech G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/czech_g2p.zip
 
-.. _`French G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/french_g2p.zip
+.. _`French G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_g2p.zip
 
-.. _`French (ProsodyLab) G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/french_prosodylab_g2p.zip
+.. _`French (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_prosodylab_g2p.zip
 
-.. _`German G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/german_g2p.zip
+.. _`German G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/german_g2p.zip
 
-.. _`German (ProsodyLab) G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/german_prosodylab_g2p.zip
+.. _`German (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/german_prosodylab_g2p.zip
 
-.. _`Hausa G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/hausa_g2p.zip
+.. _`Hausa G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/hausa_g2p.zip
 
-.. _`Japanese G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/japanese_g2p.zip
+.. _`Japanese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/japanese_g2p.zip
 
-.. _`Korean G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/korean_g2p.zip
+.. _`Korean G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_g2p.zip
 
-.. _`Mandarin Pinyin G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/mandarin_pinyin_g2p.zip
+.. _`Mandarin Pinyin G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/mandarin_pinyin_g2p.zip
 
-.. _`Mandarin Character G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/mandarin_character_g2p.zip
+.. _`Mandarin Character G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/mandarin_character_g2p.zip
 
-.. _`Polish G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/polish_g2p.zip
+.. _`Polish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/polish_g2p.zip
 
-.. _`Portuguese G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/portuguese_g2p.zip
+.. _`Portuguese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/portuguese_g2p.zip
 
-.. _`Russian G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/russian_g2p.zip
+.. _`Russian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/russian_g2p.zip
 
-.. _`Spanish G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/spanish_g2p.zip
+.. _`Spanish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/spanish_g2p.zip
 
-.. _`Swahili G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/swahili_g2p.zip
+.. _`Swahili G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/swahili_g2p.zip
 
-.. _`Swedish G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/swedish_g2p.zip
+.. _`Swedish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/swedish_g2p.zip
 
-.. _`Thai G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/thai_g2p.zip
+.. _`Thai G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/thai_g2p.zip
 
-.. _`Turkish G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/turkish_g2p.zip
+.. _`Turkish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/turkish_g2p.zip
 
-.. _`Ukrainian G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/ukrainian_g2p.zip
+.. _`Ukrainian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/ukrainian_g2p.zip
 
-.. _`Vietnamese G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/vietnamese_g2p.zip
+.. _`Vietnamese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/vietnamese_g2p.zip
 
-.. _`Vietnamese (vPhon) G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/vietnamese_vphon_g2p.zip
+.. _`Vietnamese (vPhon) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/vietnamese_vphon_g2p.zip
 
-.. _`Wu G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/wu_g2p.zip
+.. _`Wu G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/wu_g2p.zip
 
 .. _`ProsodyLab dictionary repository`: https://github.com/prosodylab/prosodylab.dictionaries
 
@@ -271,9 +271,9 @@ tested on 10%:
 Available pronunciation dictionaries
 ====================================
 
-.. _`English pronunciation dictionary`:  http://mlmlab.org/mfa/dictionaries/english.dict
-.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/prosodylab/prosodylab.dictionaries/master/fr.dict
-.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/prosodylab/prosodylab.dictionaries/master/de.dict
+.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/english.dict
+.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/fr.dict
+.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/de.dict
 
 +-----------------+-----------------------------------------------+------------------------+------------------------+
 | Language        | Link                                          | Orthography system     | Phone set              |
