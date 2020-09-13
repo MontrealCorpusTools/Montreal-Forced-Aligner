@@ -43,7 +43,7 @@ def test_train_large_prosodylab(large_prosodylab_format_directory,
 
 
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
-                     basic_align_config):
+                     basic_align_config, english_acoustic_model):
     args = DummyArgs()
     args.acoustic_model_path = 'english'
     args.corpus_directory = basic_corpus_dir

@@ -58,6 +58,12 @@ def temp_dir(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def english_acoustic_model():
+    from aligner.command_line.download import download_model
+    download_model('acoustic', 'english')
+
+
+@pytest.fixture(scope='session')
 def corpus_root_dir(generated_dir):
     return os.path.join(generated_dir, 'corpus')
 
