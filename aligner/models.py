@@ -6,11 +6,11 @@ import glob
 from tempfile import mkdtemp
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 
-# default format for output
-FORMAT = "zip"
-
 from . import __version__
 from .exceptions import PronunciationAcousticMismatchError, PronunciationOrthographyMismatchError
+
+# default format for output
+FORMAT = "zip"
 
 
 class Archive(object):
@@ -104,7 +104,7 @@ class AcousticModel(Archive):
                               }
             else:
                 with open(meta_path, 'r', encoding='utf8') as f:
-                    self._meta = yaml.load(f)
+                    self._meta = yaml.load(f, Loader=yaml.SafeLoader)
                 if self._meta['features'] == 'mfcc+deltas':
                     self._meta['features'] = default_features
             if 'uses_lda' not in self._meta: # Backwards compat
@@ -171,7 +171,7 @@ class G2PModel(Archive):
                               'architecture': 'phonetisaurus'}
             else:
                 with open(meta_path, 'r', encoding='utf8') as f:
-                    self._meta = yaml.load(f)
+                    self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta['phones'] = set(self._meta.get('phones', []))
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
         return self._meta
@@ -206,7 +206,7 @@ class IvectorExtractor(Archive):
         if not self._meta:
             meta_path = os.path.join(self.dirname, 'meta.yaml')
             with open(meta_path, 'r', encoding='utf8') as f:
-                self._meta = yaml.load(f)
+                self._meta = yaml.load(f, Loader=yaml.SafeLoader)
         return self._meta
 
     def add_model(self, source):

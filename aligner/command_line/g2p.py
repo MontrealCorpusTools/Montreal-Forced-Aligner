@@ -1,4 +1,3 @@
-import argparse
 import os
 import sys
 import traceback
@@ -11,14 +10,13 @@ from aligner.g2p.generator import PhonetisaurusDictionaryGenerator
 from aligner.corpus import Corpus
 from aligner.models import G2PModel
 from aligner.dictionary import check_bracketed
+from aligner.utils import get_pretrained_g2p_path, get_available_g2p_languages
 
 from aligner.exceptions import ArgumentError
 from aligner.config import TEMP_DIR
 
-from aligner.command_line.align import fix_path, unfix_path
 
-
-def generate_g2p_dict(args):
+def generate_dictionary(args):
     print("Generating pronunciations from G2P model")
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -42,43 +40,17 @@ def generate_g2p_dict(args):
         with open(args.input_path, 'r', encoding='utf8') as f:
             for line in f:
                 word_set.update(line.strip().split())
-    model = G2PModel(args.g2p_model_path)
-    gen = PhonetisaurusDictionaryGenerator(model, word_set, args.output_path, temp_directory=temp_dir)
-    gen.generate()
-
-
-def generate_orthography_dict(args):
-    print("Generating pronunciations from orthography")
-    if not args.temp_directory:
-        temp_dir = TEMP_DIR
-        temp_dir = os.path.join(temp_dir, 'G2P')
-    else:
-        temp_dir = os.path.expanduser(args.temp_directory)
-
-    if os.path.isdir(args.input_path):
-        input_dir = os.path.expanduser(args.input_path)
-        corpus_name = os.path.basename(args.input_path)
-        if corpus_name == '':
-            args.input_path = os.path.dirname(args.input_path)
-            corpus_name = os.path.basename(args.input_path)
-        data_directory = os.path.join(temp_dir, corpus_name)
-
-        corpus = Corpus(input_dir, data_directory)
-
-        word_set = get_word_set(corpus, args.include_bracketed)
-
-    else:
-        word_set = set()
-        with open(args.input_path, 'r', encoding='utf8') as f:
-            for line in f:
-                word_set.update(line.strip().split())
         if not args.include_bracketed:
             word_set = [x for x in word_set if not check_bracketed(x)]
-
-    with open(args.output_path, "w", encoding='utf8') as f:
-        for word in sorted(word_set):
-            pronunciation = list(word)
-            f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
+    if args.g2p_model_path is not None:
+        model = G2PModel(args.g2p_model_path)
+        gen = PhonetisaurusDictionaryGenerator(model, word_set, args.output_path, temp_directory=temp_dir)
+        gen.generate()
+    else:
+        with open(args.output_path, "w", encoding='utf8') as f:
+            for word in sorted(word_set):
+                pronunciation = list(word)
+                f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
 
 
 def get_word_set(corpus, include_bracketed=False):
@@ -127,9 +99,11 @@ def get_word_set(corpus, include_bracketed=False):
     return word_set
 
 
-def validate(args):
+def validate(args, pretrained_languages):
     if not args.g2p_model_path:
         args.g2p_model_path = None
+    elif args.g2p_model_path in pretrained_languages:
+        args.g2p_model_path = get_pretrained_g2p_path(args.g2p_model_path)
     if args.g2p_model_path and not os.path.exists(args.g2p_model_path):
         raise (ArgumentError('Could not find the G2P model file {}.'.format(args.g2p_model_path)))
     if args.g2p_model_path and (not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip')):
@@ -139,26 +113,17 @@ def validate(args):
         raise (ArgumentError('Could not find the input path {}.'.format(args.input_path)))
 
 
+def run_g2p(args, pretrained=None):
+    if pretrained is None:
+        pretrained = get_available_g2p_languages()
+    validate(args, pretrained)
+    generate_dictionary(args)
+
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Create a dictionary from a G2P model (or from orthography)")
-
-    parser.add_argument("g2p_model_path", help="Path to the trained G2P model", nargs='?')
-
-    parser.add_argument("input_path",
-                        help="Corpus to base word list on or a text file of words to generate pronunciations")
-
-    parser.add_argument("output_path", help="Path to save output dictionary")
-
-    parser.add_argument('-t', '--temp_directory', type=str, default='',
-                        help='Temporary directory root to use for dictionary generation, default is ~/Documents/MFA')
-    parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
-                        action='store_true')
-    args = parser.parse_args()
+    from aligner.command_line.mfa import g2p_parser, fix_path, unfix_path, g2p_languages
+    args = g2p_parser.parse_args()
 
     fix_path()
-    validate(args)
-    if args.g2p_model_path is not None:
-        generate_g2p_dict(args)
-    else:
-        generate_orthography_dict(args)
+    run_g2p(args, g2p_languages)
     unfix_path()

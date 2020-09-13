@@ -1,4 +1,4 @@
-from aligner.command_line.align import fix_path
+from aligner.command_line.mfa import fix_path
 
 fix_path()
 
@@ -14,6 +14,12 @@ from aligner.config import train_yaml_to_config
 def pytest_addoption(parser):
     parser.addoption("--skiplarge", action="store_true",
                      help="skip large dataset tests")
+
+
+
+@pytest.fixture
+def skip_large(request):
+    return request.config.getoption('--skiplarge')
 
 
 @pytest.fixture(scope='session')

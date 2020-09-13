@@ -97,7 +97,12 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
         for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
             maxtime = corpus.get_wav_duration(filename)
             try:
-                speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
+                print(filename)
+                print(corpus.file_directory_mapping)
+                try:
+                    speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
+                except KeyError:
+                    speaker_directory = out_directory
                 tg = TextGrid(maxTime=maxtime)
                 for speaker in corpus.speaker_ordering[filename]:
                     words = speaker_dict[speaker]

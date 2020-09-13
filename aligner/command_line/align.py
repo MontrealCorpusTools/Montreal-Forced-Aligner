@@ -1,8 +1,6 @@
-import sys
 import shutil
 import os
 import time
-import argparse
 import multiprocessing as mp
 import yaml
 
@@ -12,67 +10,23 @@ from aligner.dictionary import Dictionary
 from aligner.aligner import PretrainedAligner
 from aligner.models import AcousticModel
 from aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
-
+from aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path
 from aligner.exceptions import ArgumentError
 
 
 class DummyArgs(object):
     def __init__(self):
+        self.corpus_directory = ''
+        self.dictionary_path = ''
+        self.acoustic_model_path = ''
         self.speaker_characters = 0
         self.num_jobs = 0
         self.verbose = False
         self.clean = True
         self.fast = True
-        self.no_speaker_adaptation = False
         self.debug = False
-        self.errors = False
         self.temp_directory = None
-
-
-def fix_path():
-    if getattr(sys, 'frozen', False):
-        base_dir = os.path.dirname(sys.executable)
-        if sys.platform == 'win32':
-            thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
-        else:
-            thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
-    else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-        thirdparty_dir = os.path.join(base_dir, 'thirdparty', 'bin')
-    old_path = os.environ.get('PATH', '')
-    if sys.platform == 'win32':
-        #os.environ['PATH'] = thirdparty_dir + ';' + os.environ['PATH']
-        os.environ['PATH'] = thirdparty_dir + ';' + old_path
-    else:
-        #os.environ['PATH'] = thirdparty_dir + ':' + os.environ['PATH']
-        os.environ['PATH'] = thirdparty_dir + ':' + old_path
-        os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
-
-
-def unfix_path():
-    if sys.platform == 'win32':
-        sep = ';'
-    else:
-        sep = ':'
-
-    os.environ['PATH'] = sep.join(os.environ['PATH'].split(sep)[1:])
-
-
-def get_available_languages():
-    if getattr(sys, 'frozen', False):
-        root_dir = os.path.dirname(os.path.dirname(sys.executable))
-    else:
-        path = os.path.abspath(__file__)
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
-    pretrained_dir = os.path.join(root_dir, 'pretrained_models')
-    languages = []
-    for f in os.listdir(pretrained_dir):
-        if f.endswith(AcousticModel.extension):
-            languages.append(os.path.splitext(f)[0])
-    return languages
-
-
-PRETRAINED_LANGUAGES = get_available_languages()
+        self.config_path = ''
 
 
 def align_corpus(args):
@@ -89,7 +43,7 @@ def align_corpus(args):
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
-            conf = yaml.load(f)
+            conf = yaml.load(f, Loader=yaml.SafeLoader)
     else:
         conf = {'dirty': False,
                 'begin': time.time(),
@@ -127,12 +81,6 @@ def align_corpus(args):
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config, args.output_directory,
                               temp_directory=data_directory,
                               debug=getattr(args, 'debug', False))
-        if getattr(args, 'errors', False):
-            check = a.test_utterance_transcriptions()
-            if not getattr(args, 'quiet', False) and not check:
-                user_input = input('Would you like to abort to fix transcription issues? (Y/N)')
-                if user_input.lower() == 'y':
-                    return
         if args.debug:
             print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
@@ -155,71 +103,46 @@ def align_corpus(args):
             yaml.dump(conf, f)
 
 
-def align_included_model(args):
+def validate_args(args, pretrained):
     if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
+        raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
-        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
+        raise ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory))
     if not os.path.exists(args.dictionary_path):
-        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
+        raise ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path))
     if not os.path.isfile(args.dictionary_path):
-        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
-    if getattr(sys, 'frozen', False):
-        root_dir = os.path.dirname(os.path.dirname(sys.executable))
-    else:
-        path = os.path.abspath(__file__)
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(path)))
-    pretrained_dir = os.path.join(root_dir, 'pretrained_models')
-    args.acoustic_model_path = os.path.join(pretrained_dir, '{}{}'.format(args.acoustic_model_path.lower(), AcousticModel.extension))
-    align_corpus(args)
-
-
-def validate_args(args):
-    if args.acoustic_model_path.lower() in PRETRAINED_LANGUAGES:
-        align_included_model(args)
+        raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path))
+    if args.corpus_directory == args.output_directory:
+        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
+    if args.acoustic_model_path.lower() in pretrained:
+        args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
     elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
-        align_corpus(args)
+        if not os.path.exists(args.acoustic_model_path):
+            raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
     else:
-        raise (Exception(
+        raise ArgumentError(
             'The language \'{}\' is not currently included in the distribution, '
             'please align via training or specify one of the following language names: {}.'.format(
-                args.acoustic_model_path.lower(), ', '.join(PRETRAINED_LANGUAGES))))
+                args.acoustic_model_path.lower(), ', '.join(pretrained)))
 
 
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('corpus_directory', help='Full path to the directory to align')
-    parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
-    parser.add_argument('acoustic_model_path',
-                        help='Full path to the archive containing pre-trained model or language ({})'.format(
-                            ', '.join(PRETRAINED_LANGUAGES)))
-    parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
-    parser.add_argument('-s', '--speaker_characters', type=str, default='0',
-                        help='Number of characters of file names to use for determining speaker, '
-                             'default is to use directory names')
-    parser.add_argument('-t', '--temp_directory', type=str, default='',
-                        help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
-    parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                        help='Number of cores to use while aligning')
-    parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
-    parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
-    parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
-    parser.add_argument('--config_path', type=str, default='',
-                        help='Path to config file to use for alignment')
-    args = parser.parse_args()
+def run_align_corpus(args, pretrained=None):
+    if pretrained is None:
+        pretrained = get_available_acoustic_languages()
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
-
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
+    validate_args(args, pretrained)
+    align_corpus(args)
 
+if __name__ == '__main__':
+    mp.freeze_support()
+    from aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages
+    args = align_parser.parse_args()
     fix_path()
-    validate_args(args)
+    run_align_corpus(args, acoustic_languages)
     unfix_path()

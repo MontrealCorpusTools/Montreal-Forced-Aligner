@@ -2,6 +2,7 @@ import os
 import shutil
 
 
+
 def thirdparty_binary(binary_name):
     return shutil.which(binary_name)
 

@@ -13,6 +13,7 @@ from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids, compu
 from ..models import AcousticModel
 from ..features.config import FeatureConfig
 
+
 class BaseTrainer(object):
     '''
     Configuration class for all trainings

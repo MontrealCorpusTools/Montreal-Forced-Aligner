@@ -407,8 +407,7 @@ class Corpus(object):
                     if n_channels == 2:
                         self.file_directory_mapping[A_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                         self.file_directory_mapping[B_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-                    else:
-                        self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                    self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                     self.tg_count += 1
 
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \

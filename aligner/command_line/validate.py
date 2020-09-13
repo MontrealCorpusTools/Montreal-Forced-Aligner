@@ -1,4 +1,4 @@
-from aligner.command_line.align import fix_path, unfix_path, PRETRAINED_LANGUAGES
+
 import shutil
 import os
 import argparse
@@ -48,32 +48,20 @@ def validate_args(args):
         raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    parser = argparse.ArgumentParser()
-    parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-    parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use',
-                        default='')
-    parser.add_argument('acoustic_model_path', help='Full path to the archive containing pre-trained model or language ({})'.format(
-                            ', '.join(PRETRAINED_LANGUAGES)), nargs='?',
-                        default='')
-    parser.add_argument('-s', '--speaker_characters', type=str, default='0',
-                        help='Number of characters of file names to use for determining speaker, '
-                             'default is to use directory names')
-    parser.add_argument('-t', '--temp_directory', type=str, default='',
-                        help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
-    parser.add_argument('--test_transcriptions', help="Test accuracy of transcriptions", action='store_true')
-    parser.add_argument('--ignore_acoustics', help="Skip acoustic feature generation and associated validation", action='store_true')
-    parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                        help='Number of cores to use while aligning')
-
-    args = parser.parse_args()
-    fix_path()
+def run_validate_corpus(args):
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
     validate_args(args)
-    temp_dir = args.temp_directory
     validate_corpus(args)
+
+
+if __name__ == '__main__':
+    mp.freeze_support()
+    from aligner.command_line.mfa import validate_parser, fix_path, unfix_path
+    args = validate_parser.parse_args()
+
+    fix_path()
+    run_validate_corpus(args)
     unfix_path()

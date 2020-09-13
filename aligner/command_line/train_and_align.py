@@ -1,7 +1,5 @@
-from aligner.command_line.align import fix_path, unfix_path
 import shutil
 import os
-import argparse
 import multiprocessing as mp
 import yaml
 import time
@@ -28,7 +26,7 @@ def align_corpus(args):
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
-            conf = yaml.load(f)
+            conf = yaml.load(f, Loader=yaml.SafeLoader)
     else:
         conf = {'dirty': False,
                 'begin': time.time(),
@@ -80,6 +78,8 @@ def align_corpus(args):
 
 
 def validate_args(args):
+    if args.corpus_directory == args.output_directory:
+        raise Exception('Corpus directory and output directory cannot be the same folder.')
     if not os.path.exists(args.corpus_directory):
         raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
     if not os.path.isdir(args.corpus_directory):
@@ -90,43 +90,25 @@ def validate_args(args):
         raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    parser = argparse.ArgumentParser()
-    parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-    parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use',
-                        default='')
-    parser.add_argument('output_directory', help="Full path to output directory, will be created if it doesn't exist")
-
-    parser.add_argument('-o', '--output_model_path', type=str, default='',
-                        help='Full path to save resulting acoustic and dictionary model')
-    parser.add_argument('-s', '--speaker_characters', type=str, default='0',
-                        help='Number of characters of filenames to use for determining speaker, '
-                             'default is to use directory names')
-    parser.add_argument('-t', '--temp_directory', type=str, default='',
-                        help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
-    parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                        help='Number of cores to use while aligning')
-    parser.add_argument('-v', '--verbose', help="Output debug messages about alignment", action='store_true')
-    parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
-    parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
-    parser.add_argument('--config_path', type=str, default='',
-                        help='Path to config file to use for training and alignment')
-    args = parser.parse_args()
-    fix_path()
+def run_train_corpus(args):
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
     if not args.output_model_path:
         args.output_model_path = None
-    validate_args(args)
-
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
-    if args.corpus_directory == args.output_directory:
-        raise Exception('Corpus directory and output directory cannot be the same folder.')
 
-    temp_dir = args.temp_directory
+    validate_args(args)
     align_corpus(args)
+
+
+if __name__ == '__main__':  # pragma: no cover
+    mp.freeze_support()
+    from aligner.command_line.mfa import train_parser, fix_path, unfix_path
+    args = train_parser.parse_args()
+
+    fix_path()
+    run_train_corpus(args)
     unfix_path()

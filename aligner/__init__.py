@@ -5,7 +5,7 @@ __ver_tuple__ = (__ver_major__, __ver_minor__, __ver_patch__)
 __version__ = "%d.%d.%d" % __ver_tuple__
 
 __all__ = ['aligner', 'command_line', 'models', 'corpus', 'config', 'dictionary', 'exceptions',
-            'helper', 'multiprocessing', 'textgrid', 'g2p']
+            'helper', 'multiprocessing', 'textgrid', 'g2p', '__version__']
 
 import aligner.aligner as aligner
 

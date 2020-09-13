@@ -4,11 +4,12 @@ import yaml
 
 from ..exceptions import ConfigError
 
-TEMP_DIR = os.path.expanduser('~/Documents/MFA')
-
 from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer, IvectorExtractorTrainer, NnetTrainer
 
 from ..features.config import FeatureConfig
+
+
+TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
 class BaseConfig(object):
@@ -80,7 +81,7 @@ class AlignConfig(BaseConfig):
 
 def train_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:
-        data = yaml.load(f)
+        data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
         training = []
         training_params = []
@@ -121,7 +122,7 @@ def train_yaml_to_config(path):
 
 def align_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:
-        data = yaml.load(f)
+        data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
         feature_config = FeatureConfig()
         for k, v in data.items():
