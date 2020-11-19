@@ -1,7 +1,7 @@
 import os
 import pytest
-from aligner.config import FeatureConfig, train_yaml_to_config, ConfigError
-from aligner.trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer
+from montreal_forced_aligner.config import FeatureConfig, train_yaml_to_config, ConfigError
+from montreal_forced_aligner.trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer
 
 def test_monophone_config():
     config = MonophoneTrainer(FeatureConfig())

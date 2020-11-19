@@ -1,10 +1,10 @@
 import os
 import pytest
 
-from aligner.command_line.g2p import run_g2p
-from aligner.command_line.train_g2p import run_train_g2p
+from montreal_forced_aligner.command_line.g2p import run_g2p
+from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
 
-from aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import Dictionary
 
 
 class G2PDummyArgs(object):

@@ -3,10 +3,16 @@
 Changelog
 =========
 
+2.0.0a
+------
+
+Currently under development with major changes, see :ref:`whats_new_2_0`.
+
+
 1.1.0
 -----
 
-Major changes to system, see :doc:`what's new in 1.1 <whats_new_1.1>`
+Major changes to system, see :ref:`whats_new_1_1`.
 
 1.0.0
 -----

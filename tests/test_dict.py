@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import Dictionary
 
 
 def ListLines(path):

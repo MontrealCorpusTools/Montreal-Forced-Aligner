@@ -112,13 +112,20 @@
 
 .. _`ProsodyLab French dictionary`: https://github.com/prosodylab/prosodylab.dictionaries/raw/master/fr.dict
 
+.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/english.dict
+.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/fr.dict
+.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/de.dict
+
+
 .. _pretrained_models:
 
 *****************
 Pretrained models
 *****************
 
-
+There are a number of pretrained models for aligning and generating pronunciation dictionaries. The command
+for downloading these is :code:`mfa download <model_type>` where ``model_type`` is one of ``acoustic``, ``g2p``, or
+``dictionary``.
 
 .. _pretrained_acoustic:
 
@@ -130,6 +137,11 @@ If you would like to use them, please download them below.  Please note the dict
 see more information about the phone set.  When using these with a pronunciation dictionary, the phone sets must be
 compatible.  If the orthography of the language is transparent, it is likely that we have a G2P model that can be used
 to generate the necessary pronunciation dictionary.
+
+Any of the following acoustic models can be downloaded with the command :code:`mfa download acoustic <language_id>`.  You
+can get a full list of the currently available acoustic models via :code:`mfa download acoustic`.  New models contributed
+by users will be periodically added. If you would like to contribute your trained models, please contact Michael McAuliffe
+at michael.e.mcauliffe@gmail.com.
 
 +----------------+-----------------------------------------------------+----------------------+-----------------------+
 | Language       | Link                                                | Corpus               | Phone set             |
@@ -195,9 +207,15 @@ Pretrained G2P models
 
 Included with MFA is a separate tool to generate a dictionary from a preexisting model. This should be used if you're
 aligning a dataset for which you have no pronunciation dictionary or the orthography is very transparent. We have pretrained
-models for several languages,
-which can be downloaded below. These models were generated using
-`Phonetisaurus`_ and the GlobalPhone dataset. This  means that they will only work for transcriptions which use the same
+models for several languages below.
+
+Any of the following G2P models can be downloaded with the command :code:`mfa download g2p <language_id>`.  You
+can get a full list of the currently available G2P models via :code:`mfa download g2p`.  New models contributed
+by users will be periodically added. If you would like to contribute your trained models, please contact Michael McAuliffe
+at michael.e.mcauliffe@gmail.com.
+
+These models were generated using
+`Phonetisaurus`_ and the GlobalPhone dataset. This means that they will only work for transcriptions which use the same
 alphabet. Current language options are listed below, with the following accuracies when trained on 90% of the data and 
 tested on 10%:
 
@@ -271,9 +289,10 @@ tested on 10%:
 Available pronunciation dictionaries
 ====================================
 
-.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/english.dict
-.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/fr.dict
-.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/de.dict
+Any of the following pronunciation dictionaries can be downloaded with the command :code:`mfa download dictionary <language_id>`.  You
+can get a full list of the currently available dictionaries via :code:`mfa download dictionary`.  New dictionaries contributed
+by users will be periodically added. If you would like to contribute your dictionaries, please contact Michael McAuliffe
+at michael.e.mcauliffe@gmail.com.
 
 +-----------------+-----------------------------------------------+------------------------+------------------------+
 | Language        | Link                                          | Orthography system     | Phone set              |

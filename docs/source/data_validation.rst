@@ -31,17 +31,21 @@ Running the validation utility
 
 Steps to run the validation utility:
 
-1. Open Terminal (Mac) or a Command Window (Windows), and change the directory to the root of where you installed the Montreal Forced Aligner:
-
-  .. code-block:: bash
-
-   cd path/to/montreal-forced-aligner/
+1. Provided the steps in :ref:`installation` have been completed and you are in the same Conda/virtual environment that
+   MFA was installed in.
 
 2. Run the following command, substituting the arguments with your own paths:
 
   .. code-block:: bash
 
-     bin/mfa_validate_dataset corpus_directory dictionary_path [optional_acoustic_model_path]
+     mfa validate corpus_directory dictionary_path [optional_acoustic_model_path]
+
+The ``corpus_directory`` argument should be a full path to the corpus to validate, following the proper :ref:`data_format`.
+The ``dictionary_path`` should be a full path to the pronunciation dictionary you want to use with
+the corpus, following the proper :ref:`dictionary`.  The optional ``acoustic_model_path`` can be used
+to test alignment as well as flag potential transcription issues if ``--test_transcriptions`` is present.
+The ``acoustic_model_path`` should be either a full path to an acoustic model you've trained, or you can use one of the
+:ref:`pretrained_acoustic`.
 
 Extra options to the validation utility:
 

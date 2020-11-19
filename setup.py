@@ -1,5 +1,4 @@
 import sys
-import os
 from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
@@ -26,7 +25,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='1.0.0',
+          version='2.0.0a',
           description='',
           long_description='',
           classifiers=[
@@ -41,21 +40,29 @@ if __name__ == '__main__':
           url='https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner',
           author='Montreal Corpus Tools',
           author_email='michael.e.mcauliffe@gmail.com',
-          packages=['aligner',
-                    'aligner.aligner',
-                    'aligner.g2p',
-                    'aligner.command_line',
-                    'aligner.config',
-                    'aligner.features',
-                    'aligner.trainers',
-                    'aligner.gui'],
+          packages=['montreal_forced_aligner',
+                    'montreal_forced_aligner.aligner',
+                    'montreal_forced_aligner.g2p',
+                    'montreal_forced_aligner.command_line',
+                    'montreal_forced_aligner.config',
+                    'montreal_forced_aligner.features',
+                    'montreal_forced_aligner.trainers',
+                    'montreal_forced_aligner.gui',
+                    'montreal_forced_aligner.lm'],
           install_requires=[
               'textgrid',
               'tqdm',
               'alignment',
+              'requests',
               'pyyaml',
+              'librosa',
+              'pyqt5',
+              'pyqtgraph'
           ],
-          package_data={'aligner.config': ['*.yaml']},
+          entry_points={
+              'console_scripts': ['mfa=montreal_forced_aligner.command_line.mfa:main']
+          },
+          package_data={'montreal_forced_aligner.config': ['*.yaml']},
           cmdclass={'test': PyTest},
           extras_require={
               'testing': ['pytest'],

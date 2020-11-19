@@ -9,9 +9,9 @@
 
 .. _dictionary:
 
-************
-Dictionaries
-************
+*****************
+Dictionary format
+*****************
 
 Dictionaries should be specified in the following format:
 
@@ -29,11 +29,11 @@ This lexicon uses the Arpabet transcription format (like the `CMU Pronouncing Di
 
 The Prosodylab-aligner has two preconstructed dictionaries as well, one
 for English (`Prosodylab-aligner English dictionary`_)
-and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see `dictionaries`_ for a list of supported dictionaries.
+and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :ref:`dictionaries` for a list of supported dictionaries.
 
 .. note::
 
-   See the page on :doc:`generating dictionaries <dictionary_generating>` for how to use G2P models to generate a dictionary
+   See the page on :ref:`dictionary_generating` for how to use G2P models to generate a dictionary
    from our pretrained models or how to generate pronunciation dictionaries from orthographies.
 
 Non-speech annotations

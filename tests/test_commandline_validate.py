@@ -1,5 +1,5 @@
 
-from aligner.command_line.validate import run_validate_corpus
+from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
 
 class ValidatorDummyArgs(object):

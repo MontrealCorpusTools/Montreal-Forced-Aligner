@@ -3,9 +3,9 @@ import sys
 import pytest
 import shutil
 
-from aligner.corpus import Corpus
-from aligner.dictionary import Dictionary
-from aligner.features.config import FeatureConfig
+from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.features.config import FeatureConfig
 
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):

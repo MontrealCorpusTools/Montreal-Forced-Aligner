@@ -22,7 +22,10 @@ To train a model from a pronunciation dictionary, the following command is used:
 
 .. code-block:: bash
 
-    bin/mfa_train_g2p /path/to/dictionary/file /path/to/output/dictionary
+    mfa train_g2p dictionary_path output_model_path
+
+The ``dictionary_path`` should be a full path to a pronunciation dictionary to train the model from.  The
+``output_model_path`` is the path to save the resulting G2P model.
 
 Extra options:
 

@@ -1,4 +1,4 @@
-from aligner.command_line.mfa import fix_path
+from montreal_forced_aligner.command_line.mfa import fix_path
 
 fix_path()
 
@@ -6,15 +6,14 @@ import os
 import shutil
 import pytest
 
-from aligner.corpus import Corpus
-from aligner.dictionary import Dictionary
-from aligner.config import train_yaml_to_config
+from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.config import train_yaml_to_config
 
 
 def pytest_addoption(parser):
     parser.addoption("--skiplarge", action="store_true",
                      help="skip large dataset tests")
-
 
 
 @pytest.fixture
@@ -45,6 +44,10 @@ def textgrid_dir(test_dir):
 
 @pytest.fixture(scope='session')
 def generated_dir(test_dir):
+    from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
+    if not validate_kaldi_binaries():
+        from montreal_forced_aligner.thirdparty.download import download_binaries
+        download_binaries()
     generated = os.path.join(test_dir, 'generated')
     shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):
@@ -59,7 +62,7 @@ def temp_dir(generated_dir):
 
 @pytest.fixture(scope='session')
 def english_acoustic_model():
-    from aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
 
 

@@ -12,8 +12,8 @@ Alignment techniques
 
 .. warning::
 
-   This page is currently out of date with respect to 1.1 and needs updating.  Many of the general statements remain
-   true, but the general pipeline for training was significantly overhauled.  See :ref:`whats_new_1.1` for more details.
+   This page is currently out of date with respect to 1.1 and 2.0 and needs updating.  Many of the general statements remain
+   true, but the general pipeline for training was significantly overhauled.  See :ref:`news` for more details.
 
 This page outlines the actual functioning of the Montreal Forced Aligner, for academics
 and developers interested in modeling techniques.
@@ -45,7 +45,7 @@ argument structure determines whether the user wants to train an acoustic model 
 corpus or use a pretrained model. This page will assume the former, although the latter's
 structure besides the actual training is largely similar.
 
-The user's command to train and align on a dataset is parsed by ``aligner/command_line/train_and_align.py``,
+The user's command to train and align on a dataset is parsed by ``montreal_forced_aligner/command_line/train_and_align.py``,
 whose function ``align_corpus()`` instantiates a variety of objects:
 
 * A Corpus (:ref:`corpus_api`), which contains information about the speech dataset, including Mel-frequency cepstral coefficient features (MFCCs), according to the audio provided;
@@ -59,13 +59,13 @@ The TrainableAligner then performs passes of training, exporting output TextGrid
 First (Monophone) Pass
 ======================
 
-The TrainableAligner's function :meth:`aligner.aligner.TrainableAligner.train_mono()` executes the monophone training.
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.TrainableAligner.train_mono()` executes the monophone training.
 
-The monophone training is initialized by :meth:`aligner.aligner.TrainableAligner._init_mono()`, which uses the following
+The monophone training is initialized by :meth:`montreal_forced_aligner.aligner.TrainableAligner._init_mono()`, which uses the following
 multiprocessing functions to set up the monophone system, compile its training graphs, and produce a zeroth alignment,
 which simply gives equal length to each segment.
 
-.. currentmodule:: aligner.multiprocessing
+.. currentmodule:: montreal_forced_aligner.multiprocessing
 
 .. autosummary::
    :toctree: generated/
@@ -74,7 +74,7 @@ which simply gives equal length to each segment.
    compile_train_graphs
    mono_align_equal
 
-Next, monophone training is continued by :meth:`aligner.aligner.TrainableAligner._do_mono_training()`. This function itself calls :meth:`aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the monophone pass, which uses the following multiprocessing functions to train the monophone system in a loop and then produce a first alignment.
+Next, monophone training is continued by :meth:`montreal_forced_aligner.aligner.TrainableAligner._do_mono_training()`. This function itself calls :meth:`montreal_forced_aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the monophone pass, which uses the following multiprocessing functions to train the monophone system in a loop and then produce a first alignment.
 
 .. autosummary::
    :toctree: generated/
@@ -83,14 +83,14 @@ Next, monophone training is continued by :meth:`aligner.aligner.TrainableAligner
    align
    acc_stats
 
-Finally, :meth:`aligner.aligner.TrainableAligner.export_textgrids()` exports the output aligned TextGrids.
+Finally, :meth:`montreal_forced_aligner.aligner.TrainableAligner.export_textgrids()` exports the output aligned TextGrids.
 
 Second (Triphone) Pass
 ======================
 
-The TrainableAligner's function :meth:`aligner.aligner.TrainableAligner.train_tri()` executes the triphone training.
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.TrainableAligner.train_tri()` executes the triphone training.
 
-The triphone training is initialized by :meth:`aligner.aligner.TrainableAligner._init_tri()`, which uses the following
+The triphone training is initialized by :meth:`montreal_forced_aligner.aligner.TrainableAligner._init_tri()`, which uses the following
 multiprocessing functions to set up the triphone system, construct a decision tree (since not all possible triphones
 will appear in the dataset), and prepare the alignments from the first (monophone) pass for use in training:
 
@@ -102,8 +102,8 @@ will appear in the dataset), and prepare the alignments from the first (monophon
    compile_train_graphs
    convert_alignments
 
-Next, triphone training is continued by :meth:`aligner.aligner.TrainableAligner._do_tri_training()`. This function itself calls
-:meth:`aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the triphone pass, which uses the following
+Next, triphone training is continued by :meth:`montreal_forced_aligner.aligner.TrainableAligner._do_tri_training()`. This function itself calls
+:meth:`montreal_forced_aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the triphone pass, which uses the following
 multiprocessing functions to train the triphone system in a loop and then produce a second alignment.
 
 .. autosummary::
@@ -113,15 +113,15 @@ multiprocessing functions to train the triphone system in a loop and then produc
    align
    acc_stats
 
-Finally, :meth:`aligner.aligner.TrainableAligner.export_textgrids()` exports the output aligned TextGrids.
+Finally, :meth:`montreal_forced_aligner.aligner.TrainableAligner.export_textgrids()` exports the output aligned TextGrids.
 
 Third (Speaker-Adapted Triphone) Pass
 =====================================
 
-The TrainableAligner's function :meth:`aligner.aligner.TrainableAligner.train_tri_fmllr()` executes the speaker-adapted
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.TrainableAligner.train_tri_fmllr()` executes the speaker-adapted
 triphone training.
 
-The speaker-adapted triphone training is initialized by :meth:`aligner.aligner.TrainableAligner._init_tri()` with
+The speaker-adapted triphone training is initialized by :meth:`montreal_forced_aligner.aligner.TrainableAligner._init_tri()` with
 ``fmllr=True``, which uses the folowing multiprocessing functions to set up the triphone system, construct a decision
 tree, and prepare the alignments from the second (triphone) pass for use in training:
 
@@ -133,8 +133,8 @@ tree, and prepare the alignments from the second (triphone) pass for use in trai
    compile_train_graphs
    convert_alignments
 
-Next, speaker-adapted triphone training is continued by :meth:`aligner.aligner.TrainableAligner._do_tri_training()` with
-``fmllr=True``. This function itself calls :meth:`aligner.aligner.BaseAligner._do_training()` with the appropriate 
+Next, speaker-adapted triphone training is continued by :meth:`montreal_forced_aligner.aligner.TrainableAligner._do_tri_training()` with
+``fmllr=True``. This function itself calls :meth:`montreal_forced_aligner.aligner.BaseAligner._do_training()` with the appropriate
 parameters for the speaker-adapted triphone pass, which uses the following multiprocessing functions to calculate the
 fMLLR transform, train the speaker-adapted triphone system in a loop, and then produce a third alignment.
 
@@ -146,7 +146,7 @@ fMLLR transform, train the speaker-adapted triphone system in a loop, and then p
    acc_stats
    calc_fmllr
 
-Finally, :meth:`aligner.aligner.TrainableAligner.export_textgrids()` exports the output aligned TextGrids.
+Finally, :meth:`montreal_forced_aligner.aligner.TrainableAligner.export_textgrids` exports the output aligned TextGrids.
 
 Normally, this is the end of the pipeline: the corpus has now been aligned according to the HMM-GMM framework.
 
@@ -180,9 +180,9 @@ A schematic diagram of this technique can be found below:
 Fourth (DNN) Pass
 -----------------
 
-The TrainableAligner's function :meth:`aligner.aligner.BaseAligner.train_nnet_basic()` executes the DNN training.
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.BaseAligner.train_nnet_basic()` executes the DNN training.
 
-First, i-vectors are extracted from the test corpus by :meth:`aligner.aligner.BaseAligner._extract_ivectors()`, which
+First, i-vectors are extracted from the test corpus by :meth:`montreal_forced_aligner.aligner.BaseAligner._extract_ivectors()`, which
 uses the following multiprocessing function:
 
 .. autosummary::
@@ -232,7 +232,7 @@ Finally, an alignment is generated, using the following multiprocessing function
    compile_train_graphs
    nnet_align
 
-The output TextGrids from the DNN alignment are exported by :meth:`aligner.aligner.TrainableAligner.export_textgrids()`.
+The output TextGrids from the DNN alignment are exported by :meth:`montreal_forced_aligner.aligner.TrainableAligner.export_textgrids()`.
 
 Appendix: I-Vector Extractor Training
 -------------------------------------
@@ -257,10 +257,10 @@ A schematic diagram of this technique can be found below:
 LDA + MLLT
 ~~~~~~~~~~
 
-The TrainableAligner's function :meth:`aligner.aligner.BaseAligner.train_lda_mllt()` executes the LDA + MLLT
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.BaseAligner.train_lda_mllt()` executes the LDA + MLLT
 transformation. 
 
-The LDA + MLLT transformation is initialized by :meth:`aligner.aligner.TrainableAligner._init_lda_mllt()`, which
+The LDA + MLLT transformation is initialized by :meth:`montreal_forced_aligner.aligner.TrainableAligner._init_lda_mllt()`, which
 uses the following multiprocessing functions to set up the system, construct a decision tree, and prepare the
 alignments from the previous pass:
 
@@ -273,8 +273,8 @@ alignments from the previous pass:
    convert_alignments
    compile_train_graphs
 
-Next, training is continued by :meth:`aligner.aligner.TrainableAligner._do_lda_mllt_training()` with ``lda_mllt=True``.
-This function itself calls :meth:`aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the
+Next, training is continued by :meth:`montreal_forced_aligner.aligner.TrainableAligner._do_lda_mllt_training()` with ``lda_mllt=True``.
+This function itself calls :meth:`montreal_forced_aligner.aligner.BaseAligner._do_training()` with the appropriate parameters for the
 LDA + MLLT pass, which uses the following multiprocessing functions to calculate the LDA + MLLT transform.
 
 .. autosummary::
@@ -288,7 +288,7 @@ LDA + MLLT pass, which uses the following multiprocessing functions to calculate
 Diagonal UBM
 ~~~~~~~~~~~~
 
-The TrainableAligner's function :meth:`aligner.aligner.TrainableAligner.train_diagonal_ubm()` executes the Diagonal
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.TrainableAligner.train_diagonal_ubm()` executes the Diagonal
 UBM training, using the following multiprocessing functions:
 
 .. autosummary::
@@ -301,10 +301,10 @@ UBM training, using the following multiprocessing functions:
 I-Vector Extractor
 ~~~~~~~~~~~~~~~~~~
 
-The TrainableAligner's function :meth:`aligner.aligner.TrainableAligner.ivector_extractor()` executes the i-vector
+The TrainableAligner's function :meth:`montreal_forced_aligner.aligner.TrainableAligner.ivector_extractor()` executes the i-vector
 extractor training.
 
-The i-vector extractor training is initialized and continued by :meth:`aligner.aligner.TrainableAligner._train_ivector_extractor`,
+The i-vector extractor training is initialized and continued by :meth:`montreal_forced_aligner.aligner.TrainableAligner._train_ivector_extractor`,
 which uses the following multiprocessing functions:
 
 .. autosummary::
