@@ -38,7 +38,7 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
                          temp_directory=data_directory)
     a.train()
 
-@pytest.skip
+@pytest.mark.skip(reason='Optimization')
 def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -50,7 +50,7 @@ def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
     a.train()
 
 
-@pytest.skip
+@pytest.mark.skip(reason='Optimization')
 def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)

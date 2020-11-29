@@ -17,7 +17,7 @@ def test_clean_up_word():
 
 
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):
-    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir)
+    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, random_starts=1, max_iters=10)
     trainer.validate()
 
     trainer.train()
