@@ -1,11 +1,6 @@
 from ..g2p.generator import PyniniDictionaryGenerator as Generator
 
-from PyQt5 import QtGui, QtCore, QtWidgets
-
-try:
-    from PyQt5 import QtMultimedia
-except ImportError:
-    pass
+from PyQt5 import QtGui, QtCore, QtWidgets, QtMultimedia
 
 import pyqtgraph as pg
 
