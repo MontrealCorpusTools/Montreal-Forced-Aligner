@@ -1,6 +1,11 @@
-from ..g2p.generator import PhonetisaurusDictionaryGenerator
+from ..g2p.generator import PyniniDictionaryGenerator as Generator
 
-from PyQt5 import QtGui, QtCore, QtWidgets, QtMultimedia
+from PyQt5 import QtGui, QtCore, QtWidgets
+
+try:
+    from PyQt5 import QtMultimedia
+except ImportError:
+    pass
 
 import pyqtgraph as pg
 
@@ -385,9 +390,9 @@ class InformationWidget(QtWidgets.QWidget):
             return
         pronunciation = None
         if self.g2p_model is not None:
-            gen = PhonetisaurusDictionaryGenerator(self.g2p_model, [word])
+            gen = Generator(self.g2p_model, [word])
             results = gen.generate()
-            pronunciation = results[0][1]
+            pronunciation = results[word]
             self.dictionary.words[word].append((tuple(pronunciation.split(' ')), 1))
         for i in range(self.dictionary_widget.rowCount()):
             row_text = self.dictionary_widget.item(i, 0).text()

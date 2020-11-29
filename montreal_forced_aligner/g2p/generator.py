@@ -1,14 +1,11 @@
 import os
 import re
-import subprocess
 import logging
-from typing import Iterator, Set, Tuple, Union
+from typing import Tuple, Union
 import multiprocessing as mp
 import pynini
-import pywrapfst
 import tqdm
 import queue
-from ..helper import thirdparty_binary
 import traceback
 import sys
 import time
@@ -35,7 +32,7 @@ class Rewriter:
         self.output_token_type = output_token_type
         self.logger = logging.getLogger('g2p')
 
-    def rewrite(self, i: str) -> Tuple[str, str]:
+    def rewrite(self, i: str) -> str:
         lattice = (
             pynini.acceptor(i, token_type=self.input_token_type) @ self.fst
         )
@@ -148,51 +145,59 @@ class PyniniDictionaryGenerator(object):
         last_value = 0
         missing_graphemes = set()
         print('Generating pronunciations...')
-        with tqdm.tqdm(total=num_words) as pbar:
-            while True:
-                if ind == num_words:
-                    break
-                try:
+        to_return = {}
+        if num_words < 30:
+            for word in words:
+                w, m = clean_up_word(word, self.model.meta['graphemes'])
+                missing_graphemes.update(m)
+                if not w:
+                    continue
+                pron = rewriter.rewrite(w)
+                to_return[word] = pron
+        else:
+            with tqdm.tqdm(total=num_words) as pbar:
+                while True:
+                    if ind == num_words:
+                        break
+                    try:
+                        w, m = clean_up_word(words[ind], self.model.meta['graphemes'])
+                        missing_graphemes.update(m)
+                        if not w:
+                            ind += 1
+                            continue
+                        job_queue.put(w, False)
+                    except queue.Full:
+                        break
+                    ind += 1
+                manager = mp.Manager()
+                return_dict = manager.dict()
+                procs = []
+                counter = Counter()
+                for i in range(self.num_jobs):
+                    p = RewriterWorker(job_queue, return_dict, rewriter, counter, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    if ind == num_words:
+                        break
                     w, m = clean_up_word(words[ind], self.model.meta['graphemes'])
                     missing_graphemes.update(m)
                     if not w:
                         ind += 1
                         continue
-                    job_queue.put(w, False)
-                except queue.Full:
-                    break
-                ind += 1
-            manager = mp.Manager()
-            return_dict = manager.dict()
-            procs = []
-            counter = Counter()
-            for i in range(self.num_jobs):
-                p = RewriterWorker(job_queue, return_dict, rewriter, counter, stopped)
-                procs.append(p)
-                p.start()
-            while True:
-                if ind == num_words:
-                    break
-                w, m = clean_up_word(words[ind], self.model.meta['graphemes'])
-                missing_graphemes.update(m)
-                if not w:
+                    job_queue.put(w)
+                    value = counter.value()
+                    pbar.update(value-last_value)
+                    last_value = value
                     ind += 1
-                    continue
-                job_queue.put(w)
-                value = counter.value()
-                pbar.update(value-last_value)
-                last_value = value
-                ind += 1
-            job_queue.join()
-        for p in procs:
-            p.join()
-        if 'error' in return_dict:
-            element, exc = return_dict['error']
-            print(element)
-            raise exc
-        to_return = {}
+                job_queue.join()
+            for p in procs:
+                p.join()
+            if 'error' in return_dict:
+                element, exc = return_dict['error']
+                print(element)
+                raise exc
         to_return.update(return_dict)
-        print(to_return)
         print('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
         self.logger.debug('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
         return to_return
@@ -202,75 +207,3 @@ class PyniniDictionaryGenerator(object):
         with open(outfile, "w", encoding='utf8') as f:
             for (word, pronunciation) in results.items():
                 f.write('{}\t{}\n'.format(word, pronunciation))
-
-
-class PhonetisaurusDictionaryGenerator(object):
-    """creates a Dictionary from a g2pfst model
-
-    Parameters
-    ----------
-        g2p_model: :class:`~aligner.models.G2PModel`
-            path to the models
-        corpus : :class:`~aligner.corpus.Corpus`
-            Corpus object to get word list from
-        outfile: str
-            destination for the dictionary
-    """
-
-    def __init__(self, g2p_model, word_set, use_unk = False, temp_directory=None):
-        super(PhonetisaurusDictionaryGenerator, self).__init__()
-        if not temp_directory:
-            temp_directory = TEMP_DIR
-        temp_directory = os.path.join(temp_directory, 'G2P')
-
-        self.model = g2p_model
-
-        self.temp_directory = os.path.join(temp_directory, self.model.name)
-        log_dir = os.path.join(self.temp_directory, 'logging')
-        os.makedirs(log_dir, exist_ok=True)
-        self.log_file = os.path.join(log_dir, 'g2p.log')
-
-        self.logger = logging.getLogger('g2p')
-        self.logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
-        handler.setFormatter = logging.Formatter('%(name)s %(message)s')
-        self.logger.addHandler(handler)
-        with open(self.word_list_path, 'w', encoding='utf8') as f:
-            for word in sorted(word_set):
-                f.write(word.strip() + '\n')
-
-
-    @property
-    def word_list_path(self):
-        return os.path.join(self.temp_directory, 'words.txt')
-
-    def output(self, outfile):
-        results = self.generate()
-        with open(outfile, "w", encoding='utf8') as f:
-            for (word, pronunciation) in results:
-                f.write('{}\t{}\n'.format(word, pronunciation))
-
-    def generate(self):
-        """
-        runs the phonetisaurus-g2pfst binary with the language and all the words in the corpus
-        """
-
-        proc = subprocess.Popen([thirdparty_binary('phonetisaurus-g2pfst'),
-                                 '--model=' + self.model.fst_path, '--wordlist=' + self.word_list_path],
-                                stderr=subprocess.PIPE,
-                                stdout=subprocess.PIPE)
-        stdout, stderr = proc.communicate()
-        results = stdout.decode('utf8')
-        errors = stderr.decode('utf8')
-        missing_symbols = parse_errors(errors)
-        if missing_symbols:
-            print("There were {} unmatched symbols in your transcriptions, "
-                  "please see the log file ({}) for a list.".format(len(missing_symbols), self.log_file))
-            self.logger.warning(
-                'The following symbols were not found in the G2P model: {}.'.format(', '.join(missing_symbols)))
-        output = []
-        for word, pronunciation in parse_output(results):
-            if pronunciation is None:
-                continue
-            output.append((word, pronunciation))
-        return output
