@@ -3,11 +3,7 @@ from decimal import Decimal
 import subprocess
 import multiprocessing as mp
 
-from alignment.sequence import Sequence
-from alignment.vocabulary import Vocabulary
-from alignment.sequencealigner import SimpleScoring, GlobalSequenceAligner
-
-from .helper import thirdparty_binary, load_scp
+from .helper import thirdparty_binary, load_scp, edit_distance
 
 from .trainers import MonophoneTrainer
 from .config import FeatureConfig
@@ -400,7 +396,6 @@ class CorpusValidator(object):
             print('Finished decoding utterances!')
 
         word_mapping = self.dictionary.reversed_word_mapping
-        v = Vocabulary()
         errors = {}
 
         for job in range(self.corpus.num_jobs):
@@ -414,41 +409,21 @@ class CorpusValidator(object):
                         text.append(word_mapping[int(t)])
                     outf.write('{} {}\n'.format(utt, ' '.join(text)))
                     ref_text = texts[utt]
-                    if len(text) < len(ref_text) - 7:
-                        insertions = [x for x in text if x not in ref_text]
-                        deletions = [x for x in ref_text if x not in text]
-                    else:
-                        aligned_seq = Sequence(text)
-                        ref_seq = Sequence(ref_text)
+                    edits = edit_distance(text, ref_text)
 
-                        alignedEncoded = v.encodeSequence(aligned_seq)
-                        refEncoded = v.encodeSequence(ref_seq)
-                        scoring = SimpleScoring(2, -1)
-                        a = GlobalSequenceAligner(scoring, -2)
-                        score, encodeds = a.align(refEncoded, alignedEncoded, backtrace=True)
-                        insertions = []
-                        deletions = []
-                        for encoded in encodeds:
-                            alignment = v.decodeSequenceAlignment(encoded)
-                            for i, f in enumerate(alignment.first):
-                                s = alignment.second[i]
-                                if f == '-':
-                                    insertions.append(s)
-                                if s == '-':
-                                    deletions.append(f)
-                    if insertions or deletions:
-                        errors[utt] = (insertions, deletions, ref_text, text)
+                    if edits:
+                        errors[utt] = (edits, ref_text, text)
         if not errors:
             message = 'There were no utterances with transcription issues.'
         else:
             out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
             with open(out_path, 'w') as problemf:
                 problemf.write('Utterance,Insertions,Deletions,Reference,Decoded\n')
-                for utt, (insertions, deletions, ref_text, text) in sorted(errors.items(),
+                for utt, (edits, ref_text, text) in sorted(errors.items(),
                                                                            key=lambda x: -1 * (
                                                                                    len(x[1][1]) + len(x[1][2]))):
-                    problemf.write('{},{},{},{},{}\n'.format(utt, ', '.join(insertions), ', '.join(deletions),
-                                                             ' '.join(ref_text), ' '.join(text)))
+                    problemf.write('{},{},{},{}\n'.format(utt, edits,
+                                                          ' '.join(ref_text), ' '.join(text)))
             message = 'There were {} of {} utterances with at least one transcription issue. '\
                   'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
 

@@ -10,7 +10,7 @@ from montreal_forced_aligner import __version__
 
 
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):
-    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, window_size=2)
+    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir)
     trainer.validate()
     error
 

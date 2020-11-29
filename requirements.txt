@@ -3,7 +3,6 @@ numpy
 six
 packaging
 tqdm
-git+https://github.com/eseraygun/python-alignment.git#egg=alignment
 pyyaml
 librosa
 pyqt5

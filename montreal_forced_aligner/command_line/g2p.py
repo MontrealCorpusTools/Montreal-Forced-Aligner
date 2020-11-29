@@ -6,7 +6,7 @@ from textgrid import TextGrid, IntervalTier
 
 from montreal_forced_aligner.corpus import load_text, parse_transcription
 
-from montreal_forced_aligner.g2p.generator import PhonetisaurusDictionaryGenerator
+from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
 from montreal_forced_aligner.corpus import Corpus
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.dictionary import check_bracketed
@@ -43,9 +43,10 @@ def generate_dictionary(args):
         if not args.include_bracketed:
             word_set = [x for x in word_set if not check_bracketed(x)]
     if args.g2p_model_path is not None:
-        model = G2PModel(args.g2p_model_path)
-        gen = PhonetisaurusDictionaryGenerator(model, word_set, temp_directory=temp_dir)
+        model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models'))
+        gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs)
         gen.output(args.output_path)
+        model.clean_up()
     else:
         with open(args.output_path, "w", encoding='utf8') as f:
             for word in sorted(word_set):

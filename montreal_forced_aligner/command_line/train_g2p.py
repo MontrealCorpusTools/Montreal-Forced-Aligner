@@ -1,6 +1,6 @@
 import argparse
 import os
-from montreal_forced_aligner.g2p.trainer import PhonetisaurusTrainer
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer as Trainer
 
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -13,7 +13,7 @@ def train_g2p(args):
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = PhonetisaurusTrainer(dictionary, args.output_model_path, temp_directory=temp_dir, window_size=args.window_size)
+    t = Trainer(dictionary, args.output_model_path, temp_directory=temp_dir, order=args.order, num_jobs=args.num_jobs)
     if args.validate:
         t.validate()
     t.train()

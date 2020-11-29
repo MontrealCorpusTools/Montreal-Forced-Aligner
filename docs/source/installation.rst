@@ -16,9 +16,10 @@ Installation
 All platforms
 =============
 
-1. Install Python (we recommend using Anaconda/Miniconda to manage Python environments)
-2. Run :code:`pip install montreal-forced-aligner`
-3. Install third-party binaries:
+1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
+2. Create new environment via :code:`conda create -n aligner -c conda-forge python=3.8 openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1`
+3. Run :code:`pip install montreal-forced-aligner`
+4. Install third-party binaries:
    1. Download prebuilt ones via `mfa thirdparty download`
    2. Build and collect binaries for your specific platform via the instructions below
 
@@ -28,12 +29,6 @@ Building platform-specific binaries from scratch
 
 1. Get kaldi compiled and working: `Kaldi GitHub repository`_
 2. Collect the necessary binaries for MFA by running :code:`mfa thirdparty kaldi /path/to/kaldi/repo`
-
-If you would like to use the G2P capabilities, you will also have to build the `OpenGrm NGram library`_ and `Phonetisaurus`_
-and then run the :code:`mfa thirdparty opengrm-ngram /path/to/ngram/directory` and
-:code:`mfa thirdparty phonetisaurus /path/to/phonetisaurus/repo`` pointing at the respective root directories.
-
-To validate that necessary binaries are present, run the following command:
 
 .. code-block:: bash
 

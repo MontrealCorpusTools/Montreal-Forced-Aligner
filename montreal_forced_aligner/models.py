@@ -34,6 +34,8 @@ class Archive(object):
         else:
             base = root_directory
             self.dirname = os.path.join(root_directory, self.name)
+            print('DEBUGGING')
+            print(self.dirname, os.path.exists(self.dirname))
             if not os.path.exists(self.dirname):
                 os.makedirs(root_directory, exist_ok=True)
                 unpack_archive(source, base)
@@ -72,6 +74,9 @@ class Archive(object):
     def __repr__(self):
         return "{}(dirname={!r})".format(self.__class__.__name__,
                                          self.dirname)
+
+    def clean_up(self):
+        rmtree(self.dirname)
 
     def dump(self, sink, archive_fmt=FORMAT):
         """
@@ -158,11 +163,11 @@ class AcousticModel(Archive):
 
 
 class G2PModel(Archive):
-    def add_meta_file(self, dictionary):
+    def add_meta_file(self, dictionary, architecture):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             meta = {'phones': sorted(dictionary.nonsil_phones),
                     'graphemes': sorted(dictionary.graphemes),
-                    'architecture': 'phonetisaurus',
+                    'architecture': architecture,
                     'version': __version__}
             yaml.dump(meta, f)
 
@@ -170,6 +175,7 @@ class G2PModel(Archive):
     def meta(self):
         if not self._meta:
             meta_path = os.path.join(self.dirname, 'meta.yaml')
+            print(meta_path)
             if not os.path.exists(meta_path):
                 self._meta = {'version': '0.9.0',
                               'architecture': 'phonetisaurus'}
@@ -178,6 +184,7 @@ class G2PModel(Archive):
                     self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta['phones'] = set(self._meta.get('phones', []))
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
+            print(self._meta)
         return self._meta
 
     @property

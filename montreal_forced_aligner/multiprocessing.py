@@ -16,8 +16,37 @@ from .textgrid import ctm_to_textgrid, parse_ctm
 from .exceptions import AlignmentError
 
 
+class Counter(object):
+    def __init__(self, initval=0):
+        self.val = mp.Value('i', initval)
+        self.lock = mp.Lock()
+
+    def increment(self):
+        with self.lock:
+            self.val.value += 1
+
+    def value(self):
+        with self.lock:
+            return self.val.value
+
+
+class Stopped(object):
+    def __init__(self, initval=False):
+        self.val = mp.Value('i', initval)
+        self.lock = mp.Lock()
+
+    def stop(self):
+        with self.lock:
+            self.val.value = True
+
+    def stop_check(self):
+        with self.lock:
+            return self.val.value
+
+
 def init(env):
     os.environ = env
+
 
 def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cover
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
@@ -29,7 +58,6 @@ def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cov
                                      "scp:" + feat_path, "ark,t:" + ali_path, acc_path],
                                     stderr=logf)
         acc_proc.communicate()
-
 
 def acc_stats(iteration, directory, split_directory, num_jobs, config):
     """

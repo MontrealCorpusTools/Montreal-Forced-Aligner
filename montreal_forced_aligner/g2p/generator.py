@@ -3,16 +3,22 @@ import re
 import subprocess
 import logging
 from typing import Iterator, Set, Tuple, Union
-import multiprocessing
+import multiprocessing as mp
 import pynini
 import pywrapfst
+import tqdm
+import queue
+from ..helper import thirdparty_binary
+import traceback
+import sys
+import time
+
+from ..config import TEMP_DIR
+from ..exceptions import G2PError
+from ..multiprocessing import Stopped, Counter
 
 
 TokenType = Union[str, pynini.SymbolTable]
-
-from ..helper import thirdparty_binary
-
-from ..config import TEMP_DIR
 
 
 class Rewriter:
@@ -27,16 +33,12 @@ class Rewriter:
         self.fst = fst
         self.input_token_type = input_token_type
         self.output_token_type = output_token_type
+        self.logger = logging.getLogger('g2p')
 
-    def rewrite(self, i: str) -> str:
+    def rewrite(self, i: str) -> Tuple[str, str]:
         lattice = (
             pynini.acceptor(i, token_type=self.input_token_type) @ self.fst
         )
-        print(i)
-        print(pynini.acceptor(i, token_type=self.input_token_type))
-        print(dir(lattice))
-        print(lattice.start())
-        print(pynini.NO_STATE_ID)
         if lattice.start() == pynini.NO_STATE_ID:
             logging.error("Composition failure: %s", i)
             return "<composition failure>"
@@ -62,6 +64,45 @@ def parse_output(output):
         yield line[0], line[2]
 
 
+class RewriterWorker(mp.Process):
+    def __init__(self, job_q, return_dict, rewriter, counter, stopped):
+        mp.Process.__init__(self)
+        self.job_q = job_q
+        self.return_dict = return_dict
+        self.rewriter = rewriter
+        self.counter = counter
+        self.stopped = stopped
+
+    def run(self):
+        while True:
+            try:
+                word = self.job_q.get(timeout=1)
+            except queue.Empty:
+                break
+            self.job_q.task_done()
+            if self.stopped.stop_check():
+                continue
+            try:
+                rep = self.rewriter.rewrite(word)
+                self.return_dict[word] = rep
+            except Exception as e:
+                self.stopped.stop()
+                self.return_dict['error'] = word, Exception(traceback.format_exception(*sys.exc_info()))
+            self.counter.increment()
+        return
+
+
+def clean_up_word(word, graphemes):
+    new_word = []
+    missing_graphemes = []
+    for c in word:
+        if c not in graphemes:
+            missing_graphemes.append(c)
+        else:
+            new_word.append(c)
+    return ''.join(new_word), missing_graphemes
+
+
 class PyniniDictionaryGenerator(object):
     def __init__(self, g2p_model, word_set, temp_directory=None, num_jobs=3):
         super(PyniniDictionaryGenerator, self).__init__()
@@ -83,30 +124,85 @@ class PyniniDictionaryGenerator(object):
         self.num_jobs = num_jobs
 
     def generate(self):
+        if self.model.meta['architecture'] == 'phonetisaurus':
+            raise G2PError('Previously trained Phonetisaurus models from 1.1 and earlier are not currently supported. '
+                           'Please retrain your model using 2.0+')
+
         input_token_type = 'utf8'
         fst = pynini.Fst.read(self.model.fst_path)
+
         output_token_type = 'utf8'
         if self.model.sym_path is not None and os.path.exists(self.model.sym_path):
             output_token_type = pynini.SymbolTable.read_text(self.model.sym_path)
+        print(output_token_type)
+        print(self.model.meta['architecture'])
+        print(self.model.fst_path)
         rewriter = Rewriter(fst, input_token_type, output_token_type)
-        output = []
 
-        for w in self.words:
-            p = rewriter.rewrite(w)
-            print(p)
-        error
-
-        with multiprocessing.Pool(self.num_jobs) as pool:
-            for line in pool.map(rewriter.rewrite, (x for x in self.words)):
-                output.append(line)
-        print(output)
-        return output
+        stopped = Stopped()
+        job_queue = mp.JoinableQueue(100)
+        ind = 0
+        num_words = len(self.words)
+        words = sorted(self.words)
+        begin = time.time()
+        last_value = 0
+        missing_graphemes = set()
+        print('Generating pronunciations...')
+        with tqdm.tqdm(total=num_words) as pbar:
+            while True:
+                if ind == num_words:
+                    break
+                try:
+                    w, m = clean_up_word(words[ind], self.model.meta['graphemes'])
+                    missing_graphemes.update(m)
+                    if not w:
+                        ind += 1
+                        continue
+                    job_queue.put(w, False)
+                except queue.Full:
+                    break
+                ind += 1
+            manager = mp.Manager()
+            return_dict = manager.dict()
+            procs = []
+            counter = Counter()
+            for i in range(self.num_jobs):
+                p = RewriterWorker(job_queue, return_dict, rewriter, counter, stopped)
+                procs.append(p)
+                p.start()
+            while True:
+                if ind == num_words:
+                    break
+                w, m = clean_up_word(words[ind], self.model.meta['graphemes'])
+                missing_graphemes.update(m)
+                if not w:
+                    ind += 1
+                    continue
+                job_queue.put(w)
+                value = counter.value()
+                pbar.update(value-last_value)
+                last_value = value
+                ind += 1
+            job_queue.join()
+        for p in procs:
+            p.join()
+        if 'error' in return_dict:
+            element, exc = return_dict['error']
+            print(element)
+            raise exc
+        to_return = {}
+        to_return.update(return_dict)
+        print(to_return)
+        print('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
+        self.logger.debug('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
+        return to_return
 
     def output(self, outfile):
         results = self.generate()
         with open(outfile, "w", encoding='utf8') as f:
-            for (word, pronunciation) in results:
+            for (word, pronunciation) in results.items():
                 f.write('{}\t{}\n'.format(word, pronunciation))
+
 
 class PhonetisaurusDictionaryGenerator(object):
     """creates a Dictionary from a g2pfst model

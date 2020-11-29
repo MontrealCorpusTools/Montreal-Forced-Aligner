@@ -10,10 +10,10 @@ if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   conda config --set always_yes yes --set changeps1 no
   conda update -q conda
   conda info -a
-  conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytest setuptools
+  conda create -q -n test-environment -c conda-forge python=$TRAVIS_PYTHON_VERSION  openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
   source activate test-environment
   which python
-  pip install -q coveralls coverage textgrid tqdm
+  pip install -q coveralls coverage textgrid tqdm pytest setuptools
 else
   echo "Miniconda already installed."
 fi
@@ -21,7 +21,7 @@ fi
 cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
 source activate test-environment
 pip install -r requirements.txt
-python thirdparty/download_binaries.py $HOME/tools --keep --redownload
+python -m montreal_forced_aligner.command_line.thirdparty download
 
 if [ ! -d "$HOME/tools/mfa_test_data" ]; then
   cd $HOME/tools

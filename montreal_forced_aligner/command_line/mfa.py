@@ -122,17 +122,20 @@ g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
                         help='Temporary directory root to use for dictionary generation, default is ~/Documents/MFA')
 g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
                         action='store_true')
+g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                             help='Number of cores to use while training')
 
 train_g2p_parser = subparsers.add_parser('train_g2p')
 train_g2p_parser.add_argument("dictionary_path", help="Location of existing dictionary")
 
 train_g2p_parser.add_argument("output_model_path", help="Desired location of generated model")
+train_g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                             help='Number of cores to use while training')
 train_g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
                               help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
 
-train_g2p_parser.add_argument("--window_size", type=int, default=2,
-                              help="Window size of phonemes, default is 2, increase if one character often corresponds to"
-                                   "more than 2 phonemes")
+train_g2p_parser.add_argument("--order", type=int, default=7,
+                              help="Order of the ngram model, defaults to 7")
 train_g2p_parser.add_argument('-v', "--validate", action='store_true',
                               help="Perform an analysis of accuracy training on "
                                    "most of the data and validating on an unseen subset")
