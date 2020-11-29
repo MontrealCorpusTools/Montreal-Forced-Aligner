@@ -18,6 +18,7 @@ else
   echo "Miniconda already installed."
 fi
 
+export PATH="$HOME/miniconda/miniconda/bin:$PATH"
 cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
 conda activate test-environment
 conda install -q -c conda-forge openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
