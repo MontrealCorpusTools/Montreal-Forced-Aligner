@@ -26,7 +26,7 @@ before_install:
   #- sudo ln -s /run/shm /dev/shm
   #- sudo ln -s -f bash /bin/sh
   - bash continuous-integration/travis/install.sh
-  - ls thirdparty/bin -al
+  - ls $HOME/Documents/MFA/thirdparty/bin -al
 
 # Install packages
 install:
