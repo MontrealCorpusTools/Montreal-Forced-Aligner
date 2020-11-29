@@ -23,18 +23,23 @@ addons:
 before_install:
   - sudo apt-get update
   - pwd
-  #- sudo rm -rf /dev/shm
-  #- sudo ln -s /run/shm /dev/shm
-  #- sudo ln -s -f bash /bin/sh
-  - bash continuous-integration/travis/install.sh
-  - ls $HOME/Documents/MFA/thirdparty/bin -al
 
 # Install packages
 install:
-  - export PATH="$HOME/miniconda/miniconda/bin:$PATH"
+  - source "$HOME/miniconda/etc/profile.d/conda.sh"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  - conda info -a
+  - conda create -q -n test-environment -c conda-forge python=$TRAVIS_PYTHON_VERSION openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
   - conda activate test-environment
+  - pip install -r requirements.txt
+  - pip install -q coveralls coverage pytest setuptools
   - which python
   - conda list
+  - python -m montreal_forced_aligner.command_line.thirdparty download
+  - ls $HOME/Documents/MFA/thirdparty/bin -al
+  - bash continuous-integration/travis/install.sh
 
 # Run test
 script:
