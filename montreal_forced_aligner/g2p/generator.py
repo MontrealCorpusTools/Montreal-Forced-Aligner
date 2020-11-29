@@ -197,7 +197,7 @@ class PyniniDictionaryGenerator(object):
                 element, exc = return_dict['error']
                 print(element)
                 raise exc
-        to_return.update(return_dict)
+            to_return.update(return_dict)
         print('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
         self.logger.debug('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
         return to_return

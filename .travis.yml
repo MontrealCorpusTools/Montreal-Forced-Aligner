@@ -18,6 +18,7 @@ addons:
       - libstdc++6
       - gfortran
       - libpulse-mainloop-glib0
+      - libopenblas-base
 
 before_install:
   - sudo apt-get update
@@ -31,15 +32,14 @@ before_install:
 # Install packages
 install:
   - export PATH="$HOME/miniconda/miniconda/bin:$PATH"
-  - source activate test-environment
-  - pip install -r requirements.txt
+  - conda activate test-environment
   - which python
   - conda list
 
 # Run test
 script:
   #- coverage help
-  - travis_wait 120 coverage run --source=aligner setup.py test
+  - travis_wait 120 coverage run --source=montreal_forced_aligner setup.py test
 
 # Calculate coverage
 after_success:
