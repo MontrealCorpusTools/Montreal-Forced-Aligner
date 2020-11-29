@@ -21,7 +21,6 @@ def assert_export_exist(old_directory, new_directory):
             assert (os.path.exists(os.path.join(new_root, new_f)))
 
 
-
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
                      basic_align_config, english_acoustic_model):
     args = DummyArgs()

@@ -9,30 +9,30 @@ features:
 
 training:
   - monophone:
-      num_iterations: 5
-      max_gaussians: 1000
-      subset: 10000
+      num_iterations: 4
+      max_gaussians: 500
+      subset: 1000
 
   - triphone:
       num_iterations: 3
-      num_leaves: 2500
-      max_gaussians: 20000
+      num_leaves: 1500
+      max_gaussians: 2000
       cluster_threshold: -1
-      subset: 30000
+      subset: 3000
       boost_silence: 1.25
       power: 0.25
 
   - lda:
-      num_leaves: 5000
-      max_gaussians: 40000
-      subset: 100000
       num_iterations: 3
+      num_leaves: 5000
+      max_gaussians: 4000
+      subset: 3000
       features:
           splice_left_context: 3
           splice_right_context: 3
 
   - ivector:
-      num_iterations: 5
+      num_iterations: 3
       gaussian_min_count: 2
       features:
           lda: true
