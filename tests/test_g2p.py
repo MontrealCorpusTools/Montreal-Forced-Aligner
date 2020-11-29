@@ -2,11 +2,18 @@ import pytest
 import os
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
-from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator
+from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
 
 from montreal_forced_aligner.models import G2PModel
 
 from montreal_forced_aligner import __version__
+
+
+def test_clean_up_word():
+    original_word = '+abc'
+    w, m = clean_up_word(original_word, ['a', 'b', 'c'])
+    assert(w == 'abc')
+    assert m == ['+']
 
 
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):

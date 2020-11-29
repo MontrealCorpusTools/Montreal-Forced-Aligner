@@ -71,6 +71,13 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
                 incorrect += 1
             total_edits += edits
             total_length += length
+        for w, gold in gold_values.items():
+            if w not in hypothesis_values:
+                incorrect += 1
+                gold = gold[0][0]
+                total_edits += len(gold)
+                total_length += len(gold)
+
     return 100 * incorrect / (correct + incorrect), 100 * total_edits / total_length
 
 
@@ -565,12 +572,10 @@ class PyniniTrainer(object):
         self.train(training_dictionary)
 
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
-        validation_errors_path = os.path.join(self.temp_directory, 'validation_errors.txt')
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
                                                temp_directory=os.path.join(self.temp_directory, 'validation'),
                                         num_jobs=self.num_jobs)
         output = gen.generate()
-        count_right = 0
         begin = time.time()
         wer, ler = compute_validation_errors(validation_dictionary, output, num_jobs=self.num_jobs)
         print(f"WER:\t{wer:.2f}")

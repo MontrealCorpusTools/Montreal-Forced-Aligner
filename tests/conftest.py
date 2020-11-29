@@ -11,16 +11,6 @@ from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.config import train_yaml_to_config
 
 
-def pytest_addoption(parser):
-    parser.addoption("--skiplarge", action="store_true",
-                     help="skip large dataset tests")
-
-
-@pytest.fixture
-def skip_large(request):
-    return request.config.getoption('--skiplarge')
-
-
 @pytest.fixture(scope='session')
 def test_dir():
     base = os.path.dirname(os.path.abspath(__file__))

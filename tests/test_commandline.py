@@ -21,24 +21,6 @@ def assert_export_exist(old_directory, new_directory):
             assert (os.path.exists(os.path.join(new_root, new_f)))
 
 
-def test_train_large_prosodylab(large_prosodylab_format_directory,
-                                large_dataset_dictionary, prosodylab_output_directory,
-                                prosodylab_output_model_path, temp_dir, basic_train_config, skip_large):
-    if skip_large:
-        pytest.skip('Large testsets disabled')
-    args = DummyArgs()
-    args.num_jobs = 2
-    args.clean = True
-    args.corpus_directory = large_prosodylab_format_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = prosodylab_output_directory
-    args.output_model_path = prosodylab_output_model_path
-    args.temp_directory = temp_dir
-    args.config_path = basic_train_config
-    run_train_corpus(args)
-    # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
-    assert (os.path.exists(args.output_model_path))
-
 
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
                      basic_align_config, english_acoustic_model):
@@ -85,76 +67,3 @@ def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated
     args.temp_directory = temp_dir
     run_align_corpus(args)
 
-
-def test_align_large_prosodylab(large_prosodylab_format_directory, prosodylab_output_directory,
-                                large_dataset_dictionary, temp_dir, basic_align_config, skip_large):
-    if skip_large:
-        pytest.skip('Large testsets disabled')
-    args = DummyArgs()
-    args.quiet = True
-    args.clean = True
-    args.acoustic_model_path = 'english'
-    args.corpus_directory = large_prosodylab_format_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = prosodylab_output_directory
-    args.temp_directory = temp_dir
-    args.config_path = basic_align_config
-    run_align_corpus(args)
-    # assert_export_exist(large_prosodylab_format_directory, prosodylab_output_directory)
-
-
-def test_train_single_speaker_prosodylab(single_speaker_prosodylab_format_directory,
-                                         large_dataset_dictionary,
-                                         prosodylab_output_directory,
-                                         prosodylab_output_model_path, temp_dir, basic_train_config, skip_large):
-    if skip_large:
-        pytest.skip('Large testsets disabled')
-    args = DummyArgs()
-    args.num_jobs = 2
-    args.clean = True
-    args.temp_directory = temp_dir
-    args.corpus_directory = single_speaker_prosodylab_format_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = prosodylab_output_directory
-    args.output_model_path = prosodylab_output_model_path
-    args.config_path = basic_train_config
-    run_train_corpus(args)
-    # assert_export_exist(single_speaker_prosodylab_format_directory, prosodylab_output_directory)
-    assert (os.path.exists(args.output_model_path))
-
-
-# TEXTGRID
-
-def test_align_large_textgrid(large_textgrid_format_directory, textgrid_output_directory, large_dataset_dictionary,
-                              temp_dir, basic_align_config, skip_large):
-    if skip_large:
-        pytest.skip('Large testsets disabled')
-    args = DummyArgs()
-    args.clean = True
-    args.acoustic_model_path = 'english'
-    args.corpus_directory = large_textgrid_format_directory
-    args.output_directory = textgrid_output_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.temp_directory = temp_dir
-    args.config_path = basic_align_config
-    run_align_corpus(args)
-    # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
-
-
-def test_train_large_textgrid(large_textgrid_format_directory,
-                              large_dataset_dictionary, textgrid_output_directory,
-                              textgrid_output_model_path, temp_dir, basic_train_config, skip_large):
-    if skip_large:
-        pytest.skip('Large testsets disabled')
-    args = DummyArgs()
-    args.num_jobs = 2
-    args.clean = True
-    args.corpus_directory = large_textgrid_format_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = textgrid_output_directory
-    args.output_model_path = textgrid_output_model_path
-    args.temp_directory = temp_dir
-    args.config_path = basic_train_config
-    run_train_corpus(args)
-    # assert_export_exist(large_textgrid_format_directory, textgrid_output_directory)
-    assert (os.path.exists(args.output_model_path))

@@ -81,7 +81,8 @@ class RewriterWorker(mp.Process):
                 continue
             try:
                 rep = self.rewriter.rewrite(word)
-                self.return_dict[word] = rep
+                if rep != '<composition failure>':
+                    self.return_dict[word] = rep
             except Exception as e:
                 self.stopped.stop()
                 self.return_dict['error'] = word, Exception(traceback.format_exception(*sys.exc_info()))
@@ -153,6 +154,8 @@ class PyniniDictionaryGenerator(object):
                 if not w:
                     continue
                 pron = rewriter.rewrite(w)
+                if pron == '<composition failure>':
+                    continue
                 to_return[word] = pron
         else:
             with tqdm.tqdm(total=num_words) as pbar:
