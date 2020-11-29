@@ -19,7 +19,8 @@ else
 fi
 
 cd $HOME/build/MontrealCorpusTools/Montreal-Forced-Aligner
-source activate test-environment
+conda activate test-environment
+conda install -q -c conda-forge openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
 pip install -r requirements.txt
 python -m montreal_forced_aligner.command_line.thirdparty download
 
