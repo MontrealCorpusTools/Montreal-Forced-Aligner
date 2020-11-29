@@ -10,7 +10,7 @@ if [ ! -d "$HOME/miniconda/miniconda/envs/test-environment" ]; then
   conda config --set always_yes yes --set changeps1 no
   conda update -q conda
   conda info -a
-  conda create -q -n test-environment -c conda-forge python=$TRAVIS_PYTHON_VERSION pyqt5  openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
+  conda create -q -n test-environment -c conda-forge python=$TRAVIS_PYTHON_VERSION openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
   source activate test-environment
   which python
   pip install -q coveralls coverage textgrid tqdm pytest setuptools

@@ -17,6 +17,7 @@ addons:
     packages:
       - libstdc++6
       - gfortran
+      - libpulse-mainloop-glib0
 
 before_install:
   - sudo apt-get update
