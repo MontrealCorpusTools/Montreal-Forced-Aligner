@@ -11,6 +11,9 @@ class G2PDummyArgs(object):
     def __init__(self):
         self.temp_directory = None
         self.window_size = 2
+        self.order = 5
+        self.random_starts=1
+        self.num_jobs = 2
         self.include_bracketed = False
 
 
