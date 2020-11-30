@@ -508,7 +508,7 @@ class ProcessWorker(mp.Process):
 
 
 def run_mp(function, argument_list):
-    with mp.Pool(processes=len(argument_list)) as p:
+    with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
         results = p.starmap(function, argument_list, chunksize=1)
     #procs = []
     #for args in argument_list:
