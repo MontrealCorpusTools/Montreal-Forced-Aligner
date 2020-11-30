@@ -41,28 +41,3 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     run_align_corpus(args)
 
-
-def test_align_basic_errors(basic_corpus_dir, large_dataset_dictionary, generated_dir, temp_dir):
-    args = DummyArgs()
-    args.quiet = True
-    args.clean = True
-    args.acoustic_model_path = 'english'
-    args.corpus_directory = basic_corpus_dir
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = os.path.join(generated_dir, 'basic_output')
-    args.temp_directory = temp_dir
-    run_align_corpus(args)
-
-
-def test_align_basic_debug(basic_corpus_dir, large_dataset_dictionary, generated_dir, temp_dir):
-    args = DummyArgs()
-    args.debug = True
-    args.quiet = True
-    args.clean = True
-    args.acoustic_model_path = 'english'
-    args.corpus_directory = basic_corpus_dir
-    args.dictionary_path = large_dataset_dictionary
-    args.output_directory = os.path.join(generated_dir, 'basic_output')
-    args.temp_directory = temp_dir
-    run_align_corpus(args)
-

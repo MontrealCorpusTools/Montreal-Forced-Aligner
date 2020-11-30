@@ -501,22 +501,23 @@ class ProcessWorker(mp.Process):
     def run(self):
         time.sleep(10)
         try:
+            print(self.arguments)
             ret = self.function(*self.arguments)
         except Exception as e:
             print(e)
 
 
 def run_mp(function, argument_list):
+    with mp.Pool(processes=len(argument_list)) as p:
+        results = p.starmap(function, argument_list, chunksize=1)
+    #procs = []
+    #for args in argument_list:
+    #    p = ProcessWorker(function, args)
+    #    procs.append(p)
+    #    p.start()
 
-    procs = []
-    for args in argument_list:
-        p = ProcessWorker(function, args)
-        procs.append(p)
-        p.start()
-    time.sleep(5)
-
-    for p in procs:
-        p.join()
+    #for p in procs:
+    #    p.join()
 
 
 def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
