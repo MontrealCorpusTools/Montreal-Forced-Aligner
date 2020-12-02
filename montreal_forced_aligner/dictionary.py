@@ -138,12 +138,12 @@ class Dictionary(object):
                 if word_set is not None and sanitize(word) not in word_set:
                     continue
                 self.graphemes.update(word)
-                try:
-                    prob = float(line[0])
-                    line = line[1:]
-                except ValueError:
-                    prob = None
-                    self.pronunciation_probabilities = False
+                if self.pronunciation_probabilities:
+                    try:
+                        prob = float(line[0])
+                    except ValueError:
+                        prob = None
+                        self.pronunciation_probabilities = False
                 pron = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     self.nonsil_phones.update(pron)
@@ -157,6 +157,11 @@ class Dictionary(object):
                         is_clitic = True
                 if is_clitic:
                     self.clitic_set.add(word)
+        if self.pronunciation_probabilities:
+            for word, (pron, prob) in self.words.items():
+                prob = float(pron[0])
+                pron = tuple(pron[1:])
+                self.words[word] = (pron, prob)
         if not self.graphemes:
             raise DictionaryFileError('No words were found in the dictionary path {}'.format(input_path))
         self.word_pattern = compile_graphemes(self.graphemes)

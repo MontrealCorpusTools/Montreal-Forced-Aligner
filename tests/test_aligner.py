@@ -65,6 +65,7 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
     a.export_textgrids(os.path.join(generated_dir, 'sick_output'))
 
 
+@pytest.mark.skip(reason='Optimization')
 def test_sick_lda_sat(sick_dict, sick_corpus, generated_dir, lda_sat_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
