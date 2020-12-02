@@ -12,7 +12,7 @@ def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_confi
     data_directory = os.path.join(generated_dir, 'temp', 'ivector_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, ivector_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
 
 
@@ -24,7 +24,7 @@ def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config):
     data_directory = os.path.join(generated_dir, 'temp', 'mono_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, mono_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
 
 
@@ -36,7 +36,7 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
     data_directory = os.path.join(generated_dir, 'temp', 'tri_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, tri_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
 
 
@@ -48,7 +48,7 @@ def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
     data_directory = os.path.join(generated_dir, 'temp', 'lda_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, lda_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
 
 
@@ -60,7 +60,7 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
     data_directory = os.path.join(generated_dir, 'temp', 'sat_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, sat_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
     a.export_textgrids(os.path.join(generated_dir, 'sick_output'))
 
@@ -72,6 +72,6 @@ def test_sick_lda_sat(sick_dict, sick_corpus, generated_dir, lda_sat_train_confi
     data_directory = os.path.join(generated_dir, 'temp', 'lda_sat_test')
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(sick_corpus, sick_dict, lda_sat_train_config, align_config,
-                         temp_directory=data_directory)
+                         temp_directory=data_directory, use_mp=False)
     a.train()
     a.export_textgrids(os.path.join(generated_dir, 'sick_output'))

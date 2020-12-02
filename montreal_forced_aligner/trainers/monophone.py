@@ -98,7 +98,7 @@ class MonophoneTrainer(BaseTrainer):
         num_gauss = self.get_num_gauss()
         self.initial_gaussians = num_gauss
         compile_train_graphs(self.train_directory, dictionary.output_directory,
-                             self.data_directory, corpus.num_jobs)
+                             self.data_directory, corpus.num_jobs, self)
         mono_align_equal(self.train_directory,
                          self.data_directory, corpus.num_jobs, self)
         log_path = os.path.join(self.train_directory, 'log', 'update.0.log')

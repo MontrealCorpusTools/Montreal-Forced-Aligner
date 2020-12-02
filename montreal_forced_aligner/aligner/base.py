@@ -32,7 +32,7 @@ class BaseAligner(object):
     """
 
     def __init__(self, corpus, dictionary, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False):
+                 call_back=None, debug=False, verbose=False, use_mp=True):
         self.align_config = align_config
         self.corpus = corpus
         self.dictionary = dictionary
@@ -44,6 +44,7 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = verbose
         self.debug = debug
+        self.use_mp = use_mp
         self.setup()
 
     def setup(self):
@@ -61,7 +62,7 @@ class BaseAligner(object):
         return data
 
     def compile_information(self, model_directory, output_directory):
-        issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs)
+        issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
         if issues:
             issue_path = os.path.join(output_directory, 'unaligned.txt')
             with open(issue_path, 'w', encoding='utf8') as f:

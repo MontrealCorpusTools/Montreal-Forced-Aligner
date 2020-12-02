@@ -66,6 +66,7 @@ class BaseTrainer(object):
         self.data_directory = None
         self.dictionary = None
         self.debug =False
+        self.use_mp = True
 
     def compute_calculated_properties(self):
         pass
@@ -277,7 +278,7 @@ class BaseTrainer(object):
         ali_directory = self.align_directory
 
         convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs)
+                                 self.corpus, self.corpus.num_jobs, self)
 
     def save(self, path):
         '''

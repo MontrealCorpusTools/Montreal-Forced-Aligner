@@ -80,7 +80,7 @@ def align_corpus(args):
             align_config = load_basic_align()
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
                               temp_directory=data_directory,
-                              debug=getattr(args, 'debug', False))
+                              debug=getattr(args, 'debug', False), use_mp=not args.disable_mp)
         if args.debug:
             print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose

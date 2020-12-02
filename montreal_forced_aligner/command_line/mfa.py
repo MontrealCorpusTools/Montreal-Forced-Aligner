@@ -67,6 +67,7 @@ align_parser.add_argument('-j', '--num_jobs', type=int, default=3,
 align_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
 align_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 align_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
+align_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 
 train_parser = subparsers.add_parser('train')
@@ -89,6 +90,7 @@ train_parser.add_argument('-j', '--num_jobs', type=int, default=3,
 train_parser.add_argument('-v', '--verbose', help="Output debug messages about alignment", action='store_true')
 train_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 train_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+train_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 validate_parser = subparsers.add_parser('validate')
 validate_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
@@ -124,6 +126,7 @@ g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by 
                         action='store_true')
 g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                              help='Number of cores to use while training')
+g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 train_g2p_parser = subparsers.add_parser('train_g2p')
 train_g2p_parser.add_argument("dictionary_path", help="Location of existing dictionary")
@@ -139,6 +142,7 @@ train_g2p_parser.add_argument("--order", type=int, default=7,
 train_g2p_parser.add_argument('-v', "--validate", action='store_true',
                               help="Perform an analysis of accuracy training on "
                                    "most of the data and validating on an unseen subset")
+train_g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 download_parser = subparsers.add_parser('download')
 download_parser.add_argument("model_type",
@@ -178,6 +182,7 @@ train_ivector_parser.add_argument('-c', '--clean', help="Remove files from previ
 train_ivector_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
 train_ivector_parser.add_argument('--config_path', type=str, default='',
                                   help='Path to config file to use for training')
+train_ivector_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 annotator_parser = subparsers.add_parser('annotator')
 

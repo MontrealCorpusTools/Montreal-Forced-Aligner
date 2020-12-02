@@ -62,7 +62,7 @@ def train_ivector(args):
         else:
             train_config, align_config = load_basic_train_ivector()
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
-                             temp_directory=data_directory)
+                             temp_directory=data_directory, use_mp=not args.disable_mp)
         a.verbose = args.verbose
         a.train()
         a.save(args.output_model_path)

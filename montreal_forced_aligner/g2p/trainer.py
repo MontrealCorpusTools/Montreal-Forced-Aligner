@@ -41,7 +41,7 @@ def score(args: Tuple[Labels, Labels]) -> Tuple[int, int]:
     edits = edit_distance(gold, hypo)
     if edits:
         logging.warning(
-            "Incorrect prediction:\t%r (predicted: %r)",
+            "Incorrect prediction: \t%r (predicted: %r)",
             " ".join(gold),
             " ".join(hypo),
         )
@@ -257,25 +257,33 @@ class PairNGramAligner:
         """Performs a single random start."""
         (*cmd, idx) = args
         start = time.time()
-        likelihood = INF
-        logger = logging.getLogger('g2p_aligner')
-        logger.debug("Subprocess call: %s", cmd)
-        with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
-            # Parses STDERR to capture the likelihood.
-            for line in proc.stderr:
-                match = re.match(
-                    r"INFO: Best likelihood:\s(-?\d*(\.\d*))", line
-                )
-                if match:
-                    likelihood = float(match.group(1))
-                    logger.info(
-                        "Random start %d; likelihood: %f; time elapsed: %ds, %s",
-                        idx,
-                        likelihood,
-                        time.time() - start,
-                        cmd
+        fst_path = cmd[-1]
+        likelihood_path = fst_path.replace('.fst', '.like')
+        if not os.path.exists(fst_path):
+            likelihood = INF
+            logger = logging.getLogger('g2p_aligner')
+            logger.debug("Subprocess call: %s", cmd)
+            with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
+                # Parses STDERR to capture the likelihood.
+                for line in proc.stderr:
+                    match = re.match(
+                        r"INFO: Best likelihood:\s(-?\d*(\.\d*))", line
                     )
-        return (cmd[-1], likelihood)
+                    if match:
+                        likelihood = float(match.group(1))
+                        logger.info(
+                            "Random start %d; likelihood: %f; time elapsed: %ds, %s",
+                            idx,
+                            likelihood,
+                            time.time() - start,
+                            cmd
+                        )
+                with open(likelihood_path, 'w') as f:
+                    f.write(str(likelihood))
+        else:
+            with open(likelihood_path, 'r') as f:
+                likelihood = f.read().strip()
+        return cmd[-1], likelihood
 
     def _alignments(
             self,
@@ -288,98 +296,99 @@ class PairNGramAligner:
             max_iters: str = "",
     ) -> None:
         """Trains the aligner and constructs the alignments FAR."""
-        self.logger.info("Training aligner")
-        cmd_fixed = ["baumwelchtrain", "--expectation_table=ilabel"]
-        if delta:
-            cmd_fixed.append(f"--delta={delta}")
-        if fst_default_cache_gc:
-            cmd_fixed.append(f"--fst_default_cache_gc={fst_default_cache_gc}")
-        if fst_default_cache_gc_limit:
-            cmd_fixed.append(
-                f"--fst_default_cache_gc_limit={fst_default_cache_gc_limit}"
-            )
-        if max_iters:
-            cmd_fixed.append(f"--max_iters={max_iters}")
-        # Adds more arguments shared across all commands.
-        if max_iters:
-            cmd_fixed.append(f"--max_iters={max_iters}")
-        cmd_fixed.append("--remove_zero_arcs=false")
-        cmd_fixed.append("--flat_start=false")
-        cmd_fixed.append("--random_starts=1")
-        # Constructs the actual command vectors (plus an index for logging
-        # purposes).
-        random.seed(seed)
-        commands = [
-            (
-                *cmd_fixed,
-                f"--seed={seed}",
-                self.g_path,
-                self.p_path,
-                self.c_path,
-                os.path.join(self.tempdir, f"{seed:010d}.fst"),
-                idx,
-            )
-            for (idx, seed) in enumerate(
-                random.sample(range(1, RAND_MAX), random_starts), 1
-            )
-        ]
-        stopped = Stopped()
-        num_commands = len(commands)
-        if cores > len(commands):
-            cores = len(commands)
-        job_queue = mp.JoinableQueue(cores+2)
+        if not os.path.exists(self.align_path):
+            self.logger.info("Training aligner")
+            cmd_fixed = ["baumwelchtrain", "--expectation_table=ilabel"]
+            if delta:
+                cmd_fixed.append(f"--delta={delta}")
+            if fst_default_cache_gc:
+                cmd_fixed.append(f"--fst_default_cache_gc={fst_default_cache_gc}")
+            if fst_default_cache_gc_limit:
+                cmd_fixed.append(
+                    f"--fst_default_cache_gc_limit={fst_default_cache_gc_limit}"
+                )
+            if max_iters:
+                cmd_fixed.append(f"--max_iters={max_iters}")
+            # Adds more arguments shared across all commands.
+            if max_iters:
+                cmd_fixed.append(f"--max_iters={max_iters}")
+            cmd_fixed.append("--remove_zero_arcs=false")
+            cmd_fixed.append("--flat_start=false")
+            cmd_fixed.append("--random_starts=1")
+            # Constructs the actual command vectors (plus an index for logging
+            # purposes).
+            random.seed(seed)
+            commands = [
+                (
+                    *cmd_fixed,
+                    f"--seed={seed}",
+                    self.g_path,
+                    self.p_path,
+                    self.c_path,
+                    os.path.join(self.tempdir, f"{seed:010d}.fst"),
+                    idx,
+                )
+                for (idx, seed) in enumerate(
+                    random.sample(range(1, RAND_MAX), random_starts), 1
+                )
+            ]
+            stopped = Stopped()
+            num_commands = len(commands)
+            if cores > len(commands):
+                cores = len(commands)
+            job_queue = mp.JoinableQueue(cores+2)
 
-        # Actually runs starts.
-        self.logger.info("Random starts")
-        print('Calculating alignments...')
-        begin = time.time()
-        last_value = 0
-        ind = 0
-        with tqdm.tqdm(total=num_commands) as pbar:
-            while True:
-                if ind == num_commands:
-                    break
-                try:
-                    job_queue.put(commands[ind], False)
-                except queue.Full:
-                    break
-                ind += 1
-            manager = mp.Manager()
-            return_dict = manager.dict()
-            procs = []
-            counter = Counter()
-            for i in range(cores):
-                p = RandomStartWorker(job_queue, return_dict, self._random_start, counter, stopped)
-                procs.append(p)
-                p.start()
-            while True:
-                if ind == num_commands:
-                    break
-                job_queue.put(commands[ind])
-                value = counter.value()
-                pbar.update(value-last_value)
-                last_value = value
-                ind += 1
-            while True:
-                time.sleep(30)
-                value = counter.value()
-                if value != last_value:
+            # Actually runs starts.
+            self.logger.info("Random starts")
+            print('Calculating alignments...')
+            begin = time.time()
+            last_value = 0
+            ind = 0
+            with tqdm.tqdm(total=num_commands) as pbar:
+                while True:
+                    if ind == num_commands:
+                        break
+                    try:
+                        job_queue.put(commands[ind], False)
+                    except queue.Full:
+                        break
+                    ind += 1
+                manager = mp.Manager()
+                return_dict = manager.dict()
+                procs = []
+                counter = Counter()
+                for i in range(cores):
+                    p = RandomStartWorker(job_queue, return_dict, self._random_start, counter, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    if ind == num_commands:
+                        break
+                    job_queue.put(commands[ind])
+                    value = counter.value()
                     pbar.update(value-last_value)
                     last_value = value
-                if value >= random_starts:
-                    break
-            job_queue.join()
-            for p in procs:
-                p.join()
-        if 'error' in return_dict:
-            element, exc = return_dict['error']
-            print(element)
-            raise exc
-        (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
-        self.logger.info("Best likelihood: %f", best_likelihood)
-        self.logger.debug("Ran {} random starts in {} seconds".format(random_starts, time.time()-begin))
-        # Moves best likelihood solution to the requested location.
-        shutil.move(best_fst, self.align_path)
+                    ind += 1
+                while True:
+                    time.sleep(30)
+                    value = counter.value()
+                    if value != last_value:
+                        pbar.update(value-last_value)
+                        last_value = value
+                    if value >= random_starts:
+                        break
+                job_queue.join()
+                for p in procs:
+                    p.join()
+            if 'error' in return_dict:
+                element, exc = return_dict['error']
+                print(element)
+                raise exc
+            (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
+            self.logger.info("Best likelihood: %f", best_likelihood)
+            self.logger.debug("Ran {} random starts in {} seconds".format(random_starts, time.time()-begin))
+            # Moves best likelihood solution to the requested location.
+            shutil.move(best_fst, self.align_path)
         self.logger.info("Computing alignments")
         cmd = ["baumwelchdecode"]
         if fst_default_cache_gc:
@@ -416,12 +425,12 @@ class PyniniTrainer(object):
     def __init__(self, dictionary, model_path, temp_directory=None, order=7, evaluate=False,
                  input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
                  max_iters=None, smoothing_method='kneser_ney', pruning_method='relative_entropy',
-                 model_size=1000000):
+                 model_size=1000000, use_mp=False):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = os.path.join(temp_directory, 'G2P')
-
+        self.use_mp = use_mp
         self.models_temp_dir = os.path.join(temp_directory, 'models', 'G2P')
 
         self.name, _ = os.path.splitext(os.path.basename(model_path))
@@ -464,6 +473,14 @@ class PyniniTrainer(object):
         self.model_size = model_size
         self.sym_path = os.path.join(self.temp_directory, 'phones.sym')
         self.output_token_type = None
+
+    def clean_up(self):
+        for name in os.listdir(self.temp_directory):
+            path = os.path.join(self.temp_directory, name)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            elif not name.endswith('.log'):
+                os.remove(path)
 
     def generate_model(self):
         assert os.path.exists(self.far_path)
@@ -534,20 +551,21 @@ class PyniniTrainer(object):
         input_token_type = "utf8"
         self.output_token_type = pynini.SymbolTable.read_text(self.sym_path)
         begin = time.time()
-        aligner.align(input_path,
-                      self.far_path,
-                      self.encoder_path,
-                      input_token_type,
-                      self.input_epsilon,
-                      self.output_token_type,
-                      self.output_epsilon,
-                      self.num_jobs,
-                      self.random_starts,
-                      self.seed,
-                      self.delta,
-                      self.fst_default_cache_gc,
-                      self.fst_default_cache_gc_limit,
-                      self.max_iters)
+        if not os.path.exists(self.far_path) or not os.path.exists(self.encoder_path):
+            aligner.align(input_path,
+                          self.far_path,
+                          self.encoder_path,
+                          input_token_type,
+                          self.input_epsilon,
+                          self.output_token_type,
+                          self.output_epsilon,
+                          self.num_jobs,
+                          self.random_starts,
+                          self.seed,
+                          self.delta,
+                          self.fst_default_cache_gc,
+                          self.fst_default_cache_gc_limit,
+                          self.max_iters)
         self.logger.debug('Aligning {} words took {} seconds'.format(len(word_dict), time.time() - begin))
         begin = time.time()
         self.generate_model()
@@ -583,3 +601,4 @@ class PyniniTrainer(object):
         self.logger.info(f"WER:\t{wer:.2f}")
         self.logger.info(f"LER:\t{ler:.2f}")
         self.logger.debug('Computation of errors for {} words took {} seconds'.format(len(validation_dictionary), time.time()-begin))
+        self.clean_up()

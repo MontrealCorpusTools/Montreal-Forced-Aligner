@@ -44,6 +44,39 @@ class Stopped(object):
             return self.val.value
 
 
+class ProcessWorker(mp.Process):
+    def __init__(self, function, arguments):
+        mp.Process.__init__(self)
+        self.function = function
+        self.arguments = arguments
+
+    def run(self):
+        time.sleep(10)
+        try:
+            print(self.arguments)
+            ret = self.function(*self.arguments)
+        except Exception as e:
+            print(e)
+
+
+def run_non_mp(function, argument_list):
+    for args in argument_list:
+        function(*args)
+
+
+def run_mp(function, argument_list):
+    with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
+        results = p.starmap(function, argument_list, chunksize=1)
+    #procs = []
+    #for args in argument_list:
+    #    p = ProcessWorker(function, args)
+    #    procs.append(p)
+    #    p.start()
+
+    #for p in procs:
+    #    p.join()
+
+
 def init(env):
     os.environ = env
 
@@ -87,7 +120,10 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
 
     jobs = [(directory, iteration, x, os.path.join(split_directory, feat_name.format(x)))
             for x in range(num_jobs)]
-    run_mp(acc_stats_func, jobs)
+    if config.use_mp:
+        run_mp(acc_stats_func, jobs)
+    else:
+        run_non_mp(acc_stats_func, jobs)
 
 
 def parse_transitions(path, phones_path):
@@ -191,7 +227,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                         pass
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, debug=False):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, config, debug=False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -216,11 +252,13 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, d
     os.makedirs(os.path.join(directory, 'log'), exist_ok=True)
     jobs = [(directory, lang_directory, split_directory, x, debug)
             for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(compile_train_graphs_func, jobs)
+    else:
+        run_non_mp(compile_train_graphs_func, jobs)
 
-    run_mp(compile_train_graphs_func, jobs)
 
-
-def mono_align_equal_func(mono_directory, split_directory, job_name, feat_path):  # pragma: no cover
+def mono_align_equal_func(mono_directory, job_name, feat_path):  # pragma: no cover
     fst_path = os.path.join(mono_directory, 'fsts.{}'.format(job_name))
     mdl_path = os.path.join(mono_directory, '0.mdl')
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
@@ -256,11 +294,14 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
     num_jobs : int
         The number of processes to use
     """
-    jobs = [(mono_directory, split_directory, x,
+    jobs = [(mono_directory, x,
              os.path.join(split_directory, config.feature_file_base_name + '.{}.scp'.format(x)))
             for x in range(num_jobs)]
 
-    run_mp(mono_align_equal_func, jobs)
+    if config.use_mp:
+        run_mp(mono_align_equal_func, jobs)
+    else:
+        run_non_mp(mono_align_equal_func, jobs)
 
 
 def align_func(directory, iteration, job_name, mdl, config, feat_path, output_directory):  # pragma: no cover
@@ -319,7 +360,10 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)), output_directory)
             for x in range(num_jobs)]
 
-    run_mp(align_func, jobs)
+    if config.use_mp:
+        run_mp(align_func, jobs)
+    else:
+        run_non_mp(align_func, jobs)
 
     error_logs = []
     for i in range(num_jobs):
@@ -356,16 +400,20 @@ def compile_information_func(log_directory, corpus, job_num):
             f.write('{} {}\n'.format(k, v))
 
 
-def compile_information(model_directory, corpus, num_jobs):
+def compile_information(model_directory, corpus, num_jobs, config):
     log_dir = os.path.join(model_directory, 'log')
 
     jobs = [(log_dir, corpus, x)
             for x in range(num_jobs)]
 
-    output = run_mp(compile_information_func, jobs)
+    if config.use_mp:
+        run_mp(compile_information_func, jobs)
+    else:
+        run_non_mp(compile_information_func, jobs)
+
     unaligned = {}
     for j in jobs:
-        with open(os.path.join(log_dir, 'unaligned.{}.log'), 'r', encoding='utf8') as f:
+        with open(os.path.join(log_dir, 'unaligned.{}.log'.format(j)), 'r', encoding='utf8') as f:
             for line in f:
                 line = line.strip()
                 utt, reason = line.split(' ', maxsplit=1)
@@ -492,38 +540,13 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
     return utterances_aligned_diff, mean_difference
 
 
-class ProcessWorker(mp.Process):
-    def __init__(self, function, arguments):
-        mp.Process.__init__(self)
-        self.function = function
-        self.arguments = arguments
-
-    def run(self):
-        time.sleep(10)
-        try:
-            print(self.arguments)
-            ret = self.function(*self.arguments)
-        except Exception as e:
-            print(e)
-
-
-def run_mp(function, argument_list):
-    with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
-        results = p.starmap(function, argument_list, chunksize=1)
-    #procs = []
-    #for args in argument_list:
-    #    p = ProcessWorker(function, args)
-    #    procs.append(p)
-    #    p.start()
-
-    #for p in procs:
-    #    p.join()
-
-
 def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
 
     jobs = [(iteration, config, model_directory, x) for x in range(num_jobs)]
-    run_mp(compute_alignment_improvement_func, jobs)
+    if config.use_mp:
+        run_mp(compute_alignment_improvement_func, jobs)
+    else:
+        run_non_mp(compute_alignment_improvement_func, jobs)
 
     alignment_diff_path = os.path.join(model_directory, 'train_change.csv')
     if iteration == 0 or iteration not in config.realignment_iterations:
@@ -599,7 +622,7 @@ def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_
         nbest_proc.communicate()
 
 
-def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs):
+def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs, config):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -639,7 +662,10 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     """
     jobs = [(align_config, model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
-    run_mp(ali_to_textgrid_func, jobs)
+    if config.use_mp:
+        run_mp(ali_to_textgrid_func, jobs)
+    else:
+        run_non_mp(ali_to_textgrid_func, jobs)
 
     word_ctm = {}
     phone_ctm = {}
@@ -710,7 +736,10 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
              os.path.join(align_directory, 'ali.{}'.format(x)), x)
             for x in range(num_jobs)]
 
-    run_mp(tree_stats_func, jobs)
+    if config.use_mp:
+        run_mp(tree_stats_func, jobs)
+    else:
+        run_non_mp(tree_stats_func, jobs)
 
     tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
@@ -735,7 +764,7 @@ def convert_alignments_func(directory, align_directory, job_name):  # pragma: no
                          "ark:" + new_ali_path], stderr=logf)
 
 
-def convert_alignments(directory, align_directory, num_jobs):
+def convert_alignments(directory, align_directory, num_jobs, config):
     """
     Multiprocessing function that converts alignments from previous training
 
@@ -756,7 +785,10 @@ def convert_alignments(directory, align_directory, num_jobs):
 
     jobs = [(directory, align_directory, x)
             for x in range(num_jobs)]
-    run_mp(convert_alignments_func, jobs)
+    if config.use_mp:
+        run_mp(convert_alignments_func, jobs)
+    else:
+        run_non_mp(convert_alignments_func, jobs)
 
 
 def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial,
@@ -866,7 +898,10 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
     jobs = [(directory, split_directory, sil_phones, x, config, initial, model_name)
             for x in range(num_jobs)]
-    run_mp(calc_fmllr_func, jobs)
+    if config.use_mp:
+        run_mp(calc_fmllr_func, jobs)
+    else:
+        run_non_mp(calc_fmllr_func, jobs)
 
 
 def lda_acc_stats_func(directory, split_dir, align_directory, config, ci_phones, i):
@@ -928,8 +963,10 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
 
     """
     jobs = [(directory, split_directory, align_directory, config, ci_phones, x) for x in range(num_jobs)]
-
-    run_mp(lda_acc_stats_func, jobs)
+    if config.use_mp:
+        run_mp(lda_acc_stats_func, jobs)
+    else:
+        run_non_mp(lda_acc_stats_func, jobs)
 
     log_path = os.path.join(directory, 'log', 'lda_est.log')
     acc_list = []
@@ -1023,7 +1060,10 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
     jobs = [
         (directory, split_directory, sil_phones, x, config, initial, model_name)
         for x in range(num_jobs)]
-    run_mp(calc_lda_mllt_func, jobs)
+    if config.use_mp:
+        run_mp(calc_lda_mllt_func, jobs)
+    else:
+        run_non_mp(calc_lda_mllt_func, jobs)
 
     mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
     log_path = os.path.join(directory, 'log', 'transform_means.{}.log'.format(model_name))
@@ -1102,7 +1142,10 @@ def gmm_gselect(config, num_jobs):
 
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    run_mp(gmm_gselect_func, jobs)
+    if config.use_mp:
+        run_mp(gmm_gselect_func, jobs)
+    else:
+        run_non_mp(gmm_gselect_func, jobs)
 
 
 def acc_global_stats_func(config, x, iteration):
@@ -1150,7 +1193,10 @@ def acc_global_stats(config, num_jobs, iteration):
         Iteration to calculate stats for
     """
     jobs = [(config, x, iteration) for x in range(num_jobs)]
-    run_mp(acc_global_stats_func, jobs)
+    if config.use_mp:
+        run_mp(acc_global_stats_func, jobs)
+    else:
+        run_non_mp(acc_global_stats_func, jobs)
 
 
 def gauss_to_post_func(config, x):
@@ -1205,7 +1251,10 @@ def gauss_to_post(config, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    run_mp(gauss_to_post_func, jobs)
+    if config.use_mp:
+        run_mp(gauss_to_post_func, jobs)
+    else:
+        run_non_mp(gauss_to_post_func, jobs)
 
 
 def acc_ivector_stats_func(config, x, iteration):
@@ -1253,7 +1302,10 @@ def acc_ivector_stats(config, num_jobs, iteration):
         Iteration to calculate stats for
     """
     jobs = [(config, x, iteration) for x in range(num_jobs)]
-    run_mp(acc_ivector_stats_func, jobs)
+    if config.use_mp:
+        run_mp(acc_ivector_stats_func, jobs)
+    else:
+        run_non_mp(acc_ivector_stats_func, jobs)
 
     accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in range(num_jobs)]
     log_path = os.path.join(config.train_directory, 'log', 'sum_acc.{}.log'.format(iteration))
@@ -1402,477 +1454,7 @@ def extract_ivectors(config, num_jobs):
         The number of processes to use in calculation
     """
     jobs = [(config, x) for x in range(num_jobs)]
-    run_mp(extract_ivectors_func, jobs)
-
-
-def get_egs_func(config, align_directory, valid_uttlist,
-                 train_subset_uttlist,  x):
-    # Create training examples
-    ivectors_opt = []
-    if config.feature_config.ivectors:
-        ivector_dim = 100  # Make safe later
-        ivectors_opt.append('--const-feat-dim={}'.format(ivector_dim))
-
-
-    # Deal with ivector stuff
-    log_path = os.path.join(config.train_directory, 'log', 'get_egs_feats.{}.log'.format(x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        # Gets "feats" (Kaldi)
-
-        if not valid_uttlist:
-            valid_uttlist = train_subset_uttlist
-        base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
-        filtered = filter_scp(train_subset_uttlist,
-                              os.path.join(config.data_directory, base_feature_scp))
-        training_features_path = os.path.join(config.train_directory, 'features_for_nnet_train.{}.scp'.format(x))
-        with open(training_features_path, 'w', encoding='utf8') as outf:
-            for item in filtered:
-                outf.write(item)
-
-        # Gets "valid_feats" (Kaldi)
-        filtered = filter_scp(valid_uttlist, os.path.join(config.train_directory, base_feature_scp))
-        validation_features_path = os.path.join(config.train_directory, 'features_for_nnet_valid.{}.scp'.format(x))
-        with open(validation_features_path, 'w', encoding='utf8') as outf:
-            for item in filtered:
-                outf.write(item)
-
-    log_path = os.path.join(config.train_directory, 'log', 'ali_to_post.{}.log'.format(x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        ali_to_pdf_proc = subprocess.Popen([thirdparty_binary('ali-to-pdf'),
-                                            os.path.join(align_directory, 'final.mdl'),
-                                            'ark:' + os.path.join(align_directory, 'ali.{}'.format(x)),
-                                            'ark:-'],
-                                           stdout=subprocess.PIPE,
-                                           stderr=logf)
-        ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
-                                             'ark:-', 'ark:-'],
-                                            stdin=ali_to_pdf_proc.stdout,
-                                            stderr=logf,
-                                            stdout=subprocess.PIPE)
-
-    log_path = os.path.join(config.train_directory, 'log', 'get_egs.{}.log'.format(x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        nnet_get_egs_proc = subprocess.Popen([thirdparty_binary('nnet-get-egs')]+ ivectors_opt +
-                                              ['--left-context=' + str(config.feature_config.splice_left_context),
-                                              '--right-context=' + str(config.feature_config.splice_right_context),
-                                              'scp:' + training_features_path,
-                                              'ark:-',
-                                              'ark:-'],
-                                             stdin=ali_to_post_proc.stdout,
-                                             stdout=subprocess.PIPE,
-                                             stderr=logf)
-        nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
-                                               'ark:-',
-                                               'ark:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x))],
-                                              stdin=nnet_get_egs_proc.stdout,
-                                              stderr=logf)
-        nnet_copy_egs_proc.communicate()
-
-    # Rearranging training examples
-    log_path = os.path.join(config.train_directory, 'log', 'nnet_shuffle_egs.{}.log'.format(x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        nnet_copy_egs_proc = subprocess.Popen([thirdparty_binary('nnet-copy-egs'),
-                                               '--srand=' + str(x),
-                                               'ark:' + os.path.join(config.egs_directory, 'egs_orig.{}'.format(x)),
-                                               'ark:-'],
-                                              stderr=logf,
-                                              stdout=subprocess.PIPE)
-        nnet_shuffle_egs_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
-                                                  '--srand=' + str(x),
-                                                  'ark:-',
-                                                  'ark:' + os.path.join(config.egs_directory, 'egs.{}'.format(x))],
-                                                 stderr=logf,
-                                                 stdin=nnet_copy_egs_proc.stdout)
-        nnet_shuffle_egs_proc.communicate()
-
-
-def get_egs(config, ali_dir, valid_uttlist,
-            train_subset_uttlist):
-    """
-    Multiprocessing function that gets training examples for the neural net
-
-    See:
-
-    - http://kaldi-asr.org/doc/ali-to-pdf_8cc.html
-    - http://kaldi-asr.org/doc/ali-to-post_8cc.html
-    - http://kaldi-asr.org/doc/nnet-get-egs_8cc.html
-    - http://kaldi-asr.org/doc/nnet-copy-egs_8cc.html
-    - http://kaldi-asr.org/doc/nnet-shuffle-egs_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/online/nnet2/get_egs.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    config : :class:`~aligner.config.NnetBasicConfig`
-        Configuration object for training
-    ali_dir : str
-        Directory of previous alignment
-    valid_uttlist : str
-        Path to list of valid utterances
-    train_subset_uttlist : str
-        Path to subset list of training utterances
-    """
-
-    jobs = [(config, ali_dir, valid_uttlist,
-             train_subset_uttlist,  x) for x in range(config.corpus.num_jobs)]
-    run_mp(get_egs_func, jobs)
-
-
-def get_lda_nnet_func(config, align_directory, x):
-    sil_phones = config.dictionary.optional_silence_csl
-    log_path = os.path.join(config.train_directory, 'log', 'lda_acc.{}.log'.format(x))
-
-    base_feature_scp = os.path.join(config.data_directory, config.feature_file_base_name.replace('_ivectors', '') + '.{}.scp'.format(x))
-    spliced_feature_ark = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.ark'.format(x))
-    spliced_feature_scp = os.path.join(config.data_directory, 'features_for_nnet_lda.{}.scp'.format(x))
-    ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
-    ivector_period = 10
-    with open(log_path, 'w', encoding='utf8') as logf:
-        if config.feature_config.ivectors:
-            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                        '--left-context={}'.format(config.feature_config.splice_left_context),
-                                        '--right-context={}'.format(config.feature_config.splice_right_context),
-                                        'scp:' + base_feature_scp,
-                                        'ark:-'],
-                                       stdout=subprocess.PIPE,
-                                       stderr=logf)
-            paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
-                                           'ark:-',
-                                           'scp:' + ivector_scp_path,
-                                           'ark,scp:{},{}'.format(spliced_feature_ark, spliced_feature_scp)],
-                                          stdin=splice_proc.stdout,
-                                          stderr=logf)
-            paste_proc.communicate()
-            # Get i-vector dimension
-            ivector_dim_path = os.path.join(config.train_directory, 'ivector_dim')
-            with open(ivector_dim_path, 'w', encoding='utf8') as outf:
-                dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                             'scp:' + ivector_scp_path,
-                                             '-'],
-                                            stderr=logf,
-                                            stdout=outf)
-        else:
-            splice_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                        '--left-context={}'.format(config.feature_config.splice_left_context),
-                                        '--right-context={}'.format(config.feature_config.splice_right_context),
-                                        'scp:' + base_feature_scp,
-                                           'ark,scp:{},{}'.format(spliced_feature_ark, spliced_feature_scp)],
-                                       stderr=logf)
-            splice_proc.communicate()
-
-        feat_dim_path = os.path.join(config.train_directory, 'feat_dim')
-        with open(feat_dim_path, 'w', encoding='utf8') as outf:
-            dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                         'scp:' + base_feature_scp,
-                                         '-'],
-                                        stderr=logf,
-                                        stdout=outf)
-
-            ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
-                                                 'ark:' + os.path.join(align_directory, 'ali.{}'.format(x)),
-                                                 'ark:-'],
-                                                stdout=subprocess.PIPE,
-                                                stderr=logf)
-            weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                         '0.0',
-                                                         sil_phones,
-                                                         os.path.join(align_directory, 'final.mdl'),
-                                                         'ark:-',
-                                                         'ark:-'],
-                                                        stdin=ali_to_post_proc.stdout,
-                                                        stdout=subprocess.PIPE,
-                                                        stderr=logf)
-            acc_lda_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
-                                             '--rand-prune={}'.format(config.lda_random_prune),
-                                             os.path.join(align_directory, 'final.mdl'),
-                                             'scp:' + spliced_feature_scp,
-                                             'ark,s,cs:-',
-                                             os.path.join(config.train_directory, 'lda.{}.acc'.format(x))],
-                                            stdin=weight_silence_post_proc.stdout,
-                                            stderr=logf)
-            acc_lda_proc.communicate()
-
-
-def get_lda_nnet(config, align_directory, num_jobs):
-    """
-    Multiprocessing function that extracts training examples and does LDA transformation
-
-    See:
-
-    - http://kaldi-asr.org/doc/apply-cmvn_8cc.html
-    - http://kaldi-asr.org/doc/splice-feats_8cc.html
-    - http://kaldi-asr.org/doc/subsample-feats_8cc.html
-    - http://kaldi-asr.org/doc/ivector-randomize_8cc.html
-    - http://kaldi-asr.org/doc/paste-feats_8cc.html
-    - http://kaldi-asr.org/doc/ali-to-post_8cc.html
-    - http://kaldi-asr.org/doc/weight-silence-post_8cc.html
-    - http://kaldi-asr.org/doc/acc-lda_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/nnet2/get_lda.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    config : :class:`~aligner.config.NnetBasicConfig`
-        Configuration object for training
-    align_directory : str
-        Directory of previous alignment
-    num_jobs : int
-        The number of processes to use in calculation
-    """
-
-    jobs = [(config, align_directory, x) for x in
-            range(num_jobs)]
-    run_mp(get_lda_nnet_func, jobs)
-
-    log_path = os.path.join(config.train_directory, 'log', 'lda_matrix.log')
-    with open(log_path, 'w', encoding='utf8') as logf:
-        acc_files = [os.path.join(config.train_directory, 'lda.{}.acc'.format(x))
-                     for x in range(config.corpus.num_jobs)]
-        sum_lda_accs_proc = subprocess.Popen([thirdparty_binary('sum-lda-accs'),
-                                              os.path.join(config.train_directory, 'lda.acc')]
-                                             + acc_files,
-                                             stderr=logf)
-        sum_lda_accs_proc.communicate()
-
-        lda_mat_proc = subprocess.Popen([thirdparty_binary('nnet-get-feature-transform'),
-                                         '--dim={}'.format(config.lda_dimension),
-                                         os.path.join(config.train_directory, 'nnet_lda.mat'),
-                                         os.path.join(config.train_directory, 'lda.acc')],
-                                        stderr=logf)
-        lda_mat_proc.communicate()
-
-
-def nnet_train_trans(nnet_dir, prev_ali_path):
-    """
-    Multiprocessing function that trains transition prbabilities and sets priors.
-
-    See:
-
-    - http://kaldi-asr.org/doc/nnet-train-transitions_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/nnet2/train_pnorm_multisplice.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    nnet_dir : str
-        Directory of nnet training
-    prev_ali_path : str
-        Path to previous alignment
-    """
-    log_path = os.path.join(nnet_dir, 'log', 'train_trans.log')
-    with open(log_path, 'w', encoding='utf8') as logf:
-        train_trans_proc = subprocess.Popen([thirdparty_binary('nnet-train-transitions'),
-                                             os.path.join(nnet_dir, '0.mdl'),
-                                             'ark:' + prev_ali_path,
-                                             os.path.join(nnet_dir, '0.mdl')],
-                                            stderr=logf)
-        train_trans_proc.communicate()
-
-
-def nnet_train_func(nnet_dir, egs_dir, mdl, i, x):
-    log_path = os.path.join(nnet_dir, 'log', 'train.{}.{}.log'.format(i, x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        shuffle_proc = subprocess.Popen([thirdparty_binary('nnet-shuffle-egs'),
-                                         '--srand={}'.format(i),
-                                         'ark:' + os.path.join(egs_dir, 'egs.{}'.format(x)),
-                                         'ark:-'],
-                                        stdout=subprocess.PIPE,
-                                        stderr=logf)
-        train_proc = subprocess.Popen([thirdparty_binary('nnet-train-parallel'),
-                                       # Leave off threads and minibatch params for now
-                                       '--srand={}'.format(i),
-                                       mdl,
-                                       'ark:-',
-                                       os.path.join(nnet_dir, '{}.{}.mdl'.format((i + 1), x))],
-                                      stdin=shuffle_proc.stdout,
-                                      stderr=logf)
-        train_proc.communicate()
-
-
-def nnet_train(nnet_dir, egs_dir, mdl, i, num_jobs):
-    """
-    Multiprocessing function that trains the neural net.
-
-    See:
-
-    - http://kaldi-asr.org/doc/nnet-shuffle-egs_8cc.html
-    - http://kaldi-asr.org/doc/nnet-train-parallel_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/nnet2/train_pnorm_multisplice.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    nnet_dir : str
-        Directory of nnet training
-    egs_dir : str
-        Directory for training examples
-    mdl : str
-        Path to current model
-    i : int
-        Number of current iteration
-    num_jobs : int
-        The number of processes to use in calculation
-    """
-    jobs = [(nnet_dir, egs_dir, mdl, i, x) for x in range(num_jobs)]
-    run_mp(nnet_train_func, jobs)
-
-
-def nnet_align_func(i, config, train_directory, align_directory, x):
-    feat_name = config.feature_file_base_name + '.{}.scp'
-    feat_path = os.path.join(config.data_directory, feat_name.format(x))
-    fst_path = os.path.join(train_directory, 'fsts.{}'.format(x))
-    log_path = os.path.join(align_directory, 'log', 'align.{}.{}.log'.format(i, x))
-    ali_path = os.path.join(align_directory, 'ali.{}'.format(x))
-    mdl_path = os.path.join(train_directory, '{}.mdl'.format(i))
-    ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(x))
-    with open(log_path, 'w', encoding='utf8') as logf, \
-            open(ali_path, 'wb') as outf:
-        paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
-                                       'scp:' + feat_path,
-                                       'scp:' + ivector_scp_path,
-                                       'ark:-'],
-                                      stdout=subprocess.PIPE,
-                                      stderr=logf)
-        align_proc = subprocess.Popen([thirdparty_binary('nnet-align-compiled'),
-                                       '--beam={}'.format(config.beam),
-                                       '--retry-beam={}'.format(config.retry_beam),
-                                       mdl_path,
-                                       "ark:" + fst_path, "ark:-", "ark:-"],
-                                      stdin=paste_proc.stdout,
-                                      stderr=logf,
-                                      stdout=outf)
-        align_proc.communicate()
-
-
-def nnet_align(i, config, train_directory, align_directory, num_jobs):
-    """
-    Multiprocessing function that generates an nnet alignment
-
-    See:
-
-    - http://kaldi-asr.org/doc/nnet-align-compiled_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/nnet2/align.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    i : int
-        Number of the current iteration
-    num_jobs : int
-        The number of processes to use in calculation
-    """
-
-    jobs = [(i, config, train_directory, align_directory, x)
-            for x in range(num_jobs)]
-    run_mp(nnet_align_func, jobs)
-
-
-def compute_prob_func(i, nnet_dir, egs_dir, model_path, x):
-    log_path = os.path.join(nnet_dir, 'log', 'compute_prob_train.{}.{}.log'.format(i, x))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        compute_prob_proc = subprocess.Popen([thirdparty_binary('nnet-compute-prob'),
-                                              model_path,
-                                              'ark:{}/egs.{}'.format(egs_dir, x)],
-                                             stderr=logf)
-        compute_prob_proc.communicate()
-
-
-def compute_prob(i, nnet_dir, egs_dir, model_path, num_jobs):
-    """
-    Multiprocessing function that computes the current log probability of the iteration
-
-    See:
-
-    - http://kaldi-asr.org/doc/nnet-compute-prob_8cc.html
-
-    for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/nnet2/train_pnorm_multisplice2.sh
-    for the original bash script that this function was based on.
-
-    Parameters
-    ----------
-    i : int
-        Number of the current iteration
-    nnet_dir : str
-        Directory of nnet training
-    egs_dir : str
-        Directory for training examples
-    model_path : str
-        Path to the current iteration's model
-    num_jobs : int
-        The number of processes to use in calculation
-    """
-    jobs = [(i, nnet_dir, egs_dir, model_path, x) for x in range(num_jobs)]
-    run_mp(compute_prob_func, jobs)
-
-
-def ali_to_textgrid_kaldi_func(ali_directory, model_directory, lang_dir, split_data_dir, sym2int_script, oov,
-                               job_name):  # pragma: no cover
-    ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
-    model_path = os.path.join(model_directory, 'final.mdl')
-    aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
-    word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
-    phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
-    phones_dir = os.path.join(lang_dir, 'phones')
-
-    # Get integers
-    log_path = os.path.join(ali_directory, 'log', 'sym2int.{}.log'.format(job_name))
-    text_int_path = os.path.join(ali_directory, 'text.{}.int'.format(job_name))
-    with open(log_path, 'w', encoding='utf8') as logf, open(text_int_path, 'w', encoding='utf8') as outf:
-        sym2int_proc = subprocess.Popen([sym2int_script,
-                                         '--map-oov', oov, '-f', '2-',
-                                         os.path.join(lang_dir, 'words.txt'),
-                                         os.path.join(split_data_dir, str(job_name + 1), 'text')],
-                                        stdout=outf, stderr=logf)
-        sym2int_proc.communicate()
-
-    frame_shift = 10 / 1000
-    log_path = os.path.join(ali_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
-    with open(log_path, 'w', encoding='utf8') as logf:
-        lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
-                                     "ark:" + text_int_path,
-                                     '', '', 'ark:-'],
-                                    stdout=subprocess.PIPE, stderr=logf)
-        align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                                       os.path.join(phones_dir, 'word_boundary.int'), model_path,
-                                       'ark:-', 'ark:' + aligned_path],
-                                      stdin=lin_proc.stdout, stderr=logf)
-        align_proc.communicate()
-
-        subprocess.call([thirdparty_binary('nbest-to-ctm'),
-                         '--frame-shift={}'.format(frame_shift),
-                         'ark:' + aligned_path,
-                         word_ctm_path],
-                        stderr=logf)
-        phone_proc = subprocess.Popen([thirdparty_binary('lattice-to-phone-lattice'), model_path,
-                                       'ark:' + aligned_path, "ark:-"],
-                                      stdout=subprocess.PIPE,
-                                      stderr=logf)
-        nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'),
-                                       '--frame-shift={}'.format(frame_shift),
-                                       "ark:-", phone_ctm_path],
-                                      stdin=phone_proc.stdout,
-                                      stderr=logf)
-        nbest_proc.communicate()
+    if config.use_mp:
+        run_mp(extract_ivectors_func, jobs)
+    else:
+        run_non_mp(extract_ivectors_func, jobs)

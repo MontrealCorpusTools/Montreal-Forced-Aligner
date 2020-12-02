@@ -131,9 +131,9 @@ class TriphoneTrainer(BaseTrainer):
         os.remove(treeacc_path)
 
         compile_train_graphs(self.train_directory, self.dictionary.output_directory,
-                             self.data_directory, self.corpus.num_jobs)
+                             self.data_directory, self.corpus.num_jobs, self)
         os.rename(occs_path, os.path.join(self.train_directory, '1.occs'))
         os.rename(mdl_path, os.path.join(self.train_directory, '1.mdl'))
 
-        convert_alignments(self.train_directory, align_directory, self.corpus.num_jobs)
+        convert_alignments(self.train_directory, align_directory, self.corpus.num_jobs, self)
         print('Initialization complete!')
