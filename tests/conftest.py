@@ -375,8 +375,12 @@ def basic_align_config(config_directory):
 
 
 @pytest.fixture(scope='session')
-def mono_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, 'mono_train.yaml'))
+def mono_train_config_path(config_directory):
+    return os.path.join(config_directory, 'mono_train.yaml')
+
+@pytest.fixture(scope='session')
+def mono_train_config(mono_train_config_path):
+    return train_yaml_to_config(mono_train_config_path)
 
 
 @pytest.fixture(scope='session')

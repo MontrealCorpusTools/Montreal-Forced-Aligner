@@ -24,13 +24,13 @@ class TrainableAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
-    training_config : :class:`~aligner.config.TrainingConfig`
+    training_config : :class:`~montreal_forced_aligner.config.TrainingConfig`
         Configuration to train a model
-    align_config : :class:`~aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -46,9 +46,11 @@ class TrainableAligner(BaseAligner):
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
                                                call_back, debug, verbose, use_mp)
         self.training_config = training_config
+        self.training_config.feature_config.use_mp = use_mp
         for identifier, trainer in self.training_config.items():
             trainer.use_mp = use_mp
         self.align_config.use_mp = use_mp
+        self.align_config.feature_config.use_mp = use_mp
 
     def save(self, path):
         '''

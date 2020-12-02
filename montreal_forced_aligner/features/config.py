@@ -44,6 +44,7 @@ class FeatureConfig(object):
         self.pitch = False
         self.splice_left_context = None
         self.splice_right_context = None
+        self.use_mp = True
 
     def params(self):
         return {'type': self.type,

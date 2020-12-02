@@ -7,7 +7,6 @@ branches:
 notifications:
   email: false
 
-sudo: true
 dist: xenial
 
 addons:
@@ -19,10 +18,6 @@ addons:
       - gfortran
       - libpulse-mainloop-glib0
       - libopenblas-base
-
-before_install:
-  - sudo apt-get update
-  - pwd
 
 # Install packages
 install:
