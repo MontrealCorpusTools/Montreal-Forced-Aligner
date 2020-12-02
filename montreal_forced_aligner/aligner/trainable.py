@@ -48,6 +48,7 @@ class TrainableAligner(BaseAligner):
         self.training_config = training_config
         for identifier, trainer in self.training_config.items():
             trainer.use_mp = use_mp
+        self.align_config.use_mp = use_mp
 
     def save(self, path):
         '''
@@ -88,5 +89,5 @@ class TrainableAligner(BaseAligner):
         '''
         ali_directory = self.training_config.values()[-1].align_directory
         convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs)
+                                 self.corpus, self.corpus.num_jobs, self)
         self.compile_information(ali_directory, output_directory)

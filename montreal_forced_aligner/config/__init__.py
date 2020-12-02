@@ -73,6 +73,7 @@ class AlignConfig(BaseConfig):
         self.beam = 10
         self.retry_beam = 40
         self.data_directory = None # Gets set later
+        self.use_mp = True
 
     @property
     def feature_file_base_name(self):
@@ -100,8 +101,6 @@ def train_yaml_to_config(path):
                             training.append(SatTrainer(feature_config))
                         elif k2 == 'ivector':
                             training.append(IvectorExtractorTrainer(feature_config))
-                        elif k2 == 'nnet':
-                            training.append(NnetTrainer(feature_config))
                         training_params.append(v2)
             elif k == 'features':
                 feature_config.update(v)

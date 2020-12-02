@@ -14,6 +14,7 @@ class G2PDummyArgs(object):
         self.order = 5
         self.random_starts=1
         self.num_jobs = 2
+        self.disable_mp = False
         self.include_bracketed = False
 
 

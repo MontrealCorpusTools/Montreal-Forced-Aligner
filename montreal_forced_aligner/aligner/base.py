@@ -18,7 +18,7 @@ class BaseAligner(object):
         Corpus object for the dataset
     dictionary : :class:`~aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
-    align_config : :class:`~aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     output_directory : str
         Path to export aligned TextGrids

@@ -413,7 +413,7 @@ def compile_information(model_directory, corpus, num_jobs, config):
 
     unaligned = {}
     for j in jobs:
-        with open(os.path.join(log_dir, 'unaligned.{}.log'.format(j)), 'r', encoding='utf8') as f:
+        with open(os.path.join(log_dir, 'unaligned.{}.log'.format(j[-1])), 'r', encoding='utf8') as f:
             for line in f:
                 line = line.strip()
                 utt, reason = line.split(' ', maxsplit=1)
