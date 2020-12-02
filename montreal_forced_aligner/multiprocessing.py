@@ -381,7 +381,7 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 def compile_information_func(log_directory, corpus, job_num):
     align_path = os.path.join(log_directory, 'align.final.{}.log'.format(job_num))
     unaligned = {}
-    output_path = os.path.join(log_directory, 'unaligned.{}.log')
+    output_path = os.path.join(log_directory, 'unaligned.{}.log'.format(job_num))
     with open(align_path, 'r', encoding='utf8') as f:
         for line in f:
             m = re.search(r'Did not successfully decode file (.*?),', line)
@@ -413,7 +413,8 @@ def compile_information(model_directory, corpus, num_jobs, config):
 
     unaligned = {}
     for j in jobs:
-        with open(os.path.join(log_dir, 'unaligned.{}.log'.format(j[-1])), 'r', encoding='utf8') as f:
+        path = os.path.join(log_dir, 'unaligned.{}.log'.format(j[-1]))
+        with open(path, 'r', encoding='utf8') as f:
             for line in f:
                 line = line.strip()
                 utt, reason = line.split(' ', maxsplit=1)
