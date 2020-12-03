@@ -19,6 +19,10 @@ addons:
       - libpulse-mainloop-glib0
       - libopenblas-base
 
+before_install:
+  - sudo rm -rf /dev/shm
+  - sudo ln -s /run/shm /dev/shm
+
 # Install packages
 install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
@@ -42,7 +46,8 @@ install:
 script:
   #- coverage help
   #- travis_wait 120 coverage run --source=montreal_forced_aligner setup.py test
-  - coverage run --source=montreal_forced_aligner setup.py test
+  - coverage run --concurrency=multiprocessing --source=montreal_forced_aligner setup.py test
+  - coverage combine
 
 # Calculate coverage
 after_success:
