@@ -91,7 +91,8 @@ class IvectorExtractorTrainer(BaseTrainer):
             shutil.copy(os.path.join(previous_trainer.align_directory, f), os.path.join(self.align_directory, f))
         corpus_directory = self.corpus.output_directory
         lda_mat_path = os.path.join(corpus_directory, 'lda.mat')
-        shutil.copy(lda_mat_path, os.path.join(self.train_directory, 'lda.mat'))
+        if os.path.exists(lda_mat_path):
+            shutil.copy(lda_mat_path, os.path.join(self.train_directory, 'lda.mat'))
 
         # Initialize model from E-M in memory
         num_gauss_init = int(self.ubm_initial_gaussian_proportion * int(self.ubm_num_gaussians))

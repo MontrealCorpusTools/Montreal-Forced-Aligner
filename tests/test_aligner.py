@@ -41,7 +41,6 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
     a.train()
 
 
-@pytest.mark.skip(reason='Optimization')
 def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -53,7 +52,6 @@ def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
     a.train()
 
 
-@pytest.mark.skip(reason='Optimization')
 def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -65,15 +63,3 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
     a.train()
     a.export_textgrids(os.path.join(generated_dir, 'sick_output'))
 
-
-@pytest.mark.skip(reason='Optimization')
-def test_sick_lda_sat(sick_dict, sick_corpus, generated_dir, lda_sat_train_config):
-    shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
-    os.makedirs(sick_corpus.output_directory, exist_ok=True)
-    lda_sat_train_config, align_config = lda_sat_train_config
-    data_directory = os.path.join(generated_dir, 'temp', 'lda_sat_test')
-    shutil.rmtree(data_directory, ignore_errors=True)
-    a = TrainableAligner(sick_corpus, sick_dict, lda_sat_train_config, align_config,
-                         temp_directory=data_directory, use_mp=False)
-    a.train()
-    a.export_textgrids(os.path.join(generated_dir, 'sick_output'))

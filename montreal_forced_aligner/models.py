@@ -239,7 +239,9 @@ class IvectorExtractor(Archive):
         """
         copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
         copyfile(os.path.join(source, 'final.dubm'), os.path.join(self.dirname, 'final.dubm'))
-        copyfile(os.path.join(source, 'lda.mat'), os.path.join(self.dirname, 'lda.mat'))
+        lda_path = os.path.join(source, 'lda.mat')
+        if os.path.exists(lda_path):
+            copyfile(lda_path, os.path.join(self.dirname, 'lda.mat'))
 
     def export_model(self, destination):
         os.makedirs(destination, exist_ok=True)
