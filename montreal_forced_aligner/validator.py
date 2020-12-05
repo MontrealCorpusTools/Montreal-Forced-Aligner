@@ -169,13 +169,15 @@ class CorpusValidator(object):
     {}
     '''
 
-    def __init__(self, corpus, dictionary, temp_directory=None, ignore_acoustics=False, test_transcriptions=False):
+    def __init__(self, corpus, dictionary, temp_directory=None, ignore_acoustics=False, test_transcriptions=False,
+                 use_mp=True):
         self.dictionary = dictionary
         self.corpus = corpus
         self.temp_directory = temp_directory
         self.test_transcriptions = test_transcriptions
         self.ignore_acoustics = ignore_acoustics
         self.trainer = MonophoneTrainer(FeatureConfig())
+        self.trainer.update({"use_mp": use_mp})
         self.setup()
 
     def setup(self):

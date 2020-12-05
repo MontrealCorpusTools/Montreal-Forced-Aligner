@@ -19,6 +19,14 @@ def test_lda_mllt_config():
     assert config.mllt_iterations == [2, 4, 6, 16]
 
 
+def test_load_mono_train(config_directory, mono_train_config_path):
+    train, align = train_yaml_to_config(mono_train_config_path)
+    for t in train.training_configs:
+        assert not t.use_mp
+        assert not t.feature_config.use_mp
+    assert not align.use_mp
+    assert not align.feature_config.use_mp
+
 def test_load(config_directory):
     path = os.path.join(config_directory, 'basic_train_config.yaml')
     train, align = train_yaml_to_config(path)

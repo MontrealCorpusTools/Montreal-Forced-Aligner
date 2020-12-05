@@ -31,7 +31,6 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     args.quiet = True
     args.clean = True
-    args.disable_mp = True
     args.temp_directory = temp_dir
     args.config_path = basic_align_config
     with pytest.raises(PronunciationAcousticMismatchError):
@@ -55,7 +54,6 @@ def test_train_and_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, 
     args.output_directory = os.path.join(generated_dir, 'basic_output')
     args.quiet = True
     args.clean = True
-    args.disable_mp = True
     args.temp_directory = temp_dir
     args.config_path = mono_train_config_path
     args.output_model_path = textgrid_output_model_path

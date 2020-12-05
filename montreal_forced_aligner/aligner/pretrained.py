@@ -55,10 +55,10 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, align_config,
                  temp_directory=None,
-                 call_back=None, debug=False, verbose=False, use_mp=True):
+                 call_back=None, debug=False, verbose=False):
         self.acoustic_model = acoustic_model
         super(PretrainedAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
-                 call_back, debug, verbose, use_mp)
+                 call_back, debug, verbose)
         self.align_config.data_directory = corpus.split_directory()
         self.acoustic_model.export_model(self.align_directory)
         log_dir = os.path.join(self.align_directory, 'log')
@@ -80,7 +80,7 @@ class PretrainedAligner(BaseAligner):
 
     def align(self, call_back=None):
         compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                             self.align_config.data_directory, self.corpus.num_jobs, self)
+                             self.align_config.data_directory, self.corpus.num_jobs, self.align_config)
         self.acoustic_model.feature_config.generate_features(self.corpus)
         log_dir = os.path.join(self.align_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)

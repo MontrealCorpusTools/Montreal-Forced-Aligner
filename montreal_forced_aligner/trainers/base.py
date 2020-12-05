@@ -109,6 +109,8 @@ class BaseTrainer(object):
 
     def update(self, data):
         for k, v in data.items():
+            if k == 'use_mp':
+                self.feature_config.use_mp = v
             if k == 'features':
                 self.feature_config.update(v)
             elif not hasattr(self, k):

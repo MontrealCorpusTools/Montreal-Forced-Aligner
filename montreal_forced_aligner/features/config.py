@@ -6,6 +6,7 @@ from .processing import mfcc, add_deltas, apply_cmvn, apply_lda
 
 from ..helper import thirdparty_binary, load_scp, save_groups
 
+
 def make_safe(value):
     if isinstance(value, bool):
         return str(value).lower()
@@ -38,7 +39,6 @@ class FeatureConfig(object):
         self.deltas = True
         self.lda = False
         self.fmllr = False
-        self.ivectors = False
         self.use_energy = False
         self.frame_shift = 10
         self.pitch = False
@@ -54,10 +54,13 @@ class FeatureConfig(object):
                 'deltas': self.deltas,
                 'lda': self.lda,
                 'fmllr': self.fmllr,
-                'ivectors': self.ivectors,
                 'splice_left_context': self.splice_left_context,
                 'splice_right_context': self.splice_right_context,
                 }
+
+    def set_features_to_use_lda(self):
+        self.lda = True
+        self.deltas = False
 
     def update(self, data):
         for k, v in data.items():
@@ -121,8 +124,6 @@ class FeatureConfig(object):
             name += '_lda'
         if self.fmllr:
             name += '_fmllr'
-        if self.ivectors:
-            name += '_ivectors'
         return name
 
     @property
@@ -137,6 +138,7 @@ class FeatureConfig(object):
         split_directory = corpus.split_directory()
         if not os.path.exists(os.path.join(split_directory, self.raw_feature_id + '.0.scp')):
             print('Generating base features ({})...'.format(self.type))
+            print(self.use_mp)
             if self.type == 'mfcc':
                 mfcc(split_directory, corpus.num_jobs, self, corpus.frequency_configs)
             corpus.combine_feats()
@@ -152,6 +154,7 @@ class FeatureConfig(object):
         if not overwrite and os.path.exists(os.path.join(data_directory, self.feature_id + '.0.scp')):
             return
         self.generate_base_features(corpus)
+        print(self.use_mp)
         if self.deltas:
             add_deltas(data_directory, corpus.num_jobs, self)
         elif self.lda:

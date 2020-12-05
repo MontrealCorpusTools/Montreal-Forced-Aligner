@@ -21,7 +21,7 @@ class BaseConfig(object):
 
 
 class TrainingConfig(BaseConfig):
-    def __init__(self, training_configs, feature_config):
+    def __init__(self, training_configs):
         self.training_configs = training_configs
         counts = Counter([x.train_type for x in self.training_configs])
         self.training_identifiers = []
@@ -32,7 +32,6 @@ class TrainingConfig(BaseConfig):
                 i += str(curs[t.train_type])
                 curs[t.train_type] += 1
             self.training_identifiers.append(i)
-        self.feature_config = feature_config
 
     def keys(self):
         return self.training_identifiers
@@ -79,6 +78,14 @@ class AlignConfig(BaseConfig):
     def feature_file_base_name(self):
         return self.feature_config.feature_id
 
+    def update(self, data):
+        for k, v in data.items():
+            if k == 'use_mp':
+                self.feature_config.use_mp = v
+            if not hasattr(self, k):
+                raise ConfigError('No field found for key {}'.format(k))
+            setattr(self, k, v)
+
 
 def train_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:
@@ -86,11 +93,12 @@ def train_yaml_to_config(path):
         global_params = {}
         training = []
         training_params = []
-        feature_config = FeatureConfig()
+        global_feature_params = {}
         for k, v in data.items():
             if k == 'training':
                 for t in v:
                     for k2, v2 in t.items():
+                        feature_config = FeatureConfig()
                         if k2 == 'monophone':
                             training.append(MonophoneTrainer(feature_config))
                         elif k2 == 'triphone':
@@ -103,9 +111,11 @@ def train_yaml_to_config(path):
                             training.append(IvectorExtractorTrainer(feature_config))
                         training_params.append(v2)
             elif k == 'features':
-                feature_config.update(v)
+                global_feature_params.update(v)
             else:
                 global_params[k] = v
+        feature_config = FeatureConfig()
+        feature_config.update(global_feature_params)
         align_config = AlignConfig(feature_config)
         align_config.update(global_params)
         training_config = None
@@ -115,7 +125,11 @@ def train_yaml_to_config(path):
                     raise ConfigError('The first round of training must be monophone.')
                 t.update(global_params)
                 t.update(training_params[i])
-            training_config = TrainingConfig(training, feature_config)
+            training_config = TrainingConfig(training)
+        align_config.feature_config.lda = training_config.uses_lda
+        if training_config.uses_lda:
+            align_config.feature_config.set_features_to_use_lda()
+        align_config.feature_config.fmllr = training_config.uses_sat
         return training_config, align_config
 
 

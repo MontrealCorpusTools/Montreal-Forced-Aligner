@@ -19,7 +19,7 @@ from ..models import AcousticModel
 
 
 class TrainableAligner(BaseAligner):
-    '''
+    """
     Aligner that aligns and trains acoustics models on a large dataset
 
     Parameters
@@ -39,28 +39,30 @@ class TrainableAligner(BaseAligner):
         Number of processes to use, defaults to 3
     call_back : callable, optional
         Specifies a call back function for alignment
-    '''
+    """
 
     def __init__(self, corpus, dictionary, training_config, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, use_mp=True):
-        super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
-                                               call_back, debug, verbose, use_mp)
+                 call_back=None, debug=False, verbose=False):
         self.training_config = training_config
-        self.training_config.feature_config.use_mp = use_mp
+        super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
+                                               call_back, debug, verbose)
+
+    def setup(self):
+        self.dictionary.write()
+        self.corpus.initialize_corpus(self.dictionary)
         for identifier, trainer in self.training_config.items():
-            trainer.use_mp = use_mp
-        self.align_config.use_mp = use_mp
-        self.align_config.feature_config.use_mp = use_mp
+            trainer.feature_config.generate_features(self.corpus)
+            break
 
     def save(self, path):
-        '''
+        """
         Output an acoustic model and dictionary to the specified path
 
         Parameters
         ----------
         path : str
             Path to save acoustic model and dictionary
-        '''
+        """
         self.training_config.values()[-1].save(path)
         print('Saved model to {}'.format(path))
 
@@ -71,7 +73,7 @@ class TrainableAligner(BaseAligner):
                 'version': __version__,
                 'architecture': self.training_config.values()[-1].architecture,
                 'phone_type': self.training_config.values()[-1].phone_type,
-                'features': self.training_config.feature_config.params(),
+                'features': self.align_config.feature_config.params(),
                 }
         return data
 
@@ -86,9 +88,9 @@ class TrainableAligner(BaseAligner):
         previous.align(None)
 
     def export_textgrids(self, output_directory):
-        '''
+        """
         Export a TextGrid file for every sound file in the dataset
-        '''
+        """
         ali_directory = self.training_config.values()[-1].align_directory
         convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
                                  self.corpus, self.corpus.num_jobs, self)

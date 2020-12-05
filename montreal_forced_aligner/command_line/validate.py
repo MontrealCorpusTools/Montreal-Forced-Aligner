@@ -31,7 +31,7 @@ def validate_corpus(args):
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,
                         ignore_acoustics=getattr(args, 'ignore_acoustics', False),
-                        test_transcriptions=getattr(args, 'test_transcriptions', False))
+                        test_transcriptions=getattr(args, 'test_transcriptions', False), use_mp=not args.disable_mp)
     a.validate()
 
 

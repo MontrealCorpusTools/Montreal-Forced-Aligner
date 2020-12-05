@@ -62,6 +62,14 @@ def corpus_root_dir(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def default_feature_config():
+    from montreal_forced_aligner.features.config import FeatureConfig
+    fc = FeatureConfig()
+    fc.use_mp = False
+    return fc
+
+
+@pytest.fixture(scope='session')
 def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, 'basic')
     os.makedirs(path, exist_ok=True)

@@ -142,7 +142,6 @@ def apply_lda_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     ark_path = os.path.join(directory, config.feature_id + '.{}.ark'.format(job_name))
     scp_path = os.path.join(directory, config.feature_id + '.{}.scp'.format(job_name))
-    ivector_scp_path = os.path.join(directory, 'ivector.{}.scp'.format(job_name))
     log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
     with open(log_path, 'a') as logf:
         if os.path.exists(config.lda_path):
@@ -153,29 +152,13 @@ def apply_lda_func(directory, job_name, config):
                                                   'ark:-'],
                                                  stdout=subprocess.PIPE,
                                                  stderr=logf)
-            if config.ivectors and os.path.exists(ivector_scp_path):
-                transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
-                                                         config.lda_path,
-                                                         'ark:-',
-                                                         'ark:-'],
-                                                        stdin=splice_feats_proc.stdout,
-                                                        stdout=subprocess.PIPE,
-                                                        stderr=logf)
-                paste_proc = subprocess.Popen([thirdparty_binary('paste-feats'),
-                                               'ark:-',
-                                               'scp:' + ivector_scp_path,
-                                               'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                              stdin=transform_feats_proc.stdout,
-                                              stderr=logf)
-                paste_proc.communicate()
-            else:
-                transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
-                                                         config.lda_path,
-                                                         'ark:-',
-                                                         'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                                        stdin=splice_feats_proc.stdout,
-                                                        stderr=logf)
-                transform_feats_proc.communicate()
+            transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
+                                                     config.lda_path,
+                                                     'ark:-',
+                                                     'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                                    stdin=splice_feats_proc.stdout,
+                                                    stderr=logf)
+            transform_feats_proc.communicate()
         else:
             logf.write('could not find "{}"\n'.format(config.lda_path))
             splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),

@@ -77,11 +77,7 @@ def run_mp(function, argument_list):
     #    p.join()
 
 
-def init(env):
-    os.environ = env
-
-
-def acc_stats_func(directory, iteration, job_name, feat_path):  # pragma: no cover
+def acc_stats_func(directory, iteration, job_name, feat_path):
     log_path = os.path.join(directory, 'log', 'acc.{}.{}.log'.format(iteration, job_name))
     model_path = os.path.join(directory, '{}.mdl'.format(iteration))
     acc_path = os.path.join(directory, '{}.{}.acc'.format(iteration, job_name))
@@ -148,7 +144,7 @@ def parse_transitions(path, phones_path):
                 current += 1
 
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=True):  # pragma: no cover
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=True):
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     tree_path = os.path.join(directory, 'tree')
     mdl_path = os.path.join(directory, '0.mdl')
@@ -258,7 +254,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, c
         run_non_mp(compile_train_graphs_func, jobs)
 
 
-def mono_align_equal_func(mono_directory, job_name, feat_path):  # pragma: no cover
+def mono_align_equal_func(mono_directory, job_name, feat_path):
     fst_path = os.path.join(mono_directory, 'fsts.{}'.format(job_name))
     mdl_path = os.path.join(mono_directory, '0.mdl')
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
@@ -304,7 +300,7 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
         run_non_mp(mono_align_equal_func, jobs)
 
 
-def align_func(directory, iteration, job_name, mdl, config, feat_path, output_directory):  # pragma: no cover
+def align_func(directory, iteration, job_name, mdl, config, feat_path, output_directory):
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
@@ -406,10 +402,7 @@ def compile_information(model_directory, corpus, num_jobs, config):
     jobs = [(log_dir, corpus, x)
             for x in range(num_jobs)]
 
-    if config.use_mp:
-        run_mp(compile_information_func, jobs)
-    else:
-        run_non_mp(compile_information_func, jobs)
+    run_non_mp(compile_information_func, jobs)
 
     unaligned = {}
     for j in jobs:
@@ -578,7 +571,7 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
             os.remove(phone_ctm_path)
 
 
-def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_name):  # pragma: no cover
+def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_name):
     text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
@@ -663,7 +656,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     """
     jobs = [(align_config, model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
-    if config.use_mp:
+    if align_config.use_mp:
         run_mp(ali_to_textgrid_func, jobs)
     else:
         run_non_mp(ali_to_textgrid_func, jobs)
@@ -690,7 +683,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary)
 
 
-def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):  # pragma: no cover
+def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):
     context_opts = []
     log_path = os.path.join(directory, 'log', 'acc_tree.{}.log'.format(job_name))
 
@@ -751,7 +744,7 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
     #    os.remove(f)
 
 
-def convert_alignments_func(directory, align_directory, job_name):  # pragma: no cover
+def convert_alignments_func(directory, align_directory, job_name):
     mdl_path = os.path.join(directory, '1.mdl')
     tree_path = os.path.join(directory, 'tree')
     ali_mdl_path = os.path.join(align_directory, 'final.mdl')
@@ -793,7 +786,7 @@ def convert_alignments(directory, align_directory, num_jobs, config):
 
 
 def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial,
-                    model_name='final'):  # pragma: no cover
+                    model_name='final'):
     feat_scp = config.feature_config.feature_id + '.{}.scp'.format(job_name)
     base_scp = feat_scp.replace('_fmllr', '')
     if initial:
@@ -986,7 +979,7 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
 
 def calc_lda_mllt_func(directory, split_directory, sil_phones, job_name, config,
                        initial,
-                       model_name='final'):  # pragma: no cover
+                       model_name='final'):
     log_path = os.path.join(directory, 'log', 'lda_mllt.{}.{}.log'.format(model_name, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     if not initial:

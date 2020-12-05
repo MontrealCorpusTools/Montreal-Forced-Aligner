@@ -32,7 +32,7 @@ class BaseAligner(object):
     """
 
     def __init__(self, corpus, dictionary, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, use_mp=True):
+                 call_back=None, debug=False, verbose=False):
         self.align_config = align_config
         self.corpus = corpus
         self.dictionary = dictionary
@@ -44,7 +44,6 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = verbose
         self.debug = debug
-        self.use_mp = use_mp
         self.setup()
 
     def setup(self):
