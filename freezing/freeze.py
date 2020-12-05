@@ -27,8 +27,8 @@ common_options = ['--clean', '-y',
                   '--exclude-module=scipy']
 
 executables = ['train_and_align', 'align',
-               'generate_dictionary', 'train_g2p',
-               'validate_dataset']
+               'g2p', 'train_g2p',
+               'validate']
 
 executable_template = os.path.join(root_dir, 'aligner', 'command_line', '{}.py')
 for e in executables:
@@ -91,9 +91,10 @@ pretrained_dir = os.path.join(mfa_root, 'pretrained_models')
 pretrained_root_dir = os.path.join(root_dir, 'pretrained_models')
 os.makedirs(pretrained_dir)
 
-for f in os.listdir(pretrained_root_dir):
-    if f.endswith('.zip'):
-        shutil.copyfile(os.path.join(pretrained_root_dir, f), os.path.join(pretrained_dir, f))
+if os.path.exists(pretrained_root_dir):
+    for f in os.listdir(pretrained_root_dir):
+        if f.endswith('.zip'):
+            shutil.copyfile(os.path.join(pretrained_root_dir, f), os.path.join(pretrained_dir, f))
 
 # Create distributable archive
 
