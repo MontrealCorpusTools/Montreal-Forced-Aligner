@@ -5,7 +5,7 @@ import shutil
 from montreal_forced_aligner.aligner import TrainableAligner
 
 
-#@pytest.mark.skip(reason='Optimization')
+@pytest.mark.skip(reason='Optimization')
 def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -17,7 +17,7 @@ def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config):
     a.train()
 
 
-@pytest.mark.skip(reason='Optimization')
+#@pytest.mark.skip(reason='Optimization')
 def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -29,7 +29,7 @@ def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_confi
     a.train()
 
 
-@pytest.mark.skip(reason='Optimization')
+#@pytest.mark.skip(reason='Optimization')
 def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)

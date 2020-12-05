@@ -21,7 +21,7 @@ def assert_export_exist(old_directory, new_directory):
             assert (os.path.exists(os.path.join(new_root, new_f)))
 
 
-@pytest.mark.skip(reason='Optimization')
+#@pytest.mark.skip(reason='Optimization')
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
                      basic_align_config, english_acoustic_model):
     args = DummyArgs()
@@ -44,7 +44,7 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     run_align_corpus(args)
 
 
-@pytest.mark.skip(reason='Optimization')
+#@pytest.mark.skip(reason='Optimization')
 def test_train_and_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, temp_dir,
                      mono_train_config_path, textgrid_output_model_path):
     if os.path.exists(textgrid_output_model_path):
