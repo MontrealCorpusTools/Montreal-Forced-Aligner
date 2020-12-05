@@ -42,7 +42,7 @@ install:
 script:
   #- coverage help
   #- travis_wait 120 coverage run --source=montreal_forced_aligner setup.py test
-  - coverage run --concurrency=multiprocessing --source=montreal_forced_aligner setup.py test
+  - coverage run --concurrency=multiprocessing setup.py test
   - coverage combine
 
 # Calculate coverage

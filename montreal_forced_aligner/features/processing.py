@@ -1,6 +1,4 @@
-import multiprocessing as mp
 import subprocess
-import shutil
 import os
 
 from ..helper import make_path_safe, thirdparty_binary, filter_scp
