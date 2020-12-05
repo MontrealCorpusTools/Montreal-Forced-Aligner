@@ -64,11 +64,6 @@ class IvectorExtractorTrainer(BaseTrainer):
         self.subsample = 2
         self.max_count = 100
 
-        self.num_threads = 4
-        self.num_processes = 4
-
-        self.compress = False
-
     @property
     def meta(self):
         return {'ivector_period': self.ivector_period,
@@ -85,6 +80,8 @@ class IvectorExtractorTrainer(BaseTrainer):
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
 
+        print('Made it to ivectors??')
+        error
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         for f in os.listdir(previous_trainer.align_directory):
             if os.path.isdir(os.path.join(previous_trainer.align_directory, f)):

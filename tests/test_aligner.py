@@ -19,18 +19,6 @@ def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config):
 
 
 #@pytest.mark.skip(reason='Optimization')
-def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_config):
-    shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
-    os.makedirs(sick_corpus.output_directory, exist_ok=True)
-    ivector_train_config, align_config = ivector_train_config
-    data_directory = os.path.join(generated_dir, 'temp', 'ivector_test')
-    shutil.rmtree(data_directory, ignore_errors=True)
-    a = TrainableAligner(sick_corpus, sick_dict, ivector_train_config, align_config,
-                         temp_directory=data_directory)
-    a.train()
-
-
-#@pytest.mark.skip(reason='Optimization')
 def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
@@ -63,4 +51,16 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
                          temp_directory=data_directory)
     a.train()
     a.export_textgrids(os.path.join(generated_dir, 'sick_output'))
+
+
+#@pytest.mark.skip(reason='Optimization')
+def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_config):
+    shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
+    os.makedirs(sick_corpus.output_directory, exist_ok=True)
+    ivector_train_config, align_config = ivector_train_config
+    data_directory = os.path.join(generated_dir, 'temp', 'ivector_test')
+    shutil.rmtree(data_directory, ignore_errors=True)
+    a = TrainableAligner(sick_corpus, sick_dict, ivector_train_config, align_config,
+                         temp_directory=data_directory)
+    a.train()
 
