@@ -36,6 +36,10 @@ install:
   - conda list
   - python -m montreal_forced_aligner.command_line.thirdparty download
   - ls $HOME/Documents/MFA/thirdparty/bin -al
+  - $HOME/Documents/MFA/thirdparty/bin/compute-mfcc-feats --help
+  - $HOME/Documents/MFA/thirdparty/bin/ivector-extractor-est --help
+  - $HOME/Documents/MFA/thirdparty/bin/ivector-extractor-init --help
+  - $HOME/Documents/MFA/thirdparty/bin/sum-lda-accs --help
   - bash continuous-integration/travis/install.sh
 
 # Run test

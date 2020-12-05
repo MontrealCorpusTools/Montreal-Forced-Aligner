@@ -14,24 +14,39 @@ def make_safe(value):
 
 
 class FeatureConfig(object):
-    '''
+    """
     Class to store configuration information about MFCC generation
-
-    The ``config_dict`` currently stores one key ``'use-energy'`` which
-    defaults to False
 
     Parameters
     ----------
-    output_directory : str
+    directory : str
         Path to directory to save configuration files for Kaldi
-    kwargs : dict, optional
-        If specified, updates ``config_dict`` with this dictionary
 
     Attributes
     ----------
-    config_dict : dict
-        Dictionary of configuration parameters
-    '''
+    directory : str
+        Path of the directory to store outputs
+    type : str
+        Feature type, defaults to "mfcc"
+    deltas : bool
+        Flag for whether deltas from previous frames are included in the features, defaults to True
+    lda : bool
+        Flag for whether LDA is run on the features, requires an lda.mat to generate, defaults to False
+    fmllr : bool
+        Flag for whether speaker adaptation should be run, defaults to False
+    use_energy : bool
+        Flag for whether first coefficient should be used, defaults to False
+    frame_shift : int
+        number of milliseconds between frames, defaults to 10
+    pitch : bool
+        Flag for including pitch in features, currently nonfunctional, defaults to False
+    splice_left_context : int or None
+        Number of frames to splice on the left for calculating LDA
+    splice_right_context : int or None
+        Number of frames to splice on the right for calculating LDA
+    use_mp : bool
+        Flag for using multiprocessing, defaults to True
+    """
 
     def __init__(self, directory=None):
         self.directory = directory
@@ -138,7 +153,6 @@ class FeatureConfig(object):
         split_directory = corpus.split_directory()
         if not os.path.exists(os.path.join(split_directory, self.raw_feature_id + '.0.scp')):
             print('Generating base features ({})...'.format(self.type))
-            print(self.use_mp)
             if self.type == 'mfcc':
                 mfcc(split_directory, corpus.num_jobs, self, corpus.frequency_configs)
             corpus.combine_feats()
@@ -154,7 +168,6 @@ class FeatureConfig(object):
         if not overwrite and os.path.exists(os.path.join(data_directory, self.feature_id + '.0.scp')):
             return
         self.generate_base_features(corpus)
-        print(self.use_mp)
         if self.deltas:
             add_deltas(data_directory, corpus.num_jobs, self)
         elif self.lda:

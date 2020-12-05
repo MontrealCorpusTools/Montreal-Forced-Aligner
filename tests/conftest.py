@@ -38,6 +38,9 @@ def generated_dir(test_dir):
     if not validate_kaldi_binaries():
         from montreal_forced_aligner.thirdparty.download import download_binaries
         download_binaries()
+    actually_working = validate_kaldi_binaries()
+    if not actually_working:
+        raise Exception('Kaldi binaries are not correctly found or functioning.')
     generated = os.path.join(test_dir, 'generated')
     shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):

@@ -172,6 +172,7 @@ def validate_kaldi_binaries():
     bin_files = os.listdir(bin_out)
     plat = sys.platform
     not_found = []
+    erroring = []
     #for lib_file in included_libraries[plat]:
     #    if lib_file not in bin_files:
     #        not_found.append(lib_file)
@@ -179,8 +180,18 @@ def validate_kaldi_binaries():
         bin_file += exe_ext
         if bin_file not in bin_files:
             not_found.append(bin_file)
+            pipes = subprocess.Popen([os.path.join(bin_out, bin_file), '--help'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # If you are using python 2.x, you need to include shell=True in the above line
+            std_out, std_err = pipes.communicate()
+            if std_err:
+                print(std_out)
+                print(std_err)
+                erroring.append(bin_file)
     if not_found:
         print('The following kaldi binaries were not found in {}: {}'.format(bin_out, ', '.join(sorted(not_found))))
+        return False
+    if erroring:
+        print('The following kaldi binaries had errors in running: {}'.format(bin_out, ', '.join(sorted(erroring))))
         return False
     print('All required kaldi binaries were found!')
     return True

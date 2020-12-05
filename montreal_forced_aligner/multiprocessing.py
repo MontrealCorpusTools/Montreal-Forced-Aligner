@@ -65,6 +65,7 @@ def run_non_mp(function, argument_list):
 
 
 def run_mp(function, argument_list):
+    error
     with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
         results = p.starmap(function, argument_list, chunksize=1)
     #procs = []
@@ -87,6 +88,7 @@ def acc_stats_func(directory, iteration, job_name, feat_path):
                                      "scp:" + feat_path, "ark,t:" + ali_path, acc_path],
                                     stderr=logf)
         acc_proc.communicate()
+
 
 def acc_stats(iteration, directory, split_directory, num_jobs, config):
     """
@@ -332,7 +334,7 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 
     Parameters
     ----------
-    iteration : int
+    iteration : int or str
         Iteration to align
     directory : str
         Directory of training (monophone, triphone, speaker-adapted triphone

@@ -20,13 +20,9 @@ class BaseAligner(object):
         Dictionary object for the pronunciation dictionary
     align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
-    output_directory : str
-        Path to export aligned TextGrids
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
         If not specified, it will be set to ``~/Documents/MFA``
-    num_jobs : int, optional
-        Number of processes to use, defaults to 3
     call_back : callable, optional
         Specifies a call back function for alignment
     """

@@ -52,11 +52,9 @@ def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
     ----------
     mfcc_directory : str
         Directory to save MFCC feature matrices
-    log_directory : str
-        Directory to store log files
     num_jobs : int
         The number of processes to use in calculation
-    mfcc_configs : list of :class:`~aligner.config.MfccConfig`
+    feature_config : :class:`~montreal_forced_aligner.features_config.FeatureConfig`
         Configuration object for generating MFCCs
 
     Raises
@@ -77,6 +75,7 @@ def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
     else:
         run_non_mp(mfcc_func, jobs)
 
+
 def apply_cmvn_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     normed_ark_path = os.path.join(directory, config.raw_feature_id + '.{}.ark'.format(job_name))
@@ -96,7 +95,6 @@ def apply_cmvn_func(directory, job_name, config):
 
 
 def apply_cmvn(directory, num_jobs, config):
-    child_env = os.environ.copy()
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
     if config.use_mp:
@@ -129,7 +127,6 @@ def add_deltas_func(directory, job_name, config):
 
 
 def add_deltas(directory, num_jobs, config):
-    child_env = os.environ.copy()
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
     if config.use_mp:
