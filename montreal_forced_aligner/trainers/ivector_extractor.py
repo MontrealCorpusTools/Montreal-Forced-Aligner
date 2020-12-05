@@ -177,8 +177,6 @@ class IvectorExtractorTrainer(BaseTrainer):
         extract_ivectors(self, self.corpus.num_jobs)
 
     def train(self, call_back=None):
-        print('Made it to ivectors!!')
-        error
         if call_back == print:
             iters = tqdm(range(1, self.num_iterations))
         else:
