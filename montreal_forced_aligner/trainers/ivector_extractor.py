@@ -79,9 +79,6 @@ class IvectorExtractorTrainer(BaseTrainer):
         return 'ivector'
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
-
-        print('Made it to ivectors??')
-        error
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         for f in os.listdir(previous_trainer.align_directory):
             if os.path.isdir(os.path.join(previous_trainer.align_directory, f)):
