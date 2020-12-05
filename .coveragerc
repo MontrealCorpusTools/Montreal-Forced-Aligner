@@ -1,5 +1,5 @@
 [run]
-source = aligner
+source = montreal_forced_aligner
 omit =
     *_rc.py
     *_ui.py
