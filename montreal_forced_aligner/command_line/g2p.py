@@ -34,7 +34,6 @@ def generate_dictionary(args):
         corpus = Corpus(input_dir, data_directory)
 
         word_set = get_word_set(corpus, args.include_bracketed)
-
     else:
         word_set = set()
         with open(args.input_path, 'r', encoding='utf8') as f:
@@ -42,8 +41,10 @@ def generate_dictionary(args):
                 word_set.update(line.strip().split())
         if not args.include_bracketed:
             word_set = [x for x in word_set if not check_bracketed(x)]
+
     if args.g2p_model_path is not None:
         model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models'))
+        model.validate(word_set)
         gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs)
         gen.output(args.output_path)
         model.clean_up()
@@ -121,10 +122,10 @@ def run_g2p(args, pretrained=None):
     generate_dictionary(args)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import g2p_parser, fix_path, unfix_path, g2p_languages
-    args = g2p_parser.parse_args()
+    g2p_args = g2p_parser.parse_args()
 
     fix_path()
-    run_g2p(args, g2p_languages)
+    run_g2p(g2p_args, g2p_languages)
     unfix_path()

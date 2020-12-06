@@ -1,9 +1,9 @@
 import os
 from decimal import Decimal
 import subprocess
-import multiprocessing as mp
 
 from .helper import thirdparty_binary, load_scp, edit_distance
+from .multiprocessing import run_mp, run_non_mp
 
 from .trainers import MonophoneTrainer
 from .config import FeatureConfig
@@ -89,8 +89,8 @@ def compile_utterance_train_graphs_func(validator, job_name):  # pragma: no cove
         for line in f:
             group.append(line)
             if line.strip() == '':
-                for l in group:
-                    proc.stdin.write(l.encode('utf8'))
+                for g in group:
+                    proc.stdin.write(g.encode('utf8'))
                 group = []
                 proc.stdin.flush()
 
@@ -193,8 +193,9 @@ class CorpusValidator(object):
         total_duration /= 1000
         total_duration = Decimal(str(total_duration)).quantize(Decimal('0.001'))
 
-        ignored_count = len(self.corpus.no_transcription_files) + \
-                        len(self.corpus.textgrid_read_errors) + len(self.corpus.decode_error_files)
+        ignored_count = len(self.corpus.no_transcription_files)
+        ignored_count += len(self.corpus.textgrid_read_errors)
+        ignored_count += len(self.corpus.decode_error_files)
         print(self.corpus_analysis_template.format(len(self.corpus.wav_files),
                                                    self.corpus.lab_count,
                                                    self.corpus.tg_count,
@@ -386,16 +387,20 @@ class CorpusValidator(object):
 
         split_directory = self.corpus.split_directory()
         model_directory = self.trainer.align_directory
-        with mp.Pool(processes=self.corpus.num_jobs) as pool:
-            jobs = [(self, x)
-                    for x in range(self.corpus.num_jobs)]
-            results = [pool.apply_async(compile_utterance_train_graphs_func, args=i) for i in jobs]
-            output = [p.get() for p in results]
-            print('Utterance FSTs compiled!')
-            print('Decoding utterances (this will take some time)...')
-            results = [pool.apply_async(test_utterances_func, args=i) for i in jobs]
-            output = [p.get() for p in results]
-            print('Finished decoding utterances!')
+
+        jobs = [(self, x)
+                for x in range(self.corpus.num_jobs)]
+        if self.trainer.feature_config.use_mp:
+            run_mp(compile_utterance_train_graphs_func, jobs)
+        else:
+            run_non_mp(compile_utterance_train_graphs_func, jobs)
+        print('Utterance FSTs compiled!')
+        print('Decoding utterances (this will take some time)...')
+        if self.trainer.feature_config.use_mp:
+            run_mp(test_utterances_func, jobs)
+        else:
+            run_non_mp(test_utterances_func, jobs)
+        print('Finished decoding utterances!')
 
         word_mapping = self.dictionary.reversed_word_mapping
         errors = {}
@@ -422,12 +427,11 @@ class CorpusValidator(object):
             with open(out_path, 'w') as problemf:
                 problemf.write('Utterance,Insertions,Deletions,Reference,Decoded\n')
                 for utt, (edits, ref_text, text) in sorted(errors.items(),
-                                                                           key=lambda x: -1 * (
-                                                                                   len(x[1][1]) + len(x[1][2]))):
+                                                           key=lambda x: -1 * (
+                                                                   len(x[1][1]) + len(x[1][2]))):
                     problemf.write('{},{},{},{}\n'.format(utt, edits,
                                                           ' '.join(ref_text), ' '.join(text)))
-            message = 'There were {} of {} utterances with at least one transcription issue. '\
-                  'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
+            message = 'There were {} of {} utterances with at least one transcription issue. ' \
+                      'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
 
         print(self.transcription_analysis_template.format(message))
-

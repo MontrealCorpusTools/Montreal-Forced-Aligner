@@ -4,7 +4,7 @@ import yaml
 from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 
 from . import __version__
-from .exceptions import PronunciationAcousticMismatchError, PronunciationOrthographyMismatchError
+from .exceptions import PronunciationAcousticMismatchError
 
 
 # default format for output
@@ -16,7 +16,7 @@ class Archive(object):
     Class representing data in a directory or archive file (zip, tar,
     tar.gz/tgz)
 
-    Largely duplicated from the prosodylab-aligner
+    Based on the prosodylab-aligner
     (https://github.com/prosodylab/Prosodylab-Aligner) archive class.
     """
 
@@ -34,22 +34,9 @@ class Archive(object):
         else:
             base = root_directory
             self.dirname = os.path.join(root_directory, self.name)
-            print('DEBUGGING')
-            print(self.dirname, os.path.exists(self.dirname))
             if not os.path.exists(self.dirname):
                 os.makedirs(root_directory, exist_ok=True)
                 unpack_archive(source, base)
-                #(head, tail, _) = next(os.walk(base))
-                #if not tail:
-                #    raise ValueError("'{}' is empty.".format(source))
-                #name = tail[0]
-                #if len(tail) > 1:
-                #    if tail[0] != '__MACOSX':   # Zipping from Mac adds a directory
-                #        raise ValueError("'{}' is a bomb.".format(source))
-                #    else:
-                #        name = tail[1]
-                #self.dirname = os.path.join(head, name)
-                #self.is_tmpdir = True  # ignore caller
 
     @classmethod
     def empty(cls, head, root_directory=None):
@@ -116,7 +103,7 @@ class AcousticModel(Archive):
                     self._meta = yaml.load(f, Loader=yaml.SafeLoader)
                 if self._meta['features'] == 'mfcc+deltas':
                     self._meta['features'] = default_features
-            if 'uses_lda' not in self._meta: # Backwards compat
+            if 'uses_lda' not in self._meta:  # Backwards compatibility
                 self._meta['uses_lda'] = False
             if 'uses_sat' not in self._meta:
                 self._meta['uses_sat'] = False
@@ -156,7 +143,6 @@ class AcousticModel(Archive):
         else:
             missing_phones = dictionary.nonsil_phones - set(self.meta['phones'])
         if missing_phones:
-            #print('dictionary phones: {}'.format(dictionary.meta['phones']))
             print('dictionary phones: {}'.format(dictionary.nonsil_phones))
             print('model phones: {}'.format(self.meta['phones']))
             raise (PronunciationAcousticMismatchError(missing_phones))
@@ -213,14 +199,23 @@ class G2PModel(Archive):
         os.makedirs(destination, exist_ok=True)
         copy(self.fst_path, destination)
 
-    def validate(self, corpus):
-        return True  # FIXME add actual validation
+    def validate(self, word_list):
+        graphemes = set()
+        for w in word_list:
+            graphemes.update(w)
+        missing_graphemes = graphemes - self.meta['graphemes']
+        if missing_graphemes:
+            print('WARNING! The following graphemes were not found in the specified G2P model: '
+                  '{}'.format(' '.join(sorted(missing_graphemes))))
+            return False
+        else:
+            return True
 
 
 class IvectorExtractor(Archive):
-    '''
-    Archive for i-vector extractors (used with DNNs)
-    '''
+    """
+    Archive for i-vector extractors
+    """
     def add_meta_file(self, trainer):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             yaml.dump(trainer.meta, f)
@@ -242,42 +237,6 @@ class IvectorExtractor(Archive):
         lda_path = os.path.join(source, 'lda.mat')
         if os.path.exists(lda_path):
             copyfile(lda_path, os.path.join(self.dirname, 'lda.mat'))
-
-    def export_model(self, destination):
-        os.makedirs(destination, exist_ok=True)
-        copy(os.path.join(self.dirname, 'final.ie'), destination)           # i-vector extractor itself
-        copy(os.path.join(self.dirname, 'final.dubm'), destination)         # Diag UBM itself
-        copy(os.path.join(self.dirname, 'lda.mat'), destination)          # LDA matrix
-
-
-        # Write a "cmvn config" file (this is blank in the actual kaldi code, but it needs the argument passed)
-        cmvn_config = os.path.join(destination, 'online_cmvn.conf')
-        with open(cmvn_config, 'w', newline='') as cconf:
-            cconf.write("")
-
-        # Write a "splice config" file
-        splice_config = os.path.join(destination, 'splice.conf')
-        with open(splice_config, 'w', newline='') as sconf:
-            sconf.write('--left-context={}'.format(self.meta['splice_left_context']))
-            sconf.write('\n')
-            sconf.write('--right-context={}'.format(self.meta['splice_right_context']))
-
-        # Write a "config" file to input to the extraction binary
-        ext_config = os.path.join(destination, 'ivector_extractor.conf')
-        with open(ext_config, 'w', newline='') as ieconf:
-            ieconf.write('--cmvn-config={}\n'.format(cmvn_config))
-            ieconf.write('--ivector-period={}\n'.format(self.meta['ivector_period']))
-            ieconf.write('--splice-config={}\n'.format(splice_config))
-            ieconf.write('--lda-matrix={}\n'.format(os.path.join(destination, 'lda.mat')))
-            ieconf.write('--global-cmvn-stats={}\n'.format(os.path.join(destination, 'global_cmvn.stats')))
-            ieconf.write('--diag-ubm={}\n'.format(os.path.join(destination, 'final.dubm')))
-            ieconf.write('--ivector-extractor={}\n'.format(os.path.join(destination, 'final.ie')))
-            ieconf.write('--num-gselect={}\n'.format(self.meta['num_gselect']))
-            ieconf.write('--min-post={}\n'.format(self.meta['min_post']))
-            ieconf.write('--posterior-scale={}\n'.format(self.meta['posterior_scale']))
-            ieconf.write('--max-remembered-frames=1000\n')
-            ieconf.write('--max-count={}\n'.format(0))
-        return ext_config
 
 
 class LanguageModel(Archive):

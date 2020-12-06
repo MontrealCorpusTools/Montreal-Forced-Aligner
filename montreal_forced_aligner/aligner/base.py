@@ -1,10 +1,7 @@
 import os
 
-from ..multiprocessing import compile_information
-# from ..accuracy_graph import get_accuracy_graph
-
 from .. import __version__
-
+from ..multiprocessing import compile_information
 from ..config import TEMP_DIR
 
 

@@ -93,10 +93,6 @@ class IvectorExtractorTrainer(BaseTrainer):
         num_gauss_init = int(self.ubm_initial_gaussian_proportion * int(self.ubm_num_gaussians))
         log_path = os.path.join(self.train_directory, 'log', 'gmm_init.log')
 
-        utt2spkpath = os.path.join(self.corpus.output_directory, 'utt2spk')
-        cmvnpath = os.path.join(self.corpus.output_directory, 'cmvn.scp')
-        featspath = os.path.join(self.corpus.output_directory, 'feats.scp')
-
         all_feats_path = os.path.join(self.corpus.output_directory, self.feature_config.feature_id + '.scp')
         with open(all_feats_path, 'w') as outf:
             for i in range(self.corpus.num_jobs):
@@ -203,14 +199,14 @@ class IvectorExtractorTrainer(BaseTrainer):
         shutil.copy(os.path.join(self.train_directory, 'final.dubm'), os.path.join(self.corpus.ivector_directory, 'final.dubm'))
 
     def save(self, path):
-        '''
+        """
         Output an acoustic model and dictionary to the specified path
 
         Parameters
         ----------
         path : str
             Path to save acoustic model and dictionary
-        '''
+        """
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
         ivector_extractor = IvectorExtractor.empty(basename)

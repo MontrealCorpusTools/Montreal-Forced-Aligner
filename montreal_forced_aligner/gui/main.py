@@ -17,7 +17,7 @@ from ..utils import get_available_g2p_languages, get_pretrained_g2p_path, \
 from .widgets import UtteranceListWidget, UtteranceDetailWidget, InformationWidget
 
 
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
     configUpdated = QtCore.pyqtSignal()
     corpusLoaded = QtCore.pyqtSignal(object)
     dictionaryLoaded = QtCore.pyqtSignal(object)
@@ -259,6 +259,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loading_ie = False
 
     def change_dictionary(self, lang=None):
+        if not isinstance(lang, str):
+            lang = None
         if lang is None:
             dictionary_path, _ = QtWidgets.QFileDialog.getOpenFileName(caption='Select a dictionary',
                                                                        directory=self.default_directory,

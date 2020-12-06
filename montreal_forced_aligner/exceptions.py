@@ -24,6 +24,7 @@ class DictionaryPathError(DictionaryError):
         message = 'The specified path for the dictionary ({}) was not found.'.format(input_path)
         super(DictionaryPathError, self).__init__(message)
 
+
 class DictionaryFileError(DictionaryError):
     """
     Class for errors in locating paths for Dictionary objects
@@ -33,6 +34,7 @@ class DictionaryFileError(DictionaryError):
         self.input_path = input_path
         message = 'The specified path for the dictionary ({}) is not a file.'.format(input_path)
         super(DictionaryFileError, self).__init__(message)
+
 
 # Corpus Errors
 
@@ -57,6 +59,7 @@ class AlignerError(MFAError):
     Class for errors during alignment
     """
     pass
+
 
 class AlignmentError(MFAError):
     """
@@ -92,14 +95,18 @@ class PronunciationOrthographyMismatchError(AlignerError):
 class ArgumentError(MFAError):
     pass
 
+
 class ConfigError(MFAError):
     pass
+
 
 class TrainerError(MFAError):
     pass
 
+
 class G2PError(MFAError):
     pass
+
 
 class LMError(MFAError):
     pass

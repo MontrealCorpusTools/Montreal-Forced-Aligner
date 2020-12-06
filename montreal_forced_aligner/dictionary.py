@@ -109,7 +109,7 @@ class Dictionary(object):
         self.shared_silence_phones = shared_silence_phones
         self.sil_prob = sil_prob
         self.oov_code = oov_code
-        self.oovs_found = set()
+        self.oovs_found = Counter()
         self.position_dependent_phones = position_dependent_phones
 
         self.words = defaultdict(list)
@@ -170,7 +170,7 @@ class Dictionary(object):
 
     @property
     def actual_words(self):
-        return {k:v for k, v in self.words.items() if k not in ['!sil', self.oov_code]}
+        return {k: v for k, v in self.words.items() if k not in ['!sil', self.oov_code]}
 
     def split_clitics(self, item):
         if '-' in item:
@@ -291,7 +291,6 @@ class Dictionary(object):
             for oov in sorted(self.oovs_found.keys(), key=lambda x: (-self.oovs_found[x], x)):
                 f.write(oov + '\n')
                 cf.write('{}\t{}\n'.format(oov, self.oovs_found[oov]))
-        self.oovs_found = set()
 
     def _lookup(self, item):
         if item in self.words_mapping:
@@ -334,7 +333,7 @@ class Dictionary(object):
             List containing all words after any splits due to apostrophes or hyphens
 
         """
-        unit_re = re.compile(r'^(\[.*\]|\{.*\}|<.*>)$')
+        unit_re = re.compile(r'^(\[.*]|{.*}|<.*>)$')
         if unit_re.match(item) is not None:
             return [item]
         lookup = self._lookup(item)

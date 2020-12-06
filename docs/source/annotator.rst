@@ -12,6 +12,15 @@ Annotator
 Currently the functionality of the Annotator GUI allows for users to modify transcripts and add/change
 entries in the pronunciation dictionary to interactively fix out of vocabulary issues.
 
+.. warning::
+
+   If you are trying to use the annotator from Windows, extra steps are required.  Within the bash
+   subsystem, install the Qt5 prerequsites as follows:
+
+  .. code-block:: bash
+
+     sudo apt-get install qt5-default libqt5multimedia5-plugins libxcb-xinerama0
+
 To use the annotator, first follow the instructions in :ref:`installation`.  Once MFA is installed and thirdparty binaries
 have been downloaded, run the following command:
 

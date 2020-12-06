@@ -1,5 +1,7 @@
 import sys
-import shutil, os, stat
+import shutil
+import os
+import stat
 import subprocess
 import re
 
@@ -18,7 +20,8 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
                       'compile-train-graphs', 'compile-train-graphs-fsts', 'compose-transforms', 'compute-cmvn-stats',
                       'compute-mfcc-feats', 'convert-ali', 'copy-feats', 'est-lda', 'est-mllt',
-                      'extract-segments', 'feat-to-dim', 'feat-to-len', 'gmm-acc-mllt', 'gmm-acc-stats-ali', 'gmm-align-compiled',
+                      'extract-segments', 'feat-to-dim', 'feat-to-len', 'gmm-acc-mllt', 'gmm-acc-stats-ali',
+                      'gmm-align-compiled',
                       'gmm-boost-silence', 'gmm-est', 'gmm-est-fmllr', 'gmm-global-acc-stats', 'gmm-global-est',
                       'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
                       'gmm-gselect', 'gmm-info', 'gmm-init-model', 'gmm-init-mono', 'gmm-latgen-faster', 'gmm-mixup',
@@ -30,7 +33,7 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'weight-silence-post']
 
-#included_filenames += ['farcompilestrings', 'fstarcsort', 'fstcompile', 'fstcopy', 'fstdraw',]
+# included_filenames += ['farcompilestrings', 'fstarcsort', 'fstcompile', 'fstcopy', 'fstdraw',]
 
 linux_libraries = ['libfst.so.13', 'libfstfar.so.13',
                    'libfstscript.so.13', 'libfstfarscript.so.13',
@@ -55,77 +58,7 @@ included_libraries = {'linux': linux_libraries,
 dylib_pattern = re.compile(r'\s*(.*)\s+\(')
 
 
-def collect_linux_tools_binaries(directory):
-    bin_out = os.path.join(TEMP_DIR, 'thirdparty', 'bin')
-    os.makedirs(bin_out, exist_ok=True)
-    tools_dir = os.path.join(directory, 'tools')
-    openfst_dir = os.path.join(tools_dir, 'openfst')
-    bin_dir = os.path.join(openfst_dir, 'bin')
-    lib_dir = os.path.join(openfst_dir, 'lib')
-    for name in os.listdir(bin_dir):
-        if os.path.islink(os.path.join(bin_dir, name)):
-            continue
-        ext = os.path.splitext(name)
-        (key, value) = ext
-        if value == exe_ext and key in included_filenames:
-            out_path = os.path.join(bin_out, name)
-            in_path = os.path.join(bin_dir, name)
-            if os.path.exists(out_path) and os.path.getsize(in_path) > os.path.getsize(out_path):
-                continue  # Get the smallest file size when multiples exist
-            shutil.copyfile(in_path, out_path)
-            st = os.stat(out_path)
-            os.chmod(out_path, st.st_mode | stat.S_IEXEC)
-            if sys.platform == 'darwin':
-                p = subprocess.Popen(['otool', '-L', out_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
-                output, err = p.communicate()
-                rc = p.returncode
-                output = output.decode()
-                libs = dylib_pattern.findall(output)
-                for l in libs:
-                    if l.startswith('/usr') and not l.startswith('/usr/local'):
-                        continue
-                    lib = os.path.basename(l)
-                    subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, out_path])
-    for name in os.listdir(lib_dir):
-        if name in included_libraries[sys.platform]:
-            if sys.platform == 'win32':
-                shutil.copy(os.path.join(lib_dir, name), bin_out)
-            else:
-                actual_lib = os.path.join(lib_dir, name)
-                while os.path.islink(actual_lib):
-                    linkto = os.readlink(actual_lib)
-                    actual_lib = os.path.join(lib_dir, linkto)
-
-                bin_name = os.path.join(bin_out, name)
-                shutil.copyfile(actual_lib, bin_name)
-                if sys.platform == 'darwin':
-                    p = subprocess.Popen(['otool', '-L', bin_name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE)
-                    output, err = p.communicate()
-                    rc = p.returncode
-                    output = output.decode()
-                    libs = dylib_pattern.findall(output)
-                    for l in libs:
-                        if l.startswith('/usr') and not l.startswith('/usr/local'):
-                            continue
-                        lib = os.path.basename(l)
-                        subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
-    openblas_dir = os.path.join(tools_dir, 'OpenBLAS', 'install', 'lib')
-    lib_file = os.path.join(openblas_dir, open_blas_library)
-    out_lib = os.path.join(bin_out, open_blas_library)
-    if os.path.islink(lib_file):
-        linkto = os.readlink(lib_file)
-        actual_lib = os.path.join(openblas_dir, linkto)
-        shutil.copyfile(actual_lib, out_lib)
-    else:
-        shutil.copyfile(lib_file, out_lib)
-
-
 def collect_kaldi_binaries(directory):
-
-    #if sys.platform in ['linux', 'darwin']:
-    #    collect_linux_tools_binaries(directory)
     bin_out = os.path.join(TEMP_DIR, 'thirdparty', 'bin')
     os.makedirs(bin_out, exist_ok=True)
 
@@ -170,17 +103,17 @@ def validate_kaldi_binaries():
         print('The folder {} does not exist'.format(bin_out))
         return False
     bin_files = os.listdir(bin_out)
-    plat = sys.platform
     not_found = []
     erroring = []
-    #for lib_file in included_libraries[plat]:
+    # for lib_file in included_libraries[plat]:
     #    if lib_file not in bin_files:
     #        not_found.append(lib_file)
     for bin_file in included_filenames:
         bin_file += exe_ext
         if bin_file not in bin_files:
             not_found.append(bin_file)
-            pipes = subprocess.Popen([os.path.join(bin_out, bin_file), '--help'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            pipes = subprocess.Popen([os.path.join(bin_out, bin_file), '--help'], stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
             # If you are using python 2.x, you need to include shell=True in the above line
             std_out, std_err = pipes.communicate()
             if std_err:

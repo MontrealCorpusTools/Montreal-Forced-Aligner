@@ -34,21 +34,19 @@ def align_corpus(args):
                 'type': 'train_and_align',
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path}
-    if False: # FIXME
-        if getattr(args, 'clean', False) \
-                or conf['dirty'] or conf['type'] != 'train_and_align' \
-                or conf['corpus_directory'] != args.corpus_directory \
-                or conf['version'] != __version__ \
-                or conf['dictionary_path'] != args.dictionary_path:
-            shutil.rmtree(data_directory, ignore_errors=True)
+    if getattr(args, 'clean', False) \
+            or conf['dirty'] or conf['type'] != 'train_and_align' \
+            or conf['corpus_directory'] != args.corpus_directory \
+            or conf['version'] != __version__ \
+            or conf['dictionary_path'] != args.dictionary_path:
+        shutil.rmtree(data_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = Corpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                         num_jobs=getattr(args, 'num_jobs', 3),
-                        debug=getattr(args, 'debug', False),
-                        ignore_exceptions=getattr(args, 'ignore_exceptions', False))
+                        debug=getattr(args, 'debug', False))
         if corpus.issues_check:
             print('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -70,7 +68,7 @@ def align_corpus(args):
         a.export_textgrids(args.output_directory)
         if args.output_model_path is not None:
             a.save(args.output_model_path)
-    except:
+    except Exception as _:
         conf['dirty'] = True
         raise
     finally:
@@ -108,8 +106,8 @@ def run_train_corpus(args):
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_parser, fix_path, unfix_path
-    args = train_parser.parse_args()
+    train_args = train_parser.parse_args()
 
     fix_path()
-    run_train_corpus(args)
+    run_train_corpus(train_args)
     unfix_path()

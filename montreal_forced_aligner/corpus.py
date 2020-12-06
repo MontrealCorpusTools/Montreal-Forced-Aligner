@@ -139,13 +139,13 @@ def extract_temp_channels(wav_path, temp_directory):
     """
     name, ext = os.path.splitext(wav_path)
     base = os.path.basename(name)
-    A_path = os.path.join(temp_directory, base + '_A.wav')
-    B_path = os.path.join(temp_directory, base + '_B.wav')
+    a_path = os.path.join(temp_directory, base + '_A.wav')
+    b_path = os.path.join(temp_directory, base + '_B.wav')
     samp_step = 1000000
-    if not os.path.exists(A_path):
+    if not os.path.exists(a_path):
         with wave.open(wav_path, 'rb') as inf, \
-                wave.open(A_path, 'wb') as af, \
-                wave.open(B_path, 'wb') as bf:
+                wave.open(a_path, 'wb') as af, \
+                wave.open(b_path, 'wb') as bf:
             chans = inf.getnchannels()
             samps = inf.getnframes()
             samplerate = inf.getframerate()
@@ -173,7 +173,7 @@ def extract_temp_channels(wav_path, temp_directory):
                 values = [struct.pack('h', d) for d in x[1::chans]]
                 value_str = b''.join(values)
                 bf.writeframes(value_str)
-    return A_path, B_path
+    return a_path, b_path
 
 
 def parse_transcription(text):
@@ -216,8 +216,7 @@ class Corpus(object):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False,
-                 ignore_exceptions=False):
+                 num_jobs=3, debug=False):
         self.debug = debug
         log_dir = os.path.join(output_directory, 'logging')
         os.makedirs(log_dir, exist_ok=True)
@@ -275,6 +274,9 @@ class Corpus(object):
         self.transcriptions_without_wavs = []
         self.file_directory_mapping = {}
         self.speaker_ordering = {}
+        self.speaker_groups = []
+        self.frequency_configs = []
+        self.groups = []
         self.tg_count = 0
         self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):
@@ -325,6 +327,8 @@ class Corpus(object):
                             speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
                             speaker_name = f.split('_')[1]
+                        else:
+                            speaker_name = f
                     speaker_name = speaker_name.strip().replace(' ', '_')
                     utt_name = utt_name.strip().replace(' ', '_')
                     self.utt_text_file_mapping[utt_name] = lab_path
@@ -353,10 +357,10 @@ class Corpus(object):
                     n_channels = get_n_channels(wav_path)
                     num_tiers = len(tg.tiers)
                     if n_channels == 2:
-                        A_name = file_name + "_A"
-                        B_name = file_name + "_B"
+                        a_name = file_name + "_A"
+                        b_name = file_name + "_B"
 
-                        A_path, B_path = extract_temp_channels(wav_path, self.temp_directory)
+                        a_path, b_path = extract_temp_channels(wav_path, self.temp_directory)
                     elif n_channels > 2:
                         raise (Exception('More than two channels'))
                     self.speaker_ordering[file_name] = []
@@ -365,6 +369,8 @@ class Corpus(object):
                             speaker_name = f[:speaker_characters]
                         elif speaker_characters == 'prosodylab':
                             speaker_name = f.split('_')[1]
+                        else:
+                            speaker_name = f
                         speaker_name = speaker_name.strip().replace(' ', '_')
                         self.speaker_ordering[file_name].append(speaker_name)
                     for i, ti in enumerate(tg.tiers):
@@ -394,27 +400,27 @@ class Corpus(object):
                                     utt_name += '_A'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(A_name, begin, end)
-                                    self.utt_wav_mapping[A_name] = A_path
+                                    self.segments[utt_name] = '{} {} {}'.format(a_name, begin, end)
+                                    self.utt_wav_mapping[a_name] = a_path
                                 else:
                                     utt_name += '_B'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(B_name, begin, end)
-                                    self.utt_wav_mapping[B_name] = B_path
+                                    self.segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
+                                    self.utt_wav_mapping[b_name] = b_path
                             self.text_mapping[utt_name] = ' '.join(words)
                             self.utt_text_file_mapping[utt_name] = tg_path
                             self.word_counts.update(words)
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
                     if n_channels == 2:
-                        self.file_directory_mapping[A_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-                        self.file_directory_mapping[B_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                        self.file_directory_mapping[a_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                        self.file_directory_mapping[b_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                     self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                     self.tg_count += 1
 
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \
-                       self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
+                            self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
 
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
@@ -497,7 +503,6 @@ class Corpus(object):
                 segment_job_num = 1
         else:
             segment_job_num = 0
-        full_wav_job_num = self.num_jobs - segment_job_num
         num_sample_rates = len(self.sample_rates.keys())
         jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
         remaining_jobs = self.num_jobs - num_sample_rates
@@ -914,8 +919,9 @@ class Corpus(object):
     def create_subset(self, subset, feature_config):
         larger_subset_num = subset * 10
         if larger_subset_num < self.num_utterances:
+            # Get all shorter utterances that are not one word long
             utts = sorted((x for x in self.utterance_lengths.keys() if ' ' in self.text_mapping[x]),
-                          key=lambda x: self.utterance_lengths[x]) # Get all shorter utterances that are not one word long
+                          key=lambda x: self.utterance_lengths[x])
             larger_subset = utts[:larger_subset_num]
         else:
             larger_subset = self.utterance_lengths.keys()
@@ -943,7 +949,7 @@ class Corpus(object):
                 for line in inf:
                     line = line.split()
                     speaker, utts = line[0], line[1:]
-                    filtered_utts = [x for  x in utts if x in subset_utts]
+                    filtered_utts = [x for x in utts if x in subset_utts]
                     outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
             if feature_config is not None:
                 base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(j))
@@ -952,4 +958,3 @@ class Corpus(object):
                 with open(subset_scp, 'w') as f:
                     for line in filtered:
                         f.write(line.strip() + '\n')
-

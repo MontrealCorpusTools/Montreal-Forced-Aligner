@@ -1,8 +1,9 @@
-import pytest
 import os
-from montreal_forced_aligner.g2p.trainer import PyniniTrainer
+import pytest
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer, G2P_DISABLED
 
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
+from montreal_forced_aligner.dictionary import check_bracketed
 
 from montreal_forced_aligner.models import G2PModel
 
@@ -17,7 +18,9 @@ def test_clean_up_word():
 
 
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):
-    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, random_starts=1, max_iters=10)
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
+    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, random_starts=1, max_iters=5)
     trainer.validate()
 
     trainer.train()
@@ -28,7 +31,12 @@ def test_training(sick_dict, sick_g2p_model_path, temp_dir):
 
 
 def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output):
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
     model = G2PModel(sick_g2p_model_path)
+
+    assert not model.validate(sick_corpus.word_set)
+    assert model.validate([x for x in sick_corpus.word_set if not check_bracketed(x)])
     gen = PyniniDictionaryGenerator(model, sick_corpus.word_set)
     gen.output(g2p_sick_output)
     assert os.path.exists(g2p_sick_output)

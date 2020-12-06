@@ -2,7 +2,6 @@ import os
 import re
 
 from .base import BaseAligner
-
 from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs)
 
 
@@ -23,8 +22,8 @@ def parse_transitions(path, phones_path):
                     cur_phone = phone
             else:
                 m = id_extract_pattern.match(line)
-                id = m.groups()[0]
-                outf.write('{}_{} {}\n'.format(phone, current, id))
+                transition_id = m.groups()[0]
+                outf.write('{}_{} {}\n'.format(phone, current, transition_id))
                 current += 1
 
 

@@ -5,7 +5,7 @@ import subprocess
 import shutil
 
 from .. import __version__
-from ..exceptions import TrainerError, NoSuccessfulAlignments
+from ..exceptions import TrainerError
 from ..helper import thirdparty_binary, make_path_safe
 
 from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids, compute_alignment_improvement)
@@ -15,7 +15,7 @@ from ..features.config import FeatureConfig
 
 
 class BaseTrainer(object):
-    '''
+    """
     Configuration class for all trainings
 
 
@@ -41,7 +41,7 @@ class BaseTrainer(object):
         List of iterations to perform alignment
     power : float
         Exponent for number of gaussians according to occurrence counts, defaults to 0.25
-    '''
+    """
 
     def __init__(self, default_feature_config):
         self.transition_scale = 1.0
@@ -140,9 +140,9 @@ class BaseTrainer(object):
         raise NotImplementedError
 
     def parse_log_directory(self, directory, iteration, num_jobs, call_back):
-        '''
+        """
         Parse error files and relate relevant information about unaligned files
-        '''
+        """
         if call_back is None:
             return
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
@@ -172,7 +172,7 @@ class BaseTrainer(object):
         #        skipped_transition = skipped_transitions.groups()
         #        num_too_little_data = len(too_little_data_regex.findall(data))
         #        call_back('missing data gaussians', num_too_little_data)
-        return error_files#, log_like, num_too_little_data
+        return error_files  # , log_like, num_too_little_data
 
     def get_unaligned_utterances(self):
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
@@ -184,7 +184,6 @@ class BaseTrainer(object):
             with open(path, 'r') as f:
                 error_files.extend(error_regex.findall(f.read()))
         return error_files
-
 
     def align(self, subset, call_back=None):
         align('final', self.train_directory, self.data_directory,
@@ -274,23 +273,22 @@ class BaseTrainer(object):
         return data
 
     def export_textgrids(self):
-        '''
+        """
         Export a TextGrid file for every sound file in the dataset
-        '''
-        ali_directory = self.align_directory
+        """
 
-        convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs, self)
+        convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
+                                 self.dictionary, self.corpus, self.corpus.num_jobs, self)
 
     def save(self, path):
-        '''
+        """
         Output an acoustic model and dictionary to the specified path
 
         Parameters
         ----------
         path : str
             Path to save acoustic model and dictionary
-        '''
+        """
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
         acoustic_model = AcousticModel.empty(basename)

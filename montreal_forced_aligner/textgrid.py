@@ -2,7 +2,6 @@ import os
 import sys
 import traceback
 from decimal import Decimal
-from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
 
@@ -119,7 +118,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                             if len(phone_tier) > 0 and p[2] in silences and p[0] < phone_tier[-1].maxTime:
                                 p = phone_tier[-1].maxTime, p[1], p[2]
                             elif len(phone_tier) > 0 and p[2] not in silences and p[0] < phone_tier[-1].maxTime and \
-                                            phone_tier[-1].mark in silences:
+                                    phone_tier[-1].mark in silences:
                                 phone_tier[-1].maxTime = p[0]
                             phone_tier.add(*p)
                     tg.append(word_tier)
@@ -127,11 +126,12 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
-                textgrid_write_errors[filename] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                textgrid_write_errors[filename] = '\n'.join(
+                    traceback.format_exception(exc_type, exc_value, exc_traceback))
     if textgrid_write_errors:
         error_log = os.path.join(out_directory, 'output_errors.txt')
         with open(error_log, 'w', encoding='utf8') as f:
             f.write('The following exceptions were encountered during the ouput of the alignments to TextGrids:\n\n')
-            for k,v in textgrid_write_errors.items():
+            for k, v in textgrid_write_errors.items():
                 f.write('{}:\n'.format(k))
                 f.write('{}\n\n'.format(v))

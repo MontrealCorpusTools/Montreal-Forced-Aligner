@@ -63,8 +63,7 @@ def align_corpus(args):
     try:
         corpus = Corpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
-                        num_jobs=args.num_jobs,
-                        ignore_exceptions=getattr(args, 'ignore_exceptions', False))
+                        num_jobs=args.num_jobs)
         if corpus.issues_check:
             print('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -95,7 +94,7 @@ def align_corpus(args):
         if args.debug:
             print('Exported TextGrids in {} seconds'.format(time.time() - begin))
         print('Done! Everything took {} seconds'.format(time.time() - all_begin))
-    except:
+    except Exception as _:
         conf['dirty'] = True
         raise
     finally:
@@ -139,10 +138,12 @@ def run_align_corpus(args, pretrained=None):
     validate_args(args, pretrained)
     align_corpus(args)
 
-if __name__ == '__main__':
+
+if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages
-    args = align_parser.parse_args()
+
+    align_args = align_parser.parse_args()
     fix_path()
-    run_align_corpus(args, acoustic_languages)
+    run_align_corpus(align_args, acoustic_languages)
     unfix_path()

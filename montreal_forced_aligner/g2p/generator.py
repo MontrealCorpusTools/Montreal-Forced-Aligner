@@ -1,9 +1,19 @@
 import os
 import re
 import logging
-from typing import Tuple, Union
+from typing import Union
 import multiprocessing as mp
-import pynini
+try:
+    import pynini
+    from pynini import Fst
+    G2P_DISABLED = False
+
+    TokenType = Union[str, pynini.SymbolTable]
+except ImportError:
+    pynini = None
+    Fst = None
+    G2P_DISABLED = True
+    TokenType = Union[str]
 import tqdm
 import queue
 import traceback
@@ -15,15 +25,12 @@ from ..exceptions import G2PError
 from ..multiprocessing import Stopped, Counter
 
 
-TokenType = Union[str, pynini.SymbolTable]
-
-
 class Rewriter:
     """Helper object for rewriting."""
 
     def __init__(
         self,
-        fst: pynini.Fst,
+        fst: Fst,
         input_token_type: TokenType,
         output_token_type: TokenType,
     ):
@@ -132,9 +139,6 @@ class PyniniDictionaryGenerator(object):
         output_token_type = 'utf8'
         if self.model.sym_path is not None and os.path.exists(self.model.sym_path):
             output_token_type = pynini.SymbolTable.read_text(self.model.sym_path)
-        print(output_token_type)
-        print(self.model.meta['architecture'])
-        print(self.model.fst_path)
         rewriter = Rewriter(fst, input_token_type, output_token_type)
 
         stopped = Stopped()

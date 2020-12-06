@@ -57,9 +57,9 @@ def validate_args(args):
     if args.language is not None:
         available_languages = list_available_languages(args.model_type)
         if args.language not in available_languages:
-            raise ArgumentError('Could not find {}, possible languages for download are: {}'.format(args.language, ', '.join(available_languages)))
-
-
+            possible = ', '.join(available_languages)
+            raise ArgumentError('Could not find {}, '
+                                'possible languages for download are: {}'.format(args.language, possible))
 
 
 def run_download(args):
@@ -67,8 +67,9 @@ def run_download(args):
     download_model(args.model_type, args.language)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import download_parser
-    args = download_parser.parse_args()
 
-    run_download(args)
+    download_args = download_parser.parse_args()
+
+    run_download(download_args)

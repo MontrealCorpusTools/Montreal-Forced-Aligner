@@ -68,7 +68,6 @@ align_parser.add_argument('-v', '--verbose', help="Print more information during
 align_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 align_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
 
-
 train_parser = subparsers.add_parser('train')
 train_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
 train_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use',
@@ -124,7 +123,7 @@ g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
 g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
                         action='store_true')
 g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                             help='Number of cores to use while training')
+                        help='Number of cores to use while training')
 g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 train_g2p_parser = subparsers.add_parser('train_g2p')
@@ -132,7 +131,7 @@ train_g2p_parser.add_argument("dictionary_path", help="Location of existing dict
 
 train_g2p_parser.add_argument("output_model_path", help="Desired location of generated model")
 train_g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                             help='Number of cores to use while training')
+                              help='Number of cores to use while training')
 train_g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
                               help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
 
@@ -188,10 +187,10 @@ annotator_parser = subparsers.add_parser('annotator')
 thirdparty_parser = subparsers.add_parser('thirdparty')
 
 thirdparty_parser.add_argument("command",
-                             help="One of 'download', 'validate', 'kaldi', 'opengrm-ngram', or 'phonetisaurus'")
+                               help="One of 'download', 'validate', or 'kaldi'")
 thirdparty_parser.add_argument('local_directory',
-                             help='Full path to the built executables to collect', nargs='?',
-                             default='')
+                               help='Full path to the built executables to collect', nargs='?',
+                               default='')
 
 
 def main():

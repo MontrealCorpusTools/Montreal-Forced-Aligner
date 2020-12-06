@@ -1,7 +1,5 @@
-
 import shutil
 import os
-import argparse
 import multiprocessing as mp
 
 from montreal_forced_aligner.corpus import Corpus
@@ -57,11 +55,11 @@ def run_validate_corpus(args):
     validate_corpus(args)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import validate_parser, fix_path, unfix_path
-    args = validate_parser.parse_args()
+    validate_args = validate_parser.parse_args()
 
     fix_path()
-    run_validate_corpus(args)
+    run_validate_corpus(validate_args)
     unfix_path()

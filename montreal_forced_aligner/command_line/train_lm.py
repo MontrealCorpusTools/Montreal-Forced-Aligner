@@ -1,8 +1,5 @@
-import shutil
 import os
 import multiprocessing as mp
-import yaml
-import time
 
 
 from montreal_forced_aligner import __version__
@@ -48,7 +45,6 @@ def validate_args(args):
         raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
     if args.config_path and not os.path.exists(args.config_path):
         raise (ArgumentError('Could not find the config file {}.'.format(args.config_path)))
-
 
 
 def run_train_lm(args):

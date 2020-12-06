@@ -13,8 +13,21 @@ import traceback
 import sys
 from typing import Set, Union
 
-import pynini
-import pywrapfst
+try:
+    import pynini
+    from pynini import Fst
+    import pywrapfst
+    from pywrapfst import convert
+    G2P_DISABLED = False
+
+    TokenType = Union[str, pynini.SymbolTable]
+except ImportError:
+    pynini = None
+    pywrapfst = None
+    Fst = None
+    convert = lambda x: x
+    G2P_DISABLED = True
+    TokenType = Union[str]
 import tqdm
 
 from ..config import TEMP_DIR
@@ -26,8 +39,6 @@ from ..helper import edit_distance
 from typing import Any, List, Tuple
 
 Labels = List[Any]
-
-TokenType = Union[str, pynini.SymbolTable]
 
 TOKEN_TYPES = ["byte", "utf8"]
 DEV_NULL = open(os.devnull, "w")
@@ -100,9 +111,9 @@ class RandomStartWorker(mp.Process):
             if self.stopped.stop_check():
                 continue
             try:
-                fst_path, score = self.function(args)
-                self.return_dict[fst_path] = score
-            except Exception as e:
+                fst_path, likelihood = self.function(args)
+                self.return_dict[fst_path] = likelihood
+            except Exception as _:
                 self.stopped.stop()
                 self.return_dict['error'] = args, Exception(traceback.format_exception(*sys.exc_info()))
             self.counter.increment()
@@ -113,7 +124,7 @@ class PairNGramAligner:
     """Produces FSA alignments for pair n-gram model training."""
 
     _compactor = functools.partial(
-        pywrapfst.convert, fst_type="compact_string"
+        convert, fst_type="compact_string"
     )
 
     def __init__(self, temp_directory):
@@ -181,7 +192,7 @@ class PairNGramAligner:
         )
 
     @staticmethod
-    def _label_union(labels: Set[int], epsilon: bool) -> pynini.Fst:
+    def _label_union(labels: Set[int], epsilon: bool) -> Fst:
         """Creates FSA over a union of the labels."""
         side = pynini.Fst()
         src = side.add_state()
@@ -197,7 +208,7 @@ class PairNGramAligner:
         return side
 
     @staticmethod
-    def _narcs(f: pynini.Fst) -> int:
+    def _narcs(f: Fst) -> int:
         """Computes the number of arcs in an FST."""
         return sum(f.num_arcs(state) for state in f.states())
 
@@ -336,7 +347,7 @@ class PairNGramAligner:
             num_commands = len(commands)
             if cores > len(commands):
                 cores = len(commands)
-            job_queue = mp.JoinableQueue(cores+2)
+            job_queue = mp.JoinableQueue(cores + 2)
 
             # Actually runs starts.
             self.logger.info("Random starts")
@@ -366,14 +377,14 @@ class PairNGramAligner:
                         break
                     job_queue.put(commands[ind])
                     value = counter.value()
-                    pbar.update(value-last_value)
+                    pbar.update(value - last_value)
                     last_value = value
                     ind += 1
                 while True:
                     time.sleep(30)
                     value = counter.value()
                     if value != last_value:
-                        pbar.update(value-last_value)
+                        pbar.update(value - last_value)
                         last_value = value
                     if value >= random_starts:
                         break
@@ -386,7 +397,7 @@ class PairNGramAligner:
                 raise exc
             (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
             self.logger.info("Best likelihood: %f", best_likelihood)
-            self.logger.debug("Ran {} random starts in {} seconds".format(random_starts, time.time()-begin))
+            self.logger.debug("Ran {} random starts in {} seconds".format(random_starts, time.time() - begin))
             # Moves best likelihood solution to the requested location.
             shutil.move(best_fst, self.align_path)
         self.logger.info("Computing alignments")
@@ -489,29 +500,29 @@ class PyniniTrainer(object):
             ngram_make_path = os.path.join(self.temp_directory, 'ngram.make')
             ngram_shrink_path = os.path.join(self.temp_directory, 'ngram.shrink')
             ngramcount_proc = subprocess.Popen(['ngramcount', "--require_symbols=false",
-                                           '--order={}'.format(self.order),
-                                           self.far_path, ngram_count_path],
-                                           stderr=logf)
+                                                '--order={}'.format(self.order),
+                                                self.far_path, ngram_count_path],
+                                               stderr=logf)
             ngramcount_proc.communicate()
 
             ngrammake_proc = subprocess.Popen(['ngrammake',
-                                           '--method='+self.smoothing_method, ngram_count_path, ngram_make_path],
-                                          stderr=logf)
+                                               '--method=' + self.smoothing_method, ngram_count_path, ngram_make_path],
+                                              stderr=logf)
             ngrammake_proc.communicate()
 
             ngramshrink_proc = subprocess.Popen(['ngramshrink',
-                                           '--method='+self.pruning_method,
-                                           '--target_number_of_ngrams={}'.format(self.model_size),
+                                                 '--method=' + self.pruning_method,
+                                                 '--target_number_of_ngrams={}'.format(self.model_size),
                                                  ngram_make_path, ngram_shrink_path
                                                  ],
-                                          stderr=logf)
+                                                stderr=logf)
             ngramshrink_proc.communicate()
 
             fstencode_proc = subprocess.Popen(['fstencode',
-                                           '--decode', ngram_shrink_path,
+                                               '--decode', ngram_shrink_path,
                                                self.encoder_path,
                                                self.fst_path],
-                                          stderr=logf)
+                                              stderr=logf)
             fstencode_proc.communicate()
 
         os.remove(ngram_count_path)
@@ -537,7 +548,7 @@ class PyniniTrainer(object):
         if word_dict is None:
             word_dict = self.dictionary.actual_words
         with open(input_path, "w", encoding='utf8') as f2, \
-             open(phones_path, 'w', encoding='utf8') as phonef:
+                open(phones_path, 'w', encoding='utf8') as phonef:
             for word, v in word_dict.items():
                 if re.match(r'\W', word) is not None:
                     continue
@@ -591,7 +602,7 @@ class PyniniTrainer(object):
 
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
-                                               temp_directory=os.path.join(self.temp_directory, 'validation'),
+                                        temp_directory=os.path.join(self.temp_directory, 'validation'),
                                         num_jobs=self.num_jobs)
         output = gen.generate()
         begin = time.time()
@@ -600,5 +611,6 @@ class PyniniTrainer(object):
         print(f"LER:\t{ler:.2f}")
         self.logger.info(f"WER:\t{wer:.2f}")
         self.logger.info(f"LER:\t{ler:.2f}")
-        self.logger.debug('Computation of errors for {} words took {} seconds'.format(len(validation_dictionary), time.time()-begin))
+        self.logger.debug('Computation of errors for {} words took {} seconds'.format(len(validation_dictionary),
+                                                                                      time.time() - begin))
         self.clean_up()

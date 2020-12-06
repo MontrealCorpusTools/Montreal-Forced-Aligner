@@ -1,4 +1,4 @@
-from ..g2p.generator import PyniniDictionaryGenerator as Generator
+from ..g2p.generator import PyniniDictionaryGenerator as Generator, G2P_DISABLED
 
 from PyQt5 import QtGui, QtCore, QtWidgets, QtMultimedia
 
@@ -8,7 +8,7 @@ import librosa
 import numpy as np
 
 
-class DetailedMessageBox(QtWidgets.QMessageBox):
+class DetailedMessageBox(QtWidgets.QMessageBox):  # pragma: no cover
     # Adapted from http://stackoverflow.com/questions/2655354/how-to-allow-resizing-of-qmessagebox-in-pyqt4
     def __init__(self, *args, **kwargs):
         super(DetailedMessageBox, self).__init__(*args, **kwargs)
@@ -28,7 +28,7 @@ class DetailedMessageBox(QtWidgets.QMessageBox):
         return result
 
 
-class MediaPlayer(QtMultimedia.QMediaPlayer):
+class MediaPlayer(QtMultimedia.QMediaPlayer):  # pragma: no cover
     def __init__(self):
         super(MediaPlayer, self).__init__()
         self.max_time = None
@@ -43,8 +43,6 @@ class MediaPlayer(QtMultimedia.QMediaPlayer):
         self.min_time = min_time * 1000
 
     def checkStop(self, position):
-        #print(self.mediaStatus())
-        #print(position, self.max_time)
         if self.state() == QtMultimedia.QMediaPlayer.PlayingState:
             if self.min_time is not None:
                 if position < self.min_time:
@@ -54,8 +52,9 @@ class MediaPlayer(QtMultimedia.QMediaPlayer):
                     self.stop()
 
 
-class UtteranceListWidget(QtWidgets.QWidget):
+class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
     utteranceChanged = QtCore.pyqtSignal(object)
+
     def __init__(self, parent):
         super(UtteranceListWidget, self).__init__(parent=parent)
         self.table_widget = QtWidgets.QTableWidget()
@@ -111,7 +110,7 @@ class UtteranceListWidget(QtWidgets.QWidget):
                 self.table_widget.setItem(i, 1, t)
 
 
-class TranscriptionWidget(QtWidgets.QTextEdit):
+class TranscriptionWidget(QtWidgets.QTextEdit):  # pragma: no cover
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Tab:
             event.ignore()
@@ -119,7 +118,7 @@ class TranscriptionWidget(QtWidgets.QTextEdit):
         super(TranscriptionWidget, self).keyPressEvent(event)
 
 
-class UtteranceDetailWidget(QtWidgets.QWidget):
+class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
     lookUpWord = QtCore.pyqtSignal(object)
     createWord = QtCore.pyqtSignal(object)
     saveUtterance = QtCore.pyqtSignal(object, object)
@@ -135,7 +134,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):
         self.min_time = 0
         self.max_time = None
         self.m_audioOutput = MediaPlayer()
-        self.m_audioOutput.error.connect(self.showError)
+        #self.m_audioOutput.error.connect(self.showError)
         self.m_audioOutput.positionChanged.connect(self.notified)
         self.m_audioOutput.stateChanged.connect(self.handleAudioState)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
@@ -318,9 +317,10 @@ class UtteranceDetailWidget(QtWidgets.QWidget):
             self.m_audioOutput.setPosition(0)
 
 
-class InformationWidget(QtWidgets.QWidget):
+class InformationWidget(QtWidgets.QWidget):  # pragma: no cover
     resetDictionary = QtCore.pyqtSignal()
     saveDictionary = QtCore.pyqtSignal(object)
+
     def __init__(self, parent):
         super(InformationWidget, self).__init__(parent=parent)
         self.setFocusPolicy(QtCore.Qt.NoFocus)
@@ -384,7 +384,7 @@ class InformationWidget(QtWidgets.QWidget):
         if not word:
             return
         pronunciation = None
-        if self.g2p_model is not None:
+        if self.g2p_model is not None and not G2P_DISABLED:
             gen = Generator(self.g2p_model, [word])
             results = gen.generate()
             pronunciation = results[word]

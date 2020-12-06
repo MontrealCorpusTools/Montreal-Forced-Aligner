@@ -1,21 +1,5 @@
-import os
-import shutil
-import subprocess
-import re
-import math
-from tqdm import tqdm
-
-from ..helper import thirdparty_binary, make_path_safe
-
-from ..multiprocessing import (align, mono_align_equal, compile_train_graphs,
-                               acc_stats, tree_stats, convert_alignments,
-                               convert_ali_to_textgrids)
-
-from ..exceptions import NoSuccessfulAlignments
-
+from ..multiprocessing import (convert_ali_to_textgrids)
 from .base import BaseAligner
-
-from ..models import AcousticModel
 
 
 class TrainableAligner(BaseAligner):
@@ -35,8 +19,6 @@ class TrainableAligner(BaseAligner):
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
         If not specified, it will be set to ``~/Documents/MFA``
-    num_jobs : int, optional
-        Number of processes to use, defaults to 3
     call_back : callable, optional
         Specifies a call back function for alignment
     """

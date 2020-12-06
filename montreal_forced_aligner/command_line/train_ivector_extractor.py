@@ -45,8 +45,7 @@ def train_ivector(args):
     try:
         corpus = Corpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                         num_jobs=getattr(args, 'num_jobs', 3),
-                        debug=getattr(args, 'debug', False),
-                        ignore_exceptions=getattr(args, 'ignore_exceptions', False))
+                        debug=getattr(args, 'debug', False))
         if corpus.issues_check:
             print('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -62,19 +61,21 @@ def train_ivector(args):
         else:
             train_config, align_config = load_basic_train_ivector()
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
-                             temp_directory=data_directory, use_mp=not args.disable_mp)
+                             temp_directory=data_directory)
         a.verbose = args.verbose
         a.train()
         a.save(args.output_model_path)
-    except:
+    except Exception as e:
         conf['dirty'] = True
-        raise
+        raise e
     finally:
         with open(conf_path, 'w') as f:
             yaml.dump(conf, f)
 
 
 def validate_args(args):
+    if args.config_path and not os.path.exists(args.config_path):
+        raise (ArgumentError('Could not find the config file {}.'.format(args.config_path)))
     if not os.path.exists(args.corpus_directory):
         raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
     if not os.path.isdir(args.corpus_directory):
@@ -99,8 +100,8 @@ def run_train_ivector_extractor(args):
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_ivector_parser, fix_path, unfix_path
-    args = train_ivector_parser.parse_args()
+    ivector_args = train_ivector_parser.parse_args()
 
     fix_path()
-    run_train_ivector_extractor(args)
+    run_train_ivector_extractor(ivector_args)
     unfix_path()

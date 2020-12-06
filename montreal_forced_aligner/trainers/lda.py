@@ -9,38 +9,12 @@ from .triphone import TriphoneTrainer
 
 
 class LdaTrainer(TriphoneTrainer):
-    '''
+    """
 
     Configuration class for LDA+MLLT training
 
     Attributes
     ----------
-    num_iterations : int
-        Number of training iterations to perform, defaults to 40
-    transition_scale : float
-        Scaling of transition costs in alignment, defaults to 1.0
-    acoustic_scale : float
-        Scaling of acoustic costs in alignment, defaults to 0.1
-    self_loop_scale : float
-        Scaling of self loop costs in alignment, defaults to 0.1
-    beam : int
-        Default beam width for alignment, defaults = 10
-    retry_beam : int
-        Beam width to fall back on if no alignment is produced, defaults to 40
-    max_gaussians : int
-        Total number of gaussians, defaults to 1000
-    boost_silence : float
-        Factor by which to boost silence likelihoods in alignment, defaults to 1.0
-    realignment_iterations : list
-        List of iterations to perform alignment
-    power : float
-        Exponent for number of gaussians according to occurrence counts, defaults to 0.25
-    num_leaves : int
-        Number of states in the decision tree, defaults to 1000
-    max_gaussians : int
-        Number of gaussians in the decision tree, defaults to 10000
-    cluster_threshold : int
-        For build-tree control final bottom-up clustering of leaves, defaults to 100
     lda_dimension : int
         Dimensionality of the LDA matrix
     mllt_iterations : list
@@ -48,15 +22,15 @@ class LdaTrainer(TriphoneTrainer):
     random_prune : float
         This is approximately the ratio by which we will speed up the
         LDA and MLLT calculations via randomized pruning
-    '''
+    """
 
     def __init__(self, default_feature_config):
         super(LdaTrainer, self).__init__(default_feature_config)
         self.lda_dimension = 40
         self.mllt_iterations = []
-        max_mllt_iter = int(self.num_iterations/2) - 1
+        max_mllt_iter = int(self.num_iterations / 2) - 1
         for i in range(1, max_mllt_iter):
-            if i < max_mllt_iter /2 and i % 2 == 0:
+            if i < max_mllt_iter / 2 and i % 2 == 0:
                 self.mllt_iterations.append(i)
         self.mllt_iterations.append(max_mllt_iter)
         self.random_prune = 4.0
@@ -67,9 +41,9 @@ class LdaTrainer(TriphoneTrainer):
     def compute_calculated_properties(self):
         super(LdaTrainer, self).compute_calculated_properties()
         self.mllt_iterations = []
-        max_mllt_iter = int(self.num_iterations/2) - 1
+        max_mllt_iter = int(self.num_iterations / 2) - 1
         for i in range(1, max_mllt_iter):
-            if i < max_mllt_iter /2 and i % 2 == 0:
+            if i < max_mllt_iter / 2 and i % 2 == 0:
                 self.mllt_iterations.append(i)
         self.mllt_iterations.append(max_mllt_iter)
 

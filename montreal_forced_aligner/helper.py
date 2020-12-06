@@ -1,9 +1,10 @@
 import os
 import shutil
-import numpy  # type: ignore
+import numpy
 from typing import Any, List
 
 Labels = List[Any]
+
 
 def thirdparty_binary(binary_name):
     return shutil.which(binary_name)
@@ -52,7 +53,7 @@ def save_groups(groups, seg_dir, pattern, multiline=False):
 
 
 def load_scp(path):
-    '''
+    """
     Load a Kaldi script file (.scp)
 
     See http://kaldi-asr.org/doc/io.html#io_sec_scp_details for more information
@@ -68,7 +69,7 @@ def load_scp(path):
         Dictionary where the keys are the first couple and the values are all
         other columns in the script file
 
-    '''
+    """
     scp = {}
     with open(path, 'r', encoding='utf8') as f:
         for line in f:
@@ -91,7 +92,6 @@ def filter_scp(uttlist, scp, exclude=False):
     # Scp could be either a path or just the list
 
     # Get lines of scp file
-    input_lines = []
     if not isinstance(scp, list) and os.path.exists(scp):
         # If path provided
         with open(scp, 'r') as fp:
