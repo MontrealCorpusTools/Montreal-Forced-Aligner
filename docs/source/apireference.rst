@@ -52,7 +52,7 @@ The Corpus class contains information about how a dataset is structured. A class
    :toctree: generated/
    :template: class.rst
 
-   Corpus
+   AlignableCorpus
 
 .. _dictionary_api:
 
@@ -139,8 +139,8 @@ dataset.
    convert_alignments
    convert_ali_to_textgrids
 
-For use with DNNs
------------------
+For use with ivector extractors
+-------------------------------
 
 .. currentmodule:: montreal_forced_aligner.multiprocessing
 
@@ -155,14 +155,6 @@ For use with DNNs
    gauss_to_post
    acc_ivector_stats
    extract_ivectors
-   get_egs
-   get_lda_nnet
-   nnet_train_trans
-   nnet_train
-   nnet_align
-   compute_prob
-   get_average_posteriors
-   relabel_egs
 
 Trainer API
 ===========
@@ -187,5 +179,4 @@ training. A class diagram of the Configuration API can be found below:
    LdaTrainer
    SatTrainer
    IvectorExtractorTrainer
-   NnetTrainer
 

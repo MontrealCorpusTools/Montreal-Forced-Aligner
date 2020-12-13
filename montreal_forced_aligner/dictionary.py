@@ -36,6 +36,7 @@ def check_bracketed(word):
 
 
 def sanitize(item):
+    item = item.replace('’', "'") # normalize apostrophes
     if not item:
         return item
     for b in brackets:
@@ -57,6 +58,7 @@ def sanitize_clitics(item):
     sanitized = re.sub(r"^\W+", '', item)
     sanitized = re.sub(r"\W+$", '', sanitized)
     return sanitized
+
 
 class Dictionary(object):
     """
@@ -247,7 +249,7 @@ class Dictionary(object):
             self.max_disambig = max(last_used.values())
         else:
             self.max_disambig = 0
-        self.disambig = set('#{}'.format(x) for x in range(self.max_disambig + 1))
+        self.disambig = set('#{}'.format(x) for x in range(self.max_disambig + 2))
         i = max(self.phone_mapping.values())
         for p in sorted(self.disambig):
             i += 1
@@ -463,7 +465,7 @@ class Dictionary(object):
         """
         return self.sil_phones | self.nonsil_phones
 
-    def write(self):
+    def write(self, disambig=False):
         """
         Write the files necessary for Kaldi
         """
@@ -479,10 +481,8 @@ class Dictionary(object):
         self._write_word_boundaries()
         self._write_extra_questions()
         self._write_word_file()
-        self._write_fst_text()
-        self._write_fst_text(disambig=True)
-        self._write_fst_binary()
-        self._write_fst_binary(disambig=True)
+        self._write_fst_text(disambig=disambig)
+        self._write_fst_binary(disambig=disambig)
         # self.cleanup()
 
     def cleanup(self):
@@ -688,7 +688,7 @@ class Dictionary(object):
         disambig_int = os.path.join(self.phones_dir, 'disambig.int')
         with open(disambig, 'w', encoding='utf8') as outf, \
                 open(disambig_int, 'w', encoding='utf8') as intf:
-            for d in sorted(self.disambig):
+            for d in self.disambig:
                 outf.write('{}\n'.format(d))
                 intf.write('{}\n'.format(self.phone_mapping[d]))
 
@@ -709,8 +709,20 @@ class Dictionary(object):
                          '--osymbols={}'.format(words_file_path),
                          '--keep_isymbols=false', '--keep_osymbols=false',
                          lexicon_fst_path, temp_fst_path])
-
-        subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
+        if disambig:
+            temp2_fst_path = os.path.join(self.output_directory, 'temp2.fst')
+            phone_disambig_path = os.path.join(self.output_directory, 'phone_disambig.txt')
+            word_disambig_path = os.path.join(self.output_directory, 'word_disambig.txt')
+            with open(phone_disambig_path, 'w') as f:
+                f.write(str(self.phone_mapping['#0']))
+            with open(word_disambig_path, 'w') as f:
+                f.write(str(self.words_mapping['#0']))
+            subprocess.call([thirdparty_binary('fstaddselfloops'), phone_disambig_path, word_disambig_path,
+                             temp_fst_path, temp2_fst_path])
+            subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
+                         temp2_fst_path, output_fst])
+        else:
+            subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
                          temp_fst_path, output_fst])
         if self.debug:
             dot_path = os.path.join(self.output_directory, 'L.dot')
@@ -726,6 +738,7 @@ class Dictionary(object):
     def _write_fst_text(self, disambig=False):
         if disambig:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon_disambig.text.fst')
+            sildisambig = '#{}'.format(self.max_disambig + 1)
         else:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
         if self.sil_prob != 0:
@@ -746,11 +759,18 @@ class Dictionary(object):
 
         with open(lexicon_fst_path, 'w', encoding='utf8') as outf:
             if self.sil_prob != 0:
-                outf.write('\t'.join(map(str, [startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n')
+                outf.write('\t'.join(map(str, [startstate, loopstate, '<eps>', '<eps>', nosilcost])) + '\n') # no silence
 
-                outf.write('\t'.join(map(str, [startstate, loopstate, nonoptsil, '<eps>', silcost])) + "\n")
-                outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>'])) + "\n")
+                outf.write('\t'.join(map(str, [startstate, loopstate, nonoptsil, '<eps>', silcost])) + "\n") # silence
+                outf.write('\t'.join(map(str, [silstate, loopstate, silphone, '<eps>'])) + "\n") # no cost
                 nextstate = 3
+                if disambig:
+                    disambigstate = 3
+                    nextstate = 4
+                    outf.write('\t'.join(map(str, [startstate, disambigstate, silphone, '<eps>', silcost])) + '\n') # silence.
+                    outf.write('\t'.join(map(str, [silstate, disambigstate, silphone, '<eps>', silcost])) + '\n') # no cost.
+                    outf.write('\t'.join(map(str, [disambigstate, loopstate, sildisambig, '<eps>'])) + '\n') # silence disambiguation symbol.
+
             for w in sorted(self.words.keys()):
                 for phones, prob, disambig_symbol in sorted(self.words[w]):
                     phones = [x for x in phones]

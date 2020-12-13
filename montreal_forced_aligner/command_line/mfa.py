@@ -4,7 +4,7 @@ import argparse
 import multiprocessing as mp
 
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_available_g2p_languages, \
-    get_available_dict_languages
+    get_available_dict_languages, get_available_lm_languages
 from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.train_and_align import run_train_corpus
 from montreal_forced_aligner.command_line.g2p import run_g2p
@@ -15,6 +15,7 @@ from montreal_forced_aligner.command_line.train_lm import run_train_lm
 from montreal_forced_aligner.command_line.annotator import run_annotator
 from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
+from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 
 
 def fix_path():
@@ -39,6 +40,7 @@ def unfix_path():
 
 
 acoustic_languages = get_available_acoustic_languages()
+lm_languages = get_available_lm_languages()
 g2p_languages = get_available_g2p_languages()
 dict_languages = get_available_dict_languages()
 
@@ -182,6 +184,30 @@ train_ivector_parser.add_argument('--config_path', type=str, default='',
                                   help='Path to config file to use for training')
 train_ivector_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
+transcribe_parser = subparsers.add_parser('transcribe')
+transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')
+transcribe_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
+transcribe_parser.add_argument('acoustic_model_path',
+                          help='Full path to the archive containing pre-trained model or language ({})'.format(
+                              ', '.join(acoustic_languages)))
+transcribe_parser.add_argument('language_model_path',
+                          help='Full path to the archive containing pre-trained model or language ({})'.format(
+                              ', '.join(lm_languages)))
+transcribe_parser.add_argument('output_directory',
+                          help="Full path to output directory, will be created if it doesn't exist")
+transcribe_parser.add_argument('--config_path', type=str, default='',
+                          help='Path to config file to use for transcription')
+transcribe_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
+                          help='Number of characters of file names to use for determining speaker, '
+                               'default is to use directory names')
+transcribe_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                          help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+transcribe_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                          help='Number of cores to use while aligning')
+transcribe_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
+transcribe_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+transcribe_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
+
 annotator_parser = subparsers.add_parser('annotator')
 
 thirdparty_parser = subparsers.add_parser('thirdparty')
@@ -218,6 +244,8 @@ def main():
         run_annotator(args)
     elif args.subcommand == 'thirdparty':
         run_thirdparty(args)
+    elif args.subcommand == 'transcribe':
+        run_transcribe_corpus(args)
     unfix_path()
 
 

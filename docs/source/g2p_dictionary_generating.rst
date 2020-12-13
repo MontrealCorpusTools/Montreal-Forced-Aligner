@@ -1,12 +1,18 @@
 
 
-.. _dictionary_generating:
+.. _g2p_dictionary_generating:
 
 ***********************
 Generating a dictionary
 ***********************
 
 We have trained several G2P models that are available for download (:ref:`pretrained_g2p`).
+
+.. warning::
+
+   Please note that G2P models trained prior to 2.0 cannot be used with MFA 2.0.  If you would like to use
+   these models, please use the the 1.0.1 or 1.1 g2p utilities or retrain a new G2P model following
+   :ref:`_g2p_model_training`.
 
 Use
 ===

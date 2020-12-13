@@ -1,9 +1,7 @@
 import os
 import multiprocessing as mp
 
-
-from montreal_forced_aligner import __version__
-from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 
 from montreal_forced_aligner.config import TEMP_DIR, train_lm_yaml_to_config, load_basic_train_lm
@@ -24,7 +22,7 @@ def train_lm(args):
         corpus_name = os.path.basename(args.corpus_directory)
 
     data_directory = os.path.join(temp_dir, corpus_name)
-    corpus = Corpus(args.corpus_directory, data_directory)
+    corpus = AlignableCorpus(args.corpus_directory, data_directory)
     if args.config_path:
         train_config = train_lm_yaml_to_config(args.config_path)
     else:
@@ -57,6 +55,7 @@ def run_train_lm(args):
 
 
 if __name__ == '__main__':  # pragma: no cover
+    raise NotImplementedError('This function is currently not implemented and is just a stub during alpha of 2.0')
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path
     args = train_lm_parser.parse_args()

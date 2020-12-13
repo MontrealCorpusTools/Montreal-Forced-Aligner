@@ -1,19 +1,21 @@
-.. _model_training:
 
 .. _`THCHS-30`: http://www.openslr.org/18/
-.. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
+.. _`Pynini`: https://github.com/kylebgormon/Pynini
+.. _`Sigmorphon 2020 G2P task baseline`: https://github.com/sigmorphon/2020/tree/master/task1/baselines/fst
 
 
+.. _g2p_model_training:
 
 ************************
 Training a new G2P model
 ************************
 
 Another tool included with MFA allows you to train a G2P (Grapheme to Phoneme) model automatically from a given pronunciation dictionary.
-This type of model can be used for :doc:`generating dictionaries <g2p_dictionary_generating>`.
+This type of model can be used for :ref:`g2p_dictionary_generating`.
 It requires a pronunciation dictionary with each line consisting of the orthographic transcription followed by the
-phonetic transcription. The model is generated using the `Phonetisaurus`_ software, which generates FST (finite state transducer)
-files. The G2P model output will be a .zip file like the acoustic model generated from alignment.
+phonetic transcription. The model is generated using the `Pynini`_ package, which generates FST (finite state transducer)
+files. The implementation is based on that in the `Sigmorphon 2020 G2P task baseline`_.
+The G2P model output will be a .zip file like the acoustic model generated from alignment.
 
 Use
 ===

@@ -2,7 +2,7 @@ import shutil
 import os
 import multiprocessing as mp
 
-from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.validator import CorpusValidator
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -23,7 +23,7 @@ def validate_corpus(args):
 
     os.makedirs(data_directory, exist_ok=True)
 
-    corpus = Corpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
+    corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3))
     dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
 

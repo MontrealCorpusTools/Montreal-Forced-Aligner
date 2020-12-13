@@ -62,7 +62,7 @@ Set up
 ------
 
 1. Ensure you have installed MFA via :ref:`installation`.
-2. Ensure you have downloaded the pretrained model via :code:`mfa download acoustic mandarin_pinyin_g2p`
+2. Ensure you have downloaded the pretrained model via :code:`mfa download g2p mandarin_pinyin_g2p`
 3. Download the prepared Mandarin dataset from (`example Mandarin corpus`_) and extract it somewhere on your computer
 
 .. note::
@@ -103,7 +103,7 @@ In the same environment that you've installed MFA, enter the following command i
 
     mfa train_g2p /path/to/mandarin_dict.txt mandarin_test_model.zip
 
-This should take no more than a few seconds, and should produce a model which could be used for :ref:`dictionary_generating`.
+This should take no more than a few seconds, and should produce a model which could be used for :ref:`_g2p_dictionary_generating`.
 
 .. note::
 

@@ -6,7 +6,7 @@ import os
 import shutil
 import pytest
 
-from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.config import train_yaml_to_config
 
@@ -266,7 +266,7 @@ def sick_dict(sick_dict_path, generated_dir):
 @pytest.fixture(scope='session')
 def sick_corpus(basic_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
-    corpus = Corpus(basic_corpus_dir, output_directory, num_jobs=2)
+    corpus = AlignableCorpus(basic_corpus_dir, output_directory, num_jobs=2)
     return corpus
 
 

@@ -82,7 +82,7 @@ class AcousticModel(Archive):
     def feature_config(self):
         from .features.config import FeatureConfig
         fc = FeatureConfig(self.dirname)
-        fc.update(self._meta['features'])
+        fc.update(self.meta['features'])
         return fc
 
     @property
@@ -240,4 +240,26 @@ class IvectorExtractor(Archive):
 
 
 class LanguageModel(Archive):
-    pass
+    extension = '.arpa'
+
+    def __init__(self, source, root_directory=None):
+        from .config import TEMP_DIR
+        if root_directory is None:
+            root_directory = TEMP_DIR
+        self.root_directory = root_directory
+        self._meta = {}
+        self.name, _ = os.path.splitext(os.path.basename(source))
+        if os.path.isdir(source):
+            self.dirname = os.path.abspath(source)
+        elif source.endswith(FORMAT):
+            base = root_directory
+            self.dirname = os.path.join(root_directory, self.name)
+            if not os.path.exists(self.dirname):
+                os.makedirs(root_directory, exist_ok=True)
+                unpack_archive(source, base)
+        else:
+            self.dirname = os.path.join(root_directory, self.name)
+            if not os.path.exists(self.dirname):
+                os.makedirs(self.dirname, exist_ok=True)
+            copy(source, os.path.join(self.dirname, self.name + self.extension))
+

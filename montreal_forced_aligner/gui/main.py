@@ -4,7 +4,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 
 from ..config import TEMP_DIR
 
-from ..corpus import Corpus
+from ..corpus.align_corpus import AlignableCorpus
 
 from ..dictionary import Dictionary
 from ..models import G2PModel, AcousticModel, LanguageModel, IvectorExtractor
@@ -206,7 +206,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
             return
         corpus_name = os.path.basename(directory)
         corpus_temp_dir = os.path.join(self.config['temp_directory'], corpus_name)
-        self.corpus = Corpus(directory, corpus_temp_dir)
+        self.corpus = AlignableCorpus(directory, corpus_temp_dir)
         self.loading_corpus = False
         self.corpusLoaded.emit(self.corpus)
 

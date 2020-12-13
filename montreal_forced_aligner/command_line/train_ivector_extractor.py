@@ -5,7 +5,7 @@ import yaml
 import time
 
 from montreal_forced_aligner import __version__
-from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train_ivector
@@ -43,7 +43,7 @@ def train_ivector(args):
 
     os.makedirs(data_directory, exist_ok=True)
     try:
-        corpus = Corpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
+        corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                         num_jobs=getattr(args, 'num_jobs', 3),
                         debug=getattr(args, 'debug', False))
         if corpus.issues_check:

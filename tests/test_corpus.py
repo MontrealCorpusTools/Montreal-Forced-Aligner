@@ -3,7 +3,7 @@ import sys
 import pytest
 import shutil
 
-from montreal_forced_aligner.corpus import Corpus
+from montreal_forced_aligner.corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 
 
@@ -11,7 +11,7 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
-    c = Corpus(basic_corpus_dir, output_directory)
+    c = AlignableCorpus(basic_corpus_dir, output_directory)
     c.initialize_corpus(dictionary)
     default_feature_config.generate_features(c)
     assert c.get_feat_dim(default_feature_config) == 39
@@ -21,7 +21,7 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, default
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
-    c = Corpus(basic_corpus_txt_dir, output_directory)
+    c = AlignableCorpus(basic_corpus_txt_dir, output_directory)
     assert len(c.no_transcription_files) == 0
     c.initialize_corpus(dictionary)
     default_feature_config.generate_features(c)
@@ -30,7 +30,7 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, default
 
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
-    corpus = Corpus(extra_corpus_dir, output_directory, num_jobs=2)
+    corpus = AlignableCorpus(extra_corpus_dir, output_directory, num_jobs=2)
     corpus.initialize_corpus(sick_dict)
 
 
@@ -38,7 +38,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
     temp = os.path.join(temp_dir, 'stereo')
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
-    d = Corpus(stereo_corpus_dir, temp)
+    d = AlignableCorpus(stereo_corpus_dir, temp)
     d.initialize_corpus(dictionary)
     default_feature_config.generate_features(d)
     assert d.get_feat_dim(default_feature_config) == 39
@@ -48,7 +48,7 @@ def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, def
     temp = os.path.join(temp_dir, 'short_segments')
     dictionary = Dictionary(basic_dict_path, temp)
     dictionary.write()
-    corpus = Corpus(shortsegments_corpus_dir, temp)
+    corpus = AlignableCorpus(shortsegments_corpus_dir, temp)
     corpus.initialize_corpus(dictionary)
     default_feature_config.generate_features(corpus)
     assert len(corpus.feat_mapping.keys()) == 2
@@ -65,7 +65,7 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
     shutil.rmtree(output_directory, ignore_errors=True)
     d = Dictionary(large_dataset_dictionary, output_directory)
     d.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory)
+    c = AlignableCorpus(large_prosodylab_format_directory, output_directory)
 
     c.initialize_corpus(d)
     default_feature_config.generate_features(c)
@@ -84,7 +84,7 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
 
     shutil.rmtree(output_directory, ignore_errors=True)
     d.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory, num_jobs=2)
+    c = AlignableCorpus(large_prosodylab_format_directory, output_directory, num_jobs=2)
 
     c.initialize_corpus(d)
     default_feature_config.generate_features(c)
@@ -106,7 +106,7 @@ def test_subset(large_prosodylab_format_directory, temp_dir, large_dataset_dicti
     shutil.rmtree(output_directory, ignore_errors=True)
     d = Dictionary(large_dataset_dictionary, output_directory)
     d.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory)
+    c = AlignableCorpus(large_prosodylab_format_directory, output_directory)
     c.initialize_corpus(d)
     sd = c.split_directory()
 

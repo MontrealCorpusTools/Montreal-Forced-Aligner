@@ -4,10 +4,9 @@ import traceback
 
 from textgrid import TextGrid, IntervalTier
 
-from montreal_forced_aligner.corpus import load_text, parse_transcription
+from montreal_forced_aligner.corpus.align_corpus import load_text, parse_transcription, AlignableCorpus
 
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
-from montreal_forced_aligner.corpus import Corpus
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.dictionary import check_bracketed
 from montreal_forced_aligner.utils import get_pretrained_g2p_path, get_available_g2p_languages
@@ -31,7 +30,7 @@ def generate_dictionary(args):
             corpus_name = os.path.basename(args.input_path)
         data_directory = os.path.join(temp_dir, corpus_name)
 
-        corpus = Corpus(input_dir, data_directory)
+        corpus = AlignableCorpus(input_dir, data_directory)
 
         word_set = get_word_set(corpus, args.include_bracketed)
     else:

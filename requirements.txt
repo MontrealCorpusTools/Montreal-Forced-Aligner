@@ -1,7 +1,5 @@
 textgrid
 numpy
-six
-packaging
 tqdm
 pyyaml
 librosa

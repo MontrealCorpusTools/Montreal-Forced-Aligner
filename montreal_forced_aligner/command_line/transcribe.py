@@ -5,12 +5,13 @@ import multiprocessing as mp
 import yaml
 
 from montreal_forced_aligner import __version__
-from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
+from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
-from montreal_forced_aligner.aligner import PretrainedAligner
-from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
-from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path
+from montreal_forced_aligner.transcriber import Transcriber
+from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.config import TEMP_DIR
+from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
+    get_available_lm_languages, get_pretrained_language_model_path
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
@@ -29,7 +30,7 @@ class DummyArgs(object):
         self.config_path = ''
 
 
-def align_corpus(args):
+def transcribe_corpus(args):
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -40,6 +41,10 @@ def align_corpus(args):
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
+    print(data_directory, os.path.exists(data_directory))
+    os.makedirs(data_directory, exist_ok=True)
+    os.makedirs(args.output_directory, exist_ok=True)
+    os.makedirs(data_directory, exist_ok=True)
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
@@ -57,32 +62,22 @@ def align_corpus(args):
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
         shutil.rmtree(data_directory, ignore_errors=True)
-
-    os.makedirs(data_directory, exist_ok=True)
-    os.makedirs(args.output_directory, exist_ok=True)
     try:
-        corpus = AlignableCorpus(args.corpus_directory, data_directory,
+        corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
                         num_jobs=args.num_jobs)
-        if corpus.issues_check:
-            print('WARNING: Some issues parsing the corpus were detected. '
-                  'Please run the validator to get more information.')
         print(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path)
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
+        language_model = LanguageModel(args.language_model_path)
+        dictionary = Dictionary(args.dictionary_path, data_directory)
         acoustic_model.validate(dictionary)
 
         begin = time.time()
-        if args.config_path:
-            align_config = align_yaml_to_config(args.config_path)
-        else:
-            align_config = load_basic_align()
-        a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
+        t = Transcriber(corpus, dictionary, acoustic_model, language_model,
                               temp_directory=data_directory,
                               debug=getattr(args, 'debug', False))
         if args.debug:
             print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
-        a.verbose = args.verbose
 
         begin = time.time()
         a.align()
@@ -98,11 +93,12 @@ def align_corpus(args):
         conf['dirty'] = True
         raise
     finally:
-        with open(conf_path, 'w') as f:
-            yaml.dump(conf, f)
+        if os.path.exists(data_directory):
+            with open(conf_path, 'w') as f:
+                yaml.dump(conf, f)
 
 
-def validate_args(args, pretrained):
+def validate_args(args, pretrained_acoustic, pretrained_lm):
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
@@ -113,21 +109,35 @@ def validate_args(args, pretrained):
         raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path))
     if args.corpus_directory == args.output_directory:
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
-    if args.acoustic_model_path.lower() in pretrained:
+
+    if args.acoustic_model_path.lower() in pretrained_acoustic:
         args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
     elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
         if not os.path.exists(args.acoustic_model_path):
             raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
     else:
         raise ArgumentError(
-            'The language \'{}\' is not currently included in the distribution, '
-            'please align via training or specify one of the following language names: {}.'.format(
-                args.acoustic_model_path.lower(), ', '.join(pretrained)))
+            'The acoustic model \'{}\' is not currently downloaded, '
+            'please download a pretrained model, align via training or specify one of the following language names: {}.'.format(
+                args.acoustic_model_path.lower(), ', '.join(pretrained_acoustic)))
+
+    if args.language_model_path.lower() in pretrained_lm:
+        args.language_model_path = get_pretrained_language_model_path(args.language_model_path.lower())
+    elif args.language_model_path.lower().endswith(LanguageModel.extension):
+        if not os.path.exists(args.language_model_path):
+            raise ArgumentError('The specified model path does not exist: ' + args.language_model_path)
+    else:
+        raise ArgumentError(
+            'The language model \'{}\' is not currently downloaded, '
+            'please download, train a new model, or specify one of the following language names: {}.'.format(
+                args.language_model_path.lower(), ', '.join(pretrained_lm)))
 
 
-def run_align_corpus(args, pretrained=None):
-    if pretrained is None:
-        pretrained = get_available_acoustic_languages()
+def run_transcribe_corpus(args, pretrained_acoustic=None, pretrained_lm=None):
+    if pretrained_acoustic is None:
+        pretrained_acoustic = get_available_acoustic_languages()
+    if pretrained_lm is None:
+        pretrained_lm = get_available_lm_languages()
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
@@ -135,15 +145,16 @@ def run_align_corpus(args, pretrained=None):
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
-    validate_args(args, pretrained)
-    align_corpus(args)
+    validate_args(args, pretrained_acoustic, pretrained_lm)
+    transcribe_corpus(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
+    raise NotImplementedError('This function is currently not implemented and is just a stub during alpha of 2.0')
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages
+    from montreal_forced_aligner.command_line.mfa import transcribe_parser, fix_path, unfix_path, acoustic_languages, lm_languages
 
-    align_args = align_parser.parse_args()
+    transcribe_args = transcribe_parser.parse_args()
     fix_path()
-    run_align_corpus(align_args, acoustic_languages)
+    run_transcribe_corpus(transcribe_args, acoustic_languages, lm_languages)
     unfix_path()

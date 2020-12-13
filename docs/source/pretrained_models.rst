@@ -53,7 +53,8 @@
 .. _`Wu acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/wu.zip
 
 
-.. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
+.. _`Pynini`: https://github.com/kylebgormon/Pynini
+.. _`Sigmorphon 2020 G2P task baseline`: https://github.com/sigmorphon/2020/tree/master/task1/baselines/fst
 
 
 .. _`Arabic G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/arabic_g2p.zip
@@ -64,7 +65,11 @@
 
 .. _`Czech G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/czech_g2p.zip
 
+.. _`English G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/english_g2p.zip
+
 .. _`French G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_g2p.zip
+
+.. _`French (Lexique) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_lexique_g2p.zip
 
 .. _`French (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_prosodylab_g2p.zip
 
@@ -74,9 +79,11 @@
 
 .. _`Hausa G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/hausa_g2p.zip
 
-.. _`Japanese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/japanese_g2p.zip
+.. _`Japanese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/japanese_character_g2p.zip
 
-.. _`Korean G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_g2p.zip
+.. _`Korean Hangul G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_hangul_g2p.zip
+
+.. _`Korean Jamo G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_jamo_g2p.zip
 
 .. _`Mandarin Pinyin G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/mandarin_pinyin_g2p.zip
 
@@ -214,62 +221,43 @@ can get a full list of the currently available G2P models via :code:`mfa downloa
 by users will be periodically added. If you would like to contribute your trained models, please contact Michael McAuliffe
 at michael.e.mcauliffe@gmail.com.
 
-These models were generated using
-`Phonetisaurus`_ and the GlobalPhone dataset. This means that they will only work for transcriptions which use the same
+These models were generated using the `Pynini`_ package on the GlobalPhone dataset. The implementation is based on that in the
+`Sigmorphon 2020 G2P task baseline`_.
+This means that they will only work for transcriptions which use the same
 alphabet. Current language options are listed below, with the following accuracies when trained on 90% of the data and 
 tested on 10%:
 
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Language        | Link                                          | Accuracy | Orthography system     | Phone set       |
-+=================+===============================================+==========+========================+=================+
-| Arabic          | `Arabic G2P model`_                           |   95.4   |   Romanized    [2]_    |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Bulgarian       | `Bulgarian G2P model`_                        |   97.3   |   Cyrillic alphabet    |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Croatian        | `Croatian G2P model`_                         |   92.7   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Czech           | `Czech G2P model`_                            |   96.8   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| French          | `French G2P model`_                           |    93.2  |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| French          | `French (Prosodylab) G2P model`_ [1]_         |    95.2  |   Latin alphabet       |   Prosodylab    |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| German          | `German G2P model`_                           |    67.0  |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| German          | `German (Prosodylab) G2P model`_ [3]_         |    94.1  |   Latin alphabet       |   Prosodylab    |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Hausa           | `Hausa G2P model`_                            |   70.1   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Japanese        | `Japanese G2P model`_                         |   82.1   |   Romanized            |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Korean          | `Korean G2P model`_                           |   89.5   |   Hangul               |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Mandarin        | `Mandarin Pinyin G2P model`_                  |    99.9  |   Pinyin               |   Pinyin phones |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Mandarin        | `Mandarin Character G2P model`_  [4]_         |    83.2  |   Hanzi                |   Pinyin phones |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Polish          | `Polish G2P model`_                           |   98.8   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Portuguese      | `Portuguese G2P model`_                       |   86.5   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Russian         | `Russian G2P model`_                          |   96.4   |   Cyrillic alphabet    |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Spanish         | `Spanish G2P model`_                          |   94.0   |  Latin alphabet        |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Swahili         | `Swahili G2P model`_                          |   99.9   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Swedish         | `Swedish G2P model`_                          |   83.3   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Thai            | `Thai G2P model`_                             |   71.7   |   Thai script          |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Turkish         | `Turkish G2P model`_                          |   83.3   |   Latin alphabet       |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Ukrainian       | `Ukrainian G2P model`_                        |   98.0   |   Cyrillic alphabet    |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Vietnamese      | `Vietnamese G2P model`_                       |   98.2   |   Vietnamese alphabet  |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
-| Wu              | `Wu G2P model`_ [5]_                          |   77.5   |   Hanzi                |   GlobalPhone   |
-+-----------------+-----------------------------------------------+----------+------------------------+-----------------+
+.. csv-table::
+   :header: "Language", "Link", "WER", "LER", "Orthography system", "Phone set"
+
+   "Arabic", `Arabic G2P model`_, 28.45, 7.42, "Romanized [2]_", "GlobalPhone"
+   "Bulgarian", `Bulgarian G2P model`_, 3.08, 0.38, "Cyrillic alphabet", "GlobalPhone"
+   "Croatian", `Croatian G2P model`_, 9.47, 3.4, "Latin alphabet", "GlobalPhone"
+   "Czech", `Czech G2P model`_, 3.43, 0.71, "Latin alphabet", "GlobalPhone"
+   "English", `English G2P model`_, 28.45, 7.42, "Latin alphabet", "Arpabet"
+   "French", `French G2P model`_, 42.54, 6.98, "Latin alphabet", "GlobalPhone"
+   "French", `French (Lexique) G2P model`_, 5.31, 1.06, "Latin alphabet", "Lexique"
+   "French", `French (Prosodylab) G2P model`_ [1]_, 5.11, 0.95, "Latin alphabet", "Prosodylab"
+   "German", `German G2P model`_, 36.16, 7.84, "Latin alphabet", "GlobalPhone"
+   "German", `German (Prosodylab) G2P model`_ [3]_, 5.43, 0.65, "Latin alphabet", "Prosodylab"
+   "Hausa", `Hausa G2P model`_, 32.54, 7.19, "Latin alphabet", "GlobalPhone"
+   "Japanese", `Japanese G2P model`_, 17.45, 7.17, "Kanji and kana", "GlobalPhone"
+   "Korean", `Korean Hangul G2P model`_, 11.85, 1.38, "Hangul", "GlobalPhone"
+   "Korean", `Korean Jamo G2P model`_, 8.94, 0.95, "Jamo", "GlobalPhone"
+   "Mandarin", `Mandarin Pinyin G2P model`_, 0.27, 0.06, "Pinyin", "Pinyin phones"
+   "Mandarin", `Mandarin Character G2P model`_ [4]_, 23.81, 11.2, "Hanzi", "Pinyin phones"
+   "Polish", `Polish G2P model`_, 1.23, 0.33, "Latin alphabet", "GlobalPhone"
+   "Portuguese", `Portuguese G2P model`_, 10.67, 1.62, "Latin alphabet", "GlobalPhone"
+   "Russian", `Russian G2P model`_, 4.04, 0.65, "Cyrillic alphabet", "GlobalPhone"
+   "Spanish", `Spanish G2P model`_, 17.93, 3.02, "Latin alphabet", "GlobalPhone"
+   "Swahili", `Swahili G2P model`_, 0.09, 0.02, "Latin alphabet", "GlobalPhone"
+   "Swedish", `Swedish G2P model`_, 18.75, 3.14, "Latin alphabet", "GlobalPhone"
+   "Thai", `Thai G2P model`_, 27.62, 7.48, "Thai script", "GlobalPhone"
+   "Turkish", `Turkish G2P model`_, 8.51, 2.32, "Latin alphabet", "GlobalPhone"
+   "Ukrainian", `Ukrainian G2P model`_, 2.1, 0.42, "Cyrillic alphabet", "GlobalPhone"
+   "Vietnamese", `Vietnamese G2P model`_, 14.91, 3.46, "Vietnamese alphabet", "GlobalPhone"
+   "Wu", `Wu G2P model`_ [5]_ , 31.19, 13.04, "Hanzi", "GlobalPhone"
+
 
 .. [1] The `ProsodyLab French dictionary`_ is based on `Lexique`_ with substitutions for numbers and special characters.
    Note that Lexique is known to currently not work with the aligner, see the `Github issue <https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues/29>`_
