@@ -59,6 +59,18 @@ Added a basic annotation GUI with features for:
 - Updating/adding dictionary entries
 - Updating transcriptions
 
+See also :ref:`annotator` for more information on using the annotation GUI.
+
+.. _2.0_transcription:
+
+Transcription
+-------------
+
+Transcribing audio files is not currently implemented, but is planned for eventual release.  As part of this functionality,
+MFA will support:
+
+- Transcribing a corpus of sound files using an acoustic model, dictionary, and language model
+- Training language models from corpora that have text transcriptions
 
 .. _whats_new_1_1:
 

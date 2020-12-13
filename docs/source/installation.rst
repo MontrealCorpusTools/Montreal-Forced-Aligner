@@ -3,10 +3,6 @@
 
 .. _`Kaldi GitHub repository`: https://github.com/kaldi-asr/kaldi
 
-.. _`OpenGrm NGram library`: http://opengrm.org/NGramLibrary
-
-.. _`Phonetisaurus`: https://github.com/AdolfVonKleist/Phonetisaurus
-
 .. _installation:
 
 ************
@@ -16,13 +12,17 @@ Installation
 All platforms
 =============
 
+.. warning::
+
+   Windows native install is not currently supported in 2.0.  To use the aligner on Windows, please set up the "Windows Subsystem
+   For Linux" and use the bash console to continue the instructions.
+
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
 2. Create new environment via :code:`conda create -n aligner -c conda-forge python=3.8 openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1`
 3. Run :code:`pip install montreal-forced-aligner`
-4. Install third-party binaries:
-   1. Download prebuilt ones via `mfa thirdparty download`
-   2. Build and collect binaries for your specific platform via the instructions below
+4. Install third-party binaries via :code:`mfa thirdparty download` (see also `collect_binaries`_ to collect locally built binaries)
 
+.. _collect_binaries:
 
 Building platform-specific binaries from scratch
 ================================================

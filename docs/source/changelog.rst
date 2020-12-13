@@ -8,6 +8,7 @@ Changelog
 
 Currently under development with major changes, see :ref:`whats_new_2_0`.
 
+- Fixed a bug in dictionary parsing that caused initial numbers in pronunciations to be misparsed and ignored 
 
 1.1.0
 -----

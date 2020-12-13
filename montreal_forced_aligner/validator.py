@@ -77,22 +77,14 @@ def compile_utterance_train_graphs_func(validator, job_name):  # pragma: no cove
 
     log_path = os.path.join(aligner.align_directory, 'log', 'compile-graphs-fst.0.{}.log'.format(job_name))
 
-    with open(log_path, 'w') as logf, open(fsts_path, 'r', encoding='utf8') as f:
+    with open(log_path, 'w') as logf:
         proc = subprocess.Popen([thirdparty_binary('compile-train-graphs-fsts'),
                                  '--transition-scale=1.0', '--self-loop-scale=0.1',
                                  '--read-disambig-syms={}'.format(disambig_int_path),
                                  tree_path, mdl_path,
                                  lexicon_fst_path,
-                                 "ark:-", "ark:" + graphs_path],
-                                stdin=subprocess.PIPE, stderr=logf)
-        group = []
-        for line in f:
-            group.append(line)
-            if line.strip() == '':
-                for g in group:
-                    proc.stdin.write(g.encode('utf8'))
-                group = []
-                proc.stdin.flush()
+                                 "ark:"+fsts_path, "ark:" + graphs_path],
+                                stderr=logf)
 
         proc.communicate()
 
