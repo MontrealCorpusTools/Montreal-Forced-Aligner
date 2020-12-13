@@ -32,11 +32,15 @@ def get_n_channels(file_path):
 
 
 def get_sample_rate(file_path):
-    return librosa.get_samplerate(file_path)
+    with wave.open(file_path, 'rb') as soundf:
+        sr = soundf.getframerate()
+    return sr
 
 
 def get_wav_duration(file_path):
-    return librosa.get_duration(file_path)
+    with wave.open(file_path, 'rb') as soundf:
+        sr = soundf.getframerate()
+        nframes = soundf.getnframes()
     return nframes / sr
 
 

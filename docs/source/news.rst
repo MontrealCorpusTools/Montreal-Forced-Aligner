@@ -29,6 +29,7 @@ Moving forward, MFA will:
   :code:`python setup.py install` from the cloned repo
 - Allow for downloading third party executables for the particular system, but also allow for picking up relevant executables
   that were built on the system, increasing flexibility of use
+- Switch to using Pynini for G2P purposes, which should ease distribution and installation
 - Have a :ref:`2_0_unified_cli` with subcommands for each command line function that will be available upon installation,
   as well as exposing the full MFA api for use in other Python scripts
 - Allow for faster bug fixes that do not require repackaging and releasing a frozen binary
