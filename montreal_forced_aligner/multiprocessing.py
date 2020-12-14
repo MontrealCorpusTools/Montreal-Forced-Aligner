@@ -883,10 +883,10 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
     jobs = [(directory, split_directory, sil_phones, x, config, initial, model_name)
             for x in range(num_jobs)]
-    if config.use_mp:
-        run_mp(calc_fmllr_func, jobs)
-    else:
-        run_non_mp(calc_fmllr_func, jobs)
+    #if config.use_mp:
+    #    run_mp(calc_fmllr_func, jobs)
+    #else:
+    run_non_mp(calc_fmllr_func, jobs)
 
 
 def lda_acc_stats_func(directory, split_dir, align_directory, config, ci_phones, i):
