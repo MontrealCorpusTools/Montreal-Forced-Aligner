@@ -232,6 +232,7 @@ class CorpusValidator(object):
     def analyze_wav_errors(self):
         output_dir = self.corpus.output_directory
         wav_read_errors = self.corpus.wav_read_errors
+        unsupported_bit_depths = self.corpus.unsupported_bit_depths
         if wav_read_errors:
             path = os.path.join(output_dir, 'wav_read_errors.csv')
             with open(path, 'w') as f:
@@ -242,6 +243,19 @@ class CorpusValidator(object):
                       'Please see {} for a list.'.format(len(wav_read_errors), path)
         else:
             message = 'There were no sound files that could not be read.'
+        if unsupported_bit_depths:
+            path = os.path.join(output_dir, 'bit_depth_errors.csv')
+            with open(path, 'w') as f:
+                for p in unsupported_bit_depths:
+                    f.write('{}\n'.format(p))
+
+            message += 'There were {} sound files that had unsupported (!=16) bit depths. ' \
+                       'Kaldi only supports 16-bit wav files, ' \
+                       'please use sox, praat, or ffmpeg to convert your files. ' \
+                       'Please see {} for a full list.'.format(len(unsupported_bit_depths), path)
+        else:
+            message += 'There were no sound files that had unsupported bit depths.'
+
         return message
 
     def analyze_missing_features(self):

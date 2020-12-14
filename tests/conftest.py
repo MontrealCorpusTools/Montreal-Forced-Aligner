@@ -111,6 +111,15 @@ def extra_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope='session')
+def transcribe_corpus_24bit_dir(corpus_root_dir, wav_dir):
+    path = os.path.join(corpus_root_dir, '24bit')
+    os.makedirs(path, exist_ok=True)
+    name = 'cold_corpus_24bit'
+    shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(path, name + '.wav'))
+    return path
+
+
+@pytest.fixture(scope='session')
 def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, 'stereo')
     os.makedirs(path, exist_ok=True)
@@ -336,6 +345,11 @@ def textgrid_output_model_path(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def ivector_output_model_path(generated_dir):
+    return os.path.join(generated_dir, 'ivector_output_model.zip')
+
+
+@pytest.fixture(scope='session')
 def training_dict_path(test_dir):
     return os.path.join(test_dir, "dictionaries", "chinese_dict.txt", )
 
@@ -386,8 +400,14 @@ def basic_align_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def basic_train_ivector_config(config_directory):
+    return os.path.join(config_directory, 'basic_train_ivector.yaml')
+
+
+@pytest.fixture(scope='session')
 def mono_train_config_path(config_directory):
     return os.path.join(config_directory, 'mono_train.yaml')
+
 
 @pytest.fixture(scope='session')
 def mono_train_config(mono_train_config_path):

@@ -1,19 +1,16 @@
 import os
-import subprocess
 import sys
 import traceback
-import wave
-import re
 import random
-from collections import defaultdict, Counter
+from collections import Counter
 from textgrid import TextGrid, IntervalTier
 
 from ..dictionary import sanitize
-from ..helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp
+from ..helper import load_text, output_mapping, save_groups, filter_scp
 
 from ..exceptions import SampleRateError, CorpusError
 
-from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels
+from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth
 
 
 def find_lab(filename, files):
@@ -161,11 +158,15 @@ class AlignableCorpus(BaseCorpus):
                 wav_path = os.path.join(root, f)
                 try:
                     sr = get_sample_rate(wav_path)
-                except wave.Error:
+                except Exception:
                     self.wav_read_errors.append(wav_path)
                     continue
                 if sr < 16000:
                     self.unsupported_sample_rate.append(wav_path)
+                bit_depth = get_bit_depth(wav_path)
+                if bit_depth != 16:
+                    self.unsupported_bit_depths.append(wav_path)
+                    continue
                 if lab_name is not None:
                     utt_name = file_name
                     if utt_name in self.utt_wav_mapping:
@@ -488,6 +489,8 @@ class AlignableCorpus(BaseCorpus):
         self._split_utt2fst(split_dir, dictionary)
 
     def initialize_corpus(self, dictionary):
+        if not self.utt_wav_mapping:
+            raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
         split_dir = self.split_directory()
         self.write()
         if not os.path.exists(split_dir):

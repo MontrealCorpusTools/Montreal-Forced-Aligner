@@ -77,11 +77,6 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         utterance = self.table_widget.item(cell.row(), 0).text()
         self.utteranceChanged.emit(utterance)
 
-    def keyPressEvent(self, event):
-        print(event)
-        if event.key() == QtCore.Qt.Key_Tab:
-            print('PLAYING')
-
     def update_corpus(self, corpus):
         self.corpus = corpus
         self.refresh_list()
@@ -188,8 +183,6 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
     def generate_context_menu(self, location):
 
         menu = self.text_widget.createStandardContextMenu()
-        print(location)
-        print(menu)
         cursor = self.text_widget.cursorForPosition(location)
         cursor.select(QtGui.QTextCursor.WordUnderCursor)
         word = cursor.selectedText()

@@ -182,7 +182,6 @@ train_ivector_parser.add_argument('-c', '--clean', help="Remove files from previ
 train_ivector_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
 train_ivector_parser.add_argument('--config_path', type=str, default='',
                                   help='Path to config file to use for training')
-train_ivector_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 transcribe_parser = subparsers.add_parser('transcribe')
 transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')

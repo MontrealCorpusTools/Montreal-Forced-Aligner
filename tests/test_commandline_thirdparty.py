@@ -1,9 +1,16 @@
 import os
 import shutil
+import pytest
 
+from montreal_forced_aligner.command_line.thirdparty import run_thirdparty, ArgumentError
 from montreal_forced_aligner.thirdparty.download import download_binaries
 from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries, collect_kaldi_binaries
 from montreal_forced_aligner.config import TEMP_DIR
+
+
+class ThirdpartyDummyArgs(object):
+    def __init__(self):
+        self.command = ''
 
 
 def test_download():
@@ -32,3 +39,12 @@ def test_collect():
     collect_kaldi_binaries(backup_dir)
 
     assert validate_kaldi_binaries()
+
+
+def test_validate():
+    args = ThirdpartyDummyArgs()
+    with pytest.raises(ArgumentError):
+
+        run_thirdparty(args)
+    args.command = 'validate'
+    run_thirdparty(args)

@@ -3,8 +3,9 @@ import sys
 import pytest
 import shutil
 
-from montreal_forced_aligner.corpus import AlignableCorpus
+from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.exceptions import CorpusError
 
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature_config):
@@ -42,6 +43,15 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
     d.initialize_corpus(dictionary)
     default_feature_config.generate_features(d)
     assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, '24bit')
+
+    c = TranscribeCorpus(transcribe_corpus_24bit_dir, temp)
+    assert len(c.unsupported_bit_depths) == 1
+    with pytest.raises(CorpusError):
+        c.initialize_corpus()
 
 
 def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, default_feature_config):

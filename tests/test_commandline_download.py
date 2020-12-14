@@ -1,6 +1,7 @@
 import os
+import pytest
 from montreal_forced_aligner.command_line.download import run_download, get_pretrained_acoustic_path, \
-    get_pretrained_g2p_path, get_dictionary_path, list_available_languages
+    get_pretrained_g2p_path, get_dictionary_path, list_available_languages, ArgumentError
 
 
 class DummyArgs(object):
@@ -50,6 +51,26 @@ def test_download():
     run_download(args)
 
     assert os.path.exists(get_dictionary_path(args.language))
+
+    args = DummyArgs()
+    args.language = ''
+    args.model_type = 'dictionary'
+
+    run_download(args)
+
+
+def test_expected_errors():
+    args = DummyArgs()
+    args.language = 'bulgarian'
+    args.model_type = 'not_acoustic'
+    with pytest.raises(ArgumentError):
+        run_download(args)
+
+    args = DummyArgs()
+    args.language = 'not_bulgarian'
+    args.model_type = 'acoustic'
+    with pytest.raises(ArgumentError):
+        run_download(args)
 
 
 

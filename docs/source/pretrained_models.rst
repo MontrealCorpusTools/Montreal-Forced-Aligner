@@ -150,61 +150,35 @@ can get a full list of the currently available acoustic models via :code:`mfa do
 by users will be periodically added. If you would like to contribute your trained models, please contact Michael McAuliffe
 at michael.e.mcauliffe@gmail.com.
 
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Language       | Link                                                | Corpus               | Phone set             |
-+================+=====================================================+======================+=======================+
-| Arabic         | Not available yet                                   | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Bulgarian      | `Bulgarian acoustic model`_                         | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Croatian       | `Croatian acoustic model`_                          | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Czech          | `Czech acoustic model`_                             | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| English        | `English acoustic model`_                           | LibriSpeech          | Arpabet  (stressed)   |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| French (FR)    | `French (FR) acoustic model`_                       | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| French (FR)    | `French (Prosodylab) acoustic model`_               | GlobalPhone          | Prosodylab [1]_       |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| French (QC)    | `French (QC) acoustic model`_                       | Lab speech           | Prosodylab [1]_       |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| German         | `German acoustic model`_                            | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| German         | `German (Prosodylab) acoustic model`_               | GlobalPhone          | Prosodylab [3]_       |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Hausa          | `Hausa acoustic model`_                             | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Japanese       | Not available yet                                   | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Korean         | `Korean acoustic model`_                            | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Mandarin       | `Mandarin acoustic model`_                          | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Polish         | `Polish acoustic model`_                            | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Portuguese     | `Portuguese acoustic model`_                        | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Russian        | `Russian acoustic model`_                           | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Spanish        | `Spanish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Swahili        | `Swahili acoustic model`_                           | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Swedish        | `Swedish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Tamil          | Not available yet                                   | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Thai           | `Thai acoustic model`_                              | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Turkish        | `Turkish acoustic model`_                           | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Ukrainian      | `Ukrainian acoustic model`_                         | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Vietnamese     | `Vietnamese acoustic model`_                        | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
-| Wu             | Not available yet                                   | GlobalPhone          | GlobalPhone           |
-+----------------+-----------------------------------------------------+----------------------+-----------------------+
+.. csv-table::
+   :header: "Language", "Link", "Corpus", "Phone set"
+
+   "Arabic", "Not available yet", "GlobalPhone", "GlobalPhone"
+   "Bulgarian", `Bulgarian acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Croatian", `Croatian acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Czech", `Czech acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "English", `English acoustic model`_, "LibriSpeech", "Arpabet (stressed)"
+   "French (FR)", `French (FR) acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "French (FR)", `French (Prosodylab) acoustic model`_, "GlobalPhone", "Prosodylab [1]_"
+   "French (QC)", `French (QC) acoustic model`_, "Lab speech", "Prosodylab [1]_"
+   "German", `German acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "German", `German (Prosodylab) acoustic model`_, "GlobalPhone", "Prosodylab [3]_"
+   "Hausa", `Hausa acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Japanese", "Not available yet", "GlobalPhone", "GlobalPhone"
+   "Korean", `Korean acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Mandarin", `Mandarin acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Polish", `Polish acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Portuguese", `Portuguese acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Russian", `Russian acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Spanish", `Spanish acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Swahili", `Swahili acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Swedish", `Swedish acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Tamil", "Not available yet", "GlobalPhone", "GlobalPhone"
+   "Thai", `Thai acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Turkish", `Turkish acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Ukrainian", `Ukrainian acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Vietnamese", `Vietnamese acoustic model`_, "GlobalPhone", "GlobalPhone"
+   "Wu", "Not available yet", "GlobalPhone", "GlobalPhone"
 
 .. _pretrained_g2p:
 

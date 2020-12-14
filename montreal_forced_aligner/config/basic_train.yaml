@@ -42,7 +42,6 @@ training:
           lda: true
 
   - sat:
-      calc_pron_probs: true
       num_leaves: 4200
       max_gaussians: 40000
       power: 0.2

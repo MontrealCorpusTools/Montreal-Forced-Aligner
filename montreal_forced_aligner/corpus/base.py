@@ -1,8 +1,7 @@
 import os
 import logging
-import struct
-import wave
 import librosa
+import soundfile
 import re
 import subprocess
 from collections import defaultdict, Counter
@@ -26,22 +25,27 @@ def get_n_channels(file_path):
         Number of channels (1 if mono, 2 if stereo)
     """
 
-    with wave.open(file_path, 'rb') as soundf:
-        n_channels = soundf.getnchannels()
+    with soundfile.SoundFile(file_path, 'r') as inf:
+        n_channels = inf.channels
+        subtype = inf.subtype
+        if not subtype.startswith('PCM'):
+            raise SampleRateError('The file {} is not a PCM file.'.format(file_path))
     return n_channels
 
 
 def get_sample_rate(file_path):
-    with wave.open(file_path, 'rb') as soundf:
-        sr = soundf.getframerate()
-    return sr
+    return librosa.get_samplerate(file_path)
+
+
+def get_bit_depth(file_path):
+    with soundfile.SoundFile(file_path, 'r') as inf:
+        subtype = inf.subtype
+        bit_depth = int(subtype.replace('PCM_', ''))
+    return bit_depth
 
 
 def get_wav_duration(file_path):
-    with wave.open(file_path, 'rb') as soundf:
-        sr = soundf.getframerate()
-        nframes = soundf.getnframes()
-    return nframes / sr
+    return librosa.get_duration(filename=file_path)
 
 
 def extract_temp_channels(wav_path, temp_directory):
@@ -59,38 +63,22 @@ def extract_temp_channels(wav_path, temp_directory):
     base = os.path.basename(name)
     a_path = os.path.join(temp_directory, base + '_A.wav')
     b_path = os.path.join(temp_directory, base + '_B.wav')
-    samp_step = 1000000
     if not os.path.exists(a_path):
-        with wave.open(wav_path, 'rb') as inf, \
-                wave.open(a_path, 'wb') as af, \
-                wave.open(b_path, 'wb') as bf:
-            chans = inf.getnchannels()
-            samps = inf.getnframes()
-            samplerate = inf.getframerate()
-            sampwidth = inf.getsampwidth()
-            assert sampwidth == 2
-            af.setnchannels(1)
-            af.setframerate(samplerate)
-            af.setsampwidth(sampwidth)
-            bf.setnchannels(1)
-            bf.setframerate(samplerate)
-            bf.setsampwidth(sampwidth)
-            cur_samp = 0
-            while cur_samp < samps:
-                s = inf.readframes(samp_step)
-                cur_samp += samp_step
-                act = samp_step
-                if cur_samp > samps:
-                    act -= (cur_samp - samps)
+        with soundfile.SoundFile(wav_path, 'r') as inf:
+            sr = inf.samplerate
+            sound_format = inf.format
+            endian = inf.endian
+            subtype = inf.subtype
+        stream = librosa.stream(wav_path,
+                                block_length=256,
+                                frame_length=2048,
+                                hop_length=2048, mono=False)
+        with soundfile.SoundFile(a_path, 'w', samplerate=sr, channels=1, endian=endian, subtype=subtype, format=sound_format) as af, \
+             soundfile.SoundFile(b_path, 'w', samplerate=sr, channels=1, endian=endian, subtype=subtype, format=sound_format) as bf:
 
-                unpstr = '<{0}h'.format(act * chans)  # little-endian 16-bit samples
-                x = list(struct.unpack(unpstr, s))  # convert the byte string into a list of ints
-                values = [struct.pack('h', d) for d in x[0::chans]]
-                value_str = b''.join(values)
-                af.writeframes(value_str)
-                values = [struct.pack('h', d) for d in x[1::chans]]
-                value_str = b''.join(values)
-                bf.writeframes(value_str)
+            for s in stream:
+                af.write(s[0, :])
+                bf.write(s[1, :])
     return a_path, b_path
 
 
@@ -161,6 +149,7 @@ class BaseCorpus(object):
         self.unsupported_sample_rate = []
         self.wav_files = []
         self.wav_durations = {}
+        self.unsupported_bit_depths = []
         self.wav_read_errors = []
         self.speak_utt_mapping = defaultdict(list)
         self.utt_speak_mapping = {}
@@ -361,10 +350,7 @@ class BaseCorpus(object):
         else:
             rec = self.segments[utt].split(' ')[0]
             wav_path = self.utt_wav_mapping[rec]
-        with wave.open(wav_path, 'rb') as soundf:
-            sr = soundf.getframerate()
-            nframes = soundf.getnframes()
-        return nframes / sr
+        return get_wav_duration(wav_path)
 
     def split_directory(self):
         directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))

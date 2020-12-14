@@ -8,7 +8,9 @@ Changelog
 
 Currently under development with major changes, see :ref:`whats_new_2_0`.
 
-- Fixed a bug in dictionary parsing that caused initial numbers in pronunciations to be misparsed and ignored 
+- Fixed a bug in dictionary parsing that caused initial numbers in pronunciations to be misparsed and ignored
+- Updated sound file parsing to use PySoundFile rather than inbuilt wave module, which should lead to more informative error
+  messages for files that do not meet Kaldi's input requirements
 
 1.1.0
 -----

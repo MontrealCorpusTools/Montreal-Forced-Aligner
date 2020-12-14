@@ -1,7 +1,6 @@
 import os
-import wave
 
-from .base import BaseCorpus, get_sample_rate
+from .base import BaseCorpus, get_sample_rate, get_bit_depth
 
 from ..exceptions import SampleRateError, CorpusError
 
@@ -22,8 +21,12 @@ class TranscribeCorpus(BaseCorpus):
                 wav_path = os.path.join(root, f)
                 try:
                     sr = get_sample_rate(wav_path)
-                except wave.Error:
+                except Exception:
                     self.wav_read_errors.append(wav_path)
+                    continue
+                bit_depth = get_bit_depth(wav_path)
+                if bit_depth != 16:
+                    self.unsupported_bit_depths.append(wav_path)
                     continue
                 if sr < 16000:
                     self.unsupported_sample_rate.append(wav_path)
@@ -78,6 +81,8 @@ class TranscribeCorpus(BaseCorpus):
         self.find_best_groupings()
 
     def initialize_corpus(self):
+        if not self.utt_wav_mapping:
+            raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
         split_dir = self.split_directory()
         self.write()
         if not os.path.exists(split_dir):
