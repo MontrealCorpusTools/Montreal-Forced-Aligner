@@ -12,10 +12,11 @@ Contents:
    :maxdepth: 3
 
    introduction.rst
-   whats_new_1.1.rst
+   news.rst
    installation.rst
    data_prep.rst
    data_validation.rst
+   annotator.rst
    aligning.rst
    example.rst
    configuration.rst

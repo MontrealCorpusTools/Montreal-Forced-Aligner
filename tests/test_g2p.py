@@ -1,26 +1,42 @@
-import pytest
 import os
-from aligner.g2p.trainer import PhonetisaurusTrainer
+import pytest
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer, G2P_DISABLED
 
-from aligner.g2p.generator import PhonetisaurusDictionaryGenerator
+from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
+from montreal_forced_aligner.dictionary import check_bracketed
 
-from aligner.models import G2PModel
+from montreal_forced_aligner.models import G2PModel
 
-from aligner import __version__
+from montreal_forced_aligner import __version__
 
 
-def test_training(sick_dict, sick_g2p_model_path):
-    trainer = PhonetisaurusTrainer(sick_dict, sick_g2p_model_path, window_size=2)
+def test_clean_up_word():
+    original_word = '+abc'
+    w, m = clean_up_word(original_word, ['a', 'b', 'c'])
+    assert(w == 'abc')
+    assert m == ['+']
+
+
+def test_training(sick_dict, sick_g2p_model_path, temp_dir):
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
+    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, random_starts=1, max_iters=5)
     trainer.validate()
+
     trainer.train()
     model = G2PModel(sick_g2p_model_path)
     assert model.meta['version'] == __version__
-    assert model.meta['architecture'] == 'phonetisaurus'
+    assert model.meta['architecture'] == 'pynini'
     assert model.meta['phones'] == sick_dict.nonsil_phones
 
 
 def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output):
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
     model = G2PModel(sick_g2p_model_path)
-    gen = PhonetisaurusDictionaryGenerator(model, sick_corpus.word_set, g2p_sick_output)
-    gen.generate()
+
+    assert not model.validate(sick_corpus.word_set)
+    assert model.validate([x for x in sick_corpus.word_set if not check_bracketed(x)])
+    gen = PyniniDictionaryGenerator(model, sick_corpus.word_set)
+    gen.output(g2p_sick_output)
     assert os.path.exists(g2p_sick_output)

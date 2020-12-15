@@ -1,0 +1,54 @@
+beam: 10
+retry_beam: 40
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+
+training:
+  - monophone:
+      num_iterations: 40
+      max_gaussians: 1000
+      subset: 2000
+      boost_silence: 1.25
+
+  - triphone:
+      num_iterations: 35
+      num_leaves: 2000
+      max_gaussians: 10000
+      cluster_threshold: -1
+      subset: 5000
+      boost_silence: 1.25
+      power: 0.25
+
+  - lda:
+      num_leaves: 2500
+      max_gaussians: 15000
+      subset: 10000
+      num_iterations: 35
+      features:
+          splice_left_context: 3
+          splice_right_context: 3
+
+  - sat:
+      num_leaves: 2500
+      max_gaussians: 15000
+      power: 0.2
+      silence_weight: 0.0
+      fmllr_update_type: "diag"
+      subset: 10000
+      features:
+          lda: true
+
+  - sat:
+      num_leaves: 4200
+      max_gaussians: 40000
+      power: 0.2
+      silence_weight: 0.0
+      fmllr_update_type: "diag"
+      subset: 30000
+      features:
+          lda: true
+          fmllr: true
+

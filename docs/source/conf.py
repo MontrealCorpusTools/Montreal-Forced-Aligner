@@ -26,13 +26,14 @@ MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
                 'tqdm', 'yaml',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',
-                'librosa', 'librosa.core.spectrum', 'matplotlib']
+                'librosa', 'librosa.core.spectrum', 'matplotlib',
+                'pyqt5', 'pyqtgraph', 'requests', 'requests.exceptions']
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
 
 sys.path.insert(0, os.path.abspath('../../'))
-import aligner
+import montreal_forced_aligner
 
 # -- General configuration ------------------------------------------------
 

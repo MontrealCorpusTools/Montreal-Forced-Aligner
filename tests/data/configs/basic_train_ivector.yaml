@@ -1,0 +1,44 @@
+beam: 10
+retry_beam: 40
+use_mp: false
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+  pitch: false
+
+training:
+  - monophone:
+      num_iterations: 5
+      max_gaussians: 1000
+      subset: 100
+
+  - triphone:
+      num_iterations: 3
+      num_leaves: 250
+      max_gaussians: 2000
+      cluster_threshold: -1
+      subset: 1000
+
+  - lda:
+      num_iterations: 2
+      num_leaves: 500
+      max_gaussians: 4000
+      subset: 1000
+      features:
+        splice_left_context: 3
+        splice_right_context: 3
+
+  - ivector:
+      num_iterations: 2
+      gaussian_min_count: 2
+      ubm_num_iterations_init: 4
+      ubm_num_threads: 4
+      silence_weight: 0.0
+      posterior_scale: 0.1
+      max_count: 100
+      features:
+          lda: true
+          splice_left_context: 3
+          splice_right_context: 3

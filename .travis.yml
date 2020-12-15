@@ -1,13 +1,12 @@
 language: python
 python:
-  - 3.5
+  - 3.8
 branches:
   only:
     - master
 notifications:
   email: false
 
-sudo: true
 dist: xenial
 
 addons:
@@ -17,28 +16,38 @@ addons:
     packages:
       - libstdc++6
       - gfortran
-
-before_install:
-  - sudo apt-get update
-  - pwd
-  #- sudo rm -rf /dev/shm
-  #- sudo ln -s /run/shm /dev/shm
-  #- sudo ln -s -f bash /bin/sh
-  - bash continuous-integration/travis/install.sh
-  - ls thirdparty/bin -al
+      - libpulse-mainloop-glib0
+      - libopenblas-base
 
 # Install packages
 install:
-  - export PATH="$HOME/miniconda/miniconda/bin:$PATH"
-  - source activate test-environment
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - source "$HOME/miniconda/etc/profile.d/conda.sh"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  - conda info -a
+  - conda create -q -n test-environment -c conda-forge python=$TRAVIS_PYTHON_VERSION openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1
+  - conda activate test-environment
   - pip install -r requirements.txt
+  - pip install -q coveralls coverage pytest setuptools
   - which python
   - conda list
+  - python -m montreal_forced_aligner.command_line.thirdparty download
+  - ls $HOME/Documents/MFA/thirdparty/bin -al
+  - $HOME/Documents/MFA/thirdparty/bin/compute-mfcc-feats --help
+  - $HOME/Documents/MFA/thirdparty/bin/ivector-extractor-est --help
+  - $HOME/Documents/MFA/thirdparty/bin/ivector-extractor-init --help
+  - $HOME/Documents/MFA/thirdparty/bin/sum-lda-accs --help
+  - bash continuous-integration/travis/install.sh
 
 # Run test
 script:
   #- coverage help
-  - travis_wait 120 coverage run --source=aligner setup.py test
+  #- travis_wait 120 coverage run --source=montreal_forced_aligner setup.py test
+  - coverage run --concurrency=multiprocessing setup.py test
+  - coverage combine
 
 # Calculate coverage
 after_success:
@@ -50,5 +59,4 @@ after_failure:
 
 cache:
   directories:
-    - $HOME/miniconda
     - $HOME/tools

@@ -27,6 +27,10 @@
 
 .. _`mailing list`: https://groups.google.com/forum/#!forum/mfa-users
 
+.. _`Kaldi tutorial`: https://eleanorchodroff.com/tutorial/kaldi/index.html
+
+.. _`Corpus Phonetics Tutorial`: https://eleanorchodroff.com/tutorial/intro.html
+
 .. _introduction:
 
 ************
@@ -41,6 +45,11 @@ an audio file and generate a time-aligned version using a pronunciation
 dictionary to look up phones for words.
 
 Many languages have :ref:`pretrained_acoustic` available for download and use.
+
+.. note::
+
+   For a more detailed background on forced alignment, please see Eleanor Chodroff's excellent `Kaldi tutorial`_ within her
+   larger `Corpus Phonetics Tutorial`_
 
 
 Montreal Forced Aligner

@@ -1,5 +1,4 @@
 import sys
-import os
 from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
@@ -12,9 +11,7 @@ def readme():
 class PyTest(TestCommand):
     def finalize_options(self):
         TestCommand.finalize_options(self)
-        self.test_args = ['--strict', '--verbose', '--tb=long', '--skiplarge', 'tests']
-        #if os.environ.get('TRAVIS', False):
-        #    self.test_args = ['-x', '--strict', '--verbose', '--tb=long', 'tests']
+        self.test_args = ['--strict', '--verbose', '--tb=long', 'tests']
         self.test_suite = True
 
     def run_tests(self):
@@ -26,9 +23,10 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='1.0.0',
-          description='',
-          long_description='',
+          version='2.0.0a0',
+          description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
+                      'acoustic models and dictionaries using Kaldi functionality.',
+          long_description=readme(),
           classifiers=[
               'Development Status :: 3 - Alpha',
               'Programming Language :: Python',
@@ -41,21 +39,32 @@ if __name__ == '__main__':
           url='https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner',
           author='Montreal Corpus Tools',
           author_email='michael.e.mcauliffe@gmail.com',
-          packages=['aligner',
-                    'aligner.aligner',
-                    'aligner.g2p',
-                    'aligner.command_line',
-                    'aligner.config',
-                    'aligner.features',
-                    'aligner.trainers',
-                    'aligner.gui'],
+          packages=['montreal_forced_aligner',
+                    'montreal_forced_aligner.aligner',
+                    'montreal_forced_aligner.command_line',
+                    'montreal_forced_aligner.config',
+                    'montreal_forced_aligner.corpus',
+                    'montreal_forced_aligner.features',
+                    'montreal_forced_aligner.g2p',
+                    'montreal_forced_aligner.gui',
+                    'montreal_forced_aligner.lm',
+                    'montreal_forced_aligner.thirdparty',
+                    'montreal_forced_aligner.trainers'],
           install_requires=[
               'textgrid',
+              'numpy',
               'tqdm',
-              'alignment',
               'pyyaml',
+              'librosa',
+              'pyqt5',
+              'pyqtgraph',
+              'requests',
           ],
-          package_data={'aligner.config': ['*.yaml']},
+          python_requires='>=3.8',
+          entry_points={
+              'console_scripts': ['mfa=montreal_forced_aligner.command_line.mfa:main']
+          },
+          package_data={'montreal_forced_aligner.config': ['*.yaml']},
           cmdclass={'test': PyTest},
           extras_require={
               'testing': ['pytest'],

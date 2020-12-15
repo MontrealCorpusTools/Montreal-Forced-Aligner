@@ -13,36 +13,30 @@ allow for more relaxed restrictions on alignment.  Relaxing these restrictions c
 kinds of files that are quite different from the training dataset (i.e., single word production data from experiments,
 or longer stretches of audio).
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|beam                             | 10                         |  Initial beam width to use for alignment            |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|retry_beam                       | 40                         |  Beam width to use if initial alignment fails       |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|transition_scale                 | 1.0                        | Multiplier to scale transition costs                |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|acoustic_scale                   | 0.1                        | Multiplier to scale acoustic costs                  |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|self_loop_scale                  | 0.1                        | Multiplier to scale self loop costs                 |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|boost_silence                    | 1.0                        | 1.0 is the value that does not affect probabilities |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "beam", 10, "Initial beam width to use for alignment"
+   "retry_beam", 40, "Beam width to use if initial alignment fails"
+   "transition_scale", 1.0, "Multiplier to scale transition costs"
+   "acoustic_scale", 0.1, "Multiplier to scale acoustic costs"
+   "self_loop_scale", 0.1, "Multiplier to scale self loop costs"
+   "boost_silence", 1.0, "1.0 is the value that does not affect probabilities"
 
 
 Feature Configuration
 =====================
 
+This section is only relevant for training, as the trained model will contain extractors and feature specification for
+what it requires.
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|type                             | mfcc                       | Currently only MFCCs are supported                  |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|use_energy                       | False                      | Use energy in place of first MFCC                   |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|frame_shift                      | 10                         | In milliseconds, determines time resolution         |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "type", "mfcc", "Currently only MFCCs are supported"
+   "use_energy", "False", "Use energy in place of first MFCC"
+   "frame_shift", 10, "In milliseconds, determines time resolution"
 
 
 Training configuration
@@ -62,17 +56,14 @@ Monophone Configuration
 For the Kaldi recipe that monophone training is based on, see
 https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_mono.sh
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|subset                           | 0                          | Number of utterances to use                         |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_iterations                   | 40                         | Number of training iterations                       |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|max_gaussians                    | 1000                       | Total number of gaussians                           |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|power                            | 0.25                       | Exponent for gaussians based on occurrence counts   |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "subset", 0, "Number of utterances to use (0 uses the full corpus)"
+   "num_iterations", 40, "Number of training iterations"
+   "max_gaussians", 40, "Total number of gaussians"
+   "power", 0.25, "Exponent for gaussians based on occurrence counts"
 
 
 Realignment iterations for training are calculated based on splitting the number of iterations into quarters.  The first
@@ -86,21 +77,15 @@ Triphone Configuration
 For the Kaldi recipe that triphone training is based on, see
 https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_deltas.sh
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|subset                           | 0                          | Number of utterances to use                         |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_iterations                   | 40                         | Number of training iterations                       |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|max_gaussians                    | 1000                       | Total number of gaussians                           |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|power                            | 0.25                       | Exponent for gaussians based on occurrence counts   |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_leaves                       | 1000                       | Number of states in the decision tree               |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|cluster_threshold                | -1                         | Threshold for clustering leaves in decision tree    |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "subset", 0, "Number of utterances to use (0 uses the full corpus)"
+   "num_iterations", 40, "Number of training iterations"
+   "max_gaussians", 40, "Total number of gaussians"
+   "power", 0.25, "Exponent for gaussians based on occurrence counts"
+   "num_leaves", 1000, "Number of states in the decision tree"
+   "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
 
 
 LDA Configuration
@@ -109,25 +94,17 @@ LDA Configuration
 For the Kaldi recipe that LDA training is based on, see
 https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_lda_mllt.sh
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|subset                           | 0                          | Number of utterances to use                         |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_iterations                   | 40                         | Number of training iterations                       |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|max_gaussians                    | 1000                       | Total number of gaussians                           |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|power                            | 0.25                       | Exponent for gaussians based on occurrence counts   |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_leaves                       | 1000                       | Number of states in the decision tree               |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|cluster_threshold                | -1                         | Threshold for clustering leaves in decision tree    |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|lda_dimension                    | 40                         | Dimension of resulting LDA features                 |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|random_prune                     | 4.0                        | Ratio of random pruning to speed up MLLT            |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "subset", 0, "Number of utterances to use (0 uses the full corpus)"
+   "num_iterations", 40, "Number of training iterations"
+   "max_gaussians", 40, "Total number of gaussians"
+   "power", 0.25, "Exponent for gaussians based on occurrence counts"
+   "num_leaves", 1000, "Number of states in the decision tree"
+   "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
+   "lda_dimension", 40, "Dimension of resulting LDA features"
+   "random_prune", 4.0, "Ratio of random pruning to speed up MLLT"
 
 
 LDA estimation will be performed every other iteration for the first quarter of iterations, and then one final LDA estimation
@@ -139,25 +116,18 @@ Speaker-adapted training (SAT) configuration
 For the Kaldi recipe that SAT training is based on, see
 https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_sat.sh
 
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|Parameter                        | Default value              |       Notes                                         |
-+=================================+============================+=====================================================+
-|subset                           | 0                          | Number of utterances to use                         |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_iterations                   | 40                         | Number of training iterations                       |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|max_gaussians                    | 1000                       | Total number of gaussians                           |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|power                            | 0.25                       | Exponent for gaussians based on occurrence counts   |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|num_leaves                       | 1000                       | Number of states in the decision tree               |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|cluster_threshold                | -1                         | Threshold for clustering leaves in decision tree    |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|silence_weight                   | 0.0                        |  Weight on silence in fMLLR estimation              |
-+---------------------------------+----------------------------+-----------------------------------------------------+
-|fmllr_update_type                | "full"                     |  Type of fMLLR estimation                           |
-+---------------------------------+----------------------------+-----------------------------------------------------+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "subset", 0, "Number of utterances to use (0 uses the full corpus)"
+   "num_iterations", 40, "Number of training iterations"
+   "max_gaussians", 1000, "Total number of gaussians"
+   "power", 0.25, "Exponent for gaussians based on occurrence counts"
+   "num_leaves", 1000, "Number of states in the decision tree"
+   "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
+   "silence_weight", 0.0, "Weight on silence in fMLLR estimation"
+   "fmllr_update_type", "full", "Type of fMLLR estimation"
+
 
 fMLLR estimation will be performed every other iteration for the first quarter of iterations, and then one final fMLLR estimation
 will be performed halfway through the training iterations.
@@ -212,7 +182,6 @@ Default config file
              lda: true
 
      - sat:
-         calc_pron_probs: true
          num_leaves: 4200
          max_gaussians: 40000
          fmllr_power: 0.2

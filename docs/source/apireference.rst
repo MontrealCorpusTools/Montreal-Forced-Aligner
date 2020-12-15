@@ -23,7 +23,7 @@ one for training a model while aligning. A class diagram of the Aligner API can 
          :width: 300 px
          :align: center
 
-.. currentmodule:: aligner.aligner
+.. currentmodule:: montreal_forced_aligner.aligner
 
 .. autosummary::
    :toctree: generated/
@@ -46,13 +46,13 @@ The Corpus class contains information about how a dataset is structured. A class
          :width: 300 px
          :align: center
 
-.. currentmodule:: aligner.corpus
+.. currentmodule:: montreal_forced_aligner.corpus
 
 .. autosummary::
    :toctree: generated/
    :template: class.rst
 
-   Corpus
+   AlignableCorpus
 
 .. _dictionary_api:
 
@@ -67,7 +67,7 @@ The Dictionary class contains pronunciation and orthographic information. A clas
          :width: 300 px
          :align: center
 
-.. currentmodule:: aligner.dictionary
+.. currentmodule:: montreal_forced_aligner.dictionary
 
 .. autosummary::
    :toctree: generated/
@@ -89,7 +89,7 @@ results in a zip folder. A class diagram of the Model API can be found below:
          :width: 500 px
          :align: center
 
-.. currentmodule:: aligner.models
+.. currentmodule:: montreal_forced_aligner.models
 
 .. autosummary::
    :toctree: generated/
@@ -104,7 +104,7 @@ results in a zip folder. A class diagram of the Model API can be found below:
 Feature processing API
 ======================
 
-.. currentmodule:: aligner.features.processing
+.. currentmodule:: montreal_forced_aligner.features.processing
 
 .. autosummary::
    :toctree: generated/
@@ -124,7 +124,7 @@ The multiprocessing module contains most of the interactions with Kaldi,
 as multiple processes are used to speed up the set up and aligning of the
 dataset.
 
-.. currentmodule:: aligner.multiprocessing
+.. currentmodule:: montreal_forced_aligner.multiprocessing
 
 .. autosummary::
    :toctree: generated/
@@ -139,10 +139,10 @@ dataset.
    convert_alignments
    convert_ali_to_textgrids
 
-For use with DNNs
------------------
+For use with ivector extractors
+-------------------------------
 
-.. currentmodule:: aligner.multiprocessing
+.. currentmodule:: montreal_forced_aligner.multiprocessing
 
 .. autosummary::
    :toctree: generated/
@@ -155,14 +155,6 @@ For use with DNNs
    gauss_to_post
    acc_ivector_stats
    extract_ivectors
-   get_egs
-   get_lda_nnet
-   nnet_train_trans
-   nnet_train
-   nnet_align
-   compute_prob
-   get_average_posteriors
-   relabel_egs
 
 Trainer API
 ===========
@@ -176,7 +168,7 @@ training. A class diagram of the Configuration API can be found below:
          :width: 800 px
          :align: center
 
-.. currentmodule:: aligner.trainers
+.. currentmodule:: montreal_forced_aligner.trainers
 
 .. autosummary::
    :toctree: generated/
@@ -187,5 +179,4 @@ training. A class diagram of the Configuration API can be found below:
    LdaTrainer
    SatTrainer
    IvectorExtractorTrainer
-   NnetTrainer
 

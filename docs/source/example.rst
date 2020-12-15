@@ -6,7 +6,8 @@
 
 .. _`THCHS-30`: http://www.openslr.org/18/
 
-.. _`example Mandarin corpus`: http://mlmlab.org/mfa/CH_g2p_example.zip
+.. _`example Mandarin corpus`: https://drive.google.com/file/d/1zPfwvTE_x7o9iX8J8bzeb0KNHEi3jrgN
+.. _`example Mandarin dictionary`: https://drive.google.com/file/d/1xCv8-NcAecaUCocNhVRdtSOazE3fjFXf
 
 .. _`Mandarin pinyin G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/mandarin_pinyin_g2p.zip
 
@@ -24,8 +25,10 @@ Example 1: Aligning LibriSpeech (English)
 Set up
 ------
 
-1. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
-2. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer
+1. Ensure you have installed MFA via :ref:`installation`.
+2. Ensure you have downloaded the pretrained model via :code:`mfa download acoustic english`
+3. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
+4. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer
 
 
 Alignment
@@ -34,41 +37,50 @@ Alignment
 Aligning using pre-trained models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-From the root directory of the Montreal Forced Aligner, enter the following command into the terminal:
+In the same environment that you've installed MFA, enter the following command into the terminal:
+
 
 .. code-block:: bash
 
-   bin/mfa_align /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt english ~/Documents/aligned_librispeech
+   mfa align /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt english ~/Documents/aligned_librispeech
 
 Aligning through training
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-From the root directory of the Montreal Forced Aligner, enter the following command into the terminal:
+In the same environment that you've installed MFA, enter the following command into the terminal:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align  /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt ~/Documents/aligned_librispeech
+   mfa train  /path/to/librispeech/dataset /path/to/librispeech/lexicon.txt ~/Documents/aligned_librispeech
 
 .. _dict_generating_example:
 
 Example 2: Generate Mandarin dictionary
 =======================================
 
-Download the `example Mandarin corpus`_ and the `Mandarin pinyin G2P model`_ to some place on your machine. In ``examples/CH`` you will find several sample .lab files (orthographic transcriptions)
-from the `THCHS-30`_ corpus. These are organized much as they would be for any alignment task. The dictionary reconstructor will
-create a word list of all the orthographic word-forms in the files, and will build a pronunciation dictionary with a
-phonetic transcription for each one of these words, which it will write to a file. Let's start by running the reconstructor, as before:
+Set up
+------
+
+1. Ensure you have installed MFA via :ref:`installation`.
+2. Ensure you have downloaded the pretrained model via :code:`mfa download g2p mandarin_pinyin_g2p`
+3. Download the prepared Mandarin dataset from (`example Mandarin corpus`_) and extract it somewhere on your computer
+
+.. note::
+
+   The example Mandarin corpus is .lab files from the `THCHS-30`_ corpus.
+
+To generate a new dictionary for this "corpus" from the pretrained G2P model, run the following:
 
 .. code-block:: bash
 
-   bin/mfa_generate_dictionary /path/to/mandarin_pinyin_g2p.zip /path/to/examples/CH /path/to/examples/CH chinese_dict.txt
+   mfa g2p mandarin_pinyin_g2p /path/to/mandarin/dataset /path/to/save/mandarin_dict.txt
 
 This should take no more than a few seconds. Open the output file, and check that all the words are there. The accuracy
 of the transcription should be near 100%. You can now use this to align your mini corpus:
 
 .. code-block:: bash
 
-   bin/mfa_train_and_align path/to/examples/CH  path/to/examples/chinese_dict.txt examples/aligned_output
+   mfa train /path/to/mandarin/dataset /path/to/save/mandarin_dict.txt /path/to/save/output
 
 Since there are very few files (i.e. small training set), the alignment will be suboptimal. This example is intended more
 to give a sense of the pipeline for generating a dictionary and using it for alignment.
@@ -79,16 +91,21 @@ to give a sense of the pipeline for generating a dictionary and using it for ali
 Example 3: Train Mandarin G2P model
 ===================================
 
-Download the `example Mandarin corpus`_ to some place on your machine.
-In the ``examples`` folder, you will find a small Chinese dictionary (``chinese_dict.txt``). It is too small to generate a usable model, but can provide a helpful example. Inputting
+Set up
+------
+
+1. Ensure you have installed MFA via :ref:`installation`.
+2. Download the prepared Mandarin dictionary from (`example Mandarin dictionary`_)
+
+In the same environment that you've installed MFA, enter the following command into the terminal:
 
 .. code-block:: bash
 
-    bin/mfa_train_g2p /path/to/examples/chinese_dict.txt CH_test_model.zip
+    mfa train_g2p /path/to/mandarin_dict.txt mandarin_test_model.zip
 
-This should take no more than a few seconds, and should produce a model which could be used for :doc:`generating dictionaries <dictionary_generating>`
+This should take no more than a few seconds, and should produce a model which could be used for :ref:`_g2p_dictionary_generating`.
 
 .. note::
 
-   Because there is so little data in chinese_dict.txt, the model produced will not be very accurate, and so any
-   dictionary generated from it will also be inaccurate.
+   Because there is so little data in ``mandarin_dict.txt``, the model produced will not be very accurate, and so any
+   dictionary generated from it will also be inaccurate.  This dictionary is provided for illustrative purposes only.

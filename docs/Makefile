@@ -53,36 +53,36 @@ clean:
 .PHONY: diagrams
 diagrams:
 	# UML class diagram for all of MFA
-	cat ../aligner/corpus.py ../aligner/config.py ../aligner/dictionary.py ../aligner/models.py ../aligner/aligner/base.py ../aligner/aligner/pretrained.py ../aligner/aligner/trainable.py ../aligner/aligner/base.py > ../aligner/generalUML.py
-	sed -i '' '/^def/,/class/{/class/!d;}' ../aligner/generalUML.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/generalUML.py 
-	$(PYREVERSE) -o svg -AS -k ../aligner/generalUML.py
-	mv classes.svg $(BUILDDIR)/generalUML.svg; chmod 777 $(BUILDDIR)/generalUML.svg; rm ../aligner/generalUML.py
+	cat ../montreal_forced_aligner/corpus.py ../montreal_forced_aligner/config.py ../montreal_forced_aligner/dictionary.py ../montreal_forced_aligner/models.py ../montreal_forced_aligner/aligner/base.py ../montreal_forced_aligner/aligner/pretrained.py ../montreal_forced_aligner/aligner/trainable.py ../montreal_forced_aligner/aligner/base.py > ../montreal_forced_aligner/generalUML.py
+	sed -i '' '/^def/,/class/{/class/!d;}' ../montreal_forced_aligner/generalUML.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/generalUML.py
+	$(PYREVERSE) -o svg -AS -k ../montreal_forced_aligner/generalUML.py
+	mv classes.svg $(BUILDDIR)/generalUML.svg; chmod 777 $(BUILDDIR)/generalUML.svg; rm ../montreal_forced_aligner/generalUML.py
 	mv $(BUILDDIR)/generalUML.svg $(BUILDDIR)/html/_images 
 
 	# UML class diagram for aligner API
-	cat ../aligner/aligner/pretrained.py ../aligner/aligner/trainable.py ../aligner/aligner/base.py > ../aligner/all_aligner.py
+	cat ../montreal_forced_aligner/aligner/pretrained.py ../montreal_forced_aligner/aligner/trainable.py ../montreal_forced_aligner/aligner/base.py > ../aligner/all_aligner.py
 	sed -i '' '/^def/,/class/{/class/!d;}' ../aligner/all_aligner.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/all_aligner.py
-	$(PYREVERSE) -o svg -AS ../aligner/all_aligner.py
-	mv classes.svg $(BUILDDIR)/alignerUML.svg; chmod 777 $(BUILDDIR)/alignerUML.svg; rm ../aligner/all_aligner.py
+	$(PYREVERSE) -o svg -AS ../montreal_forced_aligner/all_aligner.py
+	mv classes.svg $(BUILDDIR)/alignerUML.svg; chmod 777 $(BUILDDIR)/alignerUML.svg; rm ../montreal_forced_aligner/all_aligner.py
 	mv $(BUILDDIR)/alignerUML.svg $(BUILDDIR)/html/_images
 
 	# UML class diagram for corpus API
-	$(PYREVERSE) -o svg -AS ../aligner/corpus.py
+	$(PYREVERSE) -o svg -AS ../montreal_forced_aligner/corpus.py
 	mv classes.svg $(BUILDDIR)/corpusUML.svg; chmod 777 $(BUILDDIR)/corpusUML.svg
 	mv $(BUILDDIR)/corpusUML.svg $(BUILDDIR)/html/_images
 
 	# UML class diagram for dictionary API
-	$(PYREVERSE) -o svg -AS ../aligner/dictionary.py
+	$(PYREVERSE) -o svg -AS ../montreal_forced_aligner/dictionary.py
 	mv classes.svg $(BUILDDIR)/dictionaryUML.svg; chmod 777 $(BUILDDIR)/dictionaryUML.svg
 	mv $(BUILDDIR)/dictionaryUML.svg $(BUILDDIR)/html/_images
 
 	# UML class diagram for model API
-	$(PYREVERSE) -o svg -AS ../aligner/models.py
+	$(PYREVERSE) -o svg -AS ../montreal_forced_aligner/models.py
 	mv classes.svg $(BUILDDIR)/modelUML.svg; chmod 777 $(BUILDDIR)/modelUML.svg
 	mv $(BUILDDIR)/modelUML.svg $(BUILDDIR)/html/_images
 
 	# UML class diagram for config API
-	$(PYREVERSE) -o svg -AS ../aligner/config.py
+	$(PYREVERSE) -o svg -AS ../montreal_forced_aligner/config.py
 	mv classes.svg $(BUILDDIR)/configUML.svg; chmod 777 $(BUILDDIR)/configUML.svg
 	mv $(BUILDDIR)/configUML.svg $(BUILDDIR)/html/_images
 

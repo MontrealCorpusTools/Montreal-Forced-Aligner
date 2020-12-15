@@ -1,5 +1,6 @@
 beam: 10
 retry_beam: 40
+use_mp: false
 
 features:
   type: "mfcc"
@@ -9,34 +10,34 @@ features:
 
 training:
   - monophone:
-      num_iterations: 10
+      num_iterations: 5
       max_gaussians: 1000
       subset: 100
 
   - triphone:
-      num_iterations: 5
-      num_leaves: 2500
-      max_gaussians: 20000
+      num_iterations: 3
+      num_leaves: 250
+      max_gaussians: 2000
       cluster_threshold: -1
-      subset: 10000
+      subset: 1000
 
   - lda:
-      num_leaves: 5000
-      max_gaussians: 40000
-      subset: 100000
-      num_iterations: 5
+      num_iterations: 2
+      num_leaves: 500
+      max_gaussians: 4000
+      subset: 1000
       features:
           splice_left_context: 3
           splice_right_context: 3
 
   - sat:
-      num_leaves: 5000
-      max_gaussians: 100000
+      num_iterations: 2
+      num_leaves: 500
+      max_gaussians: 5000
       power: 0.2
       silence_weight: 0.0
       fmllr_update_type: "full"
-      subset: 100000
-      num_iterations: 5
+      subset: 1000
       features:
           lda: true
 

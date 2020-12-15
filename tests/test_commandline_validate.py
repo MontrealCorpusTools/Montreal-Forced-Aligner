@@ -1,5 +1,5 @@
 
-from aligner.command_line.validate import run_validate_corpus
+from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
 
 class ValidatorDummyArgs(object):
@@ -9,6 +9,7 @@ class ValidatorDummyArgs(object):
         self.num_jobs = 0
         self.speaker_characters = 0
         self.ignore_acoustics = False
+        self.disable_mp = False
 
 
 def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary,temp_dir):
@@ -18,4 +19,5 @@ def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictio
     args.dictionary_path = large_dataset_dictionary
     args.temp_directory = temp_dir
     args.test_transcriptions = True
+    args.disable_mp = True
     run_validate_corpus(args)

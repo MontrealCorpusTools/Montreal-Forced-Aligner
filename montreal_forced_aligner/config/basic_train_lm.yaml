@@ -1,0 +1,17 @@
+seed: 1234
+order: 4
+num_dev_utterances: 500
+num_words: 0
+
+train:
+  warm_start_ratio: 20
+  limit_unk_history: true
+  min_counts: 2
+
+prune_large:
+  size: 10000000
+  initial_threshold: 0.02
+
+prune_small:
+  size: 2000000
+
