@@ -27,6 +27,7 @@ MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',
                 'librosa', 'librosa.core.spectrum', 'matplotlib',
+                'soundfile',
                 'pyqt5', 'pyqtgraph', 'requests', 'requests.exceptions']
 
 for mod_name in MOCK_MODULES:
