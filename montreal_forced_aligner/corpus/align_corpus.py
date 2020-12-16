@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from textgrid import TextGrid, IntervalTier
 
 from ..dictionary import sanitize
@@ -13,80 +13,28 @@ from ..exceptions import SampleRateError, CorpusError
 from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth
 
 
-def find_lab(filename, files):
+def find_ext(files, ext):
     """
-    Finds a .lab file or .txt file that corresponds to a wav file.  The .lab extension is given priority.
+    Finds all files with extension `ext` in `files`.
 
     Parameters
     ----------
-    filename : str
-        Name of wav file
     files : list
         List of files to search in
+    ext : str
+        File extension
 
     Returns
     -------
-    str or None
-        If a corresponding .lab or .txt file is found, returns it, otherwise returns None
+    dict
+        A dictionary of pairs (filename, full_filename)
     """
-    name, ext = os.path.splitext(filename)
-    for f in files:
-        fn, fext = os.path.splitext(f)
-        if fn == name and fext.lower() == '.lab':
-            return f
-    for f in files:  # Use .txt if no .lab file available
-        fn, fext = os.path.splitext(f)
-        if fn == name and fext.lower() == '.txt':
-            return f
-    return None
-
-
-def find_wav(filename, files):
-    """
-    Finds a .wav file that corresponds to a transcription file
-
-    Parameters
-    ----------
-    filename : str
-        Name of transcription file
-    files : list
-        List of files to search in
-
-    Returns
-    -------
-    str or None
-        If a corresponding .wav file is found, returns it, otherwise returns None
-    """
-    name, ext = os.path.splitext(filename)
-    for f in files:
-        fn, fext = os.path.splitext(f)
-        if fn == name and fext.lower() == '.wav':
-            return f
-    return None
-
-
-def find_textgrid(filename, files):
-    """
-    Finds a TextGrid file that corresponds to a wav file
-
-    Parameters
-    ----------
-    filename : str
-        Name of wav file
-    files : list
-        List of files to search in
-
-    Returns
-    -------
-    str or None
-        If a corresponding TextGrid is found, returns it, otherwise returns None
-    """
-    name, ext = os.path.splitext(filename)
-    for f in files:
-        fn, fext = os.path.splitext(f)
-        if fn == name and fext.lower() == '.textgrid':
-            return f
-    return None
+    dic = defaultdict(lambda: None)
+    for full_filename in files:
+        filename, fext = os.path.splitext(full_filename)
+        if fext.lower() == ext:
+            dic[filename] = full_filename
+    return dic
 
 
 def parse_transcription(text):
@@ -146,15 +94,18 @@ class AlignableCorpus(BaseCorpus):
         self.tg_count = 0
         self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):
+            wav_files = find_ext(files, '.wav')
+            lab_files = find_ext(files, '.lab')
+            txt_files = find_ext(files, '.txt')
+            textgrid_files = find_ext(files, '.textgrid')
             for f in sorted(files):
                 file_name, ext = os.path.splitext(f)
                 if ext.lower() != '.wav':
                     if ext.lower() in ['.lab', '.textgrid']:
-                        wav_path = find_wav(f, files)
+                        wav_path = wav_files[file_name]
                         if wav_path is None:
                             self.transcriptions_without_wavs.append(os.path.join(root, f))
                     continue
-                lab_name = find_lab(f, files)
                 wav_path = os.path.join(root, f)
                 try:
                     sr = get_sample_rate(wav_path)
@@ -167,6 +118,8 @@ class AlignableCorpus(BaseCorpus):
                 if bit_depth != 16:
                     self.unsupported_bit_depths.append(wav_path)
                     continue
+                # .lab files have higher priority than .txt files
+                lab_name = lab_files[file_name] if file_name in lab_files else txt_files[file_name]
                 if lab_name is not None:
                     utt_name = file_name
                     if utt_name in self.utt_wav_mapping:
@@ -210,7 +163,7 @@ class AlignableCorpus(BaseCorpus):
 
                     self.lab_count += 1
                 else:
-                    tg_name = find_textgrid(f, files)
+                    tg_name = textgrid_files[file_name]
                     if tg_name is None:
                         self.no_transcription_files.append(wav_path)
                         continue
