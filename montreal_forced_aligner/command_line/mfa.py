@@ -12,7 +12,6 @@ from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
 from montreal_forced_aligner.command_line.validate import run_validate_corpus
 from montreal_forced_aligner.command_line.download import run_download
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
-from montreal_forced_aligner.command_line.annotator import run_annotator
 from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
@@ -240,6 +239,7 @@ def main():
     elif args.subcommand == 'train_ivector':
         run_train_ivector_extractor(args)
     elif args.subcommand == 'annotator':
+        from montreal_forced_aligner.command_line.annotator import run_annotator
         run_annotator(args)
     elif args.subcommand == 'thirdparty':
         run_thirdparty(args)
