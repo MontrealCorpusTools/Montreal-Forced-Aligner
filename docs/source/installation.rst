@@ -14,7 +14,8 @@ All platforms
 
 .. warning::
 
-   Windows native install is not currently supported in 2.0.  To use the aligner on Windows, please set up the "Windows Subsystem
+   Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting
+   only Linux and MacOS. To use the aligner properly on Windows, please set up the "Windows Subsystem
    For Linux" and use the Bash console to continue the instructions.
 
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)

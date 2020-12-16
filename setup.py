@@ -23,7 +23,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='2.0.0a0',
+          version='2.0.0a1',
           description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
                       'acoustic models and dictionaries using Kaldi functionality.',
           long_description=readme(),

@@ -1,10 +1,12 @@
+.. _`PR #194`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/194
+
 .. _changelog:
 
 Changelog
 =========
 
-2.0.0a
-------
+2.0.0
+-----
 
 Currently under development with major changes, see :ref:`whats_new_2_0`.
 
@@ -13,6 +15,7 @@ Currently under development with major changes, see :ref:`whats_new_2_0`.
   messages for files that do not meet Kaldi's input requirements
 - Removed multiprocessing from speaker adaptation, as the executables use multiple threads leading to a bottleneck in
   performance.  This change should result in faster speaker adaptation.
+- Optimized corpus parsing algorithm to be O(n log n) instead of O(n^2) (`PR #194`_)
 
 1.1.0
 -----
