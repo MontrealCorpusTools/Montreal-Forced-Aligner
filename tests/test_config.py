@@ -1,6 +1,6 @@
 import os
 import pytest
-from montreal_forced_aligner.config import FeatureConfig, train_yaml_to_config, ConfigError
+from montreal_forced_aligner.config import FeatureConfig, train_yaml_to_config, align_yaml_to_config, ConfigError
 from montreal_forced_aligner.trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer
 
 def test_monophone_config():
@@ -17,6 +17,15 @@ def test_triphone_config():
 def test_lda_mllt_config():
     config = LdaTrainer(FeatureConfig())
     assert config.mllt_iterations == [2, 4, 6, 16]
+
+
+def test_load_align(config_directory, mono_align_config_path):
+    align = align_yaml_to_config(mono_align_config_path)
+
+    path = os.path.join(config_directory, 'bad_align_config.yaml')
+    with pytest.raises(ConfigError):
+        align = align_yaml_to_config(path)
+
 
 
 def test_load_mono_train(config_directory, mono_train_config_path):

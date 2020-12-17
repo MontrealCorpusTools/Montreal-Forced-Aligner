@@ -25,6 +25,8 @@ or longer stretches of audio).
    "boost_silence", 1.0, "1.0 is the value that does not affect probabilities"
 
 
+.. _feature_config:
+
 Feature Configuration
 =====================
 
@@ -38,6 +40,7 @@ what it requires.
    "use_energy", "False", "Use energy in place of first MFCC"
    "frame_shift", 10, "In milliseconds, determines time resolution"
 
+.. _training_config:
 
 Training configuration
 ======================
@@ -133,8 +136,10 @@ fMLLR estimation will be performed every other iteration for the first quarter o
 will be performed halfway through the training iterations.
 
 
-Default config file
-===================
+.. _default_training_config:
+
+Default training config file
+----------------------------
 
 .. code-block:: yaml
 
@@ -191,3 +196,14 @@ Default config file
          features:
              lda: true
              fmllr: true
+
+
+.. _align_config:
+
+Align configuration
+===================
+
+.. code-block:: yaml
+
+   beam: 10
+   retry_beam: 40

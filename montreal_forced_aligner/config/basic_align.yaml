@@ -1,8 +1,4 @@
 beam: 10
 retry_beam: 40
 
-features:
-  type: "mfcc"
-  frame_shift: 10
-
 

@@ -8,7 +8,7 @@ import pytest
 
 from montreal_forced_aligner.corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
-from montreal_forced_aligner.config import train_yaml_to_config
+from montreal_forced_aligner.config import train_yaml_to_config, align_yaml_to_config
 
 
 @pytest.fixture(scope='session')
@@ -62,6 +62,16 @@ def english_acoustic_model():
 @pytest.fixture(scope='session')
 def corpus_root_dir(generated_dir):
     return os.path.join(generated_dir, 'corpus')
+
+
+@pytest.fixture(scope='session')
+def output_model_dir(generated_dir):
+    return os.path.join(generated_dir, 'output_models')
+
+
+@pytest.fixture(scope='session')
+def mono_align_model_path(output_model_dir):
+    return os.path.join(output_model_dir, 'mono_model.zip')
 
 
 @pytest.fixture(scope='session')
@@ -325,6 +335,11 @@ def textgrid_output_directory(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def mono_output_directory(generated_dir):
+    return os.path.join(generated_dir, 'mono_output')
+
+
+@pytest.fixture(scope='session')
 def single_speaker_prosodylab_format_directory(large_prosodylab_format_directory):
     return os.path.join(large_prosodylab_format_directory, '121')
 
@@ -415,6 +430,16 @@ def mono_train_config(mono_train_config_path):
 
 
 @pytest.fixture(scope='session')
+def mono_align_config_path(config_directory):
+    return os.path.join(config_directory, 'mono_align.yaml')
+
+
+@pytest.fixture(scope='session')
+def mono_align_config(mono_align_config_path):
+    return align_yaml_to_config(mono_align_config_path)
+
+
+@pytest.fixture(scope='session')
 def tri_train_config(config_directory):
     return train_yaml_to_config(os.path.join(config_directory, 'tri_train.yaml'))
 
@@ -437,13 +462,3 @@ def lda_sat_train_config(config_directory):
 @pytest.fixture(scope='session')
 def ivector_train_config(config_directory):
     return train_yaml_to_config(os.path.join(config_directory, 'ivector_train.yaml'))
-
-
-@pytest.fixture(scope='session')
-def nnet_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, 'nnet_train.yaml'))
-
-
-@pytest.fixture(scope='session')
-def nnet_ivectors_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, 'nnet_ivectors_train.yaml'))

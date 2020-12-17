@@ -130,6 +130,8 @@ def train_yaml_to_config(path):
         if training_config.uses_lda:
             align_config.feature_config.set_features_to_use_lda()
         align_config.feature_config.fmllr = training_config.uses_sat
+        if align_config.beam >= align_config.retry_beam:
+            raise ConfigError('Retry beam must be greater than beam.')
         return training_config, align_config
 
 
@@ -145,6 +147,8 @@ def align_yaml_to_config(path):
                 global_params[k] = v
         align_config = AlignConfig(feature_config)
         align_config.update(global_params)
+        if align_config.beam >= align_config.retry_beam:
+            raise ConfigError('Retry beam must be greater than beam.')
         return align_config
 
 
