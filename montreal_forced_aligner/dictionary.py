@@ -132,7 +132,7 @@ class Dictionary(object):
                 if not line:
                     continue
                 line = line.split()
-                word = line.pop(0).lower()
+                word = sanitize(line.pop(0).lower())
                 if not line:
                     raise DictionaryError('Line {} of {} does not have a pronunciation.'.format(i, input_path))
                 if word in ['!sil', oov_code]:
