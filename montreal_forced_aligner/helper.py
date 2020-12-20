@@ -2,12 +2,15 @@ import os
 import shutil
 import numpy
 from typing import Any, List
-
+from .exceptions import ThirdpartyError
 Labels = List[Any]
 
 
 def thirdparty_binary(binary_name):
-    return shutil.which(binary_name)
+    bin_path = shutil.which(binary_name)
+    if bin_path is None:
+        raise ThirdpartyError("Could not find '{}'.  Please ensure that you have downloaded the correct binaries.".format(binary_name))
+    return
 
 
 def make_path_safe(path):

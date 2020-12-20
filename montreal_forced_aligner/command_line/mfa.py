@@ -222,6 +222,20 @@ def main():
     args = parser.parse_args()
 
     fix_path()
+    if args.subcommand in ['align', 'train', 'train_ivector', 'transcribe']:
+        from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
+        if not validate_kaldi_binaries():
+            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                  "on why this check failed.")
+            sys.exit(1)
+    elif args.subcommand in ['g2p', 'train_g2p']:
+        try:
+            import pynini
+        except ImportError:
+            print("There was an issue importing Pynini, please ensure that it is installed. If you are on Windows, "
+                  "please use the Windows Subsystem for Linux to use g2p functionality.")
+            sys.exit(1)
     if args.subcommand == 'align':
         run_align_corpus(args, acoustic_languages)
     elif args.subcommand == 'train':
