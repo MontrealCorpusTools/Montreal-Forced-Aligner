@@ -15,6 +15,7 @@ from montreal_forced_aligner.command_line.train_lm import run_train_lm
 from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
+from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 
 
 def fix_path():
@@ -153,6 +154,8 @@ train_lm_parser = subparsers.add_parser('train_lm')
 train_lm_parser.add_argument('corpus_directory', help='Full path to the source directory to train from')
 train_lm_parser.add_argument('output_model_path', type=str,
                              help='Full path to save resulting language model')
+train_lm_parser.add_argument('-m', '--model_path', type=str,
+                             help='Full path to existing language model to merge probabilities')
 train_lm_parser.add_argument('-d', '--dictionary_path', help='Full path to the pronunciation dictionary to use',
                              default='')
 train_lm_parser.add_argument('-t', '--temp_directory', type=str, default='',
@@ -161,6 +164,28 @@ train_lm_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                              help='Number of cores to use while aligning')
 train_lm_parser.add_argument('--config_path', type=str, default='',
                              help='Path to config file to use for training and alignment')
+
+train_dictionary_parser = subparsers.add_parser('train_dictionary')
+train_dictionary_parser.add_argument('corpus_directory', help='Full path to the directory to align')
+train_dictionary_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
+train_dictionary_parser.add_argument('acoustic_model_path',
+                                     help='Full path to the archive containing pre-trained model or language ({})'.format(
+                                         ', '.join(acoustic_languages)))
+train_dictionary_parser.add_argument('output_directory',
+                                     help="Full path to output directory, will be created if it doesn't exist")
+train_dictionary_parser.add_argument('--config_path', type=str, default='',
+                                     help='Path to config file to use for alignment')
+train_dictionary_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
+                                     help='Number of characters of file names to use for determining speaker, '
+                                          'default is to use directory names')
+train_dictionary_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                                     help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+train_dictionary_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                                     help='Number of cores to use while aligning')
+train_dictionary_parser.add_argument('-v', '--verbose', help="Print more information during alignment",
+                                     action='store_true')
+train_dictionary_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+train_dictionary_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
 
 train_ivector_parser = subparsers.add_parser('train_ivector')
 train_ivector_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
@@ -186,23 +211,25 @@ transcribe_parser = subparsers.add_parser('transcribe')
 transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')
 transcribe_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
 transcribe_parser.add_argument('acoustic_model_path',
-                          help='Full path to the archive containing pre-trained model or language ({})'.format(
-                              ', '.join(acoustic_languages)))
+                               help='Full path to the archive containing pre-trained model or language ({})'.format(
+                                   ', '.join(acoustic_languages)))
 transcribe_parser.add_argument('language_model_path',
-                          help='Full path to the archive containing pre-trained model or language ({})'.format(
-                              ', '.join(lm_languages)))
+                               help='Full path to the archive containing pre-trained model or language ({})'.format(
+                                   ', '.join(lm_languages)))
 transcribe_parser.add_argument('output_directory',
-                          help="Full path to output directory, will be created if it doesn't exist")
+                               help="Full path to output directory, will be created if it doesn't exist")
 transcribe_parser.add_argument('--config_path', type=str, default='',
-                          help='Path to config file to use for transcription')
+                               help='Path to config file to use for transcription')
 transcribe_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
-                          help='Number of characters of file names to use for determining speaker, '
-                               'default is to use directory names')
+                               help='Number of characters of file names to use for determining speaker, '
+                                    'default is to use directory names')
 transcribe_parser.add_argument('-t', '--temp_directory', type=str, default='',
-                          help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+                               help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
 transcribe_parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                          help='Number of cores to use while aligning')
+                               help='Number of cores to use while aligning')
 transcribe_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
+transcribe_parser.add_argument('-e', '--evaluate', help="Evaluate the transcription "
+                                                        "against golden texts", action='store_true')
 transcribe_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 transcribe_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
 
@@ -250,6 +277,8 @@ def main():
         run_download(args)
     elif args.subcommand == 'train_lm':
         run_train_lm(args)
+    elif args.subcommand == 'train_dictionary':
+        run_train_dictionary(args)
     elif args.subcommand == 'train_ivector':
         run_train_ivector_extractor(args)
     elif args.subcommand == 'annotator':

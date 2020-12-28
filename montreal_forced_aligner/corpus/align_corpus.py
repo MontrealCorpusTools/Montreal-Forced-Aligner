@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 import random
-from collections import Counter, defaultdict
+from collections import Counter
 from textgrid import TextGrid, IntervalTier
 
 from ..dictionary import sanitize
@@ -10,31 +10,7 @@ from ..helper import load_text, output_mapping, save_groups, filter_scp
 
 from ..exceptions import SampleRateError, CorpusError
 
-from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth
-
-
-def find_ext(files, ext):
-    """
-    Finds all files with extension `ext` in `files`.
-
-    Parameters
-    ----------
-    files : list
-        List of files to search in
-    ext : str
-        File extension
-
-    Returns
-    -------
-    dict
-        A dictionary of pairs (filename, full_filename)
-    """
-    dic = defaultdict(lambda: None)
-    for full_filename in files:
-        filename, fext = os.path.splitext(full_filename)
-        if fext.lower() == ext:
-            dic[filename] = full_filename
-    return dic
+from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth, find_ext
 
 
 def parse_transcription(text):
@@ -88,9 +64,7 @@ class AlignableCorpus(BaseCorpus):
         self.utterance_oovs = {}
         self.no_transcription_files = []
         self.decode_error_files = []
-        self.textgrid_read_errors = {}
         self.transcriptions_without_wavs = []
-        self.speaker_ordering = {}
         self.tg_count = 0
         self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):

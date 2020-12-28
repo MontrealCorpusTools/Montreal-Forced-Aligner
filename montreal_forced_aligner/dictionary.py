@@ -60,6 +60,42 @@ def sanitize_clitics(item):
     return sanitized
 
 
+def check_format(path):
+    count = 0
+    pronunciation_probabilities = True
+    silence_probabilities = True
+    with open(path, 'r', encoding='utf8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            line = line.split()
+            word = line.pop(0)
+            next = line.pop(0)
+            if pronunciation_probabilities:
+                try:
+                    prob = float(next)
+                    if prob > 1 or prob < 0:
+                        raise ValueError
+                except ValueError:
+                    pronunciation_probabilities = False
+            try:
+                next = line.pop(0)
+            except IndexError:
+                silence_probabilities = False
+            if silence_probabilities:
+                try:
+                    prob = float(next)
+                    if prob > 1 or prob < 0:
+                        raise ValueError
+                except ValueError:
+                    silence_probabilities = False
+            count += 1
+            if count > 10:
+                break
+    return pronunciation_probabilities, silence_probabilities
+
+
 class Dictionary(object):
     """
     Class containing information about a pronunciation dictionary
@@ -120,12 +156,26 @@ class Dictionary(object):
         self.optional_silence = 'sp'
         self.nonoptional_silence = 'sil'
         self.graphemes = set()
+        self.all_words = defaultdict(list)
         if word_set is not None:
             word_set = {sanitize(x) for x in word_set}
+            word_set.add('!sil')
+            word_set.add(self.oov_code)
+        self.word_set = word_set
         self.clitic_set = set()
-        self.words['!sil'].append((('sp',), 1))
-        self.words[self.oov_code].append((('spn',), 1))
-        self.pronunciation_probabilities = True
+        self.words['!sil'].append({'pronunciation': ('sp',), 'probability': 1})
+        self.words[self.oov_code].append({'pronunciation': ('spn',), 'probability': 1})
+        self.pronunciation_probabilities, self.silence_probabilities = check_format(input_path)
+        progress = 'Parsing dictionary'
+        if self.pronunciation_probabilities:
+            progress += ' with pronunciation probabilties'
+        else:
+            progress += ' without pronunciation probabilties'
+        if self.silence_probabilities:
+            progress += ' with silence probabilties'
+        else:
+            progress += ' without silence probabilties'
+        print(progress)
         with open(input_path, 'r', encoding='utf8') as inf:
             for i, line in enumerate(inf):
                 line = line.strip()
@@ -137,21 +187,31 @@ class Dictionary(object):
                     raise DictionaryError('Line {} of {} does not have a pronunciation.'.format(i, input_path))
                 if word in ['!sil', oov_code]:
                     continue
-                if word_set is not None and sanitize(word) not in word_set:
-                    continue
                 self.graphemes.update(word)
+                prob = None
                 if self.pronunciation_probabilities:
-                    try:
-                        prob = float(line[0])
-                    except ValueError:
-                        prob = None
-                        self.pronunciation_probabilities = False
+                    prob = float(line.pop(0))
+                    if prob > 1 or prob < 0:
+                        raise ValueError
+                if self.silence_probabilities:
+                    right_sil_prob = float(line.pop(0))
+                    left_sil_prob = float(line.pop(0))
+                    left_nonsil_prob = float(line.pop(0))
+                else:
+                    right_sil_prob = None
+                    left_sil_prob = None
+                    left_nonsil_prob = None
+
                 pron = tuple(line)
+                pronunciation = {"pronunciation": pron, "probability": prob, "disambiguation": None,
+                                 'right_sil_prob': right_sil_prob, 'left_sil_prob':left_sil_prob,
+                                 'left_nonsil_prob': left_nonsil_prob}
                 if not any(x in self.sil_phones for x in pron):
-                    self.nonsil_phones.update(pron)
-                if word in self.words and pron in set(x[0] for x in self.words[word]):
+                    if self.word_set is None or word in self.word_set:
+                        self.nonsil_phones.update(pron)
+                if word in self.words and pron in set(x['pronunciation'] for x in self.words[word]):
                     continue
-                self.words[word].append((pron, prob))
+                self.words[word].append(pronunciation)
                 # test whether a word is a clitic
                 is_clitic = False
                 for cm in self.clitic_markers:
@@ -159,11 +219,6 @@ class Dictionary(object):
                         is_clitic = True
                 if is_clitic:
                     self.clitic_set.add(word)
-        if self.pronunciation_probabilities:
-            for word, (pron, prob) in self.words.items():
-                prob = float(pron[0])
-                pron = tuple(pron[1:])
-                self.words[word] = (pron, prob)
         if not self.graphemes:
             raise DictionaryFileError('No words were found in the dictionary path {}'.format(input_path))
         self.word_pattern = compile_graphemes(self.graphemes)
@@ -212,6 +267,8 @@ class Dictionary(object):
         i = 0
         self.words_mapping['<eps>'] = i
         for w in sorted(self.words.keys()):
+            if self.word_set is not None and w not in self.word_set:
+                continue
             i += 1
             self.words_mapping[w] = i
 
@@ -227,24 +284,26 @@ class Dictionary(object):
         pronunciation_counts = defaultdict(int)
 
         for w, prons in self.words.items():
+            if self.word_set is not None and w not in self.word_set:
+                continue
             for p in prons:
-                pronunciation_counts[p[0]] += 1
-                pron = [x for x in p[0]][:-1]
+                pronunciation_counts[p['pronunciation']] += 1
+                pron = [x for x in p['pronunciation']][:-1]
                 while pron:
                     subsequences.add(tuple(p))
                     pron = pron[:-1]
         last_used = defaultdict(int)
         for w, prons in sorted(self.words.items()):
-            new_prons = []
+            if self.word_set is not None and w not in self.word_set:
+                continue
             for p in prons:
-                if pronunciation_counts[p[0]] == 1 and not p[0] in subsequences:
+                if pronunciation_counts[p['pronunciation']] == 1 and not p['pronunciation'] in subsequences:
                     disambig = None
                 else:
-                    pron = p[0]
+                    pron = p['pronunciation']
                     last_used[pron] += 1
                     disambig = last_used[pron]
-                new_prons.append((p[0], p[1], disambig))
-            self.words[w] = new_prons
+                p['disambiguation'] = disambig
         if last_used:
             self.max_disambig = max(last_used.values())
         else:
@@ -465,6 +524,14 @@ class Dictionary(object):
         """
         return self.sil_phones | self.nonsil_phones
 
+    @property
+    def words_symbol_path(self):
+        return os.path.join(self.output_directory, 'words.txt')
+
+    @property
+    def disambig_path(self):
+        return os.path.join(self.output_directory, 'L_disambig.fst')
+
     def write(self, disambig=False):
         """
         Write the files necessary for Kaldi
@@ -501,12 +568,12 @@ class Dictionary(object):
     def export_lexicon(self, path, disambig=False, probability=False):
         with open(path, 'w', encoding='utf8') as f:
             for w in sorted(self.words.keys()):
-                for p in sorted(self.words[w]):
-                    phones = ' '.join(p[0])
-                    if disambig and p[2] is not None:
+                for p in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'],x['disambiguation'])):
+                    phones = ' '.join(p['pronunciation'])
+                    if disambig and p['disambiguation'] is not None:
                         phones += ' #{}'.format(p[2])
                     if probability:
-                        f.write('{}\t{}\t{}\n'.format(w, p[1], phones))
+                        f.write('{}\t{}\t{}\n'.format(w, p['probability'], phones))
                     else:
                         f.write('{}\t{}\n'.format(w, phones))
 
@@ -705,25 +772,30 @@ class Dictionary(object):
 
         log_path = os.path.join(self.output_directory, 'fst.log')
         temp_fst_path = os.path.join(self.output_directory, 'temp.fst')
-        subprocess.call([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
-                         '--osymbols={}'.format(words_file_path),
-                         '--keep_isymbols=false', '--keep_osymbols=false',
-                         lexicon_fst_path, temp_fst_path])
-        if disambig:
-            temp2_fst_path = os.path.join(self.output_directory, 'temp2.fst')
-            phone_disambig_path = os.path.join(self.output_directory, 'phone_disambig.txt')
-            word_disambig_path = os.path.join(self.output_directory, 'word_disambig.txt')
-            with open(phone_disambig_path, 'w') as f:
-                f.write(str(self.phone_mapping['#0']))
-            with open(word_disambig_path, 'w') as f:
-                f.write(str(self.words_mapping['#0']))
-            subprocess.call([thirdparty_binary('fstaddselfloops'), phone_disambig_path, word_disambig_path,
-                             temp_fst_path, temp2_fst_path])
-            subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
-                         temp2_fst_path, output_fst])
-        else:
-            subprocess.call([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
-                         temp_fst_path, output_fst])
+        with open(log_path, 'w') as log_file:
+            compile_proc = subprocess.Popen([thirdparty_binary('fstcompile'), '--isymbols={}'.format(phones_file_path),
+                             '--osymbols={}'.format(words_file_path),
+                             '--keep_isymbols=false', '--keep_osymbols=false',
+                             lexicon_fst_path, temp_fst_path], stderr=log_file)
+            compile_proc.communicate()
+            if disambig:
+                temp2_fst_path = os.path.join(self.output_directory, 'temp2.fst')
+                phone_disambig_path = os.path.join(self.output_directory, 'phone_disambig.txt')
+                word_disambig_path = os.path.join(self.output_directory, 'word_disambig.txt')
+                with open(phone_disambig_path, 'w') as f:
+                    f.write(str(self.phone_mapping['#0']))
+                with open(word_disambig_path, 'w') as f:
+                    f.write(str(self.words_mapping['#0']))
+                selfloop_proc = subprocess.Popen([thirdparty_binary('fstaddselfloops'),
+                                                  phone_disambig_path, word_disambig_path,
+                                 temp_fst_path, temp2_fst_path], stderr=log_file)
+                selfloop_proc.communicate()
+                arc_sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
+                             temp2_fst_path, output_fst], stderr=log_file)
+            else:
+                arc_sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
+                             temp_fst_path, output_fst], stderr=log_file)
+            arc_sort_proc.communicate()
         if self.debug:
             dot_path = os.path.join(self.output_directory, 'L.dot')
             with open(log_path, 'w') as logf:
@@ -772,7 +844,12 @@ class Dictionary(object):
                     outf.write('\t'.join(map(str, [disambigstate, loopstate, sildisambig, '<eps>'])) + '\n') # silence disambiguation symbol.
 
             for w in sorted(self.words.keys()):
-                for phones, prob, disambig_symbol in sorted(self.words[w]):
+                if self.word_set is not None and w not in self.word_set:
+                    continue
+                for pron in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
+                    phones = pron['pronunciation']
+                    prob = pron['probability']
+                    disambig_symbol = pron['disambiguation']
                     phones = [x for x in phones]
                     if self.position_dependent_phones:
                         if len(phones) == 1:

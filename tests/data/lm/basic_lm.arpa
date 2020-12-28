@@ -1,0 +1,414 @@
+
+\data\
+ngram 1=84
+ngram 2=148
+ngram 3=169
+
+\1-grams:
+-99	<s>	-0.102305
+-2.170262	</s>
+-1.568202	this	-0.500245
+-1.869232	is	-0.102305
+-1.471292	the	-0.2484331
+-1.869232	acoustic	-0.403335
+-1.869232	corpus	-0.2272438
+-1.693141	i'm	-0.1023051
+-1.869232	talking	-0.1023051
+-2.170262	pretty	-0.102305
+-2.170262	fast	-0.102305
+-1.869232	here	-0.102305
+-1.869232	there's	-0.1023051
+-2.170262	nothing	-0.102305
+-1.869232	going	-0.1023051
+-2.170262	else	-0.102305
+-2.170262	on	-0.102305
+-1.869232	we're	-0.403335
+-1.869232	just	-0.1023051
+-2.170262	yknow	-0.102305
+-1.693141	some	-0.102305
+-2.170262	speech	-0.102305
+-2.170262	errors	-0.102305
+-2.170262	but	-0.102305
+-2.170262	who	-0.102305
+-2.170262	cares	-0.102305
+-1.568202	um	-0.199215
+-2.170262	me	-0.102305
+-2.170262	really	-0.102305
+-2.170262	slow	-0.102305
+-1.392111	and	-0.2272438
+-2.170262	slightly	-0.102305
+-2.170262	lower	-0.102305
+-1.869232	in	-0.1023051
+-2.170262	intensity	-0.102305
+-1.693141	saying	-0.1023051
+-1.471292	words	-0.1814863
+-2.170262	here's	-0.1023051
+-2.170262	more	-0.102305
+-2.170262	word	-0.102305
+-1.568202	that	-0.2272438
+-2.170262	should	-0.102305
+-2.170262	be	-0.102305
+-2.170262	all	-0.102305
+-1.869232	thanks	-0.403335
+-1.325164	uh	-0.2114495
+-1.568202	so	-0.3241538
+-2.170262	sick	-0.102305
+-1.471292	i	-0.2783963
+-2.170262	have	-0.102305
+-1.568202	a	-0.102305
+-2.170262	cold	-0.102305
+-1.568202	probably	-0.102305
+-2.170262	sound	-0.102305
+-1.869232	quite	-0.403335
+-1.693141	different	-0.2272438
+-2.170262	than	-0.102305
+-2.170262	recording	-0.1023051
+-2.170262	environment	-0.102305
+-1.869232	also	-0.102305
+-1.869232	bunch	-0.403335
+-2.170262	of	-0.102305
+-2.170262	did	-0.102305
+-2.170262	not	-0.102305
+-2.170262	say	-0.102305
+-2.170262	original	-0.102305
+-2.170262	one	-0.1023051
+-2.170262	long	-0.102305
+-2.170262	pause	-0.102305
+-2.170262	think	-0.1023051
+-1.869232	good	-0.403335
+-1.869232	alright	-0.102305
+-2.170262	hopefully	-0.102305
+-2.170262	levels	-0.102305
+-2.170262	are	-0.102305
+-2.170262	okay	-0.102305
+-2.170262	sounds	-0.102305
+-2.170262	lot	-0.102305
+-2.170262	[adif]	-0.102305
+-2.170262	gonna	-0.102305
+-2.170262	cough	-0.102305
+-2.170262	<vocnoise>	-0.102305
+-2.170262	yeah	-0.102305
+-2.170262	happened	-0.1023051
+
+\2-grams:
+-1.039465	<s> this	-0.07255066
+-0.9692807	<s> uh	-0.07255067
+-1.09347	<s> alright	-0.07255066
+-0.189602	this is	-0.2943994
+-1.296561	this probably	-0.07255066
+-1.101481	is the	-0.2486419
+-1.238014	is me	-0.07255067
+-1.131803	is probably	-0.07255066
+-1.199651	is also	-0.07255067
+-0.7436042	the acoustic	-0.3735807
+-1.246603	the uh	-0.07255066
+-1.471139	the sick	-0.3735807
+-0.7528794	the recording	-0.07255066
+-1.471139	the original	-0.07255066
+-0.214473	acoustic corpus	-0.07255069
+-1.190567	corpus i'm	-0.07255066
+-1.164404	corpus um	-0.07255067
+-0.4808323	corpus uh	-0.07255064
+-1.199651	i'm talking	-0.07255067
+-1.164404	i'm saying	-0.07255067
+-1.131803	i'm probably	-0.07255066
+-1.199651	i'm also	-0.07255067
+-0.9575152	talking pretty	-0.07255066
+-0.9575152	talking really	-0.07255066
+-0.667127	pretty fast	-0.07255067
+-0.6564853	fast here	-0.07255067
+-0.9369835	here there's	-0.07255067
+-0.9575152	here <vocnoise>	-0.07255066
+-0.9575152	there's nothing	-0.07255067
+-0.9173787	there's some	-0.07255067
+-0.6564853	nothing going	-0.07255067
+-0.9575152	going else	-0.07255067
+-0.9575152	going on	-0.07255067
+-0.6564853	else going	-0.07255067
+-0.6564853	on we're	-0.07255066
+-0.214473	we're just	-0.07255067
+-1.123219	just yknow	-0.07255067
+-1.065629	just saying	-0.07255066
+-1.123219	just happened	-0.07255067
+-0.6564853	yknow there's	-0.07255067
+-1.123219	some speech	-0.07255066
+-1.014788	some words	-0.07255066
+-1.123219	some more	-0.07255066
+-0.667127	speech errors	-0.07255066
+-0.667127	errors but	-0.07255066
+-0.667127	but who	-0.07255066
+-0.667127	who cares	-0.07255067
+-0.6359535	cares um	-0.07255067
+-1.228714	um this	-0.07255066
+-1.198391	um the	-0.07255066
+-1.170047	um and	-0.07255067
+-0.5794997	um i	-0.07255066
+-0.6564853	me talking	-0.07255067
+-0.667127	really slow	-0.07255066
+-0.6163487	slow and	-0.07255066
+-0.7871559	and i'm	-0.07255067
+-1.519439	and slightly	-0.07255066
+-0.8090003	and here's	-0.07255066
+-1.374167	and that	-0.07255066
+-1.265499	and uh	-0.07255067
+-1.334845	and i	-0.07255067
+-0.667127	slightly lower	-0.07255067
+-0.6564853	lower in	-0.07255067
+-0.8806397	in the	-0.07255066
+-0.9575152	in intensity	-0.07255067
+-0.6564853	intensity we're	-0.07255066
+-1.065629	saying some	-0.07255067
+-1.039465	saying a	-0.07255066
+-1.123219	saying [adif]	-0.07255067
+-0.6586809	words um	-0.07255068
+-1.209906	words and	-0.07255067
+-1.242423	words words	-0.07255067
+-1.404192	words word	-0.07255066
+-1.277572	words that	-0.07255067
+-0.9173787	here's some	-0.07255067
+-0.8986208	here's a	-0.07255066
+-0.6260405	more words	-0.07255067
+-0.6260405	word words	-0.07255067
+-1.218409	that just	-0.07255067
+-0.5136076	that should	-0.3735807
+-1.139727	that i	-0.07255066
+-0.667127	should be	-0.07255067
+-0.9575152	be all	-0.07255067
+-0.9369835	be good	-0.07255066
+-0.6564853	all thanks	-0.07255066
+-0.2163768	thanks </s>
+-1.49998	uh acoustic	-0.07255066
+-0.567904	uh and	-0.07255066
+-1.398714	uh that	-0.07255066
+-1.280787	uh uh	-0.07255067
+-1.398714	uh so	-0.07255067
+-1.355747	uh i	-0.07255067
+-1.561111	uh hopefully	-0.07255066
+-0.3421909	so this	-0.2486419
+-1.261314	so that	-0.07255066
+-1.236637	so i	-0.07255067
+-0.6564853	sick corpus	-0.3735807
+-0.6878116	i have	-0.3735807
+-1.307895	i probably	-0.07255066
+-1.414105	i did	-0.07255066
+-0.6878116	i think	-0.07255066
+-0.6359535	have a	-0.3735807
+-1.238014	a cold	-0.3735807
+-1.199651	a bunch	-0.07255066
+-1.238014	a long	-0.07255066
+-1.238014	a lot	-0.07255067
+-0.6359535	cold so	-0.07255066
+-1.238014	probably sound	-0.07255067
+-1.199651	probably good	-0.07255066
+-1.238014	probably sounds	-0.07255067
+-1.238014	probably gonna	-0.07255066
+-0.6564853	sound quite	-0.07255068
+-0.2125776	quite different	-0.07255066
+-1.116377	different and	-0.07255067
+-1.139727	different words	-0.07255068
+-0.5136076	different than	-0.3735807
+-0.6260405	than the	-0.07255066
+-0.9575152	recording environment	-0.07255067
+-0.9575152	recording levels	-0.07255066
+-0.6564853	environment is	-0.07255066
+-0.9173787	also saying	-0.07255067
+-0.9369835	also quite	-0.07255068
+-0.2163768	bunch of	-0.3735807
+-0.6460981	of different	-0.3735807
+-0.667127	did not	-0.07255066
+-0.667127	not say	-0.07255067
+-0.6564853	say in	-0.07255066
+-0.667127	original one	-0.07255067
+-0.6068685	one uh	-0.07255067
+-0.667127	long pause	-0.07255066
+-0.6163487	pause and	-0.07255067
+-0.8986208	think this	-0.07255066
+-0.9173787	think i'm	-0.07255066
+-0.214473	good alright	-0.3735807
+-0.9369835	alright thanks	-0.3735807
+-0.8986208	alright so	-0.07255067
+-0.6260405	hopefully the	-0.07255066
+-0.667127	levels are	-0.07255066
+-0.667127	are okay	-0.07255067
+-0.6359535	okay um	-0.07255066
+-0.6359535	sounds a	-0.07255066
+-0.6460981	lot different	-0.07255066
+-0.6564853	[adif] bunch	-0.07255066
+-0.667127	gonna cough	-0.07255067
+-0.6564853	cough here	-0.07255067
+-0.667127	<vocnoise> yeah	-0.07255067
+-0.6359535	yeah so	-0.07255066
+-0.6068685	happened uh	-0.07255067
+
+\3-grams:
+-0.1544866	<s> this is
+-0.7266929	<s> uh so
+-0.5838433	<s> alright so
+-0.3270165	this is the
+-1.220997	this is me
+-1.165904	this is probably
+-0.6930168	this probably sounds
+-0.8150716	is the acoustic
+-0.3939632	is the sick
+-0.4679228	is me talking
+-0.6834472	is probably good
+-0.5991604	is also quite
+-0.07825259	the acoustic corpus
+-0.7029566	the uh uh
+-0.1737733	the sick corpus
+-0.7689528	the recording environment
+-0.7689528	the recording levels
+-0.4737236	the original one
+-0.9753377	acoustic corpus i'm
+-0.961654	acoustic corpus um
+-0.4802593	acoustic corpus uh
+-0.6834472	corpus i'm talking
+-0.683122	corpus um the
+-0.5526418	corpus uh and
+-1.052657	corpus uh i
+-1.127683	corpus uh hopefully
+-0.6070263	i'm talking pretty
+-0.6361785	i'm saying a
+-0.6930168	i'm probably gonna
+-0.5914343	i'm also saying
+-0.4737236	talking pretty fast
+-0.4737236	talking really slow
+-0.4679228	pretty fast here
+-0.5991604	fast here there's
+-0.6070263	here there's nothing
+-0.4737236	here <vocnoise> yeah
+-0.4679228	there's nothing going
+-0.662422	there's some speech
+-0.6070263	nothing going else
+-0.4679228	going else going
+-0.4679228	going on we're
+-0.6070263	else going on
+-0.1737733	on we're just
+-0.8519024	we're just yknow
+-0.8248622	we're just saying
+-0.4679228	just yknow there's
+-0.6447514	just saying some
+-0.4400271	just happened uh
+-0.5914343	yknow there's some
+-0.4737236	some speech errors
+-0.6860678	some words and
+-0.4509714	some more words
+-0.4737236	speech errors but
+-0.4737236	errors but who
+-0.4737236	but who cares
+-0.4565486	who cares um
+-0.6907549	cares um this
+-0.1544866	um this is
+-0.5180966	um the recording
+-0.7221693	um and that
+-0.6010913	um i have
+-0.6010913	um i think
+-0.6070263	me talking really
+-0.4454648	really slow and
+-0.7460986	slow and slightly
+-0.870078	and i'm saying
+-0.8848732	and i'm also
+-0.4737236	and slightly lower
+-0.7464948	and here's some
+-0.7356867	and here's a
+-0.3838717	and that should
+-0.7266929	and uh that
+-0.4848134	and i think
+-0.4679228	slightly lower in
+-0.6070263	lower in intensity
+-0.738874	in the original
+-0.4679228	in intensity we're
+-0.1737733	intensity we're just
+-0.6277716	saying some words
+-0.6834472	saying a bunch
+-0.4679228	saying [adif] bunch
+-0.8724939	words um and
+-0.5232542	words um i
+-0.5448476	words and here's
+-0.7276742	words words word
+-0.4509714	words word words
+-0.6671918	words that i
+-0.662422	here's some more
+-0.6930168	here's a long
+-0.6940763	more words words
+-0.469125	word words um
+-0.662422	that just happened
+-0.1752394	that should be
+-0.7294244	that i did
+-0.7689528	should be all
+-0.7575786	should be good
+-0.4679228	be all thanks
+-0.1737733	be good alright
+-0.1752394	all thanks </s>
+-0.1737733	uh acoustic corpus
+-0.7225884	uh and i'm
+-0.7384094	uh and here's
+-1.012349	uh and uh
+-0.3838717	uh that should
+-0.74327	uh uh acoustic
+-0.2686797	uh so this
+-0.4848134	uh i have
+-0.4509714	uh hopefully the
+-0.1254228	so this is
+-1.098112	so this probably
+-0.6882056	so that just
+-0.7088747	so i probably
+-0.144633	sick corpus uh
+-0.170856	i have a
+-0.6930168	i probably sound
+-0.4737236	i did not
+-0.7356867	i think this
+-0.7464948	i think i'm
+-0.2208508	have a cold
+-0.170856	a cold so
+-0.1752394	a bunch of
+-0.4737236	a long pause
+-0.4621985	a lot different
+-0.3355989	cold so this
+-0.8996548	cold so i
+-0.4679228	probably sound quite
+-0.1737733	probably good alright
+-0.4565486	probably sounds a
+-0.4737236	probably gonna cough
+-0.1723122	sound quite different
+-0.8487894	quite different and
+-0.4733422	quite different than
+-0.53465	different and i'm
+-0.5806979	different words um
+-0.915142	different words that
+-0.1694047	different than the
+-0.6389804	than the acoustic
+-0.903509	than the uh
+-0.4679228	recording environment is
+-0.4737236	recording levels are
+-0.6834472	environment is also
+-0.662422	also saying [adif]
+-0.1723122	also quite different
+-0.1723122	bunch of different
+-0.2163883	of different words
+-0.4737236	did not say
+-0.4679228	not say in
+-0.5763827	say in the
+-0.4400271	original one uh
+-0.4171492	one uh and
+-0.4454648	long pause and
+-0.7144772	pause and i
+-0.1544866	think this is
+-0.6649185	think i'm probably
+-0.2035385	good alright thanks
+-0.07884029	alright thanks </s>
+-0.2686797	alright so this
+-0.5180966	hopefully the recording
+-0.4737236	levels are okay
+-0.4565486	are okay um
+-0.4240461	okay um i
+-0.6930168	sounds a lot
+-0.3838717	lot different than
+-0.1752394	[adif] bunch of
+-0.4679228	gonna cough here
+-0.6070263	cough here <vocnoise>
+-0.4565486	<vocnoise> yeah so
+-0.6985244	yeah so that
+-0.4171492	happened uh and
+
+\end\

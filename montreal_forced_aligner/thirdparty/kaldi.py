@@ -28,10 +28,18 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'gmm-sum-accs', 'gmm-transform-means', 'ivector-extract', 'ivector-extractor-acc-stats',
                       'ivector-extractor-est', 'ivector-extractor-init', 'ivector-extractor-sum-accs',
                       'lattice-align-words', 'lattice-oracle', 'lattice-to-phone-lattice', 'linear-to-nbest',
-                      'nbest-to-ctm', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
+                      'nbest-to-ctm', 'nbest-to-prons', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
                       'show-transitions',
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'weight-silence-post']
+
+included_filenames += [
+    'fstaddselfloops', 'arpa2fst', 'fsttablecompose', 'fstdeterminizestar', 'fstminimizeencoded',
+    'fstpushspecial', 'fstcomposecontext', 'make-h-transducer', 'fstrmsymbols', 'fstrmepslocal',
+    'add-self-loops', 'lattice-scale', 'lattice-add-penalty', 'lattice-best-path', 'lattice-to-post',
+    'gmm-post-to-gpost', 'gmm-est-fmllr-gpost', 'lattice-determinize-pruned', 'gmm-rescore-lattice',
+    'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel'
+                       ]
 
 # included_filenames += ['farcompilestrings', 'fstarcsort', 'fstcompile', 'fstcopy', 'fstdraw',]
 
@@ -65,14 +73,12 @@ def collect_kaldi_binaries(directory):
     for root, dirs, files in os.walk(directory, followlinks=True):
         cur_dir = os.path.basename(root)
         for name in files:
-            print(name)
             if os.path.islink(os.path.join(root, name)):
                 print('is link!!')
                 continue
             ext = os.path.splitext(name)
             (key, value) = ext
             bin_name = os.path.join(bin_out, name)
-            print(key)
             if value == exe_ext:
                 if key not in included_filenames:
                     continue

@@ -11,9 +11,9 @@ class BaseAligner(object):
 
     Parameters
     ----------
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
         Corpus object for the dataset
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
     align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment

@@ -32,7 +32,7 @@ def train_lm(args):
     else:
         dictionary = None
     trainer = LmTrainer(corpus, train_config, args.output_model_path, dictionary=dictionary,
-                        temp_directory=data_directory, num_jobs=args.num_jobs)
+                        temp_directory=data_directory, num_jobs=args.num_jobs, supplemental_model_path=args.model_path)
     trainer.train()
 
 
@@ -43,6 +43,8 @@ def validate_args(args):
         raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
     if args.config_path and not os.path.exists(args.config_path):
         raise (ArgumentError('Could not find the config file {}.'.format(args.config_path)))
+    if args.model_path and not os.path.exists(args.model_path):
+        raise (ArgumentError('Could not find the model file {}.'.format(args.model_path)))
 
 
 def run_train_lm(args):
@@ -55,7 +57,6 @@ def run_train_lm(args):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    raise NotImplementedError('This function is currently not implemented and is just a stub during alpha of 2.0')
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path
     args = train_lm_parser.parse_args()

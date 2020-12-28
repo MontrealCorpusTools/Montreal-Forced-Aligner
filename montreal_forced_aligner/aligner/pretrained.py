@@ -1,8 +1,9 @@
 import os
 import re
+from collections import Counter
 
 from .base import BaseAligner
-from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs)
+from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs, generate_pronunciations)
 
 
 def parse_transitions(path, phones_path):
@@ -91,3 +92,56 @@ class PretrainedAligner(BaseAligner):
         convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
                                  self.corpus, self.corpus.num_jobs, self)
         self.compile_information(ali_directory, output_directory)
+
+    def generate_pronunciations(self, output_path, calculate_silence_probs=False, min_count=1):
+        pron_counts, utt_mapping = generate_pronunciations(self.align_config, self.align_directory, self.dictionary, self.corpus, self.corpus.num_jobs)
+        if calculate_silence_probs:
+            sil_before_counts = Counter()
+            nonsil_before_counts = Counter()
+            sil_after_counts = Counter()
+            nonsil_after_counts = Counter()
+            sils = ['<s>', '</s>', '<eps>']
+            for u, v in utt_mapping.items():
+                for i, w in enumerate(v):
+                    if w in sils:
+                        continue
+                    prev_w = v[i - 1]
+                    next_w = v[i + 1]
+                    if prev_w in sils:
+                        sil_before_counts[w] += 1
+                    else:
+                        nonsil_before_counts[w] += 1
+                    if next_w in sils:
+                        sil_after_counts[w] += 1
+                    else:
+                        nonsil_after_counts[w] += 1
+
+        self.dictionary.pronunciation_probabilities = True
+        for word, prons in self.dictionary.words.items():
+            if word not in pron_counts:
+                for p in prons:
+                    p['probability'] = 1
+            else:
+                print(word)
+                print(pron_counts[word])
+                total = 0
+                best_pron = 0
+                best_count = 0
+                for p in prons:
+                    p['probability'] = min_count
+                    if p['pronunciation'] in pron_counts[word]:
+                        p['probability'] += pron_counts[word][p['pronunciation']]
+                    total += p['probability']
+                    if p['probability'] > best_count:
+                        best_pron = p['pronunciation']
+                        best_count = p['probability']
+                print(total)
+                print(prons)
+                for p in prons:
+                    if p['pronunciation'] == best_pron:
+                        p['probability'] = 1
+                    else:
+                        p['probability'] /= total
+                self.dictionary.words[word] = prons
+                print(self.dictionary.words[word])
+        self.dictionary.export_lexicon(output_path, probability=True)

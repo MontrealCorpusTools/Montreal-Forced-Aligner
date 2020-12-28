@@ -34,7 +34,7 @@ from ..config import TEMP_DIR
 from ..models import G2PModel
 from ..multiprocessing import Stopped, Counter
 
-from ..helper import edit_distance
+from ..helper import score
 
 from typing import Any, List, Tuple
 
@@ -44,19 +44,6 @@ TOKEN_TYPES = ["byte", "utf8"]
 DEV_NULL = open(os.devnull, "w")
 INF = float("inf")
 RAND_MAX = 32767
-
-
-def score(args: Tuple[Labels, Labels]) -> Tuple[int, int]:
-    gold, hypo = args
-    """Computes sufficient statistics for LER calculation."""
-    edits = edit_distance(gold, hypo)
-    if edits:
-        logging.warning(
-            "Incorrect prediction: \t%r (predicted: %r)",
-            " ".join(gold),
-            " ".join(hypo),
-        )
-    return edits, len(gold)
 
 
 def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
@@ -71,7 +58,7 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
     with mp.Pool(num_jobs) as pool:
         to_comp = []
         for word, hyp in hypothesis_values.items():
-            g = gold_values[word][0][0]
+            g = gold_values[word][0]['pronunciation']
             h = hyp.split(' ')
             to_comp.append((g, h))
         gen = pool.map(score, to_comp)
@@ -85,7 +72,7 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
         for w, gold in gold_values.items():
             if w not in hypothesis_values:
                 incorrect += 1
-                gold = gold[0][0]
+                gold = gold[0]['pronunciation']
                 total_edits += len(gold)
                 total_length += len(gold)
 
@@ -553,9 +540,9 @@ class PyniniTrainer(object):
                 if re.match(r'\W', word) is not None:
                     continue
                 for v2 in v:
-                    f2.write(word + "\t" + " ".join(v2[0]) + "\n")
+                    f2.write(word + "\t" + " ".join(v2['pronunciation']) + "\n")
                 for v2 in v:
-                    phonef.write(" ".join(v2[0]) + "\n")
+                    phonef.write(" ".join(v2['pronunciation']) + "\n")
         subprocess.call(['ngramsymbols', phones_path, self.sym_path])
         os.remove(phones_path)
         aligner = PairNGramAligner(self.temp_directory)

@@ -148,6 +148,7 @@ class AcousticModel(Archive):
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
+
 class G2PModel(Archive):
     def add_meta_file(self, dictionary, architecture):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
@@ -261,5 +262,9 @@ class LanguageModel(Archive):
             self.dirname = os.path.join(root_directory, self.name)
             if not os.path.exists(self.dirname):
                 os.makedirs(self.dirname, exist_ok=True)
-            copy(source, os.path.join(self.dirname, self.name + self.extension))
+            copy(source, self.arpa_path)
+
+    @property
+    def arpa_path(self):
+        return os.path.join(self.dirname, self.name + self.extension)
 

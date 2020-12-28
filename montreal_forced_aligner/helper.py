@@ -1,7 +1,7 @@
 import os
 import shutil
 import numpy
-from typing import Any, List
+from typing import Any, List, Tuple
 from .exceptions import ThirdpartyError
 Labels = List[Any]
 
@@ -10,7 +10,7 @@ def thirdparty_binary(binary_name):
     bin_path = shutil.which(binary_name)
     if bin_path is None:
         raise ThirdpartyError("Could not find '{}'.  Please ensure that you have downloaded the correct binaries.".format(binary_name))
-    return
+    return bin_path
 
 
 def make_path_safe(path):
@@ -136,3 +136,10 @@ def edit_distance(x: Labels, y: Labels) -> int:
                 c3 = table[i - 1][j - 1]
                 table[i][j] = min(c1, c2, c3) + 1
     return int(table[-1][-1])
+
+
+def score(args: Tuple[Labels, Labels]) -> Tuple[int, int]:
+    gold, hypo = args
+    """Computes sufficient statistics for LER calculation."""
+    edits = edit_distance(gold, hypo)
+    return edits, len(gold)

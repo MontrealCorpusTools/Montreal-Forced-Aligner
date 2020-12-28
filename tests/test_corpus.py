@@ -132,8 +132,9 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
     d = Dictionary(sick_dict_path, output_directory)
     assert 'i’m' not in d.words
     assert '’m' not in d.words
-    assert d.words["i'm"] == [(('ay', 'm', 'ih'), None), (('ay', 'm'), None)]
-    assert d.words["'m"] == [(('m',), None)]
+    assert d.words["i'm"][0]['pronunciation'] == ('ay', 'm', 'ih')
+    assert d.words["i'm"][1]['pronunciation'] == ('ay', 'm')
+    assert d.words["'m"][0]['pronunciation'] == ('m',)
     d.write()
     c = AlignableCorpus(weird_words_dir, output_directory)
     c.initialize_corpus(d)

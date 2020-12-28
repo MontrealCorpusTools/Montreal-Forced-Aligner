@@ -48,6 +48,30 @@ def get_wav_duration(file_path):
     return librosa.get_duration(filename=file_path)
 
 
+def find_ext(files, ext):
+    """
+    Finds all files with extension `ext` in `files`.
+
+    Parameters
+    ----------
+    files : list
+        List of files to search in
+    ext : str
+        File extension
+
+    Returns
+    -------
+    dict
+        A dictionary of pairs (filename, full_filename)
+    """
+    dic = defaultdict(lambda: None)
+    for full_filename in files:
+        filename, fext = os.path.splitext(full_filename)
+        if fext.lower() == ext:
+            dic[filename] = full_filename
+    return dic
+
+
 def extract_temp_channels(wav_path, temp_directory):
     """
     Extract a single channel from a stereo file to a new mono wav file
@@ -131,9 +155,10 @@ class BaseCorpus(object):
             raise CorpusError('The directory \'{}\' does not exist.'.format(directory))
         if not os.path.isdir(directory):
             raise CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory))
+
         if num_jobs < 1:
             num_jobs = 1
-
+        self.original_num_jobs = num_jobs
         print('Setting up corpus information...')
         self.logger.info('Setting up corpus information...')
         self.directory = directory
@@ -157,6 +182,8 @@ class BaseCorpus(object):
         self.feat_mapping = {}
         self.cmvn_mapping = {}
         self.file_directory_mapping = {}
+        self.textgrid_read_errors = {}
+        self.speaker_ordering = {}
         self.groups = []
         self.speaker_groups = []
         self.frequency_configs = []

@@ -1,4 +1,5 @@
 import os
+import subprocess
 import random
 from ..models import LanguageModel
 from ..helper import thirdparty_binary
@@ -11,7 +12,8 @@ class LmTrainer(object):
     Train a language model from a corpus with text
     """
 
-    def __init__(self, corpus, config, output_model_path, dictionary=None, temp_directory=None, num_jobs=3):
+    def __init__(self, corpus, config, output_model_path, dictionary=None, temp_directory=None, num_jobs=3,
+                 supplemental_model_path=None):
         if not temp_directory:
             temp_directory = TEMP_DIR
         temp_directory = os.path.join(temp_directory, 'LM')
@@ -24,47 +26,38 @@ class LmTrainer(object):
         self.output_model_path = output_model_path
         self.config = config
         self.num_jobs = num_jobs
-
-    def init_training(self):
-        random.seed(self.config['seed'])
-
-        print(self.config)
-        # Set up utterances
-        utterances = [x for x in self.corpus.text_mapping.values()]
-        random.shuffle(utterances)
-        train_directory = os.path.join(self.temp_directory, 'train')
-        os.makedirs(train_directory, exist_ok=True)
-        real_dev_path = os.path.join(self.temp_directory, 'dev.txt')
-        dev_path = os.path.join(train_directory, 'dev.txt')
-        train_path = os.path.join(train_directory, 'train.txt')
-        if self.dictionary is not None:
-            word_list = self.dictionary.words.keys()
-            compute_dict = False
-        else:
-            word_list = set()
-            compute_dict = True
-        with open(dev_path, 'w', encoding='utf8') as devf, \
-            open(real_dev_path, 'w', encoding='utf8') as realdevf, \
-            open(train_path, 'w', encoding='utf8') as trainf:
-            for i, u in enumerate(utterances):
-                if i < self.config['num_dev_utterances']:
-                    devf.write(u)
-                    devf.write('\n')
-                elif self.config['num_dev_utterances'] <= i < self.config['num_dev_utterances'] * 2:
-                    realdevf.write(u)
-                    realdevf.write('\n')
-                else:
-                    trainf.write(u)
-                    trainf.write('\n')
-                if compute_dict:
-                    word_list.update(u.split(' '))
-        with open(os.path.join(self.temp_directory, 'wordlist'), 'w', encoding='utf8') as f:
-            for w in sorted(word_list):
-                f.write(w)
-                f.write('\n')
+        self.supplemental_model_path = supplemental_model_path
+        self.source_merge_factor = 1
+        self.supplemental_merge_factor = 1
 
     def train(self):
-        self.init_training()
+        sym_path = os.path.join(self.temp_directory, self.name + '.sym')
+        far_path = os.path.join(self.temp_directory, self.name + '.far')
+        cnts_path = os.path.join(self.temp_directory, self.name + '.cnts')
+        mod_path = os.path.join(self.temp_directory, self.name + '.mod')
+        training_path = os.path.join(self.temp_directory, 'training.txt')
+        with open(training_path, 'w', encoding='utf8') as f:
+            for utt, text in self.corpus.text_mapping.items():
+                f.write(text + "\n")
+
+        subprocess.call(['ngramsymbols', training_path, sym_path])
+        subprocess.call(['farcompilestrings', '--fst_type=compact',
+                         '--symbols=' + sym_path, '--keep_symbols', training_path, far_path])
+        subprocess.call(['ngramcount', '--order={}'.format(self.config['order']), far_path,  cnts_path])
+        subprocess.call(['ngrammake', '--method={}'.format(self.config['method']), cnts_path, mod_path])
+        if self.supplemental_model_path is not None:
+            supplemental_path = os.path.join(self.temp_directory, 'extra.mod')
+            merged_path = os.path.join(self.temp_directory, 'merged.mod')
+            subprocess.call(['ngramread', '--ARPA', self.supplemental_model_path, supplemental_path])
+            subprocess.call(['ngrammerge', '--normalize',
+                             '--alpha={}'.format(self.source_merge_factor),
+                             '--beta={}'.format(self.supplemental_merge_factor),
+                             mod_path, supplemental_path, merged_path])
+            mod_path = merged_path
+
+        subprocess.call(['ngramprint', '--ARPA', mod_path, self.output_model_path])
+
+
 
 
 
