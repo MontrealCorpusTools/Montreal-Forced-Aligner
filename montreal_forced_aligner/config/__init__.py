@@ -139,6 +139,15 @@ class TranscribeConfig(BaseConfig):
             setattr(self, k, v)
 
 
+class TrainLMConfig(BaseConfig):
+    def __init__(self):
+        self.order = 3
+        self.method = 'kneser_ney'
+        self.prune = False
+        self.prune_thresh_small = 0.0000003
+        self.prune_thresh_medium = 0.0000001
+
+
 def train_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
@@ -252,7 +261,9 @@ def load_test_config():
 def train_lm_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
-    return data
+        config = TrainLMConfig()
+        config.update(data)
+    return config
 
 
 def load_basic_train_lm():

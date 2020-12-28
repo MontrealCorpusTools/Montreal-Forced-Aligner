@@ -440,6 +440,11 @@ def basic_train_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def basic_train_lm_config(config_directory):
+    return os.path.join(config_directory, 'basic_train_lm.yaml')
+
+
+@pytest.fixture(scope='session')
 def basic_align_config(config_directory):
     return os.path.join(config_directory, 'basic_align_config.yaml')
 

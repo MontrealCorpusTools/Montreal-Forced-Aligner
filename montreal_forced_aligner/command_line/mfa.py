@@ -156,6 +156,8 @@ train_lm_parser.add_argument('output_model_path', type=str,
                              help='Full path to save resulting language model')
 train_lm_parser.add_argument('-m', '--model_path', type=str,
                              help='Full path to existing language model to merge probabilities')
+train_lm_parser.add_argument('-w', '--model_weight', type=float, default=1.0,
+                             help='Weight factor for supplemental language model, defaults to 1.0')
 train_lm_parser.add_argument('-d', '--dictionary_path', help='Full path to the pronunciation dictionary to use',
                              default='')
 train_lm_parser.add_argument('-t', '--temp_directory', type=str, default='',
@@ -249,9 +251,16 @@ def main():
     args = parser.parse_args()
 
     fix_path()
-    if args.subcommand in ['align', 'train', 'train_ivector', 'transcribe']:
-        from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
-        if not validate_kaldi_binaries():
+    if args.subcommand in ['align', 'train', 'train_ivector']:
+        from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
+        if not validate_alignment_binaries():
+            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                  "on why this check failed.")
+            sys.exit(1)
+    elif args.subcommand in ['transcribe']:
+        from montreal_forced_aligner.thirdparty.kaldi import validate_transcribe_binaries
+        if not validate_transcribe_binaries():
             print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
                   "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
                   "on why this check failed.")

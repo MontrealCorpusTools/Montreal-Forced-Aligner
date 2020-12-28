@@ -70,8 +70,11 @@ Transcription
 Transcribing audio files is not currently implemented, but is planned for eventual release.  As part of this functionality,
 MFA will support:
 
-- Transcribing a corpus of sound files using an acoustic model, dictionary, and language model
-- Training language models from corpora that have text transcriptions
+- Transcribing a corpus of sound files using an acoustic model, dictionary, and language model, see :ref:`transcribing` for
+  more information.
+- Training language models from corpora that have text transcriptions, see :ref:`training_lm` for more information
+- Training pronunciation probability dictionaries from alignments, for use in alignment or transcription, see
+  :ref:`training_dictionary` for more information
 
 .. _whats_new_1_1:
 

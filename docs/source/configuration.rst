@@ -207,3 +207,61 @@ Align configuration
 
    beam: 10
    retry_beam: 40
+
+.. _transcribe_config:
+
+Transcriber configuration
+=========================
+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "beam", 13, "Beam for decoding"
+   "max_active", 7000, "Max active for decoding"
+   "lattice_beam", 6, "Beam width for decoding lattices"
+   "acoustic_scale", 0.083333, "Multiplier to scale acoustic costs"
+   "silence_weight", 0.01, "Weight on silence in fMLLR estimation"
+   "fmllr", true, "Flag for whether to perform speaker adaptation"
+   "first_beam", 10.0, "Beam for decoding in initial speaker-independent pass, only used if ``fmllr`` is true"
+   "first_max_active", 2000, "Max active for decoding in initial speaker-independent pass, only used if ``fmllr`` is true"
+   "fmllr_update_type", "full", "Type of fMLLR estimation"
+
+Default transcriber config
+--------------------------
+
+.. code-block:: yaml
+
+   beam: 13
+   max_active: 7000
+   lattice_beam: 6
+   acoustic_scale: 0.083333
+   silence_weight: 0.01
+   fmllr: true
+   first_beam: 10.0 # Beam used in initial, speaker-indep. pass
+   first_max_active: 2000 # max-active used in initial pass.
+   fmllr_update_type: full
+
+.. _train_lm_config:
+
+Language model configuration
+============================
+
+.. csv-table::
+   :header: "Parameter", "Default value", "Notes"
+
+   "order", 3, "Order of language model"
+   "method", kneser_ney, "Method for smoothing"
+   "prune", false, "Flag for whether to output pruned models as well"
+   "prune_thresh_small", 0.0000003, "Threshold for pruning a small model, only used if ``prune`` is true"
+   "prune_thresh_medium", 0.0000001, "Threshold for pruning a medium model, only used if ``prune`` is true"
+
+Default language model config
+-----------------------------
+
+.. code-block:: yaml
+
+   order: 3
+   method: kneser_ney
+   prune: false
+   prune_thresh_small: 0.0000003
+   prune_thresh_medium: 0.0000001

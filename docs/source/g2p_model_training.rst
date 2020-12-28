@@ -31,10 +31,9 @@ The ``dictionary_path`` should be a full path to a pronunciation dictionary to t
 
 Extra options:
 
-.. cmdoption:: --window_size NUM_PHONES
+.. cmdoption:: --order ORDER
 
-   This should be used if there are instances of a single orthographic
-   character corresponding to more than 2 phones (common in Korean hangul, Chinese character orthography, etc.).
+   Defines the ngram model order, defaults to 7
 
 .. cmdoption:: -v
                --validate

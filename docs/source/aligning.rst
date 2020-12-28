@@ -55,8 +55,8 @@ Options available:
 
 .. option:: --config_path PATH
 
-   Path to a YAML config file that will specify either the alignment options or the training configuration. see
-   :ref:`configuration` for more details.
+   Path to a YAML config file that will specify the alignment configuration. See
+   :ref:`align_config` for more details.
 
 .. option:: -s NUMBER
                --speaker_characters NUMBER
@@ -129,7 +129,7 @@ Options available:
 .. option:: --config_path PATH
 
    Path to a YAML config file that will specify either the alignment options or the training configuration. see
-   :ref:`configuration` for more details.
+   :ref:`training_config` for more details.
 
 .. option:: -o PATH
                --output_model_path PATH

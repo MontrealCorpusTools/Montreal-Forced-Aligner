@@ -16,7 +16,7 @@ else:
     exe_ext = ''
     open_blas_library = 'libopenblas.so.0'
 
-included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 'ali-to-post', 'align-equal-compiled',
+alignment_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 'ali-to-post', 'align-equal-compiled',
                       'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
                       'compile-train-graphs', 'compile-train-graphs-fsts', 'compose-transforms', 'compute-cmvn-stats',
                       'compute-mfcc-feats', 'convert-ali', 'copy-feats', 'est-lda', 'est-mllt',
@@ -33,7 +33,7 @@ included_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', '
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'weight-silence-post']
 
-included_filenames += [
+transcribe_filenames = [
     'fstaddselfloops', 'arpa2fst', 'fsttablecompose', 'fstdeterminizestar', 'fstminimizeencoded',
     'fstpushspecial', 'fstcomposecontext', 'make-h-transducer', 'fstrmsymbols', 'fstrmepslocal',
     'add-self-loops', 'lattice-scale', 'lattice-add-penalty', 'lattice-best-path', 'lattice-to-post',
@@ -41,7 +41,7 @@ included_filenames += [
     'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel'
                        ]
 
-# included_filenames += ['farcompilestrings', 'fstarcsort', 'fstcompile', 'fstcopy', 'fstdraw',]
+included_filenames = alignment_filenames + transcribe_filenames
 
 linux_libraries = ['libfst.so.13', 'libfstfar.so.13',
                    'libfstscript.so.13', 'libfstfarscript.so.13',
@@ -103,7 +103,7 @@ def collect_kaldi_binaries(directory):
                     subprocess.call(['install_name_tool', '-change', l, '@loader_path/' + lib, bin_name])
 
 
-def validate_kaldi_binaries():
+def validate_binaries(file_list):
     bin_out = os.path.join(TEMP_DIR, 'thirdparty', 'bin')
     if not os.path.exists(bin_out):
         print('The folder {} does not exist'.format(bin_out))
@@ -114,7 +114,7 @@ def validate_kaldi_binaries():
     # for lib_file in included_libraries[plat]:
     #    if lib_file not in bin_files:
     #        not_found.append(lib_file)
-    for bin_file in included_filenames:
+    for bin_file in file_list:
         bin_file += exe_ext
         if bin_file not in bin_files:
             not_found.append(bin_file)
@@ -134,3 +134,15 @@ def validate_kaldi_binaries():
         return False
     print('All required kaldi binaries were found!')
     return True
+
+
+def validate_alignment_binaries():
+    return validate_binaries(alignment_filenames)
+
+
+def validate_transcribe_binaries():
+    return validate_binaries(transcribe_filenames)
+
+
+def validate_kaldi_binaries():
+    return validate_binaries(included_filenames)

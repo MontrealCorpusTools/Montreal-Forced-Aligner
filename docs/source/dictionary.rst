@@ -33,7 +33,7 @@ and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :r
 
 .. note::
 
-   See the page on :ref:`dictionary_generating` for how to use G2P models to generate a dictionary
+   See the page on :ref:`g2p_dictionary_generating` for how to use G2P models to generate a dictionary
    from our pretrained models or how to generate pronunciation dictionaries from orthographies.
 
 Non-speech annotations

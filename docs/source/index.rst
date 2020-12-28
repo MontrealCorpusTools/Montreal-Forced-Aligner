@@ -16,11 +16,14 @@ Contents:
    installation.rst
    data_prep.rst
    data_validation.rst
-   annotator.rst
    aligning.rst
    example.rst
    configuration.rst
    g2p.rst
+   transcribing.rst
+   training_dictionary.rst
+   training_lm.rst
+   annotator.rst
    pretrained_models.rst
    changelog.rst
    alignment_techniques.rst

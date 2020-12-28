@@ -13,6 +13,7 @@ class DummyArgs(object):
         self.dictionary = ''
         self.config_path = ''
         self.model_path = ''
+        self.model_weight = 1.0
         self.num_jobs = 0
         self.verbose = False
         self.clean = True
@@ -21,9 +22,10 @@ class DummyArgs(object):
         self.temp_directory = None
 
 
-def test_train_lm(basic_corpus_dir, temp_dir, generated_dir):
+def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config):
     args = DummyArgs()
     args.corpus_directory = basic_corpus_dir
     args.temp_directory = temp_dir
+    args.config_path = basic_train_lm_config
     args.output_model_path = os.path.join(generated_dir, 'test_basic_lm.arpa')
     run_train_lm(args)

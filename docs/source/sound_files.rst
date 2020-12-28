@@ -29,6 +29,13 @@ rate across their files.
    The validation utility (:ref:`validating_data`) will note any ignored files, and the list of such files will be available in
    a log file.
 
+Bit depth
+=========
+
+Kaldi can only process 16-bit wave files.  Higher bit depths (24 and 32 bit) are getting more common for recording.
+MFA validation should raise an issue that files have bit depths other than 16-bit, but we leave it to you to do the conversion
+via some utility like ``sox``, ``praat``, or ``ffmpeg``.
+
 Duration
 ========
 

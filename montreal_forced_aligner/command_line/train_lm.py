@@ -32,7 +32,8 @@ def train_lm(args):
     else:
         dictionary = None
     trainer = LmTrainer(corpus, train_config, args.output_model_path, dictionary=dictionary,
-                        temp_directory=data_directory, num_jobs=args.num_jobs, supplemental_model_path=args.model_path)
+                        temp_directory=data_directory, num_jobs=args.num_jobs,
+                        supplemental_model_path=args.model_path, supplemental_model_weight=args.model_weight)
     trainer.train()
 
 
