@@ -9,6 +9,7 @@ from montreal_forced_aligner.config import TEMP_DIR, train_lm_yaml_to_config, lo
 from montreal_forced_aligner.exceptions import ArgumentError
 
 from montreal_forced_aligner.lm.trainer import LmTrainer
+from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
 
 
 def train_lm(args):
@@ -37,7 +38,9 @@ def train_lm(args):
     trainer.train()
 
 
-def validate_args(args):
+def validate_args(args, download_dictionaries=None):
+    if args.dictionary_path is not None and args.dictionary_path.lower() in download_dictionaries:
+        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
     if not os.path.exists(args.corpus_directory):
         raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
     if not os.path.isdir(args.corpus_directory):
@@ -48,20 +51,22 @@ def validate_args(args):
         raise (ArgumentError('Could not find the model file {}.'.format(args.model_path)))
 
 
-def run_train_lm(args):
+def run_train_lm(args, download_dictionaries=None):
     if not args.dictionary_path:
         args.dictionary_path = None
+    if download_dictionaries is None:
+        download_dictionaries = get_available_dict_languages()
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
-    validate_args(args)
+    validate_args(args, download_dictionaries)
     train_lm(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path
+    from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path, dict_languages
     args = train_lm_parser.parse_args()
 
     fix_path()
-    run_train_lm(args)
+    run_train_lm(args, dict_languages)
     unfix_path()

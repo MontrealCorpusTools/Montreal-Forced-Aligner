@@ -10,7 +10,8 @@ from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import PretrainedAligner
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
-from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path
+from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
+    get_available_dict_languages, get_dictionary_path
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
@@ -102,18 +103,23 @@ def align_corpus(args):
             yaml.dump(conf, f)
 
 
-def validate_args(args, pretrained):
+def validate_args(args, downloaded_acoustic_models, download_dictionaries):
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
         raise ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory))
+
+    if args.corpus_directory == args.output_directory:
+        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
+
+    if args.dictionary_path.lower() in download_dictionaries:
+        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
     if not os.path.exists(args.dictionary_path):
         raise ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path))
     if not os.path.isfile(args.dictionary_path):
         raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path))
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
-    if args.acoustic_model_path.lower() in pretrained:
+
+    if args.acoustic_model_path.lower() in downloaded_acoustic_models:
         args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
     elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
         if not os.path.exists(args.acoustic_model_path):
@@ -122,12 +128,14 @@ def validate_args(args, pretrained):
         raise ArgumentError(
             'The language \'{}\' is not currently included in the distribution, '
             'please align via training or specify one of the following language names: {}.'.format(
-                args.acoustic_model_path.lower(), ', '.join(pretrained)))
+                args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
 
-def run_align_corpus(args, pretrained=None):
-    if pretrained is None:
-        pretrained = get_available_acoustic_languages()
+def run_align_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None):
+    if downloaded_acoustic_models is None:
+        downloaded_acoustic_models = get_available_acoustic_languages()
+    if download_dictionaries is None:
+        download_dictionaries = get_available_dict_languages()
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
@@ -135,15 +143,15 @@ def run_align_corpus(args, pretrained=None):
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
-    validate_args(args, pretrained)
+    validate_args(args, downloaded_acoustic_models, download_dictionaries)
     align_corpus(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages
+    from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages, dict_languages
 
     align_args = align_parser.parse_args()
     fix_path()
-    run_align_corpus(align_args, acoustic_languages)
+    run_align_corpus(align_args, acoustic_languages, dict_languages)
     unfix_path()
