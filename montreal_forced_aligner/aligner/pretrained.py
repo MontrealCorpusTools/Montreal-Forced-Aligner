@@ -34,13 +34,13 @@ class PretrainedAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
         Corpus object for the dataset
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
-    acoustic_model : :class:`~aligner.models.AcousticModel`
+    acoustic_model : :class:`~montreal_forced_aligner.models.AcousticModel`
         Archive containing the acoustic model and pronunciation dictionary
-    align_config : :class:`~aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.

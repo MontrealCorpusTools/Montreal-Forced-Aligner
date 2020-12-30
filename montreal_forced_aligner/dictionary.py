@@ -230,15 +230,29 @@ class Dictionary(object):
         return {k: v for k, v in self.words.items() if k not in ['!sil', self.oov_code]}
 
     def split_clitics(self, item):
+        if item in self.words:
+            return [item]
         if '-' in item:
-            return item.split('-')
+            s = item.split('-')
+            if "'" in item:
+                new_s = []
+                for seg in s:
+                    if "'" in seg:
+                        new_s.extend(self.split_clitics(seg))
+                    else:
+                        new_s.append(seg)
+                s = new_s
+            oov_count = sum(1 for x in s if x not in self.words)
+            if oov_count < len(s):
+                return s
+            return [item]
         if "'" in item and not item.endswith("'") and not item.startswith("'"):
             m = re.match(r"(\w+)'(\w+)", item)
             initial, final = m.groups()
             if initial + "'" in self.clitic_set:
-                return initial + "'", final
+                return [initial + "'", final]
             elif "'" + final in self.clitic_set:
-                return initial, "'" + final
+                return [initial, "'" + final]
         return [item]
 
     def __len__(self):
@@ -376,72 +390,6 @@ class Dictionary(object):
         if all(s in self.words for s in sanitized):
             return True
         return False
-
-    def separate_clitics(self, item):
-        """Separates words with apostrophes or hyphens if the subparts are in the lexicon.
-
-        Checks whether the text on either side of an apostrophe or hyphen is in the dictionary. If so,
-        splits the word. If neither part is in the dictionary, returns the word without splitting it.
-
-        Parameters
-        ----------
-        item : string
-            Lexical item
-
-        Returns
-        -------
-        vocab_items: list
-            List containing all words after any splits due to apostrophes or hyphens
-
-        """
-        unit_re = re.compile(r'^(\[.*]|{.*}|<.*>)$')
-        if unit_re.match(item) is not None:
-            return [item]
-        lookup = self._lookup(item)
-
-        if lookup not in self.words_mapping:
-            item = sanitize(item)
-            vocab = []
-            chars = list(item)
-            count = 0
-            for i in chars:
-                if i in self.clitic_markers:
-                    count += 1
-            for i in range(count):
-                for punc in chars:
-                    if punc in self.clitic_markers:
-                        idx = chars.index(punc)
-                        option1withpunc = ''.join(chars[:idx + 1])
-                        option1nopunc = ''.join(chars[:idx])
-                        option2withpunc = ''.join(chars[idx:])
-                        option2nopunc = ''.join(chars[idx + 1:])
-                        if option1withpunc in self.words:
-                            vocab.append(option1withpunc)
-                            if option2nopunc in self.words:
-                                vocab.append(option2nopunc)
-                            elif all(x not in list(option2nopunc) for x in self.clitic_markers):
-                                vocab.append(option2nopunc)
-                        else:
-                            vocab.append(option1nopunc)
-                            if option2withpunc in self.words:
-                                vocab.append(option2withpunc)
-                            elif option2nopunc in self.words:
-                                vocab.append(option2nopunc)
-                            elif all(x not in list(option2nopunc) for x in self.clitic_markers):
-                                vocab.append(option2nopunc)
-                        chars = list(option2nopunc)
-        else:
-            return [lookup]
-        if not vocab:
-            return [lookup]
-        else:
-            unk = []
-            for i in vocab:
-                if i not in self.words:
-                    unk.append(i)
-            if len(unk) == count + 1:
-                return [lookup]
-            return vocab
 
     @property
     def reversed_word_mapping(self):

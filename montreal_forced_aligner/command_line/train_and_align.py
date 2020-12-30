@@ -46,8 +46,8 @@ def align_corpus(args):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                        num_jobs=getattr(args, 'num_jobs', 3),
-                        debug=getattr(args, 'debug', False))
+                                 num_jobs=getattr(args, 'num_jobs', 3),
+                                 debug=getattr(args, 'debug', False))
         if corpus.issues_check:
             print('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -112,6 +112,7 @@ def run_train_corpus(args, download_dictionaries=None):
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_parser, fix_path, unfix_path, dict_languages
+
     train_args = train_parser.parse_args()
 
     fix_path()

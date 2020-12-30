@@ -151,7 +151,8 @@ download_parser.add_argument("language", help="Name of language code to download
                                               "will list all available languages", nargs='?')
 
 train_lm_parser = subparsers.add_parser('train_lm')
-train_lm_parser.add_argument('corpus_directory', help='Full path to the source directory to train from')
+train_lm_parser.add_argument('source_path', help='Full path to the source directory to train from, alternatively '
+                                                 'an ARPA format language model to convert for MFA use')
 train_lm_parser.add_argument('output_model_path', type=str,
                              help='Full path to save resulting language model')
 train_lm_parser.add_argument('-m', '--model_path', type=str,

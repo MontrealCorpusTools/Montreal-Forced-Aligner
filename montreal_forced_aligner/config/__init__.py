@@ -144,6 +144,7 @@ class TrainLMConfig(BaseConfig):
         self.order = 3
         self.method = 'kneser_ney'
         self.prune = False
+        self.count_threshold = 1
         self.prune_thresh_small = 0.0000003
         self.prune_thresh_medium = 0.0000001
 

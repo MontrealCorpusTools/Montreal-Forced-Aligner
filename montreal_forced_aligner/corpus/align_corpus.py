@@ -288,6 +288,28 @@ class AlignableCorpus(BaseCorpus):
     def word_set(self):
         return set(self.word_counts)
 
+    def normalized_text_iter(self, dictionary=None, min_count=1):
+        unk_words = set(k for k, v in self.word_counts.items() if v <= min_count)
+        for u, text in self.text_mapping.items():
+            text = text.split()
+            new_text = []
+            for t in text:
+                if dictionary is not None:
+                    lookup = dictionary.split_clitics(t)
+                    if lookup is None:
+                        continue
+                else:
+                    lookup = [t]
+                for item in lookup:
+                    if item in unk_words:
+                        new_text.append('<unk>')
+                    elif dictionary is not None and item not in dictionary.words:
+                        new_text.append('<unk>')
+                    else:
+                        new_text.append(item)
+            yield ' '.join(new_text)
+
+
     def grouped_text(self, dictionary=None):
         output = []
         for g in self.groups:
@@ -307,7 +329,7 @@ class AlignableCorpus(BaseCorpus):
                         continue
                     new_text = []
                     for t in text:
-                        lookup = dictionary.separate_clitics(t)
+                        lookup = dictionary.split_clitics(t)
                         if lookup is None:
                             continue
                         new_text.extend(x for x in lookup if x != '')
@@ -347,7 +369,7 @@ class AlignableCorpus(BaseCorpus):
             new_text = []
             text = text.split()
             for t in text:
-                lookup = dictionary.separate_clitics(t)
+                lookup = dictionary.split_clitics(t)
                 if lookup is None:
                     continue
                 new_text.extend(x for x in lookup if x != '')
@@ -368,7 +390,7 @@ class AlignableCorpus(BaseCorpus):
                     continue
                 new_text = []
                 for t in text:
-                    lookup = dictionary.separate_clitics(t)
+                    lookup = dictionary.split_clitics(t)
                     if lookup is None:
                         continue
                     new_text.extend(x for x in lookup if x != '')

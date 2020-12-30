@@ -95,9 +95,9 @@ class CorpusValidator(object):
 
     Parameters
     ----------
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -105,7 +105,7 @@ class CorpusValidator(object):
 
     Attributes
     ----------
-    trainer : :class:`~aligner.trainers.monophone.MonophoneTrainer`
+    trainer : :class:`~montreal_forced_aligner.trainers.monophone.MonophoneTrainer`
     """
 
     corpus_analysis_template = '''
