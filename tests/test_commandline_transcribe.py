@@ -22,7 +22,7 @@ class DummyArgs(object):
 
 
 def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, generated_dir,
-                    transcription_acoustic_model, transcription_language_model):
+                    transcription_acoustic_model, transcription_language_model, temp_dir):
     output_path = os.path.join(generated_dir, 'transcribe_test')
     args = DummyArgs()
     args.acoustic_model_path = transcription_acoustic_model
@@ -30,5 +30,6 @@ def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, ge
     args.dictionary_path = sick_dict_path
     args.language_model_path = transcription_language_model
     args.output_directory = output_path
+    args.temp_directory = temp_dir
     args.evaluate = True
     run_transcribe_corpus(args)

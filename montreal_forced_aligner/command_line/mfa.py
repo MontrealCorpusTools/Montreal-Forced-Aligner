@@ -264,7 +264,20 @@ def main():
         if not validate_transcribe_binaries():
             print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
                   "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                  "on why this check failed.")
+                  "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
+                  "via the download command do not contain the transcription ones.  To get this functionality working "
+                  "for the time being, please build kaldi locally and follow the instructions for running the "
+                  "'mfa thirdparty kaldi' command.")
+            sys.exit(1)
+    elif args.subcommand in ['train_dictionary']:
+        from montreal_forced_aligner.thirdparty.kaldi import validate_train_dictionary_binaries
+        if not validate_train_dictionary_binaries():
+            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                  "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
+                  "via the download command do not contain the train_dictionary ones.  To get this functionality working "
+                  "for the time being, please build kaldi locally and follow the instructions for running the "
+                  "'mfa thirdparty kaldi' command.")
             sys.exit(1)
     elif args.subcommand in ['g2p', 'train_g2p']:
         try:

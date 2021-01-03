@@ -6,6 +6,8 @@
 Running the aligner
 *******************
 
+.. _pretrained_alignment:
+
 Align using pretrained models
 -----------------------------
 
@@ -94,6 +96,8 @@ Options available:
   prior to aligning.  This is good to use when aligning a new dataset,
   but it shares a name with a previously aligned dataset.  Cleaning automatically happens if the previous alignment
   run had an error.
+
+.. _trained_alignment:
 
 Align using only the data set
 -----------------------------

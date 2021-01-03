@@ -1,5 +1,6 @@
 import os
 import pytest
+import sys
 
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 
@@ -23,6 +24,8 @@ class DummyArgs(object):
 
 
 def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config):
+    if sys.platform == 'win32':
+        pytest.skip('LM training not supported on Windows.')
     args = DummyArgs()
     args.source_path = basic_corpus_dir
     args.temp_directory = temp_dir

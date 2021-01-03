@@ -42,11 +42,13 @@ class Transcriber(object):
         return os.path.join(self.temp_directory, 'transcribe')
 
     def get_tree_info(self):
-        t = subprocess.run([thirdparty_binary('tree-info'),
-                            os.path.join(self.transcribe_directory, 'tree')], capture_output=True, text=True)
+        tree_proc = subprocess.Popen([thirdparty_binary('tree-info'),
+                            os.path.join(self.transcribe_directory, 'tree')], text=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, _ = tree_proc.communicate()
         context_width = 1
         central_pos = 0
-        for line in t.stdout.split('\n'):
+        for line in stdout.split('\n'):
             text = line.strip().split(' ')
             if text[0] == 'context-width':
                 context_width = int(text[1])

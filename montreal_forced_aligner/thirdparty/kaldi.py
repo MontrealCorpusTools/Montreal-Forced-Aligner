@@ -28,10 +28,12 @@ alignment_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 
                       'gmm-sum-accs', 'gmm-transform-means', 'ivector-extract', 'ivector-extractor-acc-stats',
                       'ivector-extractor-est', 'ivector-extractor-init', 'ivector-extractor-sum-accs',
                       'lattice-align-words', 'lattice-oracle', 'lattice-to-phone-lattice', 'linear-to-nbest',
-                      'nbest-to-ctm', 'nbest-to-prons', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
+                      'nbest-to-ctm', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
                       'show-transitions',
                       'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
                       'tree-info', 'weight-silence-post']
+
+train_dict_filenames = ['nbest-to-prons']
 
 transcribe_filenames = [
     'fstaddselfloops', 'arpa2fst', 'fsttablecompose', 'fstdeterminizestar', 'fstminimizeencoded',
@@ -41,7 +43,9 @@ transcribe_filenames = [
     'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel'
                        ]
 
-included_filenames = alignment_filenames + transcribe_filenames
+included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames
+if sys.platform == 'win32':
+    included_filenames += ['fstcompile', 'fstarcsort']
 
 linux_libraries = ['libfst.so.13', 'libfstfar.so.13',
                    'libfstscript.so.13', 'libfstfarscript.so.13',
@@ -51,7 +55,8 @@ linux_libraries = ['libfst.so.13', 'libfstfar.so.13',
                    'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
                    'libkaldi-fstext.so', 'libkaldi-ivector.so']
 included_libraries = {'linux': linux_libraries,
-                      'win32': ['openfst64.dll', 'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
+                      'win32': [#'openfst64.dll',
+                                'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
                                 'libquadmath-0.dll', 'libopenblas.dll'],
                       'darwin': ['libfst.13.dylib', 'libfstfarscript.13.dylib', 'libfstscript.13.dylib',
                                  'libfstfar.13.dylib', 'libfstngram.13.dylib',
@@ -118,14 +123,16 @@ def validate_binaries(file_list):
         bin_file += exe_ext
         if bin_file not in bin_files:
             not_found.append(bin_file)
-            pipes = subprocess.Popen([os.path.join(bin_out, bin_file), '--help'], stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, text=True)
-            # If you are using python 2.x, you need to include shell=True in the above line
-            std_out, std_err = pipes.communicate()
-            if std_err:
-                print(std_out)
-                print(std_err)
-                erroring.append(bin_file)
+            try:
+                pipes = subprocess.Popen([os.path.join(bin_out, bin_file), '--help'], stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True)
+                std_out, std_err = pipes.communicate()
+                if std_err:
+                    print(std_out)
+                    print(std_err)
+                    erroring.append(bin_file)
+            except:
+                pass
     if not_found:
         print('The following kaldi binaries were not found in {}: {}'.format(bin_out, ', '.join(sorted(not_found))))
         return False
@@ -142,6 +149,10 @@ def validate_alignment_binaries():
 
 def validate_transcribe_binaries():
     return validate_binaries(transcribe_filenames)
+
+
+def validate_train_dictionary_binaries():
+    return validate_binaries(train_dict_filenames)
 
 
 def validate_kaldi_binaries():

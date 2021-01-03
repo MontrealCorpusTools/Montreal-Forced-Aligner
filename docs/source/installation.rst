@@ -45,3 +45,18 @@ exists in MFA, it will use any existing models if you try to align it again.
 (If this is not desired, delete or move the old model folder.)  You can specify your own temporary directory by using the ``-t``
 flag when calling the executable.
 
+Supported functionality
+=======================
+
+Currently in the 2.0 alpha, supported functionality is somewhat fragmented across platforms.  Native support for features
+is as follows.  Note that Windows can use Windows Subsystem for Linux to use the Linux version as necessary.
+
+
+.. csv-table::
+   :header: "Feature", "Linux support", "Windows support", "MacOS support"
+
+   "Alignment", "Yes", "Yes", "Yes"
+   "G2P", "Yes", "No", "Yes"
+   "Transcribe", "Yes", "No", "Need kaldi binaries built locally"
+   "Train LM", "Yes", "No", "Yes"
+   "Train dictionary", "Yes", "No", "Need kaldi binaries built locally"

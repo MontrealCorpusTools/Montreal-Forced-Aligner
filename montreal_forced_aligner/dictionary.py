@@ -243,7 +243,7 @@ class Dictionary(object):
                         new_s.append(seg)
                 s = new_s
             oov_count = sum(1 for x in s if x not in self.words)
-            if oov_count < len(s):
+            if oov_count < len(s):  # Only returned split item if it gains us any transcribed speech
                 return s
             return [item]
         if "'" in item and not item.endswith("'") and not item.startswith("'"):
