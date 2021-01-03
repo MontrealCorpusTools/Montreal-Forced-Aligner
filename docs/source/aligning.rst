@@ -6,6 +6,8 @@
 Running the aligner
 *******************
 
+.. _pretrained_alignment:
+
 Align using pretrained models
 -----------------------------
 
@@ -55,8 +57,8 @@ Options available:
 
 .. option:: --config_path PATH
 
-   Path to a YAML config file that will specify either the alignment options or the training configuration. see
-   :ref:`configuration` for more details.
+   Path to a YAML config file that will specify the alignment configuration. See
+   :ref:`align_config` for more details.
 
 .. option:: -s NUMBER
                --speaker_characters NUMBER
@@ -95,6 +97,8 @@ Options available:
   but it shares a name with a previously aligned dataset.  Cleaning automatically happens if the previous alignment
   run had an error.
 
+.. _trained_alignment:
+
 Align using only the data set
 -----------------------------
 
@@ -129,7 +133,7 @@ Options available:
 .. option:: --config_path PATH
 
    Path to a YAML config file that will specify either the alignment options or the training configuration. see
-   :ref:`configuration` for more details.
+   :ref:`training_config` for more details.
 
 .. option:: -o PATH
                --output_model_path PATH

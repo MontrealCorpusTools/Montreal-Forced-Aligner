@@ -305,7 +305,8 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path, output_di
                                        '--retry-beam={}'.format(config.retry_beam),
                                        '--careful=false',
                                        mdl,
-                                       "ark:" + fst_path, "scp:" + feat_path, "ark,t:"+ali_path, "ark,t:"+score_path],
+                                       "ark:" + fst_path, "scp:" + feat_path, "ark,t:" + ali_path,
+                                       "ark,t:" + score_path],
                                       stderr=logf)
         align_proc.communicate()
 
@@ -363,6 +364,367 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     if error_logs:
         message = 'There were {} job(s) with errors.  For more information, please see the following logs:\n\n{}'
         raise (AlignmentError(message.format(len(error_logs), '\n'.join(error_logs))))
+
+
+def decode_func(directory, job_name, mdl, config, feat_path, output_directory, num_threads=None):
+    log_path = os.path.join(output_directory, 'log', 'decode.{}.log'.format(job_name))
+    lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
+    if os.path.exists(lat_path):
+        return
+    word_symbol_path = os.path.join(directory, 'words.txt')
+    hclg_path = os.path.join(directory, 'HCLG.fst')
+    if config.fmllr and config.first_beam is not None:
+        beam = config.first_beam
+    else:
+        beam = config.beam
+    if config.fmllr and config.first_max_active is not None:
+        max_active = config.first_max_active
+    else:
+        max_active = config.max_active
+    with open(log_path, 'w', encoding='utf8') as logf:
+        if num_threads is None:
+            decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
+                                            '--max-active={}'.format(max_active),
+                                            '--beam={}'.format(beam),
+                                            '--lattice-beam={}'.format(config.lattice_beam),
+                                            '--allow-partial=true',
+                                            '--word-symbol-table={}'.format(word_symbol_path),
+                                            '--acoustic-scale={}'.format(config.acoustic_scale),
+                                            mdl, hclg_path, "scp:" + feat_path,
+                                            "ark:" + lat_path],
+                                           stderr=logf)
+        else:
+            decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
+                                            '--max-active={}'.format(max_active),
+                                            '--beam={}'.format(beam),
+                                            '--lattice-beam={}'.format(config.lattice_beam),
+                                            '--allow-partial=true',
+                                            '--word-symbol-table={}'.format(word_symbol_path),
+                                            '--acoustic-scale={}'.format(config.acoustic_scale),
+                                            '--num-threads={}'.format(num_threads),
+                                            mdl, hclg_path, "scp:" + feat_path,
+                                            "ark:" + lat_path],
+                                           stderr=logf)
+        decode_proc.communicate()
+
+
+def score_func(directory, job_name, config, output_directory, language_model_weight=None, word_insertion_penalty=None):
+    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    words_path = os.path.join(directory, 'words.txt')
+    tra_path = os.path.join(output_directory, 'tra.{}'.format(job_name))
+    log_path = os.path.join(output_directory, 'log', 'score.{}.log'.format(job_name))
+    if language_model_weight is None:
+        language_model_weight = config.language_model_weight
+    if word_insertion_penalty is None:
+        word_insertion_penalty = config.word_insertion_penalty
+    with open(log_path, 'w', encoding='utf8') as logf:
+        scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
+                                       '--inv-acoustic-scale={}'.format(language_model_weight),
+                                       'ark:' + lat_path, 'ark:-'
+                                       ], stdout=subprocess.PIPE, stderr=logf)
+        penalty_proc = subprocess.Popen([thirdparty_binary('lattice-add-penalty'),
+                                         '--word-ins-penalty={}'.format(word_insertion_penalty),
+                                         'ark:-', 'ark:-'],
+                                        stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=logf)
+        best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
+                                           '--word-symbol-table={}'.format(words_path),
+                                           'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout, stderr=logf)
+        best_path_proc.communicate()
+
+
+def transcribe(transcriber):
+    """
+    """
+    directory = transcriber.transcribe_directory
+    output_directory = transcriber.transcribe_directory
+    config = transcriber.transcribe_config
+    mdl_path = os.path.join(directory, 'final.mdl')
+    corpus = transcriber.corpus
+    num_jobs = corpus.num_jobs
+    feat_name = config.feature_file_base_name
+    feat_name += '.{}.scp'
+
+    if config.use_mp and num_jobs > 1:
+        jobs = [(directory, x, mdl_path, config, os.path.join(corpus.split_directory(), feat_name.format(x)),
+                 output_directory)
+                for x in range(num_jobs)]
+    else:
+        jobs = [(directory, x, mdl_path, config, os.path.join(corpus.split_directory(), feat_name.format(x)),
+                 output_directory, corpus.original_num_jobs)
+                for x in range(num_jobs)]
+
+    if config.use_mp and num_jobs > 1:
+        run_mp(decode_func, jobs)
+    else:
+        run_non_mp(decode_func, jobs)
+
+    if transcriber.evaluation_mode:
+        best_wer = 10000
+        best = None
+        for lmwt in range(transcriber.min_language_model_weight, transcriber.max_language_model_weight):
+            for wip in transcriber.word_insertion_penalties:
+                out_dir = os.path.join(output_directory, 'eval_{}_{}'.format(lmwt, wip))
+                log_dir = os.path.join(out_dir, 'log')
+                os.makedirs(log_dir, exist_ok=True)
+                jobs = [(directory, x, config, out_dir, lmwt, wip)
+                        for x in range(num_jobs)]
+                if config.use_mp:
+                    run_mp(score_func, jobs)
+                else:
+                    run_non_mp(score_func, jobs)
+                ser, wer = transcriber.evaluate(out_dir, out_dir)
+                if wer < best_wer:
+                    best = (lmwt, wip)
+        transcriber.transcribe_config.language_model_weight = best[0]
+        transcriber.transcribe_config.word_insertion_penalty = best[1]
+    else:
+        jobs = [(directory, x, config, output_directory)
+                for x in range(num_jobs)]
+        if config.use_mp:
+            run_mp(score_func, jobs)
+        else:
+            run_non_mp(score_func, jobs)
+
+
+def initial_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_path, output_directory,
+                       num_threads=None):
+    feat_scp = config.feature_config.feature_id
+    if '_fmllr' not in feat_scp:
+        feat_scp += '_fmllr'
+    feat_scp += '.{}.scp'.format(job_name)
+    feat_ark = feat_scp.replace('.scp', '.ark')
+    base_scp = os.path.join(split_directory, feat_scp.replace('_fmllr', ''))
+
+    log_path = os.path.join(output_directory, 'log', 'initial_fmllr.{}.log'.format(job_name))
+    pre_trans_path = os.path.join(output_directory, 'pre_trans.{}'.format(job_name))
+    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
+    utt2spk_path = os.path.join(split_directory, 'utt2spk.{}'.format(job_name))
+    feat_fmllr_scp_path = os.path.join(split_directory, feat_scp)
+    feat_fmllr_ark_path = os.path.join(split_directory,
+                                       feat_ark)
+    with open(log_path, 'w', encoding='utf8') as logf:
+        latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
+                                           '--acoustic-scale={}'.format(config.acoustic_scale),
+                                           'ark:' + lat_path, 'ark:-'], stdout=subprocess.PIPE,
+                                          stderr=logf)
+        weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
+                                                str(config.silence_weight),
+                                                sil_phones, mdl, 'ark:-', 'ark:-'],
+                                               stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
+                                               stderr=logf)
+        gmm_gpost_proc = subprocess.Popen([thirdparty_binary('gmm-post-to-gpost'),
+                                           mdl, 'scp:' + feat_path, 'ark:-', 'ark:-'],
+                                          stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE,
+                                          stderr=logf)
+        fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr-gpost'),
+                                       '--fmllr-update-type={}'.format(config.fmllr_update_type),
+                                       '--spk2utt=ark:' + spk2utt_path, mdl, 'scp:' + feat_path,
+                                       'ark,s,cs:-', 'ark:' + pre_trans_path],
+                                      stdin=gmm_gpost_proc.stdout, stdout=subprocess.PIPE, stderr=logf)
+        fmllr_proc.communicate()
+        # error
+        subprocess.call([thirdparty_binary('transform-feats'),
+                         '--utt2spk=ark:' + utt2spk_path,
+                         'ark:' + pre_trans_path, 'scp:' + base_scp,
+                         'ark,scp:{},{}'.format(feat_fmllr_ark_path, feat_fmllr_scp_path)],
+                        stderr=logf)
+
+
+def lat_gen_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_path, output_directory,
+                       num_threads=None):
+    feat_scp = config.feature_config.feature_id
+    if '_fmllr' not in feat_scp:
+        feat_scp += '_fmllr'
+    feat_scp += '.{}.scp'.format(job_name)
+    log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.log'.format(job_name))
+    word_symbol_path = os.path.join(directory, 'words.txt')
+    hclg_path = os.path.join(directory, 'HCLG.fst')
+    tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
+    feat_fmllr_scp_path = os.path.join(split_directory, feat_scp)
+    with open(log_path, 'w', encoding='utf8') as logf:
+        if num_threads is None:
+            lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
+                                             '--max-active={}'.format(config.max_active),
+                                             '--beam={}'.format(config.beam),
+                                             '--lattice-beam={}'.format(config.lattice_beam),
+                                             '--acoustic-scale={}'.format(config.acoustic_scale),
+                                             '--determinize-lattice=false',
+                                             '--allow-partial=true',
+                                             '--word-symbol-table={}'.format(word_symbol_path),
+                                             mdl, hclg_path, 'scp:' + feat_fmllr_scp_path, 'ark:' + tmp_lat_path
+                                             ], stderr=logf)
+        else:
+            lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
+                                             '--max-active={}'.format(config.max_active),
+                                             '--beam={}'.format(config.beam),
+                                             '--lattice-beam={}'.format(config.lattice_beam),
+                                             '--acoustic-scale={}'.format(config.acoustic_scale),
+                                             '--determinize-lattice=false',
+                                             '--allow-partial=true',
+                                             '--num-threads={}'.format(num_threads),
+                                             '--word-symbol-table={}'.format(word_symbol_path),
+                                             mdl, hclg_path, 'scp:' + feat_fmllr_scp_path, 'ark:' + tmp_lat_path
+                                             ], stderr=logf)
+        lat_gen_proc.communicate()
+
+
+def final_fmllr_est_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_path, output_directory,
+                         num_threads=None):
+    feat_scp = config.feature_config.feature_id
+    if '_fmllr' not in feat_scp:
+        feat_scp += '_fmllr'
+    feat_scp += '.{}.scp'.format(job_name)
+    feat_ark = feat_scp.replace('.scp', '.ark')
+    base_scp = os.path.join(split_directory, feat_scp.replace('_fmllr', ''))
+    log_path = os.path.join(output_directory, 'log', 'final_fmllr.{}.log'.format(job_name))
+    pre_trans_path = os.path.join(output_directory, 'pre_trans.{}'.format(job_name))
+    trans_tmp_path = os.path.join(output_directory, 'trans_tmp.{}'.format(job_name))
+    trans_path = os.path.join(output_directory, 'trans.{}'.format(job_name))
+    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
+    tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
+    utt2spk_path = os.path.join(split_directory, 'utt2spk.{}'.format(job_name))
+    feat_fmllr_scp_path = os.path.join(split_directory, feat_scp)
+    feat_fmllr_ark_path = os.path.join(split_directory, feat_ark)
+    with open(log_path, 'w', encoding='utf8') as logf:
+        if num_threads is None:
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                 '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
+                                                stderr=logf, stdout=subprocess.PIPE)
+        else:
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
+                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                 '--num-threads={}'.format(num_threads),
+                                                 '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
+                                                stderr=logf, stdout=subprocess.PIPE)
+        latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
+                                           '--acoustic-scale={}'.format(config.acoustic_scale),
+                                           'ark:' + lat_path, 'ark:-'],
+                                          stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=logf)
+        weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
+                                                str(config.silence_weight),
+                                                sil_phones, mdl, 'ark:-', 'ark:-'],
+                                               stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
+                                               stderr=logf)
+        fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
+                                       '--fmllr-update-type={}'.format(config.fmllr_update_type),
+                                       '--spk2utt=ark:' + spk2utt_path, mdl, 'scp:' + feat_fmllr_scp_path,
+                                       'ark,s,cs:-', 'ark:' + trans_tmp_path],
+                                      stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=logf)
+        fmllr_proc.communicate()
+
+        compose_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
+                                         '--b-is-affine=true', 'ark:' + trans_tmp_path,
+                                         'ark:' + pre_trans_path, 'ark:' + trans_path],
+                                        stderr=logf)
+        compose_proc.communicate()
+
+        subprocess.call([thirdparty_binary('transform-feats'),
+                         '--utt2spk=ark:' + utt2spk_path,
+                         'ark:' + trans_path, 'scp:' + base_scp,
+                         'ark,scp:{},{}'.format(feat_fmllr_ark_path, feat_fmllr_scp_path)],
+                        stderr=logf)
+
+
+def fmllr_rescore_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_path, output_directory,
+                       num_threads=None):
+    log_path = os.path.join(output_directory, 'log', 'fmllr_rescore.{}.log'.format(job_name))
+    tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
+    final_lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
+    feat_fmllr_scp_path = os.path.join(split_directory,
+                                       config.feature_config.feature_id + '.{}.scp'.format(job_name))
+    with open(log_path, 'w', encoding='utf8') as logf:
+        rescore_proc = subprocess.Popen([thirdparty_binary('gmm-rescore-lattice'),
+                                         mdl, 'ark:' + tmp_lat_path,
+                                         'scp:' + feat_fmllr_scp_path, 'ark:-'],
+                                        stdout=subprocess.PIPE, stderr=logf)
+        if num_threads is None:
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                 '--beam={}'.format(config.lattice_beam),
+                                                 'ark:-', 'ark:' + final_lat_path
+                                                 ], stdin=rescore_proc.stdout, stderr=logf)
+        else:
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
+                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                 '--beam={}'.format(config.lattice_beam),
+                                                 '--num-threads={}'.format(num_threads),
+                                                 'ark:-', 'ark:' + final_lat_path
+                                                 ], stdin=rescore_proc.stdout, stderr=logf)
+        determinize_proc.communicate()
+
+
+def transcribe_fmllr(transcriber):
+    directory = transcriber.transcribe_directory
+    output_directory = transcriber.transcribe_directory
+    config = transcriber.transcribe_config
+    corpus = transcriber.corpus
+    num_jobs = corpus.num_jobs
+    split_directory = corpus.split_directory()
+    sil_phones = transcriber.dictionary.optional_silence_csl
+
+    fmllr_directory = os.path.join(output_directory, 'fmllr')
+    log_dir = os.path.join(fmllr_directory, 'log')
+    os.makedirs(log_dir, exist_ok=True)
+    mdl_path = os.path.join(directory, 'final.mdl')
+    feat_name = config.feature_file_base_name
+    feat_name += '.{}.scp'
+    if num_jobs > 1:
+        jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
+                 os.path.join(split_directory, feat_name.format(x)), fmllr_directory)
+                for x in range(num_jobs)]
+    else:
+        jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
+                 os.path.join(split_directory, feat_name.format(x)), fmllr_directory, corpus.original_num_jobs)
+                for x in range(num_jobs)]
+
+    run_non_mp(initial_fmllr_func, jobs)
+
+    if config.use_mp and num_jobs > 1:
+        run_mp(lat_gen_fmllr_func, jobs)
+    else:
+        run_non_mp(lat_gen_fmllr_func, jobs)
+
+    run_non_mp(final_fmllr_est_func, jobs)
+
+    if config.use_mp:
+        run_mp(fmllr_rescore_func, jobs)
+    else:
+        run_non_mp(fmllr_rescore_func, jobs)
+
+    if transcriber.evaluation_mode:
+        best_wer = 10000
+        best = None
+        for lmwt in range(transcriber.min_language_model_weight, transcriber.max_language_model_weight):
+            for wip in transcriber.word_insertion_penalties:
+                out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(lmwt, wip))
+                log_dir = os.path.join(out_dir, 'log')
+                os.makedirs(log_dir, exist_ok=True)
+                jobs = [(directory, x, config, out_dir, lmwt, wip)
+                        for x in range(num_jobs)]
+                if config.use_mp:
+                    run_mp(score_func, jobs)
+                else:
+                    run_non_mp(score_func, jobs)
+                ser, wer = transcriber.evaluate(out_dir, out_dir)
+                if wer < best_wer:
+                    best = (lmwt, wip)
+        transcriber.transcribe_config.language_model_weight = best[0]
+        transcriber.transcribe_config.word_insertion_penalty = best[1]
+        out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(best[0], best[1]))
+        for j in range(num_jobs):
+            tra_path = os.path.join(out_dir, 'tra.{}'.format(j))
+            saved_tra_path = os.path.join(fmllr_directory, 'tra.{}'.format(j))
+            shutil.copyfile(tra_path, saved_tra_path)
+    else:
+        jobs = [(directory, x, config, fmllr_directory)
+                for x in range(num_jobs)]
+        if config.use_mp:
+            run_mp(score_func, jobs)
+        else:
+            run_non_mp(score_func, jobs)
 
 
 def compile_information_func(log_directory, corpus, job_num):
@@ -463,7 +825,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
             for line in actual_lines:
                 f.write('{}\n'.format(' '.join(map(str, line))))
     except Exception as e:
-        raise(Exception(str(e)))
+        raise (Exception(str(e)))
 
 
 def parse_iteration_alignments(directory, iteration, num_jobs):
@@ -521,12 +883,11 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
     if differences:
         mean_difference = statistics.mean(differences)
     else:
-        mean_difference ='N/A'
+        mean_difference = 'N/A'
     return utterances_aligned_diff, mean_difference
 
 
 def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
-
     jobs = [(iteration, config, model_directory, x) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(compute_alignment_improvement_func, jobs)
@@ -538,7 +899,7 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
         return
     ind = config.realignment_iterations.index(iteration)
     if ind != 0:
-        previous_iteration = config.realignment_iterations[ind-1]
+        previous_iteration = config.realignment_iterations[ind - 1]
     else:
         previous_iteration = 0
     try:
@@ -576,7 +937,7 @@ def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_
     with open(log_path, 'w', encoding='utf8') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
-                                     '', '', 'ark,t:'+nbest_path],
+                                     '', '', 'ark,t:' + nbest_path],
                                     stdout=subprocess.PIPE, stderr=logf)
 
         lin_proc.communicate()
@@ -672,6 +1033,78 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
             else:
                 phone_ctm[k].update(v)
     ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary)
+
+
+def generate_pronunciations_func(align_config, model_directory, dictionary, corpus, job_name):
+    text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
+    log_path = os.path.join(model_directory, 'log', 'pronunciation.{}.log'.format(job_name))
+    ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
+    model_path = os.path.join(model_directory, 'final.mdl')
+    aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
+    nbest_path = os.path.join(model_directory, 'nbest.{}'.format(job_name))
+    pron_path = os.path.join(model_directory, 'prons.{}'.format(job_name))
+    with open(log_path, 'w', encoding='utf8') as logf:
+        lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
+                                     "ark:" + text_int_path,
+                                     '', '', 'ark,t:' + nbest_path],
+                                    stdout=subprocess.PIPE, stderr=logf)
+
+        lin_proc.communicate()
+        lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
+                                     "ark:" + text_int_path,
+                                     '', '', 'ark:-'],
+                                    stdout=subprocess.PIPE, stderr=logf)
+        align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
+                                       os.path.join(dictionary.phones_dir, 'word_boundary.int'), model_path,
+                                       'ark:-', 'ark,t:' + aligned_path],
+                                      stdin=lin_proc.stdout, stderr=logf)
+        align_proc.communicate()
+
+        subprocess.call([thirdparty_binary('nbest-to-prons'),
+                         model_path,
+                         'ark:' + aligned_path,
+                         pron_path],
+                        stderr=logf)
+
+
+def generate_pronunciations(align_config, model_directory, dictionary, corpus, num_jobs):
+    from collections import Counter, defaultdict
+    jobs = [(align_config, model_directory, dictionary, corpus, x)
+            for x in range(num_jobs)]
+    if align_config.use_mp:
+        run_mp(generate_pronunciations_func, jobs)
+    else:
+        run_non_mp(generate_pronunciations_func, jobs)
+
+    word_lookup = dictionary.reversed_word_mapping
+    phone_lookup = dictionary.reversed_phone_mapping
+    pron_counts = defaultdict(Counter)
+    for j in range(num_jobs):
+        pron_path = os.path.join(model_directory, 'prons.{}'.format(j))
+        with open(pron_path, 'r', encoding='utf8') as f:
+            utt_mapping = {}
+            last_utt = None
+            for line in f:
+                line = line.split()
+                utt = line[0]
+                if utt not in utt_mapping:
+                    if last_utt is not None:
+                        utt_mapping[last_utt].append('</s>')
+                    utt_mapping[utt] = ['<s>']
+                    last_utt = utt
+
+                begin = line[1]
+                end = line[2]
+                word = word_lookup[int(line[3])]
+                if word == '<eps>':
+                    utt_mapping[utt].append(word)
+                else:
+                    pron = tuple(phone_lookup[int(x)].split('_')[0] for x in line[4:])
+                    pron_string = ' '.join(pron)
+                    utt_mapping[utt].append(word + ' ' + pron_string)
+                    pron_counts[word][pron] += 1
+                    print(word, pron)
+    return pron_counts, utt_mapping
 
 
 def tree_stats_func(directory, ci_phones, mdl, feat_path, ali_path, job_name):
@@ -823,7 +1256,6 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
         else:
             trans_path = tmp_trans_path
         utt2spk_path = os.path.join(config.corpus.split_directory(), 'utt2spk.{}'.format(job_name))
-        base_scp = os.path.join(config.corpus.split_directory(), base_scp)
         feat_fmllr_scp_path = os.path.join(config.corpus.split_directory(),
                                            config.feature_config.feature_id + '.{}.scp'.format(job_name))
         feat_fmllr_ark_path = os.path.join(config.corpus.split_directory(),
@@ -883,9 +1315,9 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
     jobs = [(directory, split_directory, sil_phones, x, config, initial, model_name)
             for x in range(num_jobs)]
-    #if config.use_mp:
+    # if config.use_mp:
     #    run_mp(calc_fmllr_func, jobs)
-    #else:
+    # else:
     run_non_mp(calc_fmllr_func, jobs)
 
 
@@ -1080,7 +1512,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
             os.rename(new_mat_path, previous_mat_path)
 
     shutil.copyfile(os.path.join(directory, 'lda.mat'), os.path.join(config.corpus.split_directory(), 'lda.mat'))
-    config.feature_config.generate_features(config.corpus,  overwrite=True)
+    config.feature_config.generate_features(config.corpus, overwrite=True)
 
 
 def gmm_gselect_func(config, x):

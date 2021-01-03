@@ -33,6 +33,16 @@ def textgrid_dir(test_dir):
 
 
 @pytest.fixture(scope='session')
+def acoustic_model_dir(test_dir):
+    return os.path.join(test_dir, 'am')
+
+
+@pytest.fixture(scope='session')
+def language_model_dir(test_dir):
+    return os.path.join(test_dir, 'lm')
+
+
+@pytest.fixture(scope='session')
 def generated_dir(test_dir):
     from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
     if not validate_kaldi_binaries():
@@ -57,6 +67,16 @@ def temp_dir(generated_dir):
 def english_acoustic_model():
     from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
+
+
+@pytest.fixture(scope='session')
+def transcription_acoustic_model(acoustic_model_dir):
+    return os.path.join(acoustic_model_dir, 'mono_model.zip')
+
+
+@pytest.fixture(scope='session')
+def transcription_language_model(language_model_dir):
+    return os.path.join(language_model_dir, 'basic_lm.arpa')
 
 
 @pytest.fixture(scope='session')
@@ -93,6 +113,16 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
         for name in files:
             shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, name + '.wav'))
             shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, name + '.lab'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def weird_words_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'weird_words')
+    os.makedirs(path, exist_ok=True)
+    name = 'weird_words'
+    shutil.copyfile(os.path.join(wav_dir, 'acoustic_corpus.wav'), os.path.join(path, name +'.wav'))
+    shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(path, name + '.lab'))
     return path
 
 
@@ -407,6 +437,11 @@ def config_directory(test_dir):
 @pytest.fixture(scope='session')
 def basic_train_config(config_directory):
     return os.path.join(config_directory, 'basic_train_config.yaml')
+
+
+@pytest.fixture(scope='session')
+def basic_train_lm_config(config_directory):
+    return os.path.join(config_directory, 'basic_train_lm.yaml')
 
 
 @pytest.fixture(scope='session')

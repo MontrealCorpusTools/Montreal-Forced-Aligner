@@ -103,7 +103,8 @@ In the same environment that you've installed MFA, enter the following command i
 
     mfa train_g2p /path/to/mandarin_dict.txt mandarin_test_model.zip
 
-This should take no more than a few seconds, and should produce a model which could be used for :ref:`_g2p_dictionary_generating`.
+This should take no more than a few seconds, and should produce a model which could be used for
+:ref:`g2p_dictionary_generating`.
 
 .. note::
 

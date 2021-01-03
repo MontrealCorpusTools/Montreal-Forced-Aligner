@@ -1,11 +1,31 @@
 import sys
 from setuptools import setup
 from setuptools.command.test import test as TestCommand
+from setuptools.command.develop import develop
+from setuptools.command.install import install
 
 
 def readme():
     with open('README.md') as f:
         return f.read()
+
+
+class PostDevelopCommand(develop):
+    """Post-installation for development mode."""
+
+    def run(self):
+        develop.run(self)
+        from montreal_forced_aligner.thirdparty.download import download_binaries
+        download_binaries()
+
+
+class PostInstallCommand(install):
+    """Post-installation for installation mode."""
+
+    def run(self):
+        install.run(self)
+        from montreal_forced_aligner.thirdparty.download import download_binaries
+        download_binaries()
 
 
 class PyTest(TestCommand):
@@ -23,7 +43,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='2.0.0a1',
+          version='2.0.0a2',
           description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
                       'acoustic models and dictionaries using Kaldi functionality.',
           long_description=readme(),
@@ -65,7 +85,11 @@ if __name__ == '__main__':
               'console_scripts': ['mfa=montreal_forced_aligner.command_line.mfa:main']
           },
           package_data={'montreal_forced_aligner.config': ['*.yaml']},
-          cmdclass={'test': PyTest},
+          cmdclass={
+              'test': PyTest,
+              'develop': PostDevelopCommand,
+              'install': PostInstallCommand,
+          },
           extras_require={
               'testing': ['pytest'],
           }

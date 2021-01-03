@@ -124,3 +124,19 @@ def test_subset(large_prosodylab_format_directory, temp_dir, large_dataset_dicti
     s = c.subset_directory(10, default_feature_config)
     assert os.path.exists(sd)
     assert os.path.exists(s)
+
+
+def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
+    output_directory = os.path.join(temp_dir, 'weird_words')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    d = Dictionary(sick_dict_path, output_directory)
+    assert 'i’m' not in d.words
+    assert '’m' not in d.words
+    assert d.words["i'm"][0]['pronunciation'] == ('ay', 'm', 'ih')
+    assert d.words["i'm"][1]['pronunciation'] == ('ay', 'm')
+    assert d.words["'m"][0]['pronunciation'] == ('m',)
+    d.write()
+    c = AlignableCorpus(weird_words_dir, output_directory)
+    c.initialize_corpus(d)
+    print(c.utterance_oovs['weird_words'])
+    assert c.utterance_oovs['weird_words'] == ['ajfish', 'asds-asda', 'sdasd']

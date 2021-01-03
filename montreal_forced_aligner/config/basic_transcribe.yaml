@@ -1,0 +1,11 @@
+beam: 13
+max_active: 7000
+lattice_beam: 6
+acoustic_scale: 0.083333
+silence_weight: 0.01
+fmllr: true
+first_beam: 10.0 # Beam used in initial, speaker-indep. pass
+first_max_active: 2000 # max-active used in initial pass.
+fmllr_update_type: full
+
+

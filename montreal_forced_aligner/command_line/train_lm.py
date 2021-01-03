@@ -1,4 +1,5 @@
 import os
+import time
 import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -9,6 +10,7 @@ from montreal_forced_aligner.config import TEMP_DIR, train_lm_yaml_to_config, lo
 from montreal_forced_aligner.exceptions import ArgumentError
 
 from montreal_forced_aligner.lm.trainer import LmTrainer
+from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
 
 
 def train_lm(args):
@@ -16,50 +18,68 @@ def train_lm(args):
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    corpus_name = os.path.basename(args.corpus_directory)
+    all_begin = time.time()
+    corpus_name = os.path.basename(args.source_path)
     if corpus_name == '':
-        args.corpus_directory = os.path.dirname(args.corpus_directory)
-        corpus_name = os.path.basename(args.corpus_directory)
-
-    data_directory = os.path.join(temp_dir, corpus_name)
-    corpus = AlignableCorpus(args.corpus_directory, data_directory)
+        args.source_path = os.path.dirname(args.source_path)
+        corpus_name = os.path.basename(args.source_path)
+    if args.source_path.lower().endswith('.arpa'):
+        source = args.source_path
+        dictionary = None
+        corpus_name = os.path.splitext(corpus_name)[0]
+        data_directory = os.path.join(temp_dir, corpus_name)
+    else:
+        data_directory = os.path.join(temp_dir, corpus_name)
+        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs)
+        if args.dictionary_path is not None:
+            dictionary = Dictionary(args.dictionary_path, data_directory)
+        else:
+            dictionary = None
     if args.config_path:
         train_config = train_lm_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_lm()
-    if args.dictionary_path is not None:
-        dictionary = Dictionary(args.dictionary_path, data_directory)
-    else:
-        dictionary = None
-    trainer = LmTrainer(corpus, train_config, args.output_model_path, dictionary=dictionary,
-                        temp_directory=data_directory, num_jobs=args.num_jobs)
+    trainer = LmTrainer(source, train_config, args.output_model_path, dictionary=dictionary,
+                        temp_directory=data_directory,
+                        supplemental_model_path=args.model_path, supplemental_model_weight=args.model_weight)
     trainer.train()
 
+    print('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
-def validate_args(args):
-    if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
-    if not os.path.isdir(args.corpus_directory):
-        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
+
+def validate_args(args, download_dictionaries=None):
+    if args.dictionary_path is not None and args.dictionary_path.lower() in download_dictionaries:
+        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
+    if not args.source_path.endswith('.arpa'):
+        if not os.path.exists(args.source_path):
+            raise (ArgumentError('Could not find the corpus directory {}.'.format(args.source_path)))
+        if not os.path.isdir(args.source_path):
+            raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.source_path)))
+    else:
+        if not os.path.exists(args.source_path):
+            raise (ArgumentError('Could not find the source file {}.'.format(args.source_path)))
     if args.config_path and not os.path.exists(args.config_path):
         raise (ArgumentError('Could not find the config file {}.'.format(args.config_path)))
+    if args.model_path and not os.path.exists(args.model_path):
+        raise (ArgumentError('Could not find the model file {}.'.format(args.model_path)))
 
 
-def run_train_lm(args):
+def run_train_lm(args, download_dictionaries=None):
     if not args.dictionary_path:
         args.dictionary_path = None
-    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+    if download_dictionaries is None:
+        download_dictionaries = get_available_dict_languages()
+    args.source_path = args.source_path.rstrip('/').rstrip('\\')
 
-    validate_args(args)
+    validate_args(args, download_dictionaries)
     train_lm(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
-    raise NotImplementedError('This function is currently not implemented and is just a stub during alpha of 2.0')
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path
+    from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path, dict_languages
     args = train_lm_parser.parse_args()
 
     fix_path()
-    run_train_lm(args)
+    run_train_lm(args, dict_languages)
     unfix_path()

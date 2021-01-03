@@ -10,7 +10,7 @@ from .config import FeatureConfig
 from .aligner.pretrained import PretrainedAligner
 
 
-def test_utterances_func(validator, job_name):  # pragma: no cover
+def test_utterances_func(validator, job_name):
     """
 
     Parameters
@@ -44,7 +44,7 @@ def test_utterances_func(validator, job_name):  # pragma: no cover
                                         '--beam={}'.format(beam),
                                         '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
                                         '--word-symbol-table=' + words_path,
-                                        mdl_path, 'ark:' + graphs_path, 'ark:' + feat_path, 'ark:' + lat_path],
+                                        mdl_path, 'ark:' + graphs_path, 'scp:' + feat_path, 'ark:' + lat_path],
                                        stderr=logf)
         latgen_proc.communicate()
 
@@ -95,9 +95,9 @@ class CorpusValidator(object):
 
     Parameters
     ----------
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -105,7 +105,7 @@ class CorpusValidator(object):
 
     Attributes
     ----------
-    trainer : :class:`~aligner.trainers.monophone.MonophoneTrainer`
+    trainer : :class:`~montreal_forced_aligner.trainers.monophone.MonophoneTrainer`
     """
 
     corpus_analysis_template = '''
@@ -174,6 +174,8 @@ class CorpusValidator(object):
 
     def setup(self):
         self.dictionary.write()
+        if self.test_transcriptions:
+            self.dictionary.write(disambig=True)
         self.corpus.initialize_corpus(self.dictionary)
         if self.ignore_acoustics:
             print('Skipping acoustic feature generation')
@@ -431,7 +433,7 @@ class CorpusValidator(object):
         else:
             out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
             with open(out_path, 'w') as problemf:
-                problemf.write('Utterance,Insertions,Deletions,Reference,Decoded\n')
+                problemf.write('Utterance,Edits,Reference,Decoded\n')
                 for utt, (edits, ref_text, text) in sorted(errors.items(),
                                                            key=lambda x: -1 * (
                                                                    len(x[1][1]) + len(x[1][2]))):

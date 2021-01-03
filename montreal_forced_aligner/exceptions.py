@@ -5,6 +5,9 @@ class MFAError(Exception):
     pass
 
 
+class ThirdpartyError(MFAError):
+    pass
+
 # Dictionary Errors
 
 class DictionaryError(MFAError):

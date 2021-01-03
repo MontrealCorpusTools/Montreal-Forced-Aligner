@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 import random
-from collections import Counter, defaultdict
+from collections import Counter
 from textgrid import TextGrid, IntervalTier
 
 from ..dictionary import sanitize
@@ -10,31 +10,7 @@ from ..helper import load_text, output_mapping, save_groups, filter_scp
 
 from ..exceptions import SampleRateError, CorpusError
 
-from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth
-
-
-def find_ext(files, ext):
-    """
-    Finds all files with extension `ext` in `files`.
-
-    Parameters
-    ----------
-    files : list
-        List of files to search in
-    ext : str
-        File extension
-
-    Returns
-    -------
-    dict
-        A dictionary of pairs (filename, full_filename)
-    """
-    dic = defaultdict(lambda: None)
-    for full_filename in files:
-        filename, fext = os.path.splitext(full_filename)
-        if fext.lower() == ext:
-            dic[filename] = full_filename
-    return dic
+from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth, find_ext
 
 
 def parse_transcription(text):
@@ -88,9 +64,7 @@ class AlignableCorpus(BaseCorpus):
         self.utterance_oovs = {}
         self.no_transcription_files = []
         self.decode_error_files = []
-        self.textgrid_read_errors = {}
         self.transcriptions_without_wavs = []
-        self.speaker_ordering = {}
         self.tg_count = 0
         self.lab_count = 0
         for root, dirs, files in os.walk(self.directory, followlinks=True):
@@ -314,6 +288,28 @@ class AlignableCorpus(BaseCorpus):
     def word_set(self):
         return set(self.word_counts)
 
+    def normalized_text_iter(self, dictionary=None, min_count=1):
+        unk_words = set(k for k, v in self.word_counts.items() if v <= min_count)
+        for u, text in self.text_mapping.items():
+            text = text.split()
+            new_text = []
+            for t in text:
+                if dictionary is not None:
+                    lookup = dictionary.split_clitics(t)
+                    if lookup is None:
+                        continue
+                else:
+                    lookup = [t]
+                for item in lookup:
+                    if item in unk_words:
+                        new_text.append('<unk>')
+                    elif dictionary is not None and item not in dictionary.words:
+                        new_text.append('<unk>')
+                    else:
+                        new_text.append(item)
+            yield ' '.join(new_text)
+
+
     def grouped_text(self, dictionary=None):
         output = []
         for g in self.groups:
@@ -333,7 +329,7 @@ class AlignableCorpus(BaseCorpus):
                         continue
                     new_text = []
                     for t in text:
-                        lookup = dictionary.separate_clitics(t)
+                        lookup = dictionary.split_clitics(t)
                         if lookup is None:
                             continue
                         new_text.extend(x for x in lookup if x != '')
@@ -373,7 +369,7 @@ class AlignableCorpus(BaseCorpus):
             new_text = []
             text = text.split()
             for t in text:
-                lookup = dictionary.separate_clitics(t)
+                lookup = dictionary.split_clitics(t)
                 if lookup is None:
                     continue
                 new_text.extend(x for x in lookup if x != '')
@@ -394,7 +390,7 @@ class AlignableCorpus(BaseCorpus):
                     continue
                 new_text = []
                 for t in text:
-                    lookup = dictionary.separate_clitics(t)
+                    lookup = dictionary.split_clitics(t)
                     if lookup is None:
                         continue
                     new_text.extend(x for x in lookup if x != '')

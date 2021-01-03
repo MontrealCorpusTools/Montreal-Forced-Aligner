@@ -13,11 +13,15 @@
 Dictionary format
 *****************
 
+Non-probabilistic format
+========================
+
 Dictionaries should be specified in the following format:
 
 ::
 
   WORDA PHONEA PHONEB
+  WORDA PHONEC
   WORDB PHONEB PHONEC
 
 where each line is a word with a transcription separated by white space.
@@ -33,11 +37,31 @@ and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :r
 
 .. note::
 
-   See the page on :ref:`dictionary_generating` for how to use G2P models to generate a dictionary
+   See the page on :ref:`g2p_dictionary_generating` for how to use G2P models to generate a dictionary
    from our pretrained models or how to generate pronunciation dictionaries from orthographies.
 
+Dictionaries with pronunciation probability
+===========================================
+
+Dictionaries can be parsed with pronunciation probabilities, usually as the output of :ref:`training_dictionary`.
+
+The format for this dictionary format is:
+
+::
+
+  WORDA 1.0 PHONEA PHONEB
+  WORDA 0.3 PHONEC
+  WORDB 1.0 PHONEB PHONEC
+
+
+.. note::
+
+   The most likely probability for a word is set to 1.0 in the algorithm implemented in :ref:`training_dictionary`.
+   While this means that the sum of probabilities per word is greater than 1, it does not penalize words for having
+   multiple pronunciations, and these probabilities are converted to log costs in the eventual weighted FST.
+
 Non-speech annotations
-----------------------
+======================
 
 There are two special phones that can be used for annotations that are not speech, ``sil`` and ``spn``.  The ``sil`` phone is used
 to model silence, and the ``spn`` phone is used to model unknown words.  If you have annotations for non-speech vocalizations that are

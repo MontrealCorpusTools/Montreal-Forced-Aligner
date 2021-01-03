@@ -8,7 +8,7 @@ class TrainableAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary

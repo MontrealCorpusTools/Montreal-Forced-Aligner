@@ -15,22 +15,7 @@ from montreal_forced_aligner.utils import get_available_acoustic_languages, get_
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-class DummyArgs(object):
-    def __init__(self):
-        self.corpus_directory = ''
-        self.dictionary_path = ''
-        self.acoustic_model_path = ''
-        self.speaker_characters = 0
-        self.num_jobs = 0
-        self.verbose = False
-        self.clean = True
-        self.fast = True
-        self.debug = False
-        self.temp_directory = None
-        self.config_path = ''
-
-
-def align_corpus(args):
+def train_dictionary(args):
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -60,7 +45,6 @@ def align_corpus(args):
         shutil.rmtree(data_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
-    os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
@@ -90,10 +74,7 @@ def align_corpus(args):
         if args.debug:
             print('Performed alignment in {} seconds'.format(time.time() - begin))
 
-        begin = time.time()
-        a.export_textgrids(args.output_directory)
-        if args.debug:
-            print('Exported TextGrids in {} seconds'.format(time.time() - begin))
+        a.generate_pronunciations(args.output_directory)
         print('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:
         conf['dirty'] = True
@@ -109,11 +90,9 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
     if not os.path.isdir(args.corpus_directory):
         raise ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory))
 
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
-
     if args.dictionary_path.lower() in download_dictionaries:
         args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
+
     if not os.path.exists(args.dictionary_path):
         raise ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path))
     if not os.path.isfile(args.dictionary_path):
@@ -131,7 +110,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
                 args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
 
-def run_align_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None):
+def run_train_dictionary(args, downloaded_acoustic_models=None, download_dictionaries=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:
@@ -144,14 +123,15 @@ def run_align_corpus(args, downloaded_acoustic_models=None, download_dictionarie
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
-    align_corpus(args)
+    train_dictionary(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages, dict_languages
+    from montreal_forced_aligner.command_line.mfa import train_dictionary_parser, fix_path, unfix_path, \
+        acoustic_languages, dict_languages
 
-    align_args = align_parser.parse_args()
+    align_args = train_dictionary_parser.parse_args()
     fix_path()
-    run_align_corpus(align_args, acoustic_languages, dict_languages)
+    run_train_dictionary(align_args, acoustic_languages, dict_languages)
     unfix_path()
