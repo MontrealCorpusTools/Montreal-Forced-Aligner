@@ -28,15 +28,15 @@ def download_binaries():
         plat = 'win64'
     else:
         plat = 'linux'
-    print('Downloading precompiled binaries for {}...'.format(plat))
 
     download_link = 'https://github.com/MontrealCorpusTools/mfa-models/raw/master/thirdparty/mfa_thirdparty_{}.zip'.format(
         plat)
     bin_dir = os.path.join(base_dir, 'bin')
     path = os.path.join(base_dir, '{}.zip'.format(plat))
-    if not os.path.exists(bin_dir):
-        with tqdm(unit='B', unit_scale=True, miniters=1) as t:
-            filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
+    if os.path.exists(bin_dir):
+        shutil.rmtree(bin_dir, ignore_errors=True)
+    with tqdm(unit='B', unit_scale=True, miniters=1) as t:
+        filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
     shutil.unpack_archive(path, base_dir)
     os.remove(path)
     if plat != 'win':
