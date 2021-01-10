@@ -119,9 +119,9 @@
 
 .. _`ProsodyLab French dictionary`: https://github.com/prosodylab/prosodylab.dictionaries/raw/master/fr.dict
 
-.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/english.dict
-.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/fr.dict
-.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/de.dict
+.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/english.dict
+.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/fr.dict
+.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/de.dict
 
 
 .. _pretrained_models:
