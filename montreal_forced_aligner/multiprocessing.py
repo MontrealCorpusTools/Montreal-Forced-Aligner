@@ -3,11 +3,14 @@ import subprocess
 import os
 import shutil
 import re
+import sys
+import traceback
 import time
 from decimal import Decimal
 import statistics
+from queue import Empty, Full
 
-from .helper import make_path_safe, thirdparty_binary
+from .helper import make_path_safe, thirdparty_binary, parse_logs
 
 from .textgrid import ctm_to_textgrid, parse_ctm
 
@@ -43,28 +46,64 @@ class Stopped(object):
 
 
 class ProcessWorker(mp.Process):
-    def __init__(self, function, arguments):
+    def __init__(self, job_q, function, return_dict, stopped):
         mp.Process.__init__(self)
         self.function = function
-        self.arguments = arguments
+        self.job_q = job_q
+        self.return_dict = return_dict
+        self.stopped = stopped
 
     def run(self):
-        time.sleep(10)
-        try:
-            print(self.arguments)
-            _ = self.function(*self.arguments)
-        except Exception as e:
-            print(e)
+        while True:
+            try:
+                arguments = self.job_q.get(timeout=1)
+            except Empty as error:
+                break
+            self.job_q.task_done()
+            if self.stopped.stop_check():
+                continue
+            try:
+                _ = self.function(*arguments)
+            except Exception as e:
+                self.stopped.stop()
+                self.return_dict['error'] = arguments, Exception(traceback.format_exception(*sys.exc_info()))
+        return
 
 
-def run_non_mp(function, argument_list):
+def run_non_mp(function, argument_list, log_directory):
     for args in argument_list:
         function(*args)
 
+    parse_logs(log_directory)
 
-def run_mp(function, argument_list):
-    with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
-        results = p.starmap(function, argument_list, chunksize=1)
+
+def run_mp(function, argument_list, log_directory):  # pragma: no cover
+    stopped = Stopped()
+    #job_queue = mp.JoinableQueue(len(argument_list))
+    manager = mp.Manager()
+    job_queue = manager.Queue()
+    return_dict = manager.dict()
+    for a in argument_list:
+        job_queue.put(a, False)
+    procs = []
+    for i in range(len(argument_list)):
+        p = ProcessWorker(job_queue, function, return_dict, stopped)
+        procs.append(p)
+        p.start()
+    #job_queue.join()
+
+    for p in procs:
+        p.join()
+    if 'error' in return_dict:
+        element, exc = return_dict['error']
+        print(element)
+        raise exc
+
+    parse_logs(log_directory)
+
+
+    #with mp.get_context("spawn").Pool(processes=len(argument_list)) as p:
+    #    results = p.starmap(function, argument_list, chunksize=1)
 
 
 def acc_stats_func(directory, iteration, job_name, feat_path):
@@ -108,9 +147,9 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
     jobs = [(directory, iteration, x, os.path.join(split_directory, feat_name.format(x)))
             for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(acc_stats_func, jobs)
+        run_mp(acc_stats_func, jobs, config.log_directory)
     else:
-        run_non_mp(acc_stats_func, jobs)
+        run_non_mp(acc_stats_func, jobs, config.log_directory)
 
 
 def parse_transitions(path, phones_path):
@@ -236,13 +275,14 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, c
     num_jobs : int
         The number of processes to use
     """
-    os.makedirs(os.path.join(directory, 'log'), exist_ok=True)
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, lang_directory, split_directory, x, debug)
             for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(compile_train_graphs_func, jobs)
+        run_mp(compile_train_graphs_func, jobs, log_directory)
     else:
-        run_non_mp(compile_train_graphs_func, jobs)
+        run_non_mp(compile_train_graphs_func, jobs, log_directory)
 
 
 def mono_align_equal_func(mono_directory, job_name, feat_path):
@@ -286,9 +326,9 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
             for x in range(num_jobs)]
 
     if config.use_mp:
-        run_mp(mono_align_equal_func, jobs)
+        run_mp(mono_align_equal_func, jobs, config.log_directory)
     else:
-        run_non_mp(mono_align_equal_func, jobs)
+        run_non_mp(mono_align_equal_func, jobs, config.log_directory)
 
 
 def align_func(directory, iteration, job_name, mdl, config, feat_path, output_directory):
@@ -298,11 +338,11 @@ def align_func(directory, iteration, job_name, mdl, config, feat_path, output_di
     score_path = os.path.join(output_directory, 'ali.{}.scores'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as logf:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled'),
-                                       '--transition-scale={}'.format(config.transition_scale),
-                                       '--acoustic-scale={}'.format(config.acoustic_scale),
-                                       '--self-loop-scale={}'.format(config.self_loop_scale),
-                                       '--beam={}'.format(config.beam),
-                                       '--retry-beam={}'.format(config.retry_beam),
+                                       '--transition-scale={}'.format(config['transition_scale']),
+                                       '--acoustic-scale={}'.format(config['acoustic_scale']),
+                                       '--self-loop-scale={}'.format(config['self_loop_scale']),
+                                       '--beam={}'.format(config['beam']),
+                                       '--retry-beam={}'.format(config['retry_beam']),
                                        '--careful=false',
                                        mdl,
                                        "ark:" + fst_path, "scp:" + feat_path, "ark,t:" + ali_path,
@@ -340,18 +380,20 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     """
     if output_directory is None:
         output_directory = directory
+    log_directory = os.path.join(output_directory, 'log')
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
     mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
                                            config.boost_silence, optional_silence, make_path_safe(mdl_path))
     feat_name = config.feature_file_base_name
     feat_name += '.{}.scp'
-    jobs = [(directory, iteration, x, mdl, config, os.path.join(split_directory, feat_name.format(x)), output_directory)
+    jobs = [(directory, iteration, x, mdl, config.align_options,
+             os.path.join(split_directory, feat_name.format(x)), output_directory)
             for x in range(num_jobs)]
 
     if config.use_mp:
-        run_mp(align_func, jobs)
+        run_mp(align_func, jobs, log_directory)
     else:
-        run_non_mp(align_func, jobs)
+        run_non_mp(align_func, jobs, log_directory)
 
     error_logs = []
     for i in range(num_jobs):
@@ -437,6 +479,7 @@ def transcribe(transcriber):
     """
     directory = transcriber.transcribe_directory
     output_directory = transcriber.transcribe_directory
+    log_directory = os.path.join(output_directory, 'log')
     config = transcriber.transcribe_config
     mdl_path = os.path.join(directory, 'final.mdl')
     corpus = transcriber.corpus
@@ -454,9 +497,9 @@ def transcribe(transcriber):
                 for x in range(num_jobs)]
 
     if config.use_mp and num_jobs > 1:
-        run_mp(decode_func, jobs)
+        run_mp(decode_func, jobs, log_directory)
     else:
-        run_non_mp(decode_func, jobs)
+        run_non_mp(decode_func, jobs, log_directory)
 
     if transcriber.evaluation_mode:
         best_wer = 10000
@@ -469,9 +512,9 @@ def transcribe(transcriber):
                 jobs = [(directory, x, config, out_dir, lmwt, wip)
                         for x in range(num_jobs)]
                 if config.use_mp:
-                    run_mp(score_func, jobs)
+                    run_mp(score_func, jobs, log_dir)
                 else:
-                    run_non_mp(score_func, jobs)
+                    run_non_mp(score_func, jobs, log_dir)
                 ser, wer = transcriber.evaluate(out_dir, out_dir)
                 if wer < best_wer:
                     best = (lmwt, wip)
@@ -481,9 +524,9 @@ def transcribe(transcriber):
         jobs = [(directory, x, config, output_directory)
                 for x in range(num_jobs)]
         if config.use_mp:
-            run_mp(score_func, jobs)
+            run_mp(score_func, jobs, log_directory)
         else:
-            run_non_mp(score_func, jobs)
+            run_non_mp(score_func, jobs, log_directory)
 
 
 def initial_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_path, output_directory,
@@ -680,19 +723,19 @@ def transcribe_fmllr(transcriber):
                  os.path.join(split_directory, feat_name.format(x)), fmllr_directory, corpus.original_num_jobs)
                 for x in range(num_jobs)]
 
-    run_non_mp(initial_fmllr_func, jobs)
+    run_non_mp(initial_fmllr_func, jobs, log_dir)
 
     if config.use_mp and num_jobs > 1:
-        run_mp(lat_gen_fmllr_func, jobs)
+        run_mp(lat_gen_fmllr_func, jobs, log_dir)
     else:
-        run_non_mp(lat_gen_fmllr_func, jobs)
+        run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
 
-    run_non_mp(final_fmllr_est_func, jobs)
+    run_non_mp(final_fmllr_est_func, jobs, log_dir)
 
     if config.use_mp:
-        run_mp(fmllr_rescore_func, jobs)
+        run_mp(fmllr_rescore_func, jobs, log_dir)
     else:
-        run_non_mp(fmllr_rescore_func, jobs)
+        run_non_mp(fmllr_rescore_func, jobs, log_dir)
 
     if transcriber.evaluation_mode:
         best_wer = 10000
@@ -705,9 +748,9 @@ def transcribe_fmllr(transcriber):
                 jobs = [(directory, x, config, out_dir, lmwt, wip)
                         for x in range(num_jobs)]
                 if config.use_mp:
-                    run_mp(score_func, jobs)
+                    run_mp(score_func, jobs, log_dir)
                 else:
-                    run_non_mp(score_func, jobs)
+                    run_non_mp(score_func, jobs, log_dir)
                 ser, wer = transcriber.evaluate(out_dir, out_dir)
                 if wer < best_wer:
                     best = (lmwt, wip)
@@ -722,9 +765,9 @@ def transcribe_fmllr(transcriber):
         jobs = [(directory, x, config, fmllr_directory)
                 for x in range(num_jobs)]
         if config.use_mp:
-            run_mp(score_func, jobs)
+            run_mp(score_func, jobs, log_dir)
         else:
-            run_non_mp(score_func, jobs)
+            run_non_mp(score_func, jobs, log_dir)
 
 
 def compile_information_func(log_directory, corpus, job_num):
@@ -755,7 +798,7 @@ def compile_information(model_directory, corpus, num_jobs, config):
     jobs = [(log_dir, corpus, x)
             for x in range(num_jobs)]
 
-    run_non_mp(compile_information_func, jobs)
+    run_non_mp(compile_information_func, jobs, log_dir)
 
     unaligned = {}
     for j in jobs:
@@ -890,9 +933,9 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
 def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
     jobs = [(iteration, config, model_directory, x) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(compute_alignment_improvement_func, jobs)
+        run_mp(compute_alignment_improvement_func, jobs, config.log_directory)
     else:
-        run_non_mp(compute_alignment_improvement_func, jobs)
+        run_non_mp(compute_alignment_improvement_func, jobs, config.log_directory)
 
     alignment_diff_path = os.path.join(model_directory, 'train_change.csv')
     if iteration == 0 or iteration not in config.realignment_iterations:
@@ -923,8 +966,8 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
             os.remove(phone_ctm_path)
 
 
-def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_name):
-    text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
+def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, frame_shift):
+    text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
@@ -933,7 +976,6 @@ def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
 
-    frame_shift = align_config.feature_config.frame_shift / 1000
     with open(log_path, 'w', encoding='utf8') as logf:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
@@ -946,7 +988,7 @@ def ali_to_textgrid_func(align_config, model_directory, dictionary, corpus, job_
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=logf)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                                       os.path.join(dictionary.phones_dir, 'word_boundary.int'), model_path,
+                                       word_path, model_path,
                                        'ark:-', 'ark,t:' + aligned_path],
                                       stdin=lin_proc.stdout, stderr=logf)
         align_proc.communicate()
@@ -992,9 +1034,9 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     model_directory : str
         Directory of training (monophone, triphone, speaker-adapted triphone
         training directories)
-    dictionary : :class:`~aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object that has information about pronunciations
-    corpus : :class:`~aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
         Corpus object that has information about the dataset
     num_jobs : int
         The number of processes to use in calculation
@@ -1006,12 +1048,15 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
         allowed to be open on the computer (for Unix-based systems)
 
     """
-    jobs = [(align_config, model_directory, dictionary, corpus, x)
+    log_directory = os.path.join(model_directory, 'log')
+    frame_shift = align_config.feature_config.frame_shift / 1000
+    word_path = os.path.join(dictionary.phones_dir, 'word_boundary.int')
+    jobs = [(model_directory, word_path, corpus.split_directory(), x, frame_shift)
             for x in range(num_jobs)]
     if align_config.use_mp:
-        run_mp(ali_to_textgrid_func, jobs)
+        run_mp(ali_to_textgrid_func, jobs, log_directory)
     else:
-        run_non_mp(ali_to_textgrid_func, jobs)
+        run_non_mp(ali_to_textgrid_func, jobs, log_directory)
 
     word_ctm = {}
     phone_ctm = {}
@@ -1072,9 +1117,9 @@ def generate_pronunciations(align_config, model_directory, dictionary, corpus, n
     jobs = [(align_config, model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
     if align_config.use_mp:
-        run_mp(generate_pronunciations_func, jobs)
+        run_mp(generate_pronunciations_func, jobs, align_config.log_directory)
     else:
-        run_non_mp(generate_pronunciations_func, jobs)
+        run_non_mp(generate_pronunciations_func, jobs, align_config.log_directory)
 
     word_lookup = dictionary.reversed_word_mapping
     phone_lookup = dictionary.reversed_phone_mapping
@@ -1155,9 +1200,9 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
             for x in range(num_jobs)]
 
     if config.use_mp:
-        run_mp(tree_stats_func, jobs)
+        run_mp(tree_stats_func, jobs, config.log_directory)
     else:
-        run_non_mp(tree_stats_func, jobs)
+        run_non_mp(tree_stats_func, jobs, config.log_directory)
 
     tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
@@ -1204,9 +1249,9 @@ def convert_alignments(directory, align_directory, num_jobs, config):
     jobs = [(directory, align_directory, x)
             for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(convert_alignments_func, jobs)
+        run_mp(convert_alignments_func, jobs, config.log_directory)
     else:
-        run_non_mp(convert_alignments_func, jobs)
+        run_non_mp(convert_alignments_func, jobs, config.log_directory)
 
 
 def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, initial,
@@ -1318,25 +1363,24 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     # if config.use_mp:
     #    run_mp(calc_fmllr_func, jobs)
     # else:
-    run_non_mp(calc_fmllr_func, jobs)
+    run_non_mp(calc_fmllr_func, jobs, config.log_directory)
 
 
-def lda_acc_stats_func(directory, split_dir, align_directory, config, ci_phones, i):
+def lda_acc_stats_func(directory, spliced_feat_path, align_directory, config, ci_phones, i):
     log_path = os.path.join(directory, 'log', 'ali_to_post.{}.log'.format(i))
     with open(log_path, 'w', encoding='utf8') as logf:
-        spliced_feat_path = os.path.join(split_dir, config.feature_config.feature_id + '.{}.scp'.format(i))
         ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
                                              'ark:' + os.path.join(align_directory, 'ali.{}'.format(i)),
                                              'ark:-'],
                                             stderr=logf, stdout=subprocess.PIPE)
         weight_silence_post_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                     str(config.boost_silence), ci_phones,
+                                                     str(config['boost_silence']), ci_phones,
                                                      os.path.join(align_directory, 'final.mdl'),
                                                      'ark:-', 'ark:-'],
                                                     stdin=ali_to_post_proc.stdout,
                                                     stderr=logf, stdout=subprocess.PIPE)
         acc_lda_post_proc = subprocess.Popen([thirdparty_binary('acc-lda'),
-                                              '--rand-prune=' + str(config.random_prune),
+                                              '--rand-prune=' + str(config['random_prune']),
                                               os.path.join(align_directory, 'final.mdl'),
                                               'scp:' + spliced_feat_path,
                                               'ark,s,cs:-',
@@ -1379,11 +1423,13 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
         The number of processes to use in calculation
 
     """
-    jobs = [(directory, split_directory, align_directory, config, ci_phones, x) for x in range(num_jobs)]
+
+    jobs = [(directory, os.path.join(split_directory, config.feature_config.feature_id + '.{}.scp'.format(x)),
+             align_directory, config.lda_options, ci_phones, x) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(lda_acc_stats_func, jobs)
+        run_mp(lda_acc_stats_func, jobs, config.log_directory)
     else:
-        run_non_mp(lda_acc_stats_func, jobs)
+        run_non_mp(lda_acc_stats_func, jobs, config.log_directory)
 
     log_path = os.path.join(directory, 'log', 'lda_est.log')
     acc_list = []
@@ -1400,7 +1446,7 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
     config.feature_config.generate_features(config.corpus, overwrite=True)
 
 
-def calc_lda_mllt_func(directory, split_directory, sil_phones, job_name, config,
+def calc_lda_mllt_func(directory, feat_path, sil_phones, job_name, config,
                        initial,
                        model_name='final'):
     log_path = os.path.join(directory, 'log', 'lda_mllt.{}.{}.log'.format(model_name, job_name))
@@ -1411,7 +1457,6 @@ def calc_lda_mllt_func(directory, split_directory, sil_phones, job_name, config,
         mdl_path = os.path.join(directory, '1.mdl')
         model_name = 1
 
-    feat_path = os.path.join(split_directory, config.feature_config.feature_id + '.{}.scp'.format(job_name))
     post_path = os.path.join(directory, 'post.{}'.format(job_name))
     weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
 
@@ -1424,7 +1469,7 @@ def calc_lda_mllt_func(directory, split_directory, sil_phones, job_name, config,
                          sil_phones, mdl_path, 'ark:' + post_path,
                          'ark:' + weight_path], stderr=logf)
         subprocess.call([thirdparty_binary('gmm-acc-mllt'),
-                         '--rand-prune=' + str(config.random_prune),
+                         '--rand-prune=' + str(config['random_prune']),
                          mdl_path,
                          'scp:' + feat_path,
                          'ark:' + post_path,
@@ -1474,13 +1519,15 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
         model_name = 'final'
     else:
         model_name = iteration
+
     jobs = [
-        (directory, split_directory, sil_phones, x, config, initial, model_name)
+        (directory, os.path.join(split_directory, config.feature_config.feature_id + '.{}.scp'.format(x)),
+         sil_phones, x, config.lda_options, initial, model_name)
         for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(calc_lda_mllt_func, jobs)
+        run_mp(calc_lda_mllt_func, jobs, config.log_directory)
     else:
-        run_non_mp(calc_lda_mllt_func, jobs)
+        run_non_mp(calc_lda_mllt_func, jobs, config.log_directory)
 
     mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
     log_path = os.path.join(directory, 'log', 'transform_means.{}.log'.format(model_name))
@@ -1515,28 +1562,27 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
     config.feature_config.generate_features(config.corpus, overwrite=True)
 
 
-def gmm_gselect_func(config, x):
-    log_path = os.path.join(config.train_directory, 'log', 'gselect.{}.log'.format(x))
-    feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
+def gmm_gselect_func(iteration, train_directory, config, feat_path, x):
+    log_path = os.path.join(train_directory, 'log', 'gselect.{}.log'.format(x))
     with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
-                                                 '--n=' + str(config.subsample),
+                                                 '--n=' + str(config['subsample']),
                                                  'scp:' + feat_path,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
 
         gselect_proc = subprocess.Popen([thirdparty_binary('gmm-gselect'),
-                                         '--n=' + str(config.num_gselect),
-                                         os.path.join(config.train_directory, '1.dubm'),
+                                         '--n=' + str(config['num_gselect']),
+                                         os.path.join(train_directory, '{}.dubm'.format(iteration)),
                                          'ark:-',
-                                         'ark:' + os.path.join(config.train_directory, 'gselect.{}'.format(x))],
+                                         'ark:' + os.path.join(train_directory, 'gselect.{}'.format(x))],
                                         stdin=subsample_feats_proc.stdout,
                                         stderr=logf)
         gselect_proc.communicate()
 
 
-def gmm_gselect(config, num_jobs):
+def gmm_gselect(iteration, config, num_jobs):
     """
     Multiprocessing function that stores Gaussian selection indices on disk
 
@@ -1558,35 +1604,42 @@ def gmm_gselect(config, num_jobs):
         The number of processes to use in calculation
 
     """
-    jobs = [(config, x) for x in range(num_jobs)]
+    jobs = [(iteration, config.train_directory, config.ivector_options,
+             os.path.join(config.data_directory, config.feature_config.voiced_feature_id + '.{}.scp'.format(x)),
+             x) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(gmm_gselect_func, jobs)
+        run_mp(gmm_gselect_func, jobs, config.log_directory)
     else:
-        run_non_mp(gmm_gselect_func, jobs)
+        run_non_mp(gmm_gselect_func, jobs, config.log_directory)
 
 
-def acc_global_stats_func(config, x, iteration):
-    log_path = os.path.join(config.train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
-    feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
+def acc_global_stats_func(train_directory, config, feat_path, x, iteration, full=False):
+    log_path = os.path.join(train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
-                                                 '--n=' + str(config.subsample),
+                                                 '--n=' + str(config['subsample']),
                                                  'scp:' + feat_path,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
-        gmm_global_acc_proc = subprocess.Popen([thirdparty_binary('gmm-global-acc-stats'),
-                                                '--gselect=' + 'ark:' + os.path.join(config.train_directory,
+        if full:
+            bin_name = 'fgmm-global-acc-stats'
+            mdl_path = os.path.join(train_directory, '{}.ubm'.format(iteration))
+        else:
+            bin_name = 'gmm-global-acc-stats'
+            mdl_path = os.path.join(train_directory, '{}.dubm'.format(iteration))
+        gmm_global_acc_proc = subprocess.Popen([thirdparty_binary(bin_name),
+                                                '--gselect=' + 'ark:' + os.path.join(train_directory,
                                                                                      'gselect.{}'.format(x)),
-                                                os.path.join(config.train_directory, '{}.dubm'.format(iteration)),
+                                                mdl_path,
                                                 'ark:-',
-                                                os.path.join(config.train_directory, '{}.{}.acc'.format(iteration, x))],
+                                                os.path.join(train_directory, '{}.{}.acc'.format(iteration, x))],
                                                stderr=logf,
                                                stdin=subsample_feats_proc.stdout)
         gmm_global_acc_proc.communicate()
 
 
-def acc_global_stats(config, num_jobs, iteration):
+def acc_global_stats(config, num_jobs, iteration, full=False):
     """
     Multiprocessing function that accumulates global GMM stats
 
@@ -1609,29 +1662,31 @@ def acc_global_stats(config, num_jobs, iteration):
     iteration : int
         Iteration to calculate stats for
     """
-    jobs = [(config, x, iteration) for x in range(num_jobs)]
+    jobs = [(config.train_directory, config.ivector_options,
+             os.path.join(config.data_directory, config.feature_config.voiced_feature_id + '.{}.scp'.format(x)),
+             x, iteration, full) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(acc_global_stats_func, jobs)
+        run_mp(acc_global_stats_func, jobs, config.log_directory)
     else:
-        run_non_mp(acc_global_stats_func, jobs)
+        run_non_mp(acc_global_stats_func, jobs, config.log_directory)
 
 
-def gauss_to_post_func(config, x):
-    modified_posterior_scale = config.posterior_scale * config.subsample
-    log_path = os.path.join(config.train_directory, 'log', 'post.{}.log'.format(x))
-    feat_path = os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x))
+def gauss_to_post_func(train_directory, config, feat_path, x):
+    modified_posterior_scale = config['posterior_scale'] * config['subsample']
+    log_path = os.path.join(train_directory, 'log', 'post.{}.log'.format(x))
+    gselect_path = os.path.join(train_directory, 'gselect.{}'.format(x))
     with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
-                                                 '--n=' + str(config.subsample),
+                                                 '--n=' + str(config['subsample']),
                                                  'scp:' + feat_path,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
-        gmm_global_get_post_proc = subprocess.Popen([thirdparty_binary('gmm-global-get-post'),
-                                                     '--n=' + str(config.num_gselect),
-                                                     '--min-post=' + str(config.min_post),
-                                                     os.path.join(config.train_directory, 'final.dubm'),
+        gmm_global_get_post_proc = subprocess.Popen([thirdparty_binary('fgmm-global-gselect-to-post'),
+                                                     '--min-post=' + str(config['min_post']),
+                                                     os.path.join(train_directory, 'final.ubm'),
                                                      'ark:-',
+                                                     'ark:' + gselect_path,
                                                      'ark:-'],
                                                     stdout=subprocess.PIPE,
                                                     stdin=subsample_feats_proc.stdout,
@@ -1639,7 +1694,7 @@ def gauss_to_post_func(config, x):
         scale_post_proc = subprocess.Popen([thirdparty_binary('scale-post'),
                                             'ark:-',
                                             str(modified_posterior_scale),
-                                            'ark:' + os.path.join(config.train_directory, 'post.{}'.format(x))],
+                                            'ark:' + os.path.join(train_directory, 'post.{}'.format(x))],
                                            stdin=gmm_global_get_post_proc.stdout,
                                            stderr=logf)
         scale_post_proc.communicate()
@@ -1667,28 +1722,29 @@ def gauss_to_post(config, num_jobs):
     num_jobs : int
         The number of processes to use in calculation
     """
-    jobs = [(config, x) for x in range(num_jobs)]
+    jobs = [(config.train_directory, config.ivector_options,
+             os.path.join(config.data_directory, config.feature_file_base_name + '.{}.scp'.format(x)),
+             x) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(gauss_to_post_func, jobs)
+        run_mp(gauss_to_post_func, jobs, config.log_directory)
     else:
-        run_non_mp(gauss_to_post_func, jobs)
+        run_non_mp(gauss_to_post_func, jobs, config.log_directory)
 
 
-def acc_ivector_stats_func(config, x, iteration):
-    log_path = os.path.join(config.train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
-    feat_path = os.path.join(config.data_directory, config.feature_config.feature_id + '.{}.scp'.format(x))
+def acc_ivector_stats_func(train_directory, config, feat_path, x,  iteration):
+    log_path = os.path.join(train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w', encoding='utf8') as logf:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
-                                                 '--n=' + str(config.subsample),
+                                                 '--n=' + str(config['subsample']),
                                                  'scp:' + feat_path,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=logf)
         acc_stats_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-acc-stats'),
-                                           os.path.join(config.train_directory, '{}.ie'.format(iteration)),
+                                           os.path.join(train_directory, '{}.ie'.format(iteration)),
                                            'ark:-',
-                                           'ark:' + os.path.join(config.train_directory, 'post.{}'.format(x)),
-                                           os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, x))],
+                                           'ark:' + os.path.join(train_directory, 'post.{}'.format(x)),
+                                           os.path.join(train_directory, 'accinit.{}.{}'.format(iteration, x))],
                                           stdin=subsample_feats_proc.stdout,
                                           stderr=logf)
         acc_stats_proc.communicate()
@@ -1718,11 +1774,13 @@ def acc_ivector_stats(config, num_jobs, iteration):
     iteration : int
         Iteration to calculate stats for
     """
-    jobs = [(config, x, iteration) for x in range(num_jobs)]
+    jobs = [(config.train_directory, config.ivector_options,
+             os.path.join(config.data_directory, config.feature_config.voiced_feature_id + '.{}.scp'.format(x)),
+             x, iteration) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(acc_ivector_stats_func, jobs)
+        run_mp(acc_ivector_stats_func, jobs, config.log_directory)
     else:
-        run_non_mp(acc_ivector_stats_func, jobs)
+        run_non_mp(acc_ivector_stats_func, jobs, config.log_directory)
 
     accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in range(num_jobs)]
     log_path = os.path.join(config.train_directory, 'log', 'sum_acc.{}.log'.format(iteration))
@@ -1736,7 +1794,8 @@ def acc_ivector_stats(config, num_jobs, iteration):
         sum_accs_proc.communicate()
 
 
-def extract_ivectors_func(config, job_id):
+def extract_ivectors_func(train_directory, data_directory, speak_utt_mapping, sil_phones,
+                          config, features_path, job_id, output_directory):
     """
 
     Parameters
@@ -1747,33 +1806,23 @@ def extract_ivectors_func(config, job_id):
         Job identifier
     """
 
-    log_dir = os.path.join(config.align_directory, 'log')
+    log_dir = os.path.join(output_directory, 'log')
     os.makedirs(log_dir, exist_ok=True)
-    ivector_mdl = os.path.join(config.train_directory, 'final.ie')
-    log_path = os.path.join(config.align_directory, 'log', 'extract_ivectors.{}.log'.format(job_id))
-    feat_name = config.feature_file_base_name
-    feat_name += '.{}.scp'
-    # features_path = os.path.join(config.data_directory, 'features_for_ivector.{}.scp'.format(x))
-    ivectors_path = os.path.join(config.train_directory, 'ivectors.{}'.format(job_id))
-    post_path = os.path.join(config.align_directory, 'post.{}'.format(job_id))
-    ali_path = os.path.join(config.align_directory, 'ali.{}'.format(job_id))
-    weight_path = os.path.join(config.align_directory, 'weight.{}'.format(job_id))
-    mdl_path = os.path.join(config.align_directory, 'final.mdl')
-    gmm_feats = os.path.join(config.data_directory, feat_name.format(job_id))
-    features_path = gmm_feats
-    spk2utt_path = os.path.join(config.data_directory, 'spk2utt.{}'.format(job_id))
-    sil_phones = config.dictionary.silence_csl
+    ivector_mdl = os.path.join(train_directory, 'final.ie')
+    log_path = os.path.join(output_directory, 'log', 'extract_ivectors.{}.log'.format(job_id))
+    ivectors_path = os.path.join(train_directory, 'ivectors.{}'.format(job_id))
+    ali_path = os.path.join(output_directory, 'ali.{}'.format(job_id))
+    weight_path = os.path.join(output_directory, 'weight.{}'.format(job_id))
+    mdl_path = os.path.join(output_directory, 'final.mdl')
+    spk2utt_path = os.path.join(data_directory, 'spk2utt.{}'.format(job_id))
 
-    silence_weight = 0.0
-    posterior_scale = 0.1
-    max_count = 100
     with open(log_path, 'w', encoding='utf8') as logf:
         ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
                                              'ark:' + ali_path, 'ark:-'],
                                             stderr=logf,
                                             stdout=subprocess.PIPE)
         weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                str(silence_weight),
+                                                str(config['silence_weight']),
                                                 sil_phones,
                                                 mdl_path,
                                                 'ark:-', 'ark:-'],
@@ -1787,17 +1836,17 @@ def extract_ivectors_func(config, job_id):
         post_to_weight_proc.communicate()
 
         gmm_global_get_post_proc = subprocess.Popen([thirdparty_binary('gmm-global-get-post'),
-                                                     '--n=' + str(config.num_gselect),
-                                                     '--min-post=' + str(config.min_post),
-                                                     os.path.join(config.train_directory, 'final.dubm'),
-                                                     'scp:' + gmm_feats,
+                                                     '--n=' + str(config['num_gselect']),
+                                                     '--min-post=' + str(config['min_post']),
+                                                     os.path.join(train_directory, 'final.dubm'),
+                                                     'scp:' + features_path,
                                                      'ark:-'],
                                                     stdout=subprocess.PIPE,
                                                     stderr=logf)
         extract_proc = subprocess.Popen([thirdparty_binary('ivector-extract'),
-                                         '--acoustic-weight={}'.format(posterior_scale),
+                                         '--acoustic-weight={}'.format(config['posterior_scale']),
                                          '--compute-objf-change=true',
-                                         '--max-count={}'.format(max_count),
+                                         '--max-count={}'.format(config['max_count']),
                                          '--spk2utt=ark:' + spk2utt_path,
                                          ivector_mdl,
                                          'scp:' + features_path,
@@ -1815,7 +1864,7 @@ def extract_ivectors_func(config, job_id):
                 line = line.split()
                 speaker = line[0]
                 data = line[1:]
-                for utt in config.corpus.speak_utt_mapping[speaker]:
+                for utt in speak_utt_mapping[speaker]:
                     utt_ivectors.append([utt] + data)
 
         with open(ivectors_path, 'w', newline='', encoding='utf8') as f:
@@ -1823,7 +1872,7 @@ def extract_ivectors_func(config, job_id):
                 f.write(' '.join(u))
                 f.write('\n')
 
-        feat_scp_path = os.path.join(config.data_directory, 'feats.{}.scp'.format(job_id))
+        feat_scp_path = os.path.join(data_directory, 'feats.{}.scp'.format(job_id))
         with open(os.devnull, 'w', encoding='utf8') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          'scp:' + feat_scp_path, '-'],
@@ -1832,15 +1881,15 @@ def extract_ivectors_func(config, job_id):
             stdout, stderr = dim_proc.communicate()
             feat_dim = int(stdout.decode('utf8').strip())
 
-        ivector_ark_path = os.path.join(config.data_directory, 'ivector.{}.ark'.format(job_id))
-        ivector_scp_path = os.path.join(config.data_directory, 'ivector.{}.scp'.format(job_id))
+        ivector_ark_path = os.path.join(data_directory, 'ivector.{}.ark'.format(job_id))
+        ivector_scp_path = os.path.join(data_directory, 'ivector.{}.scp'.format(job_id))
         append_proc = subprocess.Popen([thirdparty_binary('append-vector-to-feats'),
                                         'scp:' + feat_scp_path, 'ark:' + ivectors_path,
                                         'ark:-'],
                                        stderr=logf,
                                        stdout=subprocess.PIPE)
         select_proc = subprocess.Popen([thirdparty_binary('select-feats'),
-                                        "{}-{}".format(feat_dim, feat_dim + config.ivector_dimension - 1),
+                                        "{}-{}".format(feat_dim, feat_dim + config['ivector_dimension'] - 1),
                                         'ark:-',
                                         'ark,scp:{},{}'.format(ivector_ark_path, ivector_scp_path)],
                                        stderr=logf,
@@ -1870,8 +1919,14 @@ def extract_ivectors(config, num_jobs):
     num_jobs : int
         The number of processes to use in calculation
     """
-    jobs = [(config, x) for x in range(num_jobs)]
+    feat_name = config.feature_file_base_name
+    feat_name += '.{}.scp'
+    jobs = [(config.train_directory, config.data_directory, config.corpus.speak_utt_mapping,
+             config.dictionary.silence_csl, config.ivector_options,
+             os.path.join(config.data_directory, feat_name.format(x)),
+             x, config.align_directory) for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(extract_ivectors_func, jobs)
+        run_mp(extract_ivectors_func, jobs, config.log_directory)
     else:
-        run_non_mp(extract_ivectors_func, jobs)
+        run_non_mp(extract_ivectors_func, jobs, config.log_directory)
+

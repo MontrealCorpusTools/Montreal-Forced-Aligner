@@ -30,6 +30,6 @@ def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_conf
     args.source_path = basic_corpus_dir
     args.temp_directory = temp_dir
     args.config_path = basic_train_lm_config
-    args.output_model_path = os.path.join(generated_dir, 'test_basic_lm.arpa')
+    args.output_model_path = os.path.join(generated_dir, 'test_basic_lm.zip')
     run_train_lm(args)
     assert os.path.exists(args.output_model_path)

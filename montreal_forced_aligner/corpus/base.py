@@ -140,17 +140,20 @@ class BaseCorpus(object):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False):
+                 num_jobs=3, debug=False, logger=None):
         self.debug = debug
         log_dir = os.path.join(output_directory, 'logging')
         os.makedirs(log_dir, exist_ok=True)
         self.name = os.path.basename(directory)
         self.log_file = os.path.join(log_dir, 'corpus.log')
-        self.logger = logging.getLogger('corpus_setup')
-        self.logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
-        handler.setFormatter = logging.Formatter('%(name)s %(message)s')
-        self.logger.addHandler(handler)
+        if logger is None:
+            self.logger = logging.getLogger('corpus_setup')
+            self.logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+            handler.setFormatter = logging.Formatter('%(name)s %(message)s')
+            self.logger.addHandler(handler)
+        else:
+            self.logger = logger
         if not os.path.exists(directory):
             raise CorpusError('The directory \'{}\' does not exist.'.format(directory))
         if not os.path.isdir(directory):
@@ -159,7 +162,6 @@ class BaseCorpus(object):
         if num_jobs < 1:
             num_jobs = 1
         self.original_num_jobs = num_jobs
-        print('Setting up corpus information...')
         self.logger.info('Setting up corpus information...')
         self.directory = directory
         self.output_directory = os.path.join(output_directory, 'corpus_data')
@@ -172,6 +174,7 @@ class BaseCorpus(object):
         self.num_jobs = num_jobs
         self.sample_rates = defaultdict(set)
         self.unsupported_sample_rate = []
+        self.text_mapping = {}
         self.wav_files = []
         self.wav_durations = {}
         self.unsupported_bit_depths = []
@@ -485,7 +488,6 @@ class BaseCorpus(object):
         split_dir = self.split_directory()
         os.makedirs(os.path.join(split_dir, 'log'), exist_ok=True)
         self.logger.info('Setting up training data...')
-        print('Setting up corpus_data directory...')
         self._split_wavs(split_dir)
         self._split_utt2spk(split_dir)
         self._split_spk2utt(split_dir)

@@ -2,6 +2,7 @@ import os
 import sys
 import traceback
 import random
+import time
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
 
@@ -53,13 +54,12 @@ class AlignableCorpus(BaseCorpus):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False):
+                 num_jobs=3, debug=False, logger=None):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
-                                              num_jobs, debug)
+                                              num_jobs, debug, logger)
         # Set up mapping dictionaries
         self.utt_text_file_mapping = {}
-        self.text_mapping = {}
         self.word_counts = Counter()
         self.utterance_oovs = {}
         self.no_transcription_files = []
@@ -67,19 +67,13 @@ class AlignableCorpus(BaseCorpus):
         self.transcriptions_without_wavs = []
         self.tg_count = 0
         self.lab_count = 0
+        begin_time = time.time()
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files = find_ext(files, '.wav')
             lab_files = find_ext(files, '.lab')
             txt_files = find_ext(files, '.txt')
             textgrid_files = find_ext(files, '.textgrid')
-            for f in sorted(files):
-                file_name, ext = os.path.splitext(f)
-                if ext.lower() != '.wav':
-                    if ext.lower() in ['.lab', '.textgrid']:
-                        wav_path = wav_files[file_name]
-                        if wav_path is None:
-                            self.transcriptions_without_wavs.append(os.path.join(root, f))
-                    continue
+            for file_name, f in wav_files.items():
                 wav_path = os.path.join(root, f)
                 try:
                     sr = get_sample_rate(wav_path)
@@ -215,7 +209,7 @@ class AlignableCorpus(BaseCorpus):
                         self.file_directory_mapping[b_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                     self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
                     self.tg_count += 1
-
+        self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time()-begin_time))
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \
                             self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
 
@@ -240,7 +234,6 @@ class AlignableCorpus(BaseCorpus):
             msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
                   'If you would like to use fewer parallel jobs, ' \
                   'please resample all wav files to the same sample rate.'.format(self.num_jobs)
-            print('WARNING: ' + msg)
             self.logger.warning(msg)
         self.find_best_groupings()
 
@@ -253,7 +246,6 @@ class AlignableCorpus(BaseCorpus):
             found = False
             tg.read(text_file_path)
 
-            print(utterance)
             speaker_name = utterance.split('_', maxsplit=1)
             wave_name, begin, end = self.segments[utterance].split(' ')
             begin = float(begin)
@@ -275,14 +267,10 @@ class AlignableCorpus(BaseCorpus):
             if found:
                 tg.write(text_file_path)
             else:
-                print('Unable to find utterance {} match in {}'.format(utterance, text_file_path))
+                self.logger.warning('Unable to find utterance {} match in {}'.format(utterance, text_file_path))
         else:
             with open(text_file_path, 'w', encoding='utf8') as f:
                 f.write(new_text)
-
-    @property
-    def ivector_directory(self):
-        return os.path.join(self.output_directory, 'ivectors')
 
     @property
     def word_set(self):
@@ -308,7 +296,6 @@ class AlignableCorpus(BaseCorpus):
                     else:
                         new_text.append(item)
             yield ' '.join(new_text)
-
 
     def grouped_text(self, dictionary=None):
         output = []
@@ -404,7 +391,7 @@ class AlignableCorpus(BaseCorpus):
         return output
 
     def subset_directory(self, subset, feature_config):
-        if subset is None or subset > self.num_utterances:
+        if subset is None or subset > self.num_utterances or subset <= 0:
             return self.split_directory()
         directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
         if not os.path.exists(directory):

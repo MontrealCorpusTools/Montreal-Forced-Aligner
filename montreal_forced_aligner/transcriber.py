@@ -79,15 +79,20 @@ class Transcriber(object):
         ha_path = os.path.join(self.transcribe_directory, 'Ha.fst')
         hclga_path = os.path.join(self.transcribe_directory, 'HCLGa.fst')
         hclg_path = os.path.join(self.transcribe_directory, 'HCLG.fst')
+        words_path = os.path.join(self.transcribe_directory, 'words.txt')
         shutil.copyfile(self.dictionary.words_symbol_path, os.path.join(self.transcribe_directory, 'words.txt'))
         if os.path.exists(hclg_path):
             return
         print('Generating decoding graph...')
+        with open(self.language_model.arpa_path, 'r', encoding='utf8') as f:
+            for line in f:
+                print(repr(line))
+
         with open(log_path, 'w') as log_file:
             if not os.path.exists(g_path):
                 print('Generating G.fst...')
                 arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                 '--read-symbol-table=' + self.dictionary.words_symbol_path,
+                                 '--read-symbol-table=' + words_path,
                                  self.language_model.arpa_path, g_path], stderr=log_file, stdout=log_file)
                 arpafst_proc.communicate()
                 print('Done!')

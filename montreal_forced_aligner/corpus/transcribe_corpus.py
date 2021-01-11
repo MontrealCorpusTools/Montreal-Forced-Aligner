@@ -1,9 +1,10 @@
 import os
 import sys
 import traceback
+from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
-from .base import BaseCorpus, get_sample_rate, get_bit_depth, find_ext, get_n_channels, extract_temp_channels
+from .base import BaseCorpus, get_sample_rate, get_bit_depth, find_ext, get_n_channels, extract_temp_channels, save_groups
 
 from ..exceptions import SampleRateError, CorpusError
 
@@ -11,12 +12,13 @@ from ..exceptions import SampleRateError, CorpusError
 class TranscribeCorpus(BaseCorpus):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False):
+                 num_jobs=3, debug=False, logger=None):
         super(TranscribeCorpus, self).__init__(directory, output_directory,
                                                speaker_characters,
-                                               num_jobs, debug)
+                                               num_jobs, debug, logger)
+        self.subsegments = {}
+        self.subsegment_mapping = defaultdict(list)
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files = find_ext(files, '.wav')
             textgrid_files = find_ext(files, '.textgrid')
             for f in sorted(files):
                 file_name, ext = os.path.splitext(f)
@@ -102,9 +104,11 @@ class TranscribeCorpus(BaseCorpus):
                             text = interval.mark.lower().strip()
                             if not text:
                                 continue
+
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+                            self.text_mapping[utt_name] = text
                             if n_channels == 1:
                                 if self.feat_mapping and utt_name not in self.feat_mapping:
                                     self.ignored_utterances.append(utt_name)
@@ -151,7 +155,7 @@ class TranscribeCorpus(BaseCorpus):
             self.logger.warning(msg)
         self.find_best_groupings()
 
-    def initialize_corpus(self):
+    def initialize_corpus(self, dictionary=None):
         if not self.utt_wav_mapping:
             raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
         split_dir = self.split_directory()
@@ -159,3 +163,69 @@ class TranscribeCorpus(BaseCorpus):
         if not os.path.exists(split_dir):
             self.split()
         self.figure_utterance_lengths()
+
+    @property
+    def ivector_directory(self):
+        return os.path.join(self.output_directory, 'ivectors')
+
+    @property
+    def grouped_subsegments(self):
+        output = []
+        for g in self.groups:
+            output_g = []
+            for u in g:
+                for new_utt in self.subsegment_mapping[u]:
+                    try:
+                        output_g.append([new_utt, self.subsegments[new_utt]])
+                    except KeyError:
+                        pass
+            output.append(output_g)
+        return output
+
+    def create_subsegments(self, max_segment_duration=30, overlap_duration=5, max_remaining_duration=10,
+                           constant_duration=False):
+        if constant_duration:
+            dur_threshold = max_segment_duration
+        else:
+            dur_threshold = max_segment_duration + max_remaining_duration
+        for utt_id, seg in self.segments.items():
+            parts = seg.split()
+            start_time = float(parts[1])
+            end_time = float(parts[2])
+
+            dur = end_time - start_time
+            start = start_time
+            while dur > dur_threshold:
+                end = start + max_segment_duration
+                start_relative = start - start_time
+                end_relative = end - start_time
+                new_utt = "{utt_id}-{s:08d}-{e:08d}".format(
+                    utt_id=utt_id, s=int(100 * start_relative),
+                    e=int(100 * end_relative))
+                #print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
+                #    new_utt=new_utt, utt_id=utt_id, s=start_relative,
+                #    e=start_relative + max_segment_duration))
+                start += max_segment_duration - overlap_duration
+                dur -= max_segment_duration - overlap_duration
+                self.subsegments[new_utt] = ' '.join([parts[0], start, end])
+                self.subsegment_mapping[utt_id].append(new_utt)  # Let's store utt_id for later splitting
+
+            if constant_duration:
+                if dur < 0:
+                    continue
+                if dur < max_remaining_duration:
+                    start = max(end_time - max_segment_duration, start_time)
+                end = min(start + max_segment_duration, end_time)
+            else:
+                end = end_time
+            new_utt = "{utt_id}-{s:08d}-{e:08d}".format(
+                utt_id=utt_id, s=int(round(100 * (start - start_time))),
+                e=int(round(100 * (end - start_time))))
+            #print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
+            #    new_utt=new_utt, utt_id=utt_id, s=start - start_time,
+            #    e=end - start_time))
+            self.subsegments[new_utt] = ' '.join([parts[0], start, end])
+            self.subsegment_mapping[utt_id].append(new_utt)
+        pattern = 'subsegments.{}'
+
+        save_groups(self.grouped_segments, self.split_directory(), pattern)

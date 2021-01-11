@@ -6,7 +6,7 @@ import os
 import shutil
 import pytest
 
-from montreal_forced_aligner.corpus import AlignableCorpus
+from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.config import train_yaml_to_config, align_yaml_to_config
 
@@ -75,8 +75,8 @@ def transcription_acoustic_model(acoustic_model_dir):
 
 
 @pytest.fixture(scope='session')
-def transcription_language_model(language_model_dir):
-    return os.path.join(language_model_dir, 'basic_lm.arpa')
+def transcription_language_model(language_model_dir, generated_dir):
+    return os.path.join(language_model_dir, 'basic_lm.zip')
 
 
 @pytest.fixture(scope='session')
@@ -316,6 +316,13 @@ def sick_dict(sick_dict_path, generated_dir):
 def sick_corpus(basic_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'sickcorpus')
     corpus = AlignableCorpus(basic_corpus_dir, output_directory, num_jobs=2)
+    return corpus
+
+
+@pytest.fixture(scope='session')
+def sick_corpus_transcribe(basic_corpus_dir, generated_dir):
+    output_directory = os.path.join(generated_dir, 'sickcorpus_transcribe')
+    corpus = TranscribeCorpus(basic_corpus_dir, output_directory, num_jobs=2)
     return corpus
 
 

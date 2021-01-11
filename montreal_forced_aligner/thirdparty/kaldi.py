@@ -17,21 +17,19 @@ else:
     open_blas_library = 'libopenblas.so.0'
 
 alignment_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 'ali-to-post', 'align-equal-compiled',
-                      'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
-                      'compile-train-graphs', 'compile-train-graphs-fsts', 'compose-transforms', 'compute-cmvn-stats',
-                      'compute-mfcc-feats', 'convert-ali', 'copy-feats', 'est-lda', 'est-mllt',
-                      'extract-segments', 'feat-to-dim', 'feat-to-len', 'gmm-acc-mllt', 'gmm-acc-stats-ali',
-                      'gmm-align-compiled',
-                      'gmm-boost-silence', 'gmm-est', 'gmm-est-fmllr', 'gmm-global-acc-stats', 'gmm-global-est',
-                      'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
-                      'gmm-gselect', 'gmm-info', 'gmm-init-model', 'gmm-init-mono', 'gmm-latgen-faster', 'gmm-mixup',
-                      'gmm-sum-accs', 'gmm-transform-means', 'ivector-extract', 'ivector-extractor-acc-stats',
-                      'ivector-extractor-est', 'ivector-extractor-init', 'ivector-extractor-sum-accs',
-                      'lattice-align-words', 'lattice-oracle', 'lattice-to-phone-lattice', 'linear-to-nbest',
-                      'nbest-to-ctm', 'paste-feats', 'post-to-weights', 'scale-post', 'select-feats',
-                      'show-transitions',
-                      'splice-feats', 'subsample-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
-                      'tree-info', 'weight-silence-post']
+                       'append-vector-to-feats', 'apply-cmvn', 'build-tree', 'cluster-phones', 'compile-questions',
+                       'compile-train-graphs', 'compile-train-graphs-fsts', 'compose-transforms', 'compute-cmvn-stats',
+                       'compute-mfcc-feats', 'convert-ali', 'copy-feats', 'est-lda', 'est-mllt',
+                       'extract-segments', 'feat-to-dim', 'feat-to-len', 'gmm-acc-mllt', 'gmm-acc-stats-ali',
+                       'gmm-align-compiled',
+                       'gmm-boost-silence', 'gmm-est', 'gmm-est-fmllr', 'gmm-info', 'gmm-init-model', 'gmm-init-mono',
+                       'gmm-latgen-faster', 'gmm-mixup',
+                       'gmm-sum-accs', 'gmm-transform-means',
+                       'lattice-align-words', 'lattice-oracle', 'lattice-to-phone-lattice', 'linear-to-nbest',
+                       'nbest-to-ctm', 'paste-feats', 'post-to-weights', 'select-feats',
+                       'show-transitions',
+                       'splice-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
+                       'tree-info', 'weight-silence-post']
 
 train_dict_filenames = ['nbest-to-prons']
 
@@ -41,25 +39,36 @@ transcribe_filenames = [
     'add-self-loops', 'lattice-scale', 'lattice-add-penalty', 'lattice-best-path', 'lattice-to-post',
     'gmm-post-to-gpost', 'gmm-est-fmllr-gpost', 'lattice-determinize-pruned', 'gmm-rescore-lattice',
     'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel'
-                       ]
+]
 
-included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames
+speaker_diarization_filenames = [
+    'compute-vad', 'apply-cmvn-sliding', 'fgmm-global-to-gmm', 'fgmm-global-gselect-to-post', 'ivector-mean', 'est-pca',
+    'ivector-subtract-global-mean', 'transform-vec', 'ivector-normalize-length', 'ivector-plda-scoring-dense',
+    'agglomerative-cluster', 'ivector-compute-plda', 'subsample-feats', 'scale-post',
+    'ivector-extract', 'ivector-extractor-acc-stats', 'ivector-extractor-est', 'ivector-extractor-init',
+    'ivector-extractor-sum-accs', 'fgmm-global-acc-stats', 'gmm-global-acc-stats', 'gmm-global-est',
+    'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
+    'gmm-gselect', 'select-voiced-frames', 'fgmm-global-est', 'fgmm-global-sum-accs'
+]
+
+included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames + speaker_diarization_filenames
 if sys.platform == 'win32':
     included_filenames += ['fstcompile', 'fstarcsort']
 
-linux_libraries = ['libfst.so.13', 'libfstfar.so.13',
-                   'libfstscript.so.13', 'libfstfarscript.so.13',
-                   'libkaldi-hmm.so', 'libkaldi-util.so',
-                   'libkaldi-base.so', 'libkaldi-tree.so',
-                   'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
-                   'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
-                   'libkaldi-fstext.so', 'libkaldi-ivector.so']
+linux_libraries = [#'libfst.so.13', 'libfstfar.so.13',
+                   #'libfstscript.so.13', 'libfstfarscript.so.13',
+                   #'libkaldi-hmm.so', 'libkaldi-util.so',
+                   #'libkaldi-base.so', 'libkaldi-tree.so',
+                   #'libkaldi-feat.so', 'libkaldi-transform.so', 'libkaldi-lm.so',
+                   #'libkaldi-gmm.so', 'libkaldi-lat.so', 'libkaldi-decoder.so',
+                   #'libkaldi-fstext.so', 'libkaldi-ivector.so'
+]
 included_libraries = {'linux': linux_libraries,
-                      'win32': [#'openfst64.dll',
-                                'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
-                                'libquadmath-0.dll', 'libopenblas.dll'],
-                      'darwin': ['libfst.13.dylib', 'libfstfarscript.13.dylib', 'libfstscript.13.dylib',
-                                 'libfstfar.13.dylib', 'libfstngram.13.dylib',
+                      'win32': [  # 'openfst64.dll',
+                          'libgcc_s_seh-1.dll', 'libgfortran-3.dll',
+                          'libquadmath-0.dll', 'libopenblas.dll'],
+                      'darwin': [#'libfst.13.dylib', 'libfstfarscript.13.dylib', 'libfstscript.13.dylib',
+                                 #'libfstfar.13.dylib', 'libfstngram.13.dylib',
                                  'libkaldi-hmm.dylib', 'libkaldi-util.dylib', 'libkaldi-thread.dylib',
                                  'libkaldi-base.dylib', 'libkaldi-tree.dylib', 'libkaldi-matrix.dylib',
                                  'libkaldi-feat.dylib', 'libkaldi-transform.dylib', 'libkaldi-lm.dylib',

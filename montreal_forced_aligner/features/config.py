@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 from ..exceptions import ConfigError
-from .processing import mfcc, add_deltas, apply_cmvn, apply_lda
+from .processing import mfcc, add_deltas, apply_cmvn, apply_lda, compute_vad, select_voiced, compute_ivector_features
 
 from ..helper import thirdparty_binary, load_scp, save_groups
 
@@ -77,6 +77,10 @@ class FeatureConfig(object):
         self.lda = True
         self.deltas = False
 
+    @property
+    def lda_options(self):
+        return {'splice_left_context': self.splice_left_context, 'splice_right_context': self.splice_right_context}
+
     def update(self, data):
         for k, v in data.items():
             if not hasattr(self, k):
@@ -121,6 +125,18 @@ class FeatureConfig(object):
         save_groups(corpus.grouped_cmvn, split_dir, pattern)
         apply_cmvn(split_dir, corpus.num_jobs, self)
 
+    def compute_vad(self, corpus, logger=None):
+        if logger is None:
+            log_func = print
+        else:
+            log_func = logger.info
+        split_directory = corpus.split_directory()
+        if os.path.exists(os.path.join(split_directory, 'vad.0.scp')):
+            log_func('VAD already computed, skipping!')
+            return
+        log_func('Computing VAD...')
+        compute_vad(split_directory, corpus.num_jobs, self.use_mp)
+
     @property
     def raw_feature_id(self):
         name = 'features_{}'.format(self.type)
@@ -142,6 +158,16 @@ class FeatureConfig(object):
         return name
 
     @property
+    def voiced_feature_id(self):
+        name = 'feats_voiced'
+        return name
+
+    @property
+    def pre_ivector_feature_id(self):
+        name = 'feats_for_ivector'
+        return name
+
+    @property
     def fmllr_path(self):
         return os.path.join(self.directory, 'trans.{}')
 
@@ -149,26 +175,61 @@ class FeatureConfig(object):
     def lda_path(self):
         return os.path.join(self.directory, 'lda.mat')
 
-    def generate_base_features(self, corpus):
+    def generate_base_features(self, corpus, logger=None, compute_cmvn=True):
+        if logger is None:
+            log_func = print
+        else:
+            log_func = logger.info
         split_directory = corpus.split_directory()
         if not os.path.exists(os.path.join(split_directory, self.raw_feature_id + '.0.scp')):
-            print('Generating base features ({})...'.format(self.type))
+            log_func('Generating base features ({})...'.format(self.type))
             if self.type == 'mfcc':
                 mfcc(split_directory, corpus.num_jobs, self, corpus.frequency_configs)
             corpus.combine_feats()
-            print('Calculating CMVN...')
-            self.calc_cmvn(corpus)
+            if compute_cmvn:
+                log_func('Calculating CMVN...')
+                self.calc_cmvn(corpus)
         #corpus.parse_features_logs()
 
-    def generate_features(self, corpus, data_directory=None, overwrite=False):
+    def generate_features(self, corpus, data_directory=None, overwrite=False, logger=None):
         if data_directory is None:
             data_directory = corpus.split_directory()
         if self.directory is None:
             self.directory = data_directory
         if not overwrite and os.path.exists(os.path.join(data_directory, self.feature_id + '.0.scp')):
             return
-        self.generate_base_features(corpus)
+        self.generate_base_features(corpus, logger=logger)
         if self.deltas:
             add_deltas(data_directory, corpus.num_jobs, self)
         elif self.lda:
             apply_lda(data_directory, corpus.num_jobs, self)
+
+    def generate_ivector_extract_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
+        if logger is None:
+            log_func = print
+        else:
+            log_func = logger.info
+        if data_directory is None:
+            data_directory = corpus.split_directory()
+        if self.directory is None:
+            self.directory = data_directory
+        if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_ivector_feature_id + '.0.scp')):
+            log_func('Voiced features already selected, skipping!')
+            return
+        compute_ivector_features(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
+        log_func('Finished selecting voiced features!')
+
+    def generate_voiced_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
+        if logger is None:
+            log_func = print
+        else:
+            log_func = logger.info
+        if data_directory is None:
+            data_directory = corpus.split_directory()
+        if self.directory is None:
+            self.directory = data_directory
+        if not overwrite and os.path.exists(os.path.join(data_directory, self.voiced_feature_id + '.0.scp')):
+            log_func('Voiced features already selected, skipping!')
+            return
+        select_voiced(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
+        log_func('Finished selecting voiced features!')

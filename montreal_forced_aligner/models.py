@@ -6,7 +6,6 @@ from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 from . import __version__
 from .exceptions import PronunciationAcousticMismatchError
 
-
 # default format for output
 FORMAT = "zip"
 
@@ -37,6 +36,18 @@ class Archive(object):
             if not os.path.exists(self.dirname):
                 os.makedirs(root_directory, exist_ok=True)
                 unpack_archive(source, base)
+
+    @property
+    def meta(self):
+        if not self._meta:
+            meta_path = os.path.join(self.dirname, 'meta.yaml')
+            with open(meta_path, 'r', encoding='utf8') as f:
+                self._meta = yaml.load(f, Loader=yaml.SafeLoader)
+        return self._meta
+
+    def add_meta_file(self, trainer):
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
+            yaml.dump(trainer.meta, f)
 
     @classmethod
     def empty(cls, head, root_directory=None):
@@ -115,10 +126,6 @@ class AcousticModel(Archive):
     def add_lda_matrix(self, source):
         copyfile(os.path.join(source, 'lda.mat'), os.path.join(self.dirname, 'lda.mat'))
 
-    def add_ivector_model(self, source):
-        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
-        copyfile(os.path.join(source, 'final.dubm'), os.path.join(self.dirname, 'final.dubm'))
-
     def add_model(self, source):
         """
         Add file into archive
@@ -148,6 +155,32 @@ class AcousticModel(Archive):
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
+class IvectorExtractor(Archive):
+    """
+    Archive for i-vector extractors
+    """
+
+    def add_model(self, source):
+        """
+        Add file into archive
+        """
+        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
+        copyfile(os.path.join(source, 'final.ubm'), os.path.join(self.dirname, 'final.ubm'))
+
+    def export_model(self, destination):
+        """
+        """
+        os.makedirs(destination, exist_ok=True)
+        copyfile(os.path.join(self.dirname, 'final.ie'), os.path.join(destination, 'final.ie'))
+        copyfile(os.path.join(self.dirname, 'final.ubm'), os.path.join(destination, 'final.ubm'))
+
+    @property
+    def feature_config(self):
+        from .features.config import FeatureConfig
+        fc = FeatureConfig(self.dirname)
+        fc.update(self.meta['features'])
+        return fc
+
 
 class G2PModel(Archive):
     def add_meta_file(self, dictionary, architecture):
@@ -171,7 +204,6 @@ class G2PModel(Archive):
                     self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta['phones'] = set(self._meta.get('phones', []))
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
-            print(self._meta)
         return self._meta
 
     @property
@@ -213,33 +245,6 @@ class G2PModel(Archive):
             return True
 
 
-class IvectorExtractor(Archive):
-    """
-    Archive for i-vector extractors
-    """
-    def add_meta_file(self, trainer):
-        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
-            yaml.dump(trainer.meta, f)
-
-    @property
-    def meta(self):
-        if not self._meta:
-            meta_path = os.path.join(self.dirname, 'meta.yaml')
-            with open(meta_path, 'r', encoding='utf8') as f:
-                self._meta = yaml.load(f, Loader=yaml.SafeLoader)
-        return self._meta
-
-    def add_model(self, source):
-        """
-        Add file into archive
-        """
-        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
-        copyfile(os.path.join(source, 'final.dubm'), os.path.join(self.dirname, 'final.dubm'))
-        lda_path = os.path.join(source, 'lda.mat')
-        if os.path.exists(lda_path):
-            copyfile(lda_path, os.path.join(self.dirname, 'lda.mat'))
-
-
 class LanguageModel(Archive):
     extension = '.arpa'
 
@@ -266,5 +271,9 @@ class LanguageModel(Archive):
 
     @property
     def arpa_path(self):
+        print(os.listdir(self.dirname))
         return os.path.join(self.dirname, self.name + self.extension)
 
+    def add_arpa_file(self, arpa_path):
+        name = os.path.basename(arpa_path)
+        copyfile(arpa_path, os.path.join(self.dirname, name))

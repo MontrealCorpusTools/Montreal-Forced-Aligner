@@ -5,16 +5,17 @@ import yaml
 import time
 
 from montreal_forced_aligner import __version__
-from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.corpus import TranscribeCorpus
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train_ivector
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.helper import setup_logger
 
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
 def train_ivector(args):
+    command = 'train_ivector'
+    all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -24,48 +25,57 @@ def train_ivector(args):
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
+    logger = setup_logger(command, data_directory)
+    if args.config_path:
+        train_config, align_config = train_yaml_to_config(args.config_path)
+    else:
+        train_config, align_config = load_basic_train_ivector()
     conf_path = os.path.join(data_directory, 'config.yml')
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        logger.info('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
+
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
     else:
         conf = {'dirty': False,
-                'begin': time.time(),
+                'begin': all_begin,
                 'version': __version__,
-                'type': 'train_and_align',
-                'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dictionary_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != 'train_and_align' \
+                'type': command,
+                'corpus_directory': args.corpus_directory}
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
-            or conf['version'] != __version__ \
-            or conf['dictionary_path'] != args.dictionary_path:
-        shutil.rmtree(data_directory, ignore_errors=True)
+            or conf['version'] != __version__:
+        logger.warning(
+            'WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no '
+            'weird behavior for previous versions of the temporary directory.')
+        if conf['dirty']:
+            logger.debug('Previous run ended in an error (maybe ctrl-c?)')
+        if conf['type'] != 'train_ivector':
+            logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
+        if conf['corpus_directory'] != args.corpus_directory:
+            logger.debug('Previous run used source directory '
+                         'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
+        if conf['version'] != __version__:
+            logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
 
     os.makedirs(data_directory, exist_ok=True)
     try:
-        corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                        num_jobs=getattr(args, 'num_jobs', 3),
-                        debug=getattr(args, 'debug', False))
-        if corpus.issues_check:
-            print('WARNING: Some issues parsing the corpus were detected. '
-                  'Please run the validator to get more information.')
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
-        utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
-        if os.path.exists(utt_oov_path):
-            shutil.copy(utt_oov_path, args.output_directory)
-        oov_path = os.path.join(corpus.split_directory(), 'oovs_found.txt')
-        if os.path.exists(oov_path):
-            shutil.copy(oov_path, args.output_directory)
-        if args.config_path:
-            train_config, align_config = train_yaml_to_config(args.config_path)
-        else:
-            train_config, align_config = load_basic_train_ivector()
+        corpus = TranscribeCorpus(args.corpus_directory, data_directory,
+                                  speaker_characters=args.speaker_characters,
+                                  num_jobs=args.num_jobs,
+                             debug=getattr(args, 'debug', False), logger=logger)
+        dictionary = None
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
-                             temp_directory=data_directory)
+                             temp_directory=data_directory, logger=logger)
         a.verbose = args.verbose
+        begin = time.time()
         a.train()
+        logger.debug('Training took {} seconds'.format(time.time() - begin))
         a.save(args.output_model_path)
+        logger.info('All done!')
+        logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as e:
         conf['dirty'] = True
         raise e
@@ -74,7 +84,7 @@ def train_ivector(args):
             yaml.dump(conf, f)
 
 
-def validate_args(args, download_dictionaries=None):
+def validate_args(args):
     if args.config_path and not os.path.exists(args.config_path):
         raise (ArgumentError('Could not find the config file {}.'.format(args.config_path)))
 
@@ -83,32 +93,24 @@ def validate_args(args, download_dictionaries=None):
     if not os.path.isdir(args.corpus_directory):
         raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
 
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
-    if not os.path.exists(args.dictionary_path):
-        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
-    if not os.path.isfile(args.dictionary_path):
-        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
-
-def run_train_ivector_extractor(args, download_dictionaries=None):
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
+def run_train_ivector_extractor(args):
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
-    validate_args(args, download_dictionaries)
+    validate_args(args)
     train_ivector(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_ivector_parser, fix_path, unfix_path, dict_languages
+    from montreal_forced_aligner.command_line.mfa import train_ivector_parser, fix_path, unfix_path
+
     ivector_args = train_ivector_parser.parse_args()
 
     fix_path()
-    run_train_ivector_extractor(ivector_args, dict_languages)
+    run_train_ivector_extractor(ivector_args)
     unfix_path()

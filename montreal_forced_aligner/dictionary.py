@@ -2,6 +2,7 @@ import os
 import math
 import subprocess
 import re
+import logging
 from collections import defaultdict, Counter
 
 from .helper import thirdparty_binary
@@ -134,7 +135,7 @@ class Dictionary(object):
     def __init__(self, input_path, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
-                 sil_prob=0.5, word_set=None, debug=False):
+                 sil_prob=0.5, word_set=None, debug=False, logger=None):
         if not os.path.exists(input_path):
             raise (DictionaryPathError(input_path))
         if not os.path.isfile(input_path):
@@ -142,6 +143,16 @@ class Dictionary(object):
         self.input_path = input_path
         self.debug = debug
         self.output_directory = os.path.join(output_directory, 'dictionary')
+        os.makedirs(self.output_directory, exist_ok=True)
+        self.log_file = os.path.join(self.output_directory, 'dictionary.log')
+        if logger is None:
+            self.logger = logging.getLogger('dictionary_setup')
+            self.logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+            handler.setFormatter = logging.Formatter('%(name)s %(message)s')
+            self.logger.addHandler(handler)
+        else:
+            self.logger = logger
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
         self.shared_silence_phones = shared_silence_phones
@@ -175,7 +186,7 @@ class Dictionary(object):
             progress += ' with silence probabilties'
         else:
             progress += ' without silence probabilties'
-        print(progress)
+        self.logger.info(progress)
         with open(input_path, 'r', encoding='utf8') as inf:
             for i, line in enumerate(inf):
                 line = line.strip()
@@ -484,7 +495,7 @@ class Dictionary(object):
         """
         Write the files necessary for Kaldi
         """
-        print('Creating dictionary information...')
+        self.logger.info('Creating dictionary information...')
         os.makedirs(self.phones_dir, exist_ok=True)
         self.generate_mappings()
         self._write_graphemes()

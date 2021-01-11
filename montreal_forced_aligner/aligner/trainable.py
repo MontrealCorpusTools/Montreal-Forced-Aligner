@@ -24,13 +24,14 @@ class TrainableAligner(BaseAligner):
     """
 
     def __init__(self, corpus, dictionary, training_config, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False):
+                 call_back=None, debug=False, verbose=False, logger=None):
         self.training_config = training_config
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
-                                               call_back, debug, verbose)
+                                               call_back, debug, verbose, logger)
 
     def setup(self):
-        self.dictionary.write()
+        if self.dictionary is not None:
+            self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         for identifier, trainer in self.training_config.items():
             trainer.feature_config.generate_features(self.corpus)
@@ -46,7 +47,7 @@ class TrainableAligner(BaseAligner):
             Path to save acoustic model and dictionary
         """
         self.training_config.values()[-1].save(path)
-        print('Saved model to {}'.format(path))
+        self.logger.info('Saved model to {}'.format(path))
 
     @property
     def meta(self):
@@ -62,6 +63,7 @@ class TrainableAligner(BaseAligner):
     def train(self):
         previous = None
         for identifier, trainer in self.training_config.items():
+            trainer.logger = self.logger
             if previous is not None:
                 previous.align(trainer.subset)
             trainer.init_training(identifier, self.temp_directory, self.corpus, self.dictionary, previous)

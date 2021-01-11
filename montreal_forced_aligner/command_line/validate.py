@@ -1,5 +1,6 @@
 import shutil
 import os
+import time
 import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -8,9 +9,12 @@ from montreal_forced_aligner.validator import CorpusValidator
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
 from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.helper import setup_logger
 
 
 def validate_corpus(args):
+    command = 'validate'
+    all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -23,15 +27,21 @@ def validate_corpus(args):
     shutil.rmtree(data_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
+    logger = setup_logger(command, data_directory)
 
     corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                    num_jobs=getattr(args, 'num_jobs', 3))
-    dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
+                    num_jobs=getattr(args, 'num_jobs', 3), logger=logger)
+    dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,
                         ignore_acoustics=getattr(args, 'ignore_acoustics', False),
-                        test_transcriptions=getattr(args, 'test_transcriptions', False), use_mp=not args.disable_mp)
+                        test_transcriptions=getattr(args, 'test_transcriptions', False), use_mp=not args.disable_mp,
+                        logger=logger)
+    begin = time.time()
     a.validate()
+    logger.debug('Validation took {} seconds'.format(time.time() - begin))
+    logger.info('All done!')
+    logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
 
 
 def validate_args(args, download_dictionaries=None):

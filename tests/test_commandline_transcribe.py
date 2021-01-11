@@ -29,7 +29,9 @@ def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, ge
     args.corpus_directory = basic_corpus_dir
     args.dictionary_path = sick_dict_path
     args.language_model_path = transcription_language_model
+    #args.language_model_path = '/mnt/e/Dev/Linux/kaldi/egs/librispeech/s5/data/local/lm/3gsmall.arpa'
     args.output_directory = output_path
     args.temp_directory = temp_dir
     args.evaluate = True
+    print(transcription_language_model)
     run_transcribe_corpus(args)

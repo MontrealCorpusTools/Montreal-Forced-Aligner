@@ -83,7 +83,7 @@ def compile_utterance_train_graphs_func(validator, job_name):  # pragma: no cove
                                  '--read-disambig-syms={}'.format(disambig_int_path),
                                  tree_path, mdl_path,
                                  lexicon_fst_path,
-                                 "ark:"+fsts_path, "ark:" + graphs_path],
+                                 "ark:" + fsts_path, "ark:" + graphs_path],
                                 stderr=logf)
 
         proc.communicate()
@@ -162,13 +162,15 @@ class CorpusValidator(object):
     '''
 
     def __init__(self, corpus, dictionary, temp_directory=None, ignore_acoustics=False, test_transcriptions=False,
-                 use_mp=True):
+                 use_mp=True, logger=None):
         self.dictionary = dictionary
         self.corpus = corpus
         self.temp_directory = temp_directory
         self.test_transcriptions = test_transcriptions
         self.ignore_acoustics = ignore_acoustics
         self.trainer = MonophoneTrainer(FeatureConfig())
+        self.logger = logger
+        self.trainer.logger = logger
         self.trainer.update({"use_mp": use_mp})
         self.setup()
 
@@ -190,22 +192,22 @@ class CorpusValidator(object):
         ignored_count = len(self.corpus.no_transcription_files)
         ignored_count += len(self.corpus.textgrid_read_errors)
         ignored_count += len(self.corpus.decode_error_files)
-        print(self.corpus_analysis_template.format(len(self.corpus.wav_files),
-                                                   self.corpus.lab_count,
-                                                   self.corpus.tg_count,
-                                                   ignored_count,
-                                                   len(self.corpus.speak_utt_mapping),
-                                                   self.corpus.num_utterances,
-                                                   total_duration,
-                                                   self.analyze_oovs(),
-                                                   self.analyze_wav_errors(),
-                                                   self.analyze_missing_features(),
-                                                   self.analyze_files_with_no_transcription(),
-                                                   self.analyze_transcriptions_with_no_wavs(),
-                                                   self.analyze_textgrid_read_errors(),
-                                                   self.analyze_unreadable_text_files(),
-                                                   self.analyze_unsupported_sample_rates()
-                                                   ))
+        self.logger.info(self.corpus_analysis_template.format(len(self.corpus.wav_files),
+                                                              self.corpus.lab_count,
+                                                              self.corpus.tg_count,
+                                                              ignored_count,
+                                                              len(self.corpus.speak_utt_mapping),
+                                                              self.corpus.num_utterances,
+                                                              total_duration,
+                                                              self.analyze_oovs(),
+                                                              self.analyze_wav_errors(),
+                                                              self.analyze_missing_features(),
+                                                              self.analyze_files_with_no_transcription(),
+                                                              self.analyze_transcriptions_with_no_wavs(),
+                                                              self.analyze_textgrid_read_errors(),
+                                                              self.analyze_unreadable_text_files(),
+                                                              self.analyze_unsupported_sample_rates()
+                                                              ))
 
     def analyze_oovs(self):
         output_dir = self.corpus.output_directory
@@ -391,24 +393,26 @@ class CorpusValidator(object):
             self.test_utterance_transcriptions()
 
     def test_utterance_transcriptions(self):
-        print('Checking utterance transcriptions...')
+        self.logger.info('Checking utterance transcriptions...')
 
         split_directory = self.corpus.split_directory()
         model_directory = self.trainer.align_directory
+        log_directory = os.path.join(model_directory, 'log')
+
 
         jobs = [(self, x)
                 for x in range(self.corpus.num_jobs)]
         if self.trainer.feature_config.use_mp:
-            run_mp(compile_utterance_train_graphs_func, jobs)
+            run_mp(compile_utterance_train_graphs_func, jobs, log_directory)
         else:
-            run_non_mp(compile_utterance_train_graphs_func, jobs)
-        print('Utterance FSTs compiled!')
-        print('Decoding utterances (this will take some time)...')
+            run_non_mp(compile_utterance_train_graphs_func, jobs, log_directory)
+        self.logger.info('Utterance FSTs compiled!')
+        self.logger.info('Decoding utterances (this will take some time)...')
         if self.trainer.feature_config.use_mp:
-            run_mp(test_utterances_func, jobs)
+            run_mp(test_utterances_func, jobs, log_directory)
         else:
-            run_non_mp(test_utterances_func, jobs)
-        print('Finished decoding utterances!')
+            run_non_mp(test_utterances_func, jobs, log_directory)
+        self.logger.info('Finished decoding utterances!')
 
         word_mapping = self.dictionary.reversed_word_mapping
         errors = {}
@@ -442,4 +446,4 @@ class CorpusValidator(object):
             message = 'There were {} of {} utterances with at least one transcription issue. ' \
                       'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
 
-        print(self.transcription_analysis_template.format(message))
+        self.logger.info(self.transcription_analysis_template.format(message))

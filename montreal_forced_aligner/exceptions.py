@@ -113,3 +113,9 @@ class G2PError(MFAError):
 
 class LMError(MFAError):
     pass
+
+
+class KaldiProcessingError(MFAError):
+    def __init__(self, error_logs):
+        super(KaldiProcessingError, self).__init__('There was one or more errors when running Kaldi binaries.')
+        self.error_logs = error_logs
