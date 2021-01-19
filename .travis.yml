@@ -3,7 +3,7 @@ python:
   - 3.8
 branches:
   only:
-    - master
+    - main
 notifications:
   email: false
 
