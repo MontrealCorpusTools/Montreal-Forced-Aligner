@@ -88,19 +88,19 @@ def align_corpus(args):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
-                                 num_jobs=args.num_jobs)
+                                 num_jobs=args.num_jobs, logger=logger)
         if corpus.issues_check:
             logger.warning('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
         acoustic_model = AcousticModel(args.acoustic_model_path)
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
         acoustic_model.validate(dictionary)
 
         begin = time.time()
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
                               temp_directory=data_directory,
-                              debug=getattr(args, 'debug', False))
+                              debug=getattr(args, 'debug', False), logger=logger)
         logger.debug('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
 
@@ -170,7 +170,7 @@ if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages, \
         dict_languages
 
-    align_args = align_parser.parse_args()
+    align_args, unknown = align_parser.parse_args()
     fix_path()
     run_align_corpus(align_args, acoustic_languages, dict_languages)
     unfix_path()

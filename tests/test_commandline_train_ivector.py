@@ -19,13 +19,15 @@ class DummyArgs(object):
 
 # @pytest.mark.skip(reason='Optimization')
 def test_basic_ivector(basic_corpus_dir, generated_dir, large_dataset_dictionary, temp_dir,
-                       basic_train_ivector_config, english_acoustic_model, ivector_output_model_path):
+                       train_ivector_config, english_acoustic_model, ivector_output_model_path):
     args = DummyArgs()
     args.corpus_directory = basic_corpus_dir
     args.quiet = True
     args.clean = True
+    args.acoustic_model_path = 'english'
+    args.dictionary_path = large_dataset_dictionary
     args.temp_directory = temp_dir
     args.output_model_path = ivector_output_model_path
-    args.config_path = basic_train_ivector_config
+    args.config_path = train_ivector_config
     run_train_ivector_extractor(args)
     assert os.path.exists(args.output_model_path)

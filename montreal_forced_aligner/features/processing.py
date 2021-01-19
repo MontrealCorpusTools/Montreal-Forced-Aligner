@@ -1,42 +1,43 @@
 import subprocess
 import os
 
-from ..helper import thirdparty_binary
+from ..helper import thirdparty_binary, make_safe
 
 from ..multiprocessing import run_mp, run_non_mp
 
 
-def mfcc_func(directory, job_name, mfcc_config_path):
+def mfcc_func(directory, job_name, mfcc_options):
     log_directory = os.path.join(directory, 'log')
     raw_mfcc_path = os.path.join(directory, 'raw_mfcc.{}.ark'.format(job_name))
     raw_scp_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
     segment_path = os.path.join(directory, 'segments.{}'.format(job_name))
     scp_path = os.path.join(directory, 'wav.{}.scp'.format(job_name))
-
+    utt2num_frames_path = os.path.join(directory, 'utt2num_frames.{}'.format(job_name))
+    mfcc_base_command = [thirdparty_binary('compute-mfcc-feats'), '--verbose=2']
+    for k, v in mfcc_options.items():
+        mfcc_base_command.append('--{}={}'.format(k.replace('_', '-'), make_safe(v)))
     with open(log_path, 'w') as log_file:
         if os.path.exists(segment_path):
+            mfcc_base_command += ['ark:-', 'ark:-']
             seg_proc = subprocess.Popen([thirdparty_binary('extract-segments'),
                                          'scp,p:' + scp_path, segment_path, 'ark:-'],
                                         stdout=subprocess.PIPE, stderr=log_file)
-            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
-                                          '--config=' + mfcc_config_path,
-                                          'ark:-', 'ark:-'],
+            comp_proc = subprocess.Popen(mfcc_base_command,
                                          stdout=subprocess.PIPE, stderr=log_file, stdin=seg_proc.stdout)
         else:
-
-            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
-                                          '--config=' + mfcc_config_path,
-                                          'scp,p:' + scp_path, 'ark:-'],
+            mfcc_base_command += ['scp,p:' + scp_path, 'ark:-']
+            comp_proc = subprocess.Popen(mfcc_base_command,
                                          stdout=subprocess.PIPE, stderr=log_file)
         copy_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
-                                      '--compress=true', 'ark:-',
+                                      '--compress=true', '--write-num-frames=ark,t:' + utt2num_frames_path,
+                                      'ark:-',
                                       'ark,scp:{},{}'.format(raw_mfcc_path, raw_scp_path)],
                                      stdin=comp_proc.stdout, stderr=log_file)
         copy_proc.wait()
 
 
-def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
+def mfcc(mfcc_directory, num_jobs, feature_config):
     """
     Multiprocessing function that converts wav files into MFCCs
 
@@ -64,10 +65,8 @@ def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
     """
     log_directory = os.path.join(mfcc_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-    paths = []
-    for j, p in frequency_configs:
-        paths.append(feature_config.write(mfcc_directory, j, p))
-    jobs = [(mfcc_directory, x, paths[x])
+
+    jobs = [(mfcc_directory, x, feature_config.mfcc_options(x))
             for x in range(num_jobs)]
     if feature_config.use_mp:
         run_mp(mfcc_func, jobs, log_directory)

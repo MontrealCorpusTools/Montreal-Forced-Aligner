@@ -457,8 +457,8 @@ def basic_align_config(config_directory):
 
 
 @pytest.fixture(scope='session')
-def basic_train_ivector_config(config_directory):
-    return os.path.join(config_directory, 'basic_train_ivector.yaml')
+def train_ivector_config(config_directory):
+    return os.path.join(config_directory, 'ivector_train.yaml')
 
 
 @pytest.fixture(scope='session')

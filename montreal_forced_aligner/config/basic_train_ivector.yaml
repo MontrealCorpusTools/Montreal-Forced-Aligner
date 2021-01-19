@@ -1,6 +1,3 @@
-beam: 10
-retry_beam: 400
-
 features:
   type: "mfcc"
   use_energy: true

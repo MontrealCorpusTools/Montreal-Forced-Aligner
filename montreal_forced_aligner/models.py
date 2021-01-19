@@ -159,20 +159,24 @@ class IvectorExtractor(Archive):
     """
     Archive for i-vector extractors
     """
+    model_files = ['final.ie', 'final.ubm', 'plda', 'mean.vec', 'trans.mat',
+                   'speaker_classifier.mdl', 'speaker_labels.txt']
 
     def add_model(self, source):
         """
         Add file into archive
         """
-        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
-        copyfile(os.path.join(source, 'final.ubm'), os.path.join(self.dirname, 'final.ubm'))
+        for filename in self.model_files:
+            if os.path.exists(os.path.join(source, filename)):
+                copyfile(os.path.join(source, filename), os.path.join(self.dirname, filename))
 
     def export_model(self, destination):
         """
         """
         os.makedirs(destination, exist_ok=True)
-        copyfile(os.path.join(self.dirname, 'final.ie'), os.path.join(destination, 'final.ie'))
-        copyfile(os.path.join(self.dirname, 'final.ubm'), os.path.join(destination, 'final.ubm'))
+        for filename in self.model_files:
+            if os.path.exists(os.path.join(self.dirname, filename)):
+                copyfile(os.path.join(self.dirname, filename), os.path.join(destination, filename))
 
     @property
     def feature_config(self):

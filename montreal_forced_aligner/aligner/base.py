@@ -5,6 +5,9 @@ from .. import __version__
 from ..multiprocessing import compile_information
 from ..config import TEMP_DIR
 
+from ..helper import log_kaldi_errors
+from ..exceptions import KaldiProcessingError
+
 
 class BaseAligner(object):
     """
@@ -57,7 +60,11 @@ class BaseAligner(object):
     def setup(self):
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
-        self.align_config.feature_config.generate_features(self.corpus)
+        try:
+            self.align_config.feature_config.generate_features(self.corpus)
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
 
     @property
     def meta(self):

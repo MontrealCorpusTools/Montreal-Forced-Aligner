@@ -158,6 +158,7 @@ class Dictionary(object):
         self.shared_silence_phones = shared_silence_phones
         self.sil_prob = sil_prob
         self.oov_code = oov_code
+        self.sil_code = '!sil'
         self.oovs_found = Counter()
         self.position_dependent_phones = position_dependent_phones
 
@@ -174,7 +175,7 @@ class Dictionary(object):
             word_set.add(self.oov_code)
         self.word_set = word_set
         self.clitic_set = set()
-        self.words['!sil'].append({'pronunciation': ('sp',), 'probability': 1})
+        self.words[self.sil_code].append({'pronunciation': ('sp',), 'probability': 1})
         self.words[self.oov_code].append({'pronunciation': ('spn',), 'probability': 1})
         self.pronunciation_probabilities, self.silence_probabilities = check_format(input_path)
         progress = 'Parsing dictionary'
@@ -235,6 +236,12 @@ class Dictionary(object):
         self.word_pattern = compile_graphemes(self.graphemes)
         self.phone_mapping = {}
         self.words_mapping = {}
+
+    def set_word_set(self, word_set):
+        word_set = {sanitize(x) for x in word_set}
+        word_set.add(self.sil_code)
+        word_set.add(self.oov_code)
+        self.word_set = word_set
 
     @property
     def actual_words(self):
@@ -347,7 +354,7 @@ class Dictionary(object):
         text = ''
         for k, v in word_probs.items():
             cost = -1 * math.log(v)
-            text += '0 0 {w} {w} {cost}\n'.format(w=self.to_int(k), cost=cost)
+            text += '0 0 {w} {w} {cost}\n'.format(w=self.to_int(k)[0], cost=cost)
         text += '0 {}\n'.format(-1 * math.log(1 / num_words))
         return text
 
@@ -356,12 +363,16 @@ class Dictionary(object):
         Convert a given word into its integer id
         """
         if item == '':
-            return None
-        item = self._lookup(item)
-        if item not in self.words_mapping:
-            self.oovs_found.update([item])
-            return self.oov_int
-        return self.words_mapping[item]
+            return []
+        sanitized = self._lookup(item)
+        text_int = []
+        for item in sanitized:
+            if item not in self.words_mapping:
+                self.oovs_found.update([item])
+                text_int.append(self.oov_int) 
+            else:
+                text_int.append(self.words_mapping[item])
+        return text_int
 
     def save_oovs_found(self, directory):
         """
@@ -380,14 +391,12 @@ class Dictionary(object):
 
     def _lookup(self, item):
         if item in self.words_mapping:
-            return item
+            return [item]
         sanitized = sanitize(item)
         if sanitized in self.words_mapping:
-            return sanitized
-        sanitized = sanitize_clitics(item)
-        if sanitized in self.words_mapping:
-            return sanitized
-        return item
+            return [sanitized]
+        sanitized = self.split_clitics(item)
+        return sanitized
 
     def check_word(self, item):
         if item == '':
@@ -718,7 +727,7 @@ class Dictionary(object):
                 outf.write('{}\n'.format(d))
                 intf.write('{}\n'.format(self.phone_mapping[d]))
 
-    def _write_fst_binary(self, disambig=False):
+    def _write_fst_binary(self, disambig=False, self_loop=True):
         if disambig:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon_disambig.text.fst')
             output_fst = os.path.join(self.output_directory, 'L_disambig.fst')

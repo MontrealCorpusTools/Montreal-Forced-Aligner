@@ -1,6 +1,9 @@
 from ..multiprocessing import (convert_ali_to_textgrids)
 from .base import BaseAligner
 
+from ..helper import log_kaldi_errors
+from ..exceptions import KaldiProcessingError
+
 
 class TrainableAligner(BaseAligner):
     """
@@ -34,7 +37,11 @@ class TrainableAligner(BaseAligner):
             self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         for identifier, trainer in self.training_config.items():
-            trainer.feature_config.generate_features(self.corpus)
+            try:
+                trainer.feature_config.generate_features(self.corpus)
+            except Exception as e:
+                if isinstance(e, KaldiProcessingError):
+                    log_kaldi_errors(e.error_logs, self.logger)
             break
 
     def save(self, path):

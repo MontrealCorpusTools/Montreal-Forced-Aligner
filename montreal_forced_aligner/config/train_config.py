@@ -90,6 +90,7 @@ def train_yaml_to_config(path):
                     raise ConfigError('The first round of training must be monophone.')
                 t.update(global_params)
                 t.update(training_params[i])
+                t.feature_config.update(global_feature_params)
             training_config = TrainingConfig(training)
         align_config.feature_config.lda = training_config.uses_lda
         if training_config.uses_lda:

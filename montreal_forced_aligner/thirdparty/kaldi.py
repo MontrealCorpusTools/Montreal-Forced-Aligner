@@ -48,7 +48,7 @@ speaker_diarization_filenames = [
     'ivector-extract', 'ivector-extractor-acc-stats', 'ivector-extractor-est', 'ivector-extractor-init',
     'ivector-extractor-sum-accs', 'fgmm-global-acc-stats', 'gmm-global-acc-stats', 'gmm-global-est',
     'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
-    'gmm-gselect', 'select-voiced-frames', 'fgmm-global-est', 'fgmm-global-sum-accs'
+    'gmm-gselect', 'select-voiced-frames', 'fgmm-global-est', 'fgmm-global-sum-accs', #'copy-vector'
 ]
 
 included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames + speaker_diarization_filenames

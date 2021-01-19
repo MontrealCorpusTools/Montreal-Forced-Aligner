@@ -28,7 +28,8 @@ MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
                 'scipy', 'scipy.signal', 'scipy.io',
                 'librosa', 'librosa.core.spectrum', 'matplotlib',
                 'soundfile',
-                'pyqt5', 'pyqtgraph', 'requests', 'requests.exceptions']
+                'pyqt5', 'pyqtgraph', 'requests', 'requests.exceptions',
+                'sklearn', 'joblib', 'sklearn.naive_bayes']
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()

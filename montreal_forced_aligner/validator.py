@@ -2,7 +2,8 @@ import os
 from decimal import Decimal
 import subprocess
 
-from .helper import thirdparty_binary, load_scp, edit_distance
+from .helper import thirdparty_binary, load_scp, edit_distance, log_kaldi_errors
+from .exceptions import KaldiProcessingError
 from .multiprocessing import run_mp, run_non_mp
 
 from .trainers import MonophoneTrainer
@@ -175,6 +176,7 @@ class CorpusValidator(object):
         self.setup()
 
     def setup(self):
+        self.dictionary.set_word_set(self.corpus.word_set)
         self.dictionary.write()
         if self.test_transcriptions:
             self.dictionary.write(disambig=True)
@@ -399,51 +401,57 @@ class CorpusValidator(object):
         model_directory = self.trainer.align_directory
         log_directory = os.path.join(model_directory, 'log')
 
+        try:
 
-        jobs = [(self, x)
-                for x in range(self.corpus.num_jobs)]
-        if self.trainer.feature_config.use_mp:
-            run_mp(compile_utterance_train_graphs_func, jobs, log_directory)
-        else:
-            run_non_mp(compile_utterance_train_graphs_func, jobs, log_directory)
-        self.logger.info('Utterance FSTs compiled!')
-        self.logger.info('Decoding utterances (this will take some time)...')
-        if self.trainer.feature_config.use_mp:
-            run_mp(test_utterances_func, jobs, log_directory)
-        else:
-            run_non_mp(test_utterances_func, jobs, log_directory)
-        self.logger.info('Finished decoding utterances!')
+            jobs = [(self, x)
+                    for x in range(self.corpus.num_jobs)]
+            if self.trainer.feature_config.use_mp:
+                run_mp(compile_utterance_train_graphs_func, jobs, log_directory)
+            else:
+                run_non_mp(compile_utterance_train_graphs_func, jobs, log_directory)
+            self.logger.info('Utterance FSTs compiled!')
+            self.logger.info('Decoding utterances (this will take some time)...')
+            if self.trainer.feature_config.use_mp:
+                run_mp(test_utterances_func, jobs, log_directory)
+            else:
+                run_non_mp(test_utterances_func, jobs, log_directory)
+            self.logger.info('Finished decoding utterances!')
 
-        word_mapping = self.dictionary.reversed_word_mapping
-        errors = {}
+            word_mapping = self.dictionary.reversed_word_mapping
+            errors = {}
 
-        for job in range(self.corpus.num_jobs):
-            text_path = os.path.join(split_directory, 'text.{}'.format(job))
-            texts = load_scp(text_path)
-            aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
-            with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
-                for utt, line in sorted(aligned_int.items()):
-                    text = []
-                    for t in line:
-                        text.append(word_mapping[int(t)])
-                    outf.write('{} {}\n'.format(utt, ' '.join(text)))
-                    ref_text = texts[utt]
-                    edits = edit_distance(text, ref_text)
+            for job in range(self.corpus.num_jobs):
+                text_path = os.path.join(split_directory, 'text.{}'.format(job))
+                texts = load_scp(text_path)
+                aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
+                with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
+                    for utt, line in sorted(aligned_int.items()):
+                        text = []
+                        for t in line:
+                            text.append(word_mapping[int(t)])
+                        outf.write('{} {}\n'.format(utt, ' '.join(text)))
+                        ref_text = texts[utt]
+                        edits = edit_distance(text, ref_text)
 
-                    if edits:
-                        errors[utt] = (edits, ref_text, text)
-        if not errors:
-            message = 'There were no utterances with transcription issues.'
-        else:
-            out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
-            with open(out_path, 'w') as problemf:
-                problemf.write('Utterance,Edits,Reference,Decoded\n')
-                for utt, (edits, ref_text, text) in sorted(errors.items(),
-                                                           key=lambda x: -1 * (
-                                                                   len(x[1][1]) + len(x[1][2]))):
-                    problemf.write('{},{},{},{}\n'.format(utt, edits,
-                                                          ' '.join(ref_text), ' '.join(text)))
-            message = 'There were {} of {} utterances with at least one transcription issue. ' \
-                      'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
+                        if edits:
+                            errors[utt] = (edits, ref_text, text)
+            if not errors:
+                message = 'There were no utterances with transcription issues.'
+            else:
+                out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
+                with open(out_path, 'w') as problemf:
+                    problemf.write('Utterance,Edits,Reference,Decoded\n')
+                    for utt, (edits, ref_text, text) in sorted(errors.items(),
+                                                               key=lambda x: -1 * (
+                                                                       len(x[1][1]) + len(x[1][2]))):
+                        problemf.write('{},{},{},{}\n'.format(utt, edits,
+                                                              ' '.join(ref_text), ' '.join(text)))
+                message = 'There were {} of {} utterances with at least one transcription issue. ' \
+                          'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
 
-        self.logger.info(self.transcription_analysis_template.format(message))
+            self.logger.info(self.transcription_analysis_template.format(message))
+
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+            raise

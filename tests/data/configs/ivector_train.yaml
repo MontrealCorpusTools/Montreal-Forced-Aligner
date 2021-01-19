@@ -2,7 +2,7 @@ use_mp: false
 
 features:
   type: "mfcc"
-  use_energy: false
+  use_energy: true
   frame_shift: 10
 
 training:

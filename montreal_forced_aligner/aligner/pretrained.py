@@ -4,6 +4,8 @@ from collections import Counter
 
 from .base import BaseAligner
 from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs, generate_pronunciations)
+from ..exceptions import KaldiProcessingError
+from ..helper import log_kaldi_errors
 
 
 def parse_transitions(path, phones_path):
@@ -51,10 +53,10 @@ class PretrainedAligner(BaseAligner):
 
     def __init__(self, corpus, dictionary, acoustic_model, align_config,
                  temp_directory=None,
-                 call_back=None, debug=False, verbose=False):
+                 call_back=None, debug=False, verbose=False, logger=None):
         self.acoustic_model = acoustic_model
         super(PretrainedAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
-                                                call_back, debug, verbose)
+                                                call_back, debug, verbose, logger)
         self.align_config.data_directory = corpus.split_directory()
         self.acoustic_model.export_model(self.align_directory)
         log_dir = os.path.join(self.align_directory, 'log')
@@ -75,14 +77,28 @@ class PretrainedAligner(BaseAligner):
         super(PretrainedAligner, self).setup()
 
     def align(self):
-        compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                             self.align_config.data_directory, self.corpus.num_jobs, self.align_config)
-        self.acoustic_model.feature_config.generate_features(self.corpus)
-        log_dir = os.path.join(self.align_directory, 'log')
-        os.makedirs(log_dir, exist_ok=True)
-        align('final', self.align_directory, self.align_config.data_directory,
-              self.dictionary.optional_silence_csl,
-              self.corpus.num_jobs, self.align_config)
+        done_path = os.path.join(self.align_directory, 'done')
+        dirty_path = os.path.join(self.align_directory, 'dirty')
+        if os.path.exists(done_path):
+            self.logger.info('Alignment already done, skipping.')
+            return
+        try:
+            compile_train_graphs(self.align_directory, self.dictionary.output_directory,
+                                 self.align_config.data_directory, self.corpus.num_jobs, self.align_config)
+            self.acoustic_model.feature_config.generate_features(self.corpus)
+            log_dir = os.path.join(self.align_directory, 'log')
+            os.makedirs(log_dir, exist_ok=True)
+            align('final', self.align_directory, self.align_config.data_directory,
+                  self.dictionary.optional_silence_csl,
+                  self.corpus.num_jobs, self.align_config)
+        except Exception as e:
+            with open(dirty_path, 'w'):
+                pass
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+            raise
+        with open(done_path, 'w'):
+            pass
 
     def export_textgrids(self, output_directory):
         """

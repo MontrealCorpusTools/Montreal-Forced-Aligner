@@ -10,10 +10,12 @@ from montreal_forced_aligner.speaker_diarizer import SpeakerDiarizer
 from montreal_forced_aligner.models import IvectorExtractor
 from montreal_forced_aligner.config import TEMP_DIR, diarization_yaml_to_config, load_basic_diarization
 from montreal_forced_aligner.utils import get_available_ivector_languages, get_pretrained_ivector_path
+from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
 def speaker_diarization(args):
+    command = 'speaker_diarization'
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -25,6 +27,14 @@ def speaker_diarization(args):
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
+    logger = setup_logger(command, data_directory)
+    if args.config_path:
+        diarization_config = diarization_yaml_to_config(args.config_path)
+    else:
+        diarization_config = load_basic_diarization()
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        logger.info('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -32,45 +42,47 @@ def speaker_diarization(args):
         conf = {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
-                'type': 'speaker_diarization',
+                'type': command,
                 'corpus_directory': args.corpus_directory}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != 'align' \
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
-            or conf['version'] != __version__ :
-        shutil.rmtree(data_directory, ignore_errors=True)
+            or conf['version'] != __version__:
+        logger.warning(
+            'WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no '
+            'weird behavior for previous versions of the temporary directory.')
+        if conf['dirty']:
+            logger.debug('Previous run ended in an error (maybe ctrl-c?)')
+        if conf['type'] != 'train_ivector':
+            logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
+        if conf['corpus_directory'] != args.corpus_directory:
+            logger.debug('Previous run used source directory '
+                         'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
+        if conf['version'] != __version__:
+            logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = TranscribeCorpus(args.corpus_directory, data_directory,
-                        speaker_characters=args.speaker_characters,
-                        num_jobs=args.num_jobs)
-        print(corpus.speaker_utterance_info())
+                        num_jobs=args.num_jobs, logger=logger)
         ivector_extractor = IvectorExtractor(args.ivector_extractor_path)
 
         begin = time.time()
-        if args.config_path:
-            diarization_config = diarization_yaml_to_config(args.config_path)
-        else:
-            diarization_config = load_basic_diarization()
         a = SpeakerDiarizer(corpus, ivector_extractor, diarization_config,
                               temp_directory=data_directory,
-                              debug=getattr(args, 'debug', False))
-        if args.debug:
-            print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
+                              debug=getattr(args, 'debug', False), logger=logger)
+        logger.debug('Setup speaker diarizer in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
 
         begin = time.time()
         a.diarize()
-        if args.debug:
-            print('Performed alignment in {} seconds'.format(time.time() - begin))
+        logger.debug('Performed diarization in {} seconds'.format(time.time() - begin))
 
         begin = time.time()
         a.export_textgrids(args.output_directory)
-        if args.debug:
-            print('Exported TextGrids in {} seconds'.format(time.time() - begin))
-        print('Done! Everything took {} seconds'.format(time.time() - all_begin))
+        logger.debug('Exported TextGrids in {} seconds'.format(time.time() - begin))
+        logger.info('Done!')
+        logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:
         conf['dirty'] = True
         raise
@@ -103,10 +115,6 @@ def validate_args(args, downloaded_ivector_extractors):
 def run_speaker_diarization(args, downloaded_ivector_extractors=None):
     if downloaded_ivector_extractors is None:
         downloaded_ivector_extractors = get_available_ivector_languages()
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 

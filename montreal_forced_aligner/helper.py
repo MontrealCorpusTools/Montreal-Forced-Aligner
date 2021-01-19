@@ -88,7 +88,7 @@ def load_scp(path):
             if len(line_list) == 1:
                 value = line_list[0]
             else:
-                value = line_list
+                value = [ x for x in line_list if x not in ['[', ']']]
             scp[key] = value
     return scp
 
@@ -154,6 +154,7 @@ def setup_logger(identifier, output_directory):
     log_path = os.path.join(output_directory, identifier + '.log')
     if os.path.exists(log_path):
         os.remove(log_path)
+    print(log_path)
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
 
@@ -178,6 +179,9 @@ def parse_logs(log_directory):
         log_path = os.path.join(log_directory, name)
         with open(log_path, 'r', encoding='utf8') as f:
             for line in f:
+                if 'error while loading shared libraries: libopenblas.so.0' in line:
+                    raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
+                                          'Try installing openblas via system package manager?')
                 if line.strip().startswith('ERROR'):
                     error_logs.append(log_path)
                     break

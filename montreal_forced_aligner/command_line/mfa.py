@@ -195,7 +195,9 @@ train_dictionary_parser.add_argument('-d', '--debug', help="Output debug message
 train_ivector_parser = subparsers.add_parser('train_ivector')
 train_ivector_parser.add_argument('corpus_directory', help='Full path to the source directory to '
                                                            'train the ivector extractor')
-
+train_ivector_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
+train_ivector_parser.add_argument('acoustic_model_path', type=str, default='',
+                                  help='Full path to acoustic model for alignment')
 train_ivector_parser.add_argument('output_model_path', type=str, default='',
                                   help='Full path to save resulting ivector extractor')
 train_ivector_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
@@ -213,9 +215,11 @@ train_ivector_parser.add_argument('--config_path', type=str, default='',
 
 speaker_diarization_parser = subparsers.add_parser('speaker_diarization')
 speaker_diarization_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-
 speaker_diarization_parser.add_argument('ivector_extractor_path', type=str, default='',
                                         help='Full path to ivector extractor model')
+speaker_diarization_parser.add_argument('output_directory',
+                                     help="Full path to output directory, will be created if it doesn't exist")
+
 speaker_diarization_parser.add_argument('-s', '--num_speakers', type=int, default=0,
                                         help='Number of speakers if known')
 speaker_diarization_parser.add_argument('-t', '--temp_directory', type=str, default='',

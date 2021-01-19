@@ -4,9 +4,11 @@ import traceback
 from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
-from .base import BaseCorpus, get_sample_rate, get_bit_depth, find_ext, get_n_channels, extract_temp_channels, save_groups
+from .base import BaseCorpus, get_sample_rate, get_bit_depth, find_ext, get_n_channels, extract_temp_channels
+from ..helper import save_groups, load_scp, save_scp
 
 from ..exceptions import SampleRateError, CorpusError
+from ..multiprocessing import segment_vad
 
 
 class TranscribeCorpus(BaseCorpus):
@@ -17,6 +19,7 @@ class TranscribeCorpus(BaseCorpus):
                                                speaker_characters,
                                                num_jobs, debug, logger)
         self.subsegments = {}
+        self.vad_segments = {}
         self.subsegment_mapping = defaultdict(list)
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             textgrid_files = find_ext(files, '.textgrid')
@@ -176,56 +179,120 @@ class TranscribeCorpus(BaseCorpus):
             for u in g:
                 for new_utt in self.subsegment_mapping[u]:
                     try:
-                        output_g.append([new_utt, self.subsegments[new_utt]])
+                        output_g.append([new_utt, ' '.join([self.subsegments[new_utt]['recording'],
+                                                            self.subsegments[new_utt]['abs_start'],
+                                                            self.subsegments[new_utt]['abs_end']]
+                                                           )])
                     except KeyError:
                         pass
             output.append(output_g)
         return output
 
-    def create_subsegments(self, max_segment_duration=30, overlap_duration=5, max_remaining_duration=10,
+    def create_subsegments(self, feature_config, max_segment_duration=30, overlap_duration=5, max_remaining_duration=10,
                            constant_duration=False):
+        frame_shift = feature_config.frame_shift / 1000
+        split_dir = self.split_directory()
+        subsegment_dir = os.path.join(split_dir, 'subsegments')
+        os.makedirs(subsegment_dir, exist_ok=True)
         if constant_duration:
             dur_threshold = max_segment_duration
         else:
             dur_threshold = max_segment_duration + max_remaining_duration
-        for utt_id, seg in self.segments.items():
-            parts = seg.split()
-            start_time = float(parts[1])
-            end_time = float(parts[2])
+        for job_name, vad_segs in self.vad_segments.items():
+            self.subsegments[job_name] = {}
+            max_frames_path = os.path.join(split_dir, 'utt2num_frames.{}'.format(job_name))
+            vad_scp_path = os.path.join(split_dir, 'vad.{}.scp'.format(job_name))
+            vads = load_scp(vad_scp_path)
+            max_frames = load_scp(max_frames_path)
+            subseg_feats = {}
+            subseg_vads = {}
+            subseg_spk2utt = defaultdict(list)
+            subseg_utt2spk = {}
+            subseg_reco2utt = defaultdict(list)
+            for utt_id, parts in vad_segs.items():
+                utt_max_frames = int(max_frames[parts[0]])
+                utt_feats = self.feat_mapping[parts[0]]
+                speak = self.utt_speak_mapping[parts[0]]
 
-            dur = end_time - start_time
-            start = start_time
-            while dur > dur_threshold:
-                end = start + max_segment_duration
+                utt_vads = vads[parts[0]]
+                start_time = float(parts[1])
+                end_time = float(parts[2])
+
+                dur = end_time - start_time
+                start = start_time
+                while dur > dur_threshold:
+                    end = start + max_segment_duration
+                    start_relative = start - start_time
+                    end_relative = end - start_time
+                    new_utt = "{utt_id}-{s:08d}-{e:08d}".format(
+                        utt_id=utt_id, s=int(100 * start_relative),
+                        e=int(100 * end_relative))
+                    # print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
+                    #    new_utt=new_utt, utt_id=utt_id, s=start_relative,
+                    #    e=start_relative + max_segment_duration))
+                    start += max_segment_duration - overlap_duration
+                    dur -= max_segment_duration - overlap_duration
+                    self.subsegments[job_name][new_utt] = {'recording': parts[0], 'abs_start': start, 'abs_end': end,
+                                                           'rel_start': start_relative,
+                                                           'rel_end': start_relative + max_segment_duration}
+                    start_frame = int(start / frame_shift)
+                    end_frame = int(end / frame_shift)
+                    if end_frame > utt_max_frames:
+                        end_frame = utt_max_frames
+                    end_frame -= 1
+                    subseg_spk2utt[speak].append(new_utt)
+                    subseg_reco2utt[parts[0]].append(new_utt)
+                    subseg_utt2spk[new_utt] = speak
+                    subseg_feats[new_utt] = '{}[{}:{}]'.format(utt_feats, start_frame, end_frame)
+                    subseg_vads[new_utt] = '{}[{}:{}]'.format(utt_vads, start_frame, end_frame)
+
+                if constant_duration:
+                    if dur < 0:
+                        continue
+                    if dur < max_remaining_duration:
+                        start = max(end_time - max_segment_duration, start_time)
+                    end = min(start + max_segment_duration, end_time)
+                else:
+                    end = end_time
                 start_relative = start - start_time
                 end_relative = end - start_time
                 new_utt = "{utt_id}-{s:08d}-{e:08d}".format(
-                    utt_id=utt_id, s=int(100 * start_relative),
-                    e=int(100 * end_relative))
-                #print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
-                #    new_utt=new_utt, utt_id=utt_id, s=start_relative,
-                #    e=start_relative + max_segment_duration))
-                start += max_segment_duration - overlap_duration
-                dur -= max_segment_duration - overlap_duration
-                self.subsegments[new_utt] = ' '.join([parts[0], start, end])
-                self.subsegment_mapping[utt_id].append(new_utt)  # Let's store utt_id for later splitting
+                    utt_id=utt_id, s=int(round(100 * (start - start_time))),
+                    e=int(round(100 * (end - start_time))))
+                # print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
+                #    new_utt=new_utt, utt_id=utt_id, s=start - start_time,
+                #    e=end - start_time))
+                self.subsegments[job_name][new_utt] = {'recording': parts[0], 'abs_start': start, 'abs_end': end,
+                                                       'rel_start': start_relative, 'rel_end': end_relative}
+                start_frame = int(start / frame_shift)
+                end_frame = int(end / frame_shift)
+                if end_frame > utt_max_frames:
+                    end_frame = utt_max_frames
+                end_frame -= 1
+                subseg_spk2utt[speak].append(new_utt)
+                subseg_reco2utt[parts[0]].append(new_utt)
+                subseg_utt2spk[new_utt] = speak
+                subseg_feats[new_utt] = '{}[{}:{}]'.format(utt_feats, start_frame, end_frame)
+                subseg_vads[new_utt] = '{}[{}:{}]'.format(utt_vads, start_frame, end_frame)
+            save_scp(((k, '{} {:.3f} {:.3f}'.format(v['recording'], v['abs_start'], v['abs_end'])) for k, v in self.subsegments[job_name].items()),
+                     os.path.join(subsegment_dir, 'subsegments.{}.scp'.format(job_name)))
+            save_scp(((k, v) for k, v in subseg_feats.items()), os.path.join(subsegment_dir, 'feats.{}.scp'.format(job_name)))
+            save_scp(((k, v) for k, v in subseg_vads.items()), os.path.join(subsegment_dir, 'vad.{}.scp'.format(job_name)))
+            save_scp(((k, v) for k, v in subseg_utt2spk.items()), os.path.join(subsegment_dir, 'utt2spk.{}'.format(job_name)))
+            save_scp(((k, ' '.join(v)) for k, v in subseg_spk2utt.items()), os.path.join(subsegment_dir, 'spk2utt.{}'.format(job_name)))
+            save_scp(((k, ' '.join(v)) for k, v in subseg_reco2utt.items()), os.path.join(subsegment_dir, 'reco2utt.{}'.format(job_name)))
+        # Combine files
+        for t in ['reco2utt', 'spk2utt']:
+            with open(os.path.join(subsegment_dir, t), 'w', encoding='utf8') as out_f:
+                for i in range(self.num_jobs):
+                    with open(os.path.join(subsegment_dir, '{}.{}'.format(t,i)), 'r', encoding='utf8') as in_f:
+                        for line in in_f:
+                            out_f.write(line)
 
-            if constant_duration:
-                if dur < 0:
-                    continue
-                if dur < max_remaining_duration:
-                    start = max(end_time - max_segment_duration, start_time)
-                end = min(start + max_segment_duration, end_time)
-            else:
-                end = end_time
-            new_utt = "{utt_id}-{s:08d}-{e:08d}".format(
-                utt_id=utt_id, s=int(round(100 * (start - start_time))),
-                e=int(round(100 * (end - start_time))))
-            #print("{new_utt} {utt_id} {s:.3f} {e:.3f}".format(
-            #    new_utt=new_utt, utt_id=utt_id, s=start - start_time,
-            #    e=end - start_time))
-            self.subsegments[new_utt] = ' '.join([parts[0], start, end])
-            self.subsegment_mapping[utt_id].append(new_utt)
-        pattern = 'subsegments.{}'
-
-        save_groups(self.grouped_segments, self.split_directory(), pattern)
+    def create_vad_segments(self, feature_config):
+        segment_vad(self, feature_config)
+        directory = self.split_directory()
+        self.vad_segments = {}
+        for i in range(self.num_jobs):
+            vad_segments_path = os.path.join(directory, 'vad_segments.{}.scp'.format(i))
+            self.vad_segments[i] = load_scp(vad_segments_path)

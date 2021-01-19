@@ -338,10 +338,9 @@ class AlignableCorpus(BaseCorpus):
                 for i in range(len(text)):
                     t = text[i]
                     lookup = dictionary.to_int(t)
-                    if lookup is None:
-                        continue
-                    if lookup == oov_code:
-                        oovs.append(t)
+                    for w in lookup:
+                        if w == oov_code:
+                            oovs.append(text[i])
                     text[i] = lookup
                 if oovs:
                     self.utterance_oovs[u] = oovs

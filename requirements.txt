@@ -6,3 +6,5 @@ librosa
 pyqt5
 pyqtgraph
 requests
+sklearn
+joblib

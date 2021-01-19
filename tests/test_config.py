@@ -3,6 +3,7 @@ import pytest
 from montreal_forced_aligner.config import FeatureConfig, train_yaml_to_config, align_yaml_to_config, ConfigError
 from montreal_forced_aligner.trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer
 
+
 def test_monophone_config():
     config = MonophoneTrainer(FeatureConfig())
     assert config.realignment_iterations == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14,
@@ -27,14 +28,26 @@ def test_load_align(config_directory, mono_align_config_path):
         align = align_yaml_to_config(path)
 
 
-
 def test_load_mono_train(config_directory, mono_train_config_path):
     train, align = train_yaml_to_config(mono_train_config_path)
     for t in train.training_configs:
         assert not t.use_mp
         assert not t.feature_config.use_mp
+        assert t.feature_config.use_energy
     assert not align.use_mp
     assert not align.feature_config.use_mp
+    assert align.feature_config.use_energy
+
+
+def test_load_ivector_train(config_directory, train_ivector_config):
+    train, align = train_yaml_to_config(train_ivector_config)
+    for t in train.training_configs:
+        assert not t.use_mp
+        assert not t.feature_config.use_mp
+        assert t.feature_config.use_energy
+    assert not align.use_mp
+    assert not align.feature_config.use_mp
+
 
 def test_load(config_directory):
     path = os.path.join(config_directory, 'basic_train_config.yaml')

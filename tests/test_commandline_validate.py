@@ -10,14 +10,16 @@ class ValidatorDummyArgs(object):
         self.speaker_characters = 0
         self.ignore_acoustics = False
         self.disable_mp = False
+        self.acoustic_model_path = 'english'
 
 
-def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary,temp_dir):
+def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary, temp_dir):
     args = ValidatorDummyArgs()
     args.num_jobs = 2
     args.corpus_directory = large_prosodylab_format_directory
     args.dictionary_path = large_dataset_dictionary
     args.temp_directory = temp_dir
     args.test_transcriptions = True
+    args.acoustic_model_path = 'english'
     args.disable_mp = True
     run_validate_corpus(args)

@@ -60,6 +60,7 @@ class FeatureConfig(object):
         self.splice_left_context = None
         self.splice_right_context = None
         self.use_mp = True
+        self.job_specific_configuration = {}
 
     def params(self):
         return {'type': self.type,
@@ -80,6 +81,14 @@ class FeatureConfig(object):
     @property
     def lda_options(self):
         return {'splice_left_context': self.splice_left_context, 'splice_right_context': self.splice_right_context}
+
+    def add_job_specific_config(self, job_name, config):
+        self.job_specific_configuration[job_name] = config
+
+    def mfcc_options(self, job_name):
+        options = {'use_energy': self.use_energy}
+        options.update(self.job_specific_configuration[job_name])
+        return options
 
     def update(self, data):
         for k, v in data.items():
@@ -181,10 +190,16 @@ class FeatureConfig(object):
         else:
             log_func = logger.info
         split_directory = corpus.split_directory()
-        if not os.path.exists(os.path.join(split_directory, self.raw_feature_id + '.0.scp')):
+        for job_name, config in enumerate(corpus.frequency_configs):
+            self.add_job_specific_config(job_name, config[1])
+        if compute_cmvn:
+            feat_id = self.raw_feature_id
+        else:
+            feat_id = 'feats'
+        if not os.path.exists(os.path.join(split_directory, feat_id + '.0.scp')):
             log_func('Generating base features ({})...'.format(self.type))
             if self.type == 'mfcc':
-                mfcc(split_directory, corpus.num_jobs, self, corpus.frequency_configs)
+                mfcc(split_directory, corpus.num_jobs, self)
             corpus.combine_feats()
             if compute_cmvn:
                 log_func('Calculating CMVN...')
@@ -211,13 +226,14 @@ class FeatureConfig(object):
             log_func = logger.info
         if data_directory is None:
             data_directory = corpus.split_directory()
+        data_directory = os.path.join(data_directory, 'subsegments')
         if self.directory is None:
             self.directory = data_directory
         if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_ivector_feature_id + '.0.scp')):
-            log_func('Voiced features already selected, skipping!')
+            log_func('Features for ivector already exist, skipping!')
             return
         compute_ivector_features(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
-        log_func('Finished selecting voiced features!')
+        log_func('Finished generating features for ivector extraction!')
 
     def generate_voiced_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
         if logger is None:
