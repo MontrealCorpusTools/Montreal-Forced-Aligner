@@ -2,7 +2,8 @@ import os
 import shutil
 import subprocess
 from ..exceptions import ConfigError
-from .processing import mfcc, add_deltas, apply_cmvn, apply_lda, compute_vad, select_voiced, compute_ivector_features
+from .processing import mfcc, add_deltas, apply_cmvn, apply_lda, compute_vad, select_voiced, \
+    compute_ivector_features, generate_spliced_features
 
 from ..helper import thirdparty_binary, load_scp, save_groups
 
@@ -177,6 +178,11 @@ class FeatureConfig(object):
         return name
 
     @property
+    def pre_lda_feature_id(self):
+        name = 'feats_spliced'
+        return name
+
+    @property
     def fmllr_path(self):
         return os.path.join(self.directory, 'trans.{}')
 
@@ -218,6 +224,21 @@ class FeatureConfig(object):
             add_deltas(data_directory, corpus.num_jobs, self)
         elif self.lda:
             apply_lda(data_directory, corpus.num_jobs, self)
+
+    def generate_spliced_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
+        if logger is None:
+            log_func = print
+        else:
+            log_func = logger.info
+        if data_directory is None:
+            data_directory = corpus.split_directory()
+        if self.directory is None:
+            self.directory = data_directory
+        if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_lda_feature_id + '.0.scp')):
+            log_func('Features for LDA already exist, skipping!')
+            return
+        generate_spliced_features(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
+        log_func('Finished generating features for LDA!')
 
     def generate_ivector_extract_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
         if logger is None:

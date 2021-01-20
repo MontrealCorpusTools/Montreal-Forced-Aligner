@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 from sklearn.naive_bayes import GaussianNB
 from joblib import dump, load
+import time
 
 from .base import BaseTrainer
 from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs, load_scp
@@ -104,6 +105,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         final_ubm_path = os.path.join(self.train_directory, 'final.ubm')
         if os.path.exists(final_ubm_path):
             return
+        begin = time.time()
         self.logger.info('Initializing diagonal UBM...')
         # Initialize model from E-M in memory
         log_directory = os.path.join(self.train_directory, 'log')
@@ -223,6 +225,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                         final_ubm_path)
         parse_logs(log_directory)
         self.logger.info('Finished training UBM!')
+        self.logger.debug('UBM training took {} seconds'.format(time.time() - begin))
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer=None):
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
@@ -231,6 +234,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
+        begin = time.time()
         if previous_trainer is None:
             self.use_vad = True
         else:
@@ -251,11 +255,14 @@ class IvectorExtractorTrainer(BaseTrainer):
 
         self.train_ubm()
         self.init_ivector_train()
+        self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))
 
     def init_ivector_train(self):
         init_ie_path = os.path.join(self.train_directory, '0.ie')
         if os.path.exists(init_ie_path):
             return
+        begin = time.time()
         # Initialize i-vector extractor
         log_directory = os.path.join(self.train_directory, 'log')
         log_path = os.path.join(log_directory, 'init.log')
@@ -290,7 +297,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             gmm_gselect('final', self, self.corpus.num_jobs, vad=self.use_vad)
         gauss_to_post(self, self.corpus.num_jobs, vad=self.use_vad)
         parse_logs(log_directory)
-        self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization ivectors took {} seconds'.format(time.time() - begin))
 
     def align(self, subset, call_back=None):
         self.save(os.path.join(self.align_directory, 'ivector_extractor.zip'))
@@ -303,6 +310,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping training.'.format(self.identifier))
             return
+        begin = time.time()
         if call_back == print:
             iters = tqdm(range(0, self.num_iterations))
         else:
@@ -387,6 +395,8 @@ class IvectorExtractorTrainer(BaseTrainer):
             raise
         with open(done_path, 'w'):
             pass
+        self.logger.info('Training complete!')
+        self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
     def save(self, path):
         """

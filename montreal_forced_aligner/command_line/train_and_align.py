@@ -56,7 +56,7 @@ def align_corpus(args):
             'weird behavior for previous versions of the temporary directory.')
         if conf['dirty']:
             logger.debug('Previous run ended in an error (maybe ctrl-c?)')
-        if conf['type'] != 'train_ivector':
+        if conf['type'] != command:
             logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
         if conf['corpus_directory'] != args.corpus_directory:
             logger.debug('Previous run used source directory '
@@ -72,12 +72,12 @@ def align_corpus(args):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                                  num_jobs=getattr(args, 'num_jobs', 3),
-                                 debug=getattr(args, 'debug', False))
+                                 debug=getattr(args, 'debug', False), logger=logger)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                            'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
         utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
@@ -85,7 +85,7 @@ def align_corpus(args):
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
-                             temp_directory=data_directory)
+                             temp_directory=data_directory, logger=logger)
         a.verbose = args.verbose
         begin = time.time()
         a.train()

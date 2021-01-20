@@ -2,6 +2,7 @@ import os
 from tqdm import tqdm
 import subprocess
 import shutil
+import time
 
 from ..multiprocessing import (align, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
@@ -58,6 +59,7 @@ class SatTrainer(TriphoneTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
+        begin = time.time()
         num_gauss = self.initial_gaussians
         if call_back == print:
             iters = tqdm(range(1, self.num_iterations))
@@ -128,6 +130,7 @@ class SatTrainer(TriphoneTrainer):
         with open(done_path, 'w'):
             pass
         self.logger.info('Training complete!')
+        self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
@@ -136,7 +139,7 @@ class SatTrainer(TriphoneTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
-
+        begin = time.time()
         if os.path.exists(os.path.join(self.train_directory, '1.mdl')):
             return
         self.feature_config.fmllr = True
@@ -217,3 +220,4 @@ class SatTrainer(TriphoneTrainer):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
         self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))

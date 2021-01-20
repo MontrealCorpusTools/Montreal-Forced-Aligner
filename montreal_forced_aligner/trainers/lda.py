@@ -2,6 +2,7 @@ import os
 from tqdm import tqdm
 import subprocess
 import shutil
+import time
 
 from ..multiprocessing import (align, acc_stats, calc_lda_mllt, lda_acc_stats, compute_alignment_improvement)
 from ..helper import thirdparty_binary, make_path_safe, filter_scp, log_kaldi_errors, parse_logs
@@ -64,10 +65,10 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
-
+        begin = time.time()
         try:
-            self.feature_config.lda = True
-            self.feature_config.deltas = False
+            if self.feature_config.splice_left_context is not None:
+                self.feature_config.deltas = False
             self.feature_config.directory = None
             self.feature_config.generate_features(self.corpus, overwrite=True)
             lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
@@ -94,7 +95,8 @@ class LdaTrainer(TriphoneTrainer):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
         super(LdaTrainer, self).init_training(identifier, temporary_directory, corpus, dictionary, previous_trainer)
-        print('Initialization complete!')
+        self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))
 
     def train(self, call_back=None):
         done_path = os.path.join(self.train_directory, 'done')
@@ -102,6 +104,7 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping.'.format(self.identifier))
             return
+        begin = time.time()
         try:
             num_gauss = self.initial_gaussians
             if call_back == print:
@@ -176,3 +179,6 @@ class LdaTrainer(TriphoneTrainer):
             raise
         with open(done_path, 'w'):
             pass
+
+        self.logger.info('Training complete!')
+        self.logger.debug('Training took {} seconds'.format(time.time() - begin))

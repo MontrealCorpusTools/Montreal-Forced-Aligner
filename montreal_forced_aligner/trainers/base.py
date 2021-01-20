@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from tqdm import tqdm
 import subprocess
 import shutil
@@ -126,12 +127,11 @@ class BaseTrainer(object):
         self.compute_calculated_properties()
 
     def _setup_for_init(self, identifier, temporary_directory, corpus, dictionary, logger=None):
+        begin = time.time()
         self.temp_directory = temporary_directory
         self.identifier = identifier
         dirty_path = os.path.join(self.train_directory, 'dirty')
         done_path = os.path.join(self.train_directory, 'done')
-        if os.path.exists(done_path):
-            return
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.train_directory)
         if self.logger is None and logger is not None:
@@ -156,6 +156,7 @@ class BaseTrainer(object):
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
+        self.logger.debug('Setup for initialization took {} seconds'.format(time.time() - begin))
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
         raise NotImplementedError
@@ -212,8 +213,11 @@ class BaseTrainer(object):
             shutil.rmtree(self.align_directory)
         done_path = os.path.join(self.align_directory, 'done')
         if not os.path.exists(done_path):
+            begin = time.time()
             if subset is None:
                 self.data_directory = self.corpus.split_directory()
+            else:
+                self.data_directory = self.corpus.subset_directory(self.subset, self.feature_config)
             try:
                 align('final', self.train_directory, self.data_directory,
                       self.dictionary.optional_silence_csl,
@@ -237,6 +241,7 @@ class BaseTrainer(object):
                 raise
             with open(done_path, 'w'):
                 pass
+            self.logger.debug('Alignment took {} seconds'.format(time.time() - begin))
         self.export_textgrids()
 
     def train(self, call_back=None):
@@ -245,6 +250,7 @@ class BaseTrainer(object):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
+        begin = time.time()
         final_mdl_path = os.path.join(self.train_directory, 'final.mdl')
         num_gauss = self.initial_gaussians
         if call_back == print:
@@ -310,6 +316,7 @@ class BaseTrainer(object):
         with open(done_path, 'w'):
             pass
         self.logger.info('Training complete!')
+        self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
     @property
     def meta(self):
@@ -324,6 +331,7 @@ class BaseTrainer(object):
         """
         Export a TextGrid file for every sound file in the dataset
         """
+        begin = time.time()
         try:
             convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
                                  self.dictionary, self.corpus, self.corpus.num_jobs, self)
@@ -331,6 +339,7 @@ class BaseTrainer(object):
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
+        self.logger.debug('Exporting textgrids took {} seconds'.format(time.time() - begin))
 
     def save(self, path):
         """

@@ -212,6 +212,31 @@ def compute_ivector_features(directory, num_jobs, config, apply_cmn=False):
         run_non_mp(compute_ivector_features_func, jobs, log_directory)
 
 
+def generate_spliced_features_func(directory, raw_feature_id, config, job_name, apply_cmn):
+    normed_scp_path = os.path.join(directory, raw_feature_id + '.{}.scp'.format(job_name))
+    ark_path = os.path.join(directory, feature_id + '.{}.ark'.format(job_name))
+    scp_path = os.path.join(directory, feature_id + '.{}.scp'.format(job_name))
+    log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
+    with open(log_path, 'a') as log_file:
+        splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                              '--left-context={}'.format(config['splice_left_context']),
+                                              '--right-context={}'.format(config['splice_right_context']),
+                                              'scp:' + normed_scp_path,
+                                              'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                             stderr=log_file)
+        splice_feats_proc.communicate()
+
+def generate_spliced_features(directory, num_jobs, config, apply_cmn=False):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(directory, config.raw_feature_id, config.splice_options, x, apply_cmn)
+            for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(generate_spliced_features_func, jobs, log_directory)
+    else:
+        run_non_mp(generate_spliced_features_func, jobs, log_directory)
+
+
 def add_deltas_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     ark_path = os.path.join(directory, config.feature_id + '.{}.ark'.format(job_name))

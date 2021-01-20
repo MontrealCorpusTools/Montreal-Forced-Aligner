@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import time
 
 from .base import BaseTrainer
 from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs
@@ -67,6 +68,7 @@ class MonophoneTrainer(BaseTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
+        begin = time.time()
 
         tree_path = os.path.join(self.train_directory, 'tree')
         mdl_path = os.path.join(self.train_directory, '0.mdl')
@@ -105,12 +107,15 @@ class MonophoneTrainer(BaseTrainer):
                     for f in acc_files:
                         os.remove(f)
             parse_logs(self.log_directory)
-            print('Initializing alignment improvement calculations')
-            compute_alignment_improvement(0, self, self.train_directory, self.corpus.num_jobs)
+            if self.debug:
+                self.logger.info('Initializing alignment improvement calculations')
+                compute_alignment_improvement(0, self, self.train_directory, self.corpus.num_jobs)
+
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
-        print('Initialization complete!')
+        self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))

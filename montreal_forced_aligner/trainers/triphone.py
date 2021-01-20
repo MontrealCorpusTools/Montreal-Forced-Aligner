@@ -1,6 +1,6 @@
 import os
 import subprocess
-
+import time
 from .base import BaseTrainer
 from ..helper import thirdparty_binary, log_kaldi_errors, parse_logs
 from ..exceptions import KaldiProcessingError
@@ -57,7 +57,7 @@ class TriphoneTrainer(BaseTrainer):
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
-
+        begin = time.time()
 
         try:
             align_directory = previous_trainer.align_directory
@@ -126,5 +126,5 @@ class TriphoneTrainer(BaseTrainer):
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
-
-        print('Initialization complete!')
+        self.logger.info('Initialization complete!')
+        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))

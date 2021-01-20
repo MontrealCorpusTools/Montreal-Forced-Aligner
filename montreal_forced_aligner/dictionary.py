@@ -516,6 +516,7 @@ class Dictionary(object):
         self._write_word_boundaries()
         self._write_extra_questions()
         self._write_word_file()
+        self._write_align_lexicon()
         self._write_fst_text(disambig=disambig)
         self._write_fst_binary(disambig=disambig)
         # self.cleanup()
@@ -574,7 +575,7 @@ class Dictionary(object):
                 open(boundary_int_path, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
                 for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
-                    if p == '<eps>':
+                    if p == '<eps>' or p.startswith('#'):
                         continue
                     cat = 'nonword'
                     if p.endswith('_B'):
@@ -594,6 +595,30 @@ class Dictionary(object):
         with open(words_path, 'w', encoding='utf8') as f:
             for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(w, i))
+
+    def _write_align_lexicon(self):
+        path = os.path.join(self.phones_dir, 'align_lexicon.int')
+
+        with open(path, 'w', encoding='utf8') as f:
+            for w, i in self.words_mapping.items():
+                if self.word_set is not None and w not in self.word_set:
+                    continue
+                for pron in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
+
+                    phones = [x for x in pron['pronunciation']]
+                    if self.position_dependent_phones:
+                        if len(phones) == 1:
+                            phones[0] += '_S'
+                        else:
+                            for i in range(len(phones)):
+                                if i == 0:
+                                    phones[i] += '_B'
+                                elif i == len(phones) - 1:
+                                    phones[i] += '_E'
+                                else:
+                                    phones[i] += '_I'
+                    p = ' '.join(str(self.phone_mapping[x]) for x in phones)
+                    f.write('{} {} {}\n'.format(i, i, p))
 
     def _write_topo(self):
         filepath = os.path.join(self.output_directory, 'topo')

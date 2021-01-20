@@ -373,10 +373,14 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                                          "ark:" + text_int_path,
                                          '', '', 'ark:-'],
                                         stdout=subprocess.PIPE, stderr=log_file)
+            det_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                           'ark:-', 'ark:-'],
+                                          stdin=lin_proc.stdout, stderr=log_file,
+                                          stdout=subprocess.PIPE)
             align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
                                            os.path.join(config.dictionary.phones_dir, 'word_boundary.int'), model_path,
                                            'ark:-', 'ark:-'],
-                                          stdin=lin_proc.stdout, stderr=log_file,
+                                          stdin=det_proc.stdout, stderr=log_file,
                                           stdout=subprocess.PIPE)
             phone_proc = subprocess.Popen([thirdparty_binary('lattice-to-phone-lattice'), model_path,
                                            'ark:-', "ark:-"],
@@ -533,10 +537,14 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
                                      "ark:" + text_int_path,
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=log_file)
+        det_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                       'ark:-', 'ark:-'],
+                                      stdin=lin_proc.stdout, stderr=log_file,
+                                      stdout=subprocess.PIPE)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
                                        word_path, model_path,
                                        'ark:-', 'ark,t:' + aligned_path],
-                                      stdin=lin_proc.stdout, stderr=log_file)
+                                      stdin=det_proc.stdout, stderr=log_file)
         align_proc.communicate()
 
         subprocess.call([thirdparty_binary('nbest-to-ctm'),
