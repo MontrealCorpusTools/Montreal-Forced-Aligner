@@ -242,6 +242,7 @@ class Dictionary(object):
         word_set.add(self.sil_code)
         word_set.add(self.oov_code)
         self.word_set = word_set
+        self.generate_mappings()
 
     @property
     def actual_words(self):
@@ -307,7 +308,6 @@ class Dictionary(object):
         self.words_mapping['#0'] = i + 1
         self.words_mapping['<s>'] = i + 2
         self.words_mapping['</s>'] = i + 3
-
         self.oovs_found = Counter()
         self.add_disambiguation()
 

@@ -179,10 +179,11 @@ def parse_logs(log_directory):
         log_path = os.path.join(log_directory, name)
         with open(log_path, 'r', encoding='utf8') as f:
             for line in f:
+                line = line.strip()
                 if 'error while loading shared libraries: libopenblas.so.0' in line:
                     raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
                                           'Try installing openblas via system package manager?')
-                if line.strip().startswith('ERROR'):
+                if line.startswith('ERROR') or line.startswith('ASSERTION_FAILED'):
                     error_logs.append(log_path)
                     break
     if error_logs:

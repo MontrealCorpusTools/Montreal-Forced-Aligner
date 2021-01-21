@@ -34,6 +34,7 @@ class TrainableAligner(BaseAligner):
 
     def setup(self):
         if self.dictionary is not None:
+            self.dictionary.set_word_set(self.corpus.word_set)
             self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         for identifier, trainer in self.training_config.items():

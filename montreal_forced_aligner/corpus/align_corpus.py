@@ -335,16 +335,17 @@ class AlignableCorpus(BaseCorpus):
                 if u in self.ignored_utterances:
                     continue
                 oovs = []
+                new_text = []
                 for i in range(len(text)):
                     t = text[i]
                     lookup = dictionary.to_int(t)
                     for w in lookup:
                         if w == oov_code:
                             oovs.append(text[i])
-                    text[i] = lookup
+                        new_text.append(w)
                 if oovs:
                     self.utterance_oovs[u] = oovs
-                new_text = map(str, (x for x in text if isinstance(x, int)))
+                new_text = map(str, (x for x in new_text if isinstance(x, int)))
                 output_g.append([u, ' '.join(new_text)])
             output.append(output_g)
         return output

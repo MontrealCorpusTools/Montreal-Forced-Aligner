@@ -59,6 +59,7 @@ class LdaTrainer(TriphoneTrainer):
                 'random_prune': self.random_prune}
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
+        self.feature_config.lda = False
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
@@ -70,11 +71,11 @@ class LdaTrainer(TriphoneTrainer):
             if self.feature_config.splice_left_context is not None:
                 self.feature_config.deltas = False
             self.feature_config.directory = None
-            self.feature_config.generate_features(self.corpus, overwrite=True)
+            self.feature_config.generate_spliced_features(self.corpus, overwrite=True)
             lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
                           self.dictionary.silence_csl, self.corpus.num_jobs)
             self.feature_config.directory = self.train_directory
-            self.feature_config.generate_features(self.corpus, overwrite=True)
+            self.feature_config.set_features_to_use_lda()
             if self.data_directory != self.corpus.split_directory():
                 utt_list = []
                 subset_utt_path = os.path.join(self.data_directory, 'included_utts.txt')

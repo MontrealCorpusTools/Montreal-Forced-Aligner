@@ -906,7 +906,7 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
 
     """
 
-    jobs = [(directory, os.path.join(split_directory, config.feature_config.feature_id + '.{}.scp'.format(x)),
+    jobs = [(directory, os.path.join(split_directory, config.feature_config.spliced_feature_id + '.{}.scp'.format(x)),
              align_directory, config.lda_options, ci_phones, x) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(lda_acc_stats_func, jobs, config.log_directory)

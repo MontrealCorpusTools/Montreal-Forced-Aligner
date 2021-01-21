@@ -80,7 +80,7 @@ class FeatureConfig(object):
         self.deltas = False
 
     @property
-    def lda_options(self):
+    def splice_options(self):
         return {'splice_left_context': self.splice_left_context, 'splice_right_context': self.splice_right_context}
 
     def add_job_specific_config(self, job_name, config):
@@ -183,6 +183,11 @@ class FeatureConfig(object):
         return name
 
     @property
+    def spliced_feature_id(self):
+        name = self.raw_feature_id + '_spliced'
+        return name
+
+    @property
     def fmllr_path(self):
         return os.path.join(self.directory, 'trans.{}')
 
@@ -234,11 +239,11 @@ class FeatureConfig(object):
             data_directory = corpus.split_directory()
         if self.directory is None:
             self.directory = data_directory
-        if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_lda_feature_id + '.0.scp')):
-            log_func('Features for LDA already exist, skipping!')
+        if not overwrite and os.path.exists(os.path.join(data_directory, self.spliced_feature_id + '.0.scp')):
+            log_func('Spliced features already exist, skipping!')
             return
-        generate_spliced_features(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
-        log_func('Finished generating features for LDA!')
+        generate_spliced_features(data_directory, corpus.num_jobs, self)
+        log_func('Finished generating spliced features!')
 
     def generate_ivector_extract_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
         if logger is None:

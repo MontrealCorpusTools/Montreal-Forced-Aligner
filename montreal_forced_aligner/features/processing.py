@@ -212,10 +212,11 @@ def compute_ivector_features(directory, num_jobs, config, apply_cmn=False):
         run_non_mp(compute_ivector_features_func, jobs, log_directory)
 
 
-def generate_spliced_features_func(directory, raw_feature_id, config, job_name, apply_cmn):
+def generate_spliced_features_func(directory, raw_feature_id, config, job_name):
     normed_scp_path = os.path.join(directory, raw_feature_id + '.{}.scp'.format(job_name))
-    ark_path = os.path.join(directory, feature_id + '.{}.ark'.format(job_name))
-    scp_path = os.path.join(directory, feature_id + '.{}.scp'.format(job_name))
+    spliced_feature_id = raw_feature_id + '_spliced'
+    ark_path = os.path.join(directory, spliced_feature_id + '.{}.ark'.format(job_name))
+    scp_path = os.path.join(directory, spliced_feature_id + '.{}.scp'.format(job_name))
     log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
     with open(log_path, 'a') as log_file:
         splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
@@ -226,10 +227,11 @@ def generate_spliced_features_func(directory, raw_feature_id, config, job_name, 
                                              stderr=log_file)
         splice_feats_proc.communicate()
 
-def generate_spliced_features(directory, num_jobs, config, apply_cmn=False):
+
+def generate_spliced_features(directory, num_jobs, config):
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-    jobs = [(directory, config.raw_feature_id, config.splice_options, x, apply_cmn)
+    jobs = [(directory, config.raw_feature_id, config.splice_options, x)
             for x in range(num_jobs)]
     if config.use_mp:
         run_mp(generate_spliced_features_func, jobs, log_directory)
@@ -271,42 +273,24 @@ def add_deltas(directory, num_jobs, config):
         run_non_mp(add_deltas_func, jobs, log_directory)
 
 
-def apply_lda_func(directory, raw_feature_id, feature_id, lda_path, job_name, config):
-    normed_scp_path = os.path.join(directory, raw_feature_id + '.{}.scp'.format(job_name))
+def apply_lda_func(directory, spliced_feature_id, feature_id, lda_path, job_name):
+    normed_scp_path = os.path.join(directory, spliced_feature_id + '.{}.scp'.format(job_name))
     ark_path = os.path.join(directory, feature_id + '.{}.ark'.format(job_name))
     scp_path = os.path.join(directory, feature_id + '.{}.scp'.format(job_name))
     log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
     with open(log_path, 'a') as log_file:
-        if os.path.exists(lda_path):
-            splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                                  '--left-context={}'.format(config['splice_left_context']),
-                                                  '--right-context={}'.format(config['splice_right_context']),
-                                                  'scp:' + normed_scp_path,
-                                                  'ark:-'],
-                                                 stdout=subprocess.PIPE,
-                                                 stderr=log_file)
-            transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
-                                                     lda_path,
-                                                     'ark:-',
-                                                     'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                                    stdin=splice_feats_proc.stdout,
-                                                    stderr=log_file)
-            transform_feats_proc.communicate()
-        else:
-            log_file.write('could not find "{}"\n'.format(lda_path))
-            splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                                  '--left-context={}'.format(config['splice_left_context']),
-                                                  '--right-context={}'.format(config['splice_right_context']),
-                                                  'scp:' + normed_scp_path,
-                                                  'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                                 stderr=log_file)
-            splice_feats_proc.communicate()
+        transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
+                                                 lda_path,
+                                                 'scp:'+ normed_scp_path,
+                                                 'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                                stderr=log_file)
+        transform_feats_proc.communicate()
 
 
 def apply_lda(directory, num_jobs, config):
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-    jobs = [(directory, config.raw_feature_id, config.feature_id, config.lda_path, x, config.lda_options)
+    jobs = [(directory, config.spliced_feature_id, config.feature_id, config.lda_path, x)
             for x in range(num_jobs)]
     if config.use_mp:
         run_mp(apply_lda_func, jobs, log_directory)
