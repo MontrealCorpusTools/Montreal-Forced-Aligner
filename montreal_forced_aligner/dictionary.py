@@ -246,7 +246,7 @@ class Dictionary(object):
 
     @property
     def actual_words(self):
-        return {k: v for k, v in self.words.items() if k not in ['!sil', self.oov_code]}
+        return {k: v for k, v in self.words.items() if k not in [self.sil_code, self.oov_code, '<eps>']}
 
     def split_clitics(self, item):
         if item in self.words:
