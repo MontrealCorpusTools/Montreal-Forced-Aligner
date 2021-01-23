@@ -2,9 +2,6 @@ import os
 from tqdm import tqdm
 import subprocess
 import shutil
-import numpy as np
-from sklearn.naive_bayes import GaussianNB
-from joblib import dump, load
 import time
 
 from .base import BaseTrainer
@@ -305,6 +302,9 @@ class IvectorExtractorTrainer(BaseTrainer):
         # extract_ivectors(self, self.corpus.num_jobs)
 
     def train(self, call_back=None):
+        from sklearn.naive_bayes import GaussianNB
+        from joblib import dump, load
+        import numpy as np
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
         if os.path.exists(done_path):

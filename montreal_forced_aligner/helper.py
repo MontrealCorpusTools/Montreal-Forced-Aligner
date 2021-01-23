@@ -37,8 +37,8 @@ def output_mapping(mapping, path):
     with open(path, 'w', encoding='utf8') as f:
         for k in sorted(mapping.keys()):
             v = mapping[k]
-            if isinstance(v, list):
-                v = ' '.join(v)
+            if isinstance(v, (list, set, tuple)):
+                v = ' '.join(map(str, v))
             f.write('{} {}\n'.format(k, v))
 
 
@@ -59,7 +59,7 @@ def save_groups(groups, seg_dir, pattern, multiline=False):
         save_scp(g, path, multiline=multiline)
 
 
-def load_scp(path):
+def load_scp(path, data_type=str):
     """
     Load a Kaldi script file (.scp)
 
@@ -69,6 +69,8 @@ def load_scp(path):
     ----------
     path : str
         Path to Kaldi script file
+    data_type : type
+        Type to coerce the data to
 
     Returns
     -------
@@ -88,7 +90,7 @@ def load_scp(path):
             if len(line_list) == 1:
                 value = line_list[0]
             else:
-                value = [ x for x in line_list if x not in ['[', ']']]
+                value = [ data_type(x) for x in line_list if x not in ['[', ']']]
             scp[key] = value
     return scp
 

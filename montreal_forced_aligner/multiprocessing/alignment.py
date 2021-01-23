@@ -740,6 +740,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
                     model_name='final'):
     feat_scp = config.feature_config.feature_id + '.{}.scp'.format(job_name)
     base_scp = feat_scp.replace('_fmllr', '')
+
     if initial:
         feat_scp = base_scp
     feat_scp = os.path.join(split_directory, feat_scp)
@@ -782,11 +783,14 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, config, in
             os.rename(cmp_trans_path, trans_path)
         else:
             trans_path = tmp_trans_path
-        utt2spk_path = os.path.join(config.corpus.split_directory(), 'utt2spk.{}'.format(job_name))
-        feat_fmllr_scp_path = os.path.join(config.corpus.split_directory(),
-                                           config.feature_config.feature_id + '.{}.scp'.format(job_name))
-        feat_fmllr_ark_path = os.path.join(config.corpus.split_directory(),
-                                           config.feature_config.feature_id + '.{}.ark'.format(job_name))
+        utt2spk_path = os.path.join(split_directory, 'utt2spk.{}'.format(job_name))
+        feat_name = config.feature_config.feature_id
+        if not feat_name.endswith('_fmllr'):
+            feat_name += '_fmllr'
+        feat_fmllr_scp_path = os.path.join(split_directory,
+                                           feat_name + '.{}.scp'.format(job_name))
+        feat_fmllr_ark_path = os.path.join(split_directory,
+                                           feat_name + '.{}.ark'.format(job_name))
         subprocess.call([thirdparty_binary('transform-feats'),
                          '--utt2spk=ark:' + utt2spk_path,
                          'ark:' + trans_path, 'scp:' + base_scp,
@@ -924,8 +928,8 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
                                          os.path.join(directory, 'lda.mat')] + acc_list,
                                         stderr=log_file)
         est_lda_proc.communicate()
-    shutil.copyfile(os.path.join(directory, 'lda.mat'), os.path.join(config.corpus.split_directory(), 'lda.mat'))
-    config.feature_config.generate_features(config.corpus, overwrite=True)
+    shutil.copyfile(os.path.join(directory, 'lda.mat'), os.path.join(config.data_directory, 'lda.mat'))
+    config.feature_config.generate_features(config.corpus, overwrite=True, data_directory=config.data_directory)
 
 
 def calc_lda_mllt_func(directory, feat_path, sil_phones, job_name, config,
@@ -959,7 +963,7 @@ def calc_lda_mllt_func(directory, feat_path, sil_phones, job_name, config,
                         stderr=log_file)
 
 
-def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
+def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
                   initial=False, iteration=None):
     """
     Multiprocessing function that calculates LDA+MLLT transformations
@@ -983,7 +987,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
     ----------
     directory : str
         Directory of LDA+MLLT training
-    split_directory : str
+    data_directory : str
         Directory of training data split into the number of jobs
     sil_phones : str
         Colon-separated list of silence phones
@@ -1003,7 +1007,7 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
 
     jobs = [
-        (directory, os.path.join(split_directory, config.feature_config.feature_id + '.{}.scp'.format(x)),
+        (directory, os.path.join(data_directory, config.feature_config.feature_id + '.{}.scp'.format(x)),
          sil_phones, x, config.lda_options, initial, model_name)
         for x in range(num_jobs)]
     if config.use_mp:
@@ -1040,5 +1044,5 @@ def calc_lda_mllt(directory, split_directory, sil_phones, num_jobs, config,
         else:
             os.rename(new_mat_path, previous_mat_path)
 
-    shutil.copyfile(os.path.join(directory, 'lda.mat'), os.path.join(config.corpus.split_directory(), 'lda.mat'))
-    config.feature_config.generate_features(config.corpus, overwrite=True)
+    shutil.copyfile(os.path.join(directory, 'lda.mat'), os.path.join(config.data_directory, 'lda.mat'))
+    config.feature_config.generate_features(config.corpus, overwrite=True, data_directory=config.data_directory)

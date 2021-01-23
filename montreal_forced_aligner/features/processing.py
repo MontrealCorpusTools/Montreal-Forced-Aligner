@@ -292,7 +292,7 @@ def apply_lda(directory, num_jobs, config):
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, config.spliced_feature_id, config.feature_id, config.lda_path, x)
             for x in range(num_jobs)]
-    if config.use_mp:
+    if config.use_mp and False: # Looks to be threaded
         run_mp(apply_lda_func, jobs, log_directory)
     else:
         run_non_mp(apply_lda_func, jobs, log_directory)

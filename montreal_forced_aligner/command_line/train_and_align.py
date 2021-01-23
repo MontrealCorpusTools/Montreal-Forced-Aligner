@@ -15,7 +15,7 @@ from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def align_corpus(args):
+def align_corpus(args, unknown_args=None):
     command = 'train_and_align'
     all_begin = time.time()
     if not args.temp_directory:
@@ -32,6 +32,8 @@ def align_corpus(args):
         train_config, align_config = train_yaml_to_config(args.config_path)
     else:
         train_config, align_config = load_basic_train()
+    if unknown_args:
+        align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         logger.info('Cleaning old directory!')
@@ -72,7 +74,7 @@ def align_corpus(args):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                                  num_jobs=getattr(args, 'num_jobs', 3),
-                                 debug=getattr(args, 'debug', False), logger=logger)
+                                 debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                            'Please run the validator to get more information.')
@@ -119,7 +121,7 @@ def validate_args(args, download_dictionaries):
         raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
-def run_train_corpus(args, download_dictionaries=None):
+def run_train_corpus(args, unknown_args=None, download_dictionaries=None):
     if download_dictionaries is None:
         download_dictionaries = get_available_dict_languages()
     try:
@@ -132,7 +134,7 @@ def run_train_corpus(args, download_dictionaries=None):
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, download_dictionaries)
-    align_corpus(args)
+    align_corpus(args, unknown_args)
 
 
 if __name__ == '__main__':  # pragma: no cover

@@ -9,7 +9,8 @@ from .. import __version__
 from ..exceptions import TrainerError, KaldiProcessingError
 from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors
 
-from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids, compute_alignment_improvement)
+from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids,
+                               compute_alignment_improvement, compile_train_graphs)
 
 from ..models import AcousticModel
 from ..features.config import FeatureConfig
@@ -149,7 +150,7 @@ class BaseTrainer(object):
 
         try:
             self.data_directory = corpus.split_directory()
-            self.feature_config.generate_features(self.corpus)
+            self.feature_config.generate_features(self.corpus, logger=self.logger)
             if self.subset is not None:
                 self.data_directory = corpus.subset_directory(self.subset, self.feature_config)
         except Exception as e:
@@ -213,25 +214,32 @@ class BaseTrainer(object):
             shutil.rmtree(self.align_directory)
         done_path = os.path.join(self.align_directory, 'done')
         if not os.path.exists(done_path):
-            begin = time.time()
-            if subset is None:
-                self.data_directory = self.corpus.split_directory()
+            message = 'Generating alignments using {} models'.format(self.identifier)
+            if subset:
+                message += ' using {} utterances...'.format(subset)
             else:
-                self.data_directory = self.corpus.subset_directory(self.subset, self.feature_config)
+                message += ' for the whole corpus...'
+            self.logger.info(message)
+            begin = time.time()
+            self.logger.debug('Using {} as the feature name'.format(self.feature_file_base_name))
+            if subset is None:
+                align_data_directory = self.corpus.split_directory()
+            else:
+                align_data_directory = self.corpus.subset_directory(subset, self.feature_config)
             try:
-                align('final', self.train_directory, self.data_directory,
-                      self.dictionary.optional_silence_csl,
-                      self.corpus.num_jobs, self, self.align_directory)
-
                 log_dir = os.path.join(self.align_directory, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-
                 shutil.copy(os.path.join(self.train_directory, 'tree'), self.align_directory)
                 shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
                                 os.path.join(self.align_directory, 'final.mdl'))
 
                 shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
                                 os.path.join(self.align_directory, 'final.occs'))
+                compile_train_graphs(self.align_directory, self.dictionary.output_directory,
+                                     align_data_directory, self.corpus.num_jobs, self)
+                align('final', self.align_directory, align_data_directory,
+                      self.dictionary.optional_silence_csl,
+                      self.corpus.num_jobs, self, self.align_directory)
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
             except Exception as e:
                 with open(dirty_path, 'w'):
@@ -242,7 +250,10 @@ class BaseTrainer(object):
             with open(done_path, 'w'):
                 pass
             self.logger.debug('Alignment took {} seconds'.format(time.time() - begin))
-        self.export_textgrids()
+        else:
+            self.logger.info('Alignments using {} models already done'.format(self.identifier))
+        if self.debug:
+            self.export_textgrids()
 
     def train(self, call_back=None):
         done_path = os.path.join(self.train_directory, 'done')

@@ -2,36 +2,15 @@ import os
 import pytest
 
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
-
-
-class DummyArgs(object):
-    def __init__(self):
-        self.corpus_directory = ''
-        self.dictionary_path = ''
-        self.acoustic_model_path = ''
-        self.output_directory = ''
-        self.config_path = ''
-        self.speaker_characters = 0
-        self.num_jobs = 0
-        self.verbose = False
-        self.clean = True
-        self.fast = True
-        self.debug = False
-        self.evaluate = False
-        self.temp_directory = None
+from montreal_forced_aligner.command_line.mfa import parser
 
 
 def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, generated_dir,
                     transcription_acoustic_model, transcription_language_model, temp_dir):
     output_path = os.path.join(generated_dir, 'transcribe_test')
-    args = DummyArgs()
-    args.acoustic_model_path = transcription_acoustic_model
-    args.corpus_directory = basic_corpus_dir
-    args.dictionary_path = sick_dict_path
-    args.language_model_path = transcription_language_model
-    #args.language_model_path = '/mnt/e/Dev/Linux/kaldi/egs/librispeech/s5/data/local/lm/3gsmall.arpa'
-    args.output_directory = output_path
-    args.temp_directory = temp_dir
-    args.evaluate = True
+    command = ['transcribe', basic_corpus_dir, sick_dict_path, transcription_acoustic_model,
+               transcription_language_model, output_path,
+               '-t', temp_dir, '-q', '--clean', '-d']
+    args, unknown = parser.parse_known_args(command)
     print(transcription_language_model)
     run_transcribe_corpus(args)

@@ -37,6 +37,11 @@ class AlignConfig(BaseConfig):
                 raise ConfigError('No field found for key {}'.format(k))
             setattr(self, k, v)
 
+    def update_from_args(self, args):
+        super(AlignConfig, self).update_from_args(args)
+        if self.retry_beam <= self.beam:
+            self.retry_beam = self.beam * 4
+
 
 def align_yaml_to_config(path):
     with open(path, 'r', encoding='utf8') as f:

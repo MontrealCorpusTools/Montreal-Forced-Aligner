@@ -159,7 +159,7 @@ class IvectorExtractor(Archive):
     """
     Archive for i-vector extractors
     """
-    model_files = ['final.ie', 'final.ubm', 'plda', 'mean.vec', 'trans.mat',
+    model_files = ['final.ie', 'final.ubm', 'final.dubm', 'plda', 'mean.vec', 'trans.mat',
                    'speaker_classifier.mdl', 'speaker_labels.txt']
 
     def add_model(self, source):

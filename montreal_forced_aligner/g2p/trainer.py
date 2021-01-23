@@ -58,6 +58,7 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
     with mp.Pool(num_jobs) as pool:
         to_comp = []
         for word, hyp in hypothesis_values.items():
+            print(word, gold_values[word])
             g = gold_values[word][0]['pronunciation']
             h = hyp.split(' ')
             to_comp.append((g, h))
@@ -72,6 +73,7 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
         for w, gold in gold_values.items():
             if w not in hypothesis_values:
                 incorrect += 1
+                print(w, gold)
                 gold = gold[0]['pronunciation']
                 total_edits += len(gold)
                 total_length += len(gold)

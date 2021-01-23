@@ -39,7 +39,7 @@ def train_lm(args):
 
     logger = setup_logger(command, data_directory)
     if not args.source_path.lower().endswith('.arpa'):
-        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs)
+        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=args.num_jobs>1)
         if args.dictionary_path is not None:
             dictionary = Dictionary(args.dictionary_path, data_directory)
         else:

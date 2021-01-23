@@ -32,7 +32,7 @@ def validate_corpus(args):
     logger = setup_logger(command, data_directory)
 
     corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                    num_jobs=getattr(args, 'num_jobs', 3), logger=logger)
+                    num_jobs=getattr(args, 'num_jobs', 3), logger=logger, use_mp=not args.disable_mp)
     dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
     if args.acoustic_model_path:
         acoustic_model = AcousticModel(args.acoustic_model_path)

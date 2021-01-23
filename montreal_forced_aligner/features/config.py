@@ -252,7 +252,6 @@ class FeatureConfig(object):
             log_func = logger.info
         if data_directory is None:
             data_directory = corpus.split_directory()
-        data_directory = os.path.join(data_directory, 'subsegments')
         if self.directory is None:
             self.directory = data_directory
         if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_ivector_feature_id + '.0.scp')):

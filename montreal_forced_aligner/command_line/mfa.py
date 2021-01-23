@@ -14,7 +14,7 @@ from montreal_forced_aligner.command_line.download import run_download
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
-from montreal_forced_aligner.command_line.speaker_diarization import run_speaker_diarization
+from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 
@@ -213,25 +213,26 @@ train_ivector_parser.add_argument('-d', '--debug', help="Debug the aligner", act
 train_ivector_parser.add_argument('--config_path', type=str, default='',
                                   help='Path to config file to use for training')
 
-speaker_diarization_parser = subparsers.add_parser('speaker_diarization')
-speaker_diarization_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-speaker_diarization_parser.add_argument('ivector_extractor_path', type=str, default='',
-                                        help='Full path to ivector extractor model')
-speaker_diarization_parser.add_argument('output_directory',
-                                     help="Full path to output directory, will be created if it doesn't exist")
+classify_speakers_parser = subparsers.add_parser('classify_speakers')
+classify_speakers_parser.add_argument('corpus_directory', help='Full path to the source directory to '
+                                                               'run speaker classification')
+classify_speakers_parser.add_argument('ivector_extractor_path', type=str, default='',
+                                      help='Full path to ivector extractor model')
+classify_speakers_parser.add_argument('output_directory',
+                                      help="Full path to output directory, will be created if it doesn't exist")
 
-speaker_diarization_parser.add_argument('-s', '--num_speakers', type=int, default=0,
-                                        help='Number of speakers if known')
-speaker_diarization_parser.add_argument('-t', '--temp_directory', type=str, default='',
-                                        help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
-speaker_diarization_parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                                        help='Number of cores to use while performing speaker diarization')
-speaker_diarization_parser.add_argument('-v', '--verbose', help="Output debug messages about speaker diarization",
-                                        action='store_true')
-speaker_diarization_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
-speaker_diarization_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
-speaker_diarization_parser.add_argument('--config_path', type=str, default='',
-                                        help='Path to config file to use for ivector extraction')
+classify_speakers_parser.add_argument('-s', '--num_speakers', type=int, default=0,
+                                      help='Number of speakers if known')
+classify_speakers_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                                      help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+classify_speakers_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                                      help='Number of cores to use while performing speaker classification')
+classify_speakers_parser.add_argument('-v', '--verbose', help="Output debug messages about speaker classification",
+                                      action='store_true')
+classify_speakers_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+classify_speakers_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+classify_speakers_parser.add_argument('--config_path', type=str, default='',
+                                      help='Path to config file to use for ivector extraction')
 
 transcribe_parser = subparsers.add_parser('transcribe')
 transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')
@@ -272,8 +273,8 @@ thirdparty_parser.add_argument('local_directory',
 
 def main():
     mp.freeze_support()
-    args = parser.parse_args()
-
+    args, unknown = parser.parse_known_args()
+    print(args, unknown)
     fix_path()
     if args.subcommand in ['align', 'train', 'train_ivector']:
         from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
@@ -310,7 +311,7 @@ def main():
                   "please use the Windows Subsystem for Linux to use g2p functionality.")
             sys.exit(1)
     if args.subcommand == 'align':
-        run_align_corpus(args, acoustic_languages)
+        run_align_corpus(args, unknown, acoustic_languages)
     elif args.subcommand == 'train':
         run_train_corpus(args)
     elif args.subcommand == 'g2p':
@@ -327,8 +328,8 @@ def main():
         run_train_dictionary(args)
     elif args.subcommand == 'train_ivector':
         run_train_ivector_extractor(args)
-    elif args.subcommand == 'speaker_diarization':
-        run_speaker_diarization(args)
+    elif args.subcommand == 'classify_speakers':
+        run_classify_speakers(args)
     elif args.subcommand == 'annotator':
         from montreal_forced_aligner.command_line.annotator import run_annotator
         run_annotator(args)

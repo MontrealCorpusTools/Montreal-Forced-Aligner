@@ -436,20 +436,25 @@ def extract_ivectors(directory, split_directory, config, num_jobs, vad=True, ali
 
     log_dir = os.path.join(directory, 'log')
     os.makedirs(log_dir, exist_ok=True)
+    feat_name = 'feats_for_ivector.{}.scp'
+    if not os.path.exists(os.path.join(config.corpus.split_directory(), feat_name.format(0))):
+        feat_name = config.feature_file_base_name + '.{}.scp'
     if vad:
-        feat_name = 'feats_for_ivector.{}.scp'
         data_directory = os.path.join(split_directory, 'subsegments')
         func = extract_ivectors_vad_func
         jobs = [(directory, config.ivector_options,
                  os.path.join(data_directory, feat_name.format(x)),
                  x, align_directory) for x in range(num_jobs)]
     else:
-        feat_name = config.feature_file_base_name + '.{}.scp'
         data_directory = split_directory
         func = extract_ivectors_func
+        try:
+            csl = config.dictionary.silence_csl
+        except AttributeError:
+            csl = None
         jobs = [(directory, config.corpus.split_directory(), config.ivector_options,
                  os.path.join(data_directory, feat_name.format(x)),
-                 config.dictionary.silence_csl,
+                 csl,
                  x, align_directory) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(func, jobs, log_dir)
@@ -645,3 +650,51 @@ def segment_vad(corpus, config):
         run_mp(segment_vad_func, jobs, log_directory)
     else:
         run_non_mp(segment_vad_func, jobs, log_directory)
+
+
+def classify_speakers_func(directory, job_name):
+    from ..helper import load_scp, save_scp
+    from joblib import load
+    import numpy as np
+    from collections import defaultdict
+    mdl_path = os.path.join(directory, 'speaker_classifier.mdl')
+    labels_path = os.path.join(directory, 'speaker_labels.txt')
+    speakers = {}
+    with open(labels_path, 'r', encoding='utf8') as f:
+        for line in f:
+            line = line.strip().split()
+            speaker, speak_ind = line
+            speakers[int(speak_ind)] = speaker
+    ivectors_path = os.path.join(directory, 'ivectors.{}'.format(job_name))
+    spk2utt_path = os.path.join(directory, 'spk2utt.{}'.format(job_name))
+    utt2spk_path = os.path.join(directory, 'utt2spk.{}'.format(job_name))
+    ivec = load_scp(ivectors_path)
+    x = []
+    for utt, ivector in ivec.items():
+        ivector = [float(x) for x in ivector]
+        print(utt, ivector)
+        x.append(ivector)
+    x = np.array(x)
+    clf = load(mdl_path)
+    y = clf.predict(x)
+    speak_utt_mapping = defaultdict(list)
+    utt_speak_mapping = {}
+    for i, utt in enumerate(ivec.keys()):
+        print(i, utt)
+        speak_ind = y[i]
+        speaker = speakers[speak_ind]
+        print(speaker)
+        speak_utt_mapping[speaker].append(utt)
+        utt_speak_mapping[utt] = speaker
+    save_scp(([k, v] for k,v in speak_utt_mapping.items()), spk2utt_path)
+    save_scp(([k, v] for k,v in utt_speak_mapping.items()), utt2spk_path)
+
+
+def classify_speakers(directory, config, num_jobs):
+    log_directory = os.path.join(directory, 'log')
+    jobs = [(directory, x) for x in range(num_jobs)]
+
+    if config.use_mp:
+        run_mp(classify_speakers_func, jobs, log_directory)
+    else:
+        run_non_mp(classify_speakers_func, jobs, log_directory)

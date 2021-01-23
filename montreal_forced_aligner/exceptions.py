@@ -48,7 +48,52 @@ class CorpusError(MFAError):
     pass
 
 
-class SampleRateError(CorpusError):
+class SampleRateMismatchError(CorpusError):
+    """
+    Class for errors in different sample rates
+    """
+    pass
+
+
+class CorpusReadError(CorpusError):
+    """
+    Class for errors in different sample rates
+    """
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+
+class SampleRateError(CorpusReadError):
+    """
+    Class for errors in different sample rates
+    """
+    pass
+
+
+class BitDepthError(CorpusReadError):
+    """
+    Class for errors in different sample rates
+    """
+    pass
+
+
+class TextParseError(CorpusReadError):
+    """
+    Class for errors in different sample rates
+    """
+    pass
+
+
+class TextGridParseError(CorpusReadError):
+    """
+    Class for errors in different sample rates
+    """
+    def __init__(self, file_name, error):
+        self.file_name = file_name
+        self.error = error
+
+
+class WavReadError(CorpusReadError):
     """
     Class for errors in different sample rates
     """

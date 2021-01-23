@@ -197,6 +197,43 @@ Default training config file
              lda: true
              fmllr: true
 
+.. _1.0_training_config:
+
+Training configuration for 1.0
+------------------------------
+
+.. code-block:: yaml
+
+   beam: 10
+   retry_beam: 40
+
+   features:
+     type: "mfcc"
+     use_energy: false
+     frame_shift: 10
+
+   training:
+     - monophone:
+         num_iterations: 40
+         max_gaussians: 1000
+         boost_silence: 1.0
+
+     - triphone:
+         num_iterations: 35
+         num_leaves: 3100
+         max_gaussians: 50000
+         cluster_threshold: 100
+         boost_silence: 1.0
+         power: 0.25
+
+     - sat:
+         num_leaves: 3100
+         max_gaussians: 50000
+         fmllr_power: 0.2
+         silence_weight: 0.0
+         cluster_threshold: 100
+         fmllr_update_type: "full"
+
 
 .. _align_config:
 

@@ -30,7 +30,7 @@ def generate_dictionary(args):
             corpus_name = os.path.basename(args.input_path)
         data_directory = os.path.join(temp_dir, corpus_name)
 
-        corpus = AlignableCorpus(input_dir, data_directory)
+        corpus = AlignableCorpus(input_dir, data_directory, num_jobs=args.num_jobs, use_mp=(not args.disable_mp))
 
         word_set = get_word_set(corpus, args.include_bracketed)
     else:

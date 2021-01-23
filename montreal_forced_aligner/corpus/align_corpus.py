@@ -5,19 +5,16 @@ import random
 import time
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
+from ..helper import load_text, output_mapping, save_groups, filter_scp, load_scp
 
-from ..dictionary import sanitize
-from ..helper import load_text, output_mapping, save_groups, filter_scp
+from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
+    BitDepthError, TextParseError, TextGridParseError
 
-from ..exceptions import SampleRateError, CorpusError
-
-from .base import BaseCorpus, get_sample_rate, get_n_channels, get_wav_duration, extract_temp_channels, get_bit_depth, find_ext
-
-
-def parse_transcription(text):
-    words = [sanitize(x) for x in text.split()]
-    words = [x for x in words if x not in ['', '-', "'"]]
-    return words
+from .base import BaseCorpus, extract_temp_channels, find_exts, get_wav_info
+import multiprocessing as mp
+from queue import Empty
+from ..multiprocessing.helper import Stopped
+from ..multiprocessing.corpus import CorpusProcessWorker, parse_transcription, parse_lab_file, parse_textgrid_file
 
 
 class AlignableCorpus(BaseCorpus):
@@ -54,10 +51,10 @@ class AlignableCorpus(BaseCorpus):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None):
+                 num_jobs=3, debug=False, logger=None, use_mp=True):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
-                                              num_jobs, debug, logger)
+                                              num_jobs, debug, logger, use_mp)
         # Set up mapping dictionaries
         self.utt_text_file_mapping = {}
         self.word_counts = Counter()
@@ -67,149 +64,258 @@ class AlignableCorpus(BaseCorpus):
         self.transcriptions_without_wavs = []
         self.tg_count = 0
         self.lab_count = 0
+
+        loaded = self._load_from_temp()
+        if not loaded:
+            if self.use_mp:
+                self._load_from_source_mp()
+            else:
+                self._load_from_source()
+        self.check_warnings()
+        self.find_best_groupings()
+
+    def _load_from_temp(self):
         begin_time = time.time()
+        feat_path = os.path.join(self.output_directory, 'feats.scp')
+        if not os.path.exists(feat_path):
+            return False
+        cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
+        if not os.path.exists(cmvn_path):
+            return False
+        utt2spk_path = os.path.join(self.output_directory, 'utt2spk')
+        if not os.path.exists(utt2spk_path):
+            return False
+        spk2utt_path = os.path.join(self.output_directory, 'spk2utt')
+        if not os.path.exists(spk2utt_path):
+            return False
+        text_path = os.path.join(self.output_directory, 'text')
+        if not os.path.exists(text_path):
+            return False
+        sr_path = os.path.join(self.output_directory, 'sr.scp')
+        if not os.path.exists(sr_path):
+            return False
+        wav_path = os.path.join(self.output_directory, 'wav.scp')
+        if not os.path.exists(wav_path):
+            return False
+        text_file_path = os.path.join(self.output_directory, 'text_file.scp')
+        if not os.path.exists(text_file_path):
+            return False
+        file_directory_path = os.path.join(self.output_directory, 'file_directory.scp')
+        if not os.path.exists(file_directory_path):
+            return False
+        wav_info_path = os.path.join(self.output_directory, 'wav_info.scp')
+        if not os.path.exists(wav_info_path):
+            return False
+        self.feat_mapping = load_scp(feat_path)
+        self.cmvn_mapping = load_scp(cmvn_path)
+        self.utt_speak_mapping = load_scp(utt2spk_path)
+        self.speak_utt_mapping = load_scp(spk2utt_path)
+        self.text_mapping = load_scp(text_path)
+        for utt, text in self.text_mapping.items():
+            self.word_counts.update(text)
+            self.text_mapping[utt] = ' '.join(text)
+        self.sample_rates = {int(k): v for k,v in load_scp(sr_path).items()}
+        self.utt_wav_mapping = load_scp(wav_path)
+        self.wav_info = load_scp(wav_info_path, float)
+        self.utt_text_file_mapping = load_scp(text_file_path)
+        for p in self.utt_text_file_mapping.values():
+            if p.lower().endswith('.textgrid'):
+                self.tg_count += 1
+            else:
+                self.lab_count += 1
+        self.file_directory_mapping = load_scp(file_directory_path)
+        segments_path = os.path.join(self.output_directory, 'segments.scp')
+        if os.path.exists(segments_path):
+            self.segments = load_scp(segments_path)
+        speaker_ordering_path = os.path.join(self.output_directory, 'speaker_ordering.scp')
+        if os.path.exists(speaker_ordering_path):
+            self.speaker_ordering = load_scp(speaker_ordering_path)
+        self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time()-begin_time))
+        return True
+
+    def _load_from_source_mp(self):
+        begin_time = time.time()
+        manager = mp.Manager()
+        job_queue = manager.Queue()
+        return_queue = manager.Queue()
+        return_dict = manager.dict()
+        stopped = Stopped()
+
+        procs = []
+        for i in range(self.num_jobs):
+            p = CorpusProcessWorker(job_queue, return_dict, return_queue, stopped)
+            procs.append(p)
+            p.start()
+
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files = find_ext(files, '.wav')
-            lab_files = find_ext(files, '.lab')
-            txt_files = find_ext(files, '.txt')
-            textgrid_files = find_ext(files, '.textgrid')
+            wav_files, lab_files, textgrid_files = find_exts(files)
+            relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
             for file_name, f in wav_files.items():
                 wav_path = os.path.join(root, f)
-                try:
-                    sr = get_sample_rate(wav_path)
-                except Exception:
-                    self.wav_read_errors.append(wav_path)
+                if file_name in lab_files:
+                    lab_name = lab_files[file_name]
+                    transcription_path = os.path.join(root, lab_name)
+
+                elif file_name in textgrid_files:
+                    tg_name = textgrid_files[file_name]
+                    transcription_path = os.path.join(root, tg_name)
+                else:
+                    self.no_transcription_files.append(wav_path)
                     continue
-                if sr < 16000:
-                    self.unsupported_sample_rate.append(wav_path)
-                bit_depth = get_bit_depth(wav_path)
-                if bit_depth != 16:
-                    self.unsupported_bit_depths.append(wav_path)
-                    continue
-                # .lab files have higher priority than .txt files
-                lab_name = lab_files[file_name] if file_name in lab_files else txt_files[file_name]
-                if lab_name is not None:
-                    utt_name = file_name
-                    if utt_name in self.utt_wav_mapping:
-                        ind = 0
-                        fixed_utt_name = utt_name
-                        while fixed_utt_name not in self.utt_wav_mapping:
-                            ind += 1
-                            fixed_utt_name = utt_name + '_{}'.format(ind)
-                        utt_name = fixed_utt_name
-                    if self.feat_mapping and utt_name not in self.feat_mapping:
-                        self.ignored_utterances.append(utt_name)
-                        continue
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.temp_directory))
+        job_queue.join()
+        stopped.stop()
+        for p in procs:
+            p.join()
+
+        while True:
+            try:
+                info = return_queue.get(timeout=1)
+            except Empty:
+                break
+            if 'segments' not in info:  # was a lab file
+                utt_name = info['utt_name']
+                speaker_name = info['speaker_name']
+                wav_info = info['wav_info']
+                sr = wav_info['sample_rate']
+                if utt_name in self.utt_wav_mapping:
+                    ind = 0
+                    fixed_utt_name = utt_name
+                    while fixed_utt_name not in self.utt_wav_mapping:
+                        ind += 1
+                        fixed_utt_name = utt_name + '_{}'.format(ind)
+                    utt_name = fixed_utt_name
+                file_name = utt_name
+                words = info['words']
+                self.word_counts.update(words)
+                self.text_mapping[utt_name] = ' '.join(words)
+                self.utt_text_file_mapping[utt_name] = info['text_file']
+                self.speak_utt_mapping[speaker_name].append(utt_name)
+                self.utt_wav_mapping[utt_name] = info['wav_path']
+                self.sample_rates[sr].add(speaker_name)
+                self.utt_speak_mapping[utt_name] = speaker_name
+                self.file_directory_mapping[utt_name] = info['relative_path']
+                self.lab_count += 1
+            else:
+                wav_info = info['wav_info']
+                sr = wav_info['sample_rate']
+                file_name = info['recording_name']
+                self.wav_files.append(file_name)
+                self.speaker_ordering[file_name] = info['speaker_ordering']
+                for s in info['speaker_ordering']:
+                    self.sample_rates[sr].add(s)
+                self.segments.update(info['segments'])
+                self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
+                for utt, words in info['text_mapping'].items():
+                    self.word_counts.update(words)
+                    self.text_mapping[utt] = ' '.join(words)
+                self.utt_speak_mapping.update(info['utt_speak_mapping'])
+                for speak, utts in info['speak_utt_mapping'].items():
+                    if speak not in self.speak_utt_mapping:
+                        self.speak_utt_mapping[speak] = utts
+                    else:
+                        self.speak_utt_mapping[speak].extend(utts)
+                for fn in info['file_names']:
+                    self.file_directory_mapping[fn] = info['relative_path']
+                self.tg_count += 1
+            self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
+        for k in ['wav_read_errors', 'unsupported_sample_rate', 'unsupported_bit_depths',
+                  'decode_error_files', 'textgrid_read_errors']:
+            if hasattr(self, k):
+                if k in return_dict:
+                    if k == 'textgrid_read_errors':
+                        getattr(self, k).update(return_dict[k])
+                    else:
+                        setattr(self, k, return_dict[k])
+        self.logger.debug('Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time()-begin_time))
+
+    def _load_from_source(self):
+        begin_time = time.time()
+        for root, dirs, files in os.walk(self.directory, followlinks=True):
+            wav_files, lab_files, textgrid_files = find_exts(files)
+            relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+            for file_name, f in wav_files.items():
+                wav_path = os.path.join(root, f)
+                if file_name in lab_files:
+                    lab_name = lab_files[file_name]
                     lab_path = os.path.join(root, lab_name)
                     try:
-                        text = load_text(lab_path)
-                    except UnicodeDecodeError:
+                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path, speaker_characters=self.speaker_characters)
+                        utt_name = info['utt_name']
+                        speaker_name = info['speaker_name']
+                        wav_info = info['wav_info']
+                        sr = wav_info['sample_rate']
+                        if utt_name in self.utt_wav_mapping:
+                            ind = 0
+                            fixed_utt_name = utt_name
+                            while fixed_utt_name not in self.utt_wav_mapping:
+                                ind += 1
+                                fixed_utt_name = utt_name + '_{}'.format(ind)
+                            utt_name = fixed_utt_name
+
+                        words = info['words']
+                        self.word_counts.update(words)
+                        self.text_mapping[utt_name] = ' '.join(words)
+                        self.utt_text_file_mapping[utt_name] = lab_path
+                        self.speak_utt_mapping[speaker_name].append(utt_name)
+                        self.utt_wav_mapping[utt_name] = wav_path
+                        self.sample_rates[sr].add(speaker_name)
+                        self.utt_speak_mapping[utt_name] = speaker_name
+                        self.file_directory_mapping[utt_name] = relative_path
+                        self.lab_count += 1
+                    except WavReadError:
+                        self.wav_read_errors.append(wav_path)
+                    except SampleRateError:
+                        self.unsupported_sample_rate.append(wav_path)
+                    except BitDepthError:
+                        self.unsupported_bit_depths.append(wav_path)
+                    except TextParseError:
                         self.decode_error_files.append(lab_path)
-                        continue
-                    words = parse_transcription(text)
-                    if not words:
-                        continue
-                    self.word_counts.update(words)
-                    self.text_mapping[utt_name] = ' '.join(words)
-                    if self.speaker_directories:
-                        speaker_name = os.path.basename(root)
-                    else:
-                        if isinstance(speaker_characters, int):
-                            speaker_name = f[:speaker_characters]
-                        elif speaker_characters == 'prosodylab':
-                            speaker_name = f.split('_')[1]
-                        else:
-                            speaker_name = f
-                    speaker_name = speaker_name.strip().replace(' ', '_')
-                    utt_name = utt_name.strip().replace(' ', '_')
-                    self.utt_text_file_mapping[utt_name] = lab_path
-                    self.speak_utt_mapping[speaker_name].append(utt_name)
-                    self.utt_wav_mapping[utt_name] = wav_path
-                    self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
-                    self.utt_speak_mapping[utt_name] = speaker_name
-                    self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
-                    self.lab_count += 1
-                else:
+                elif file_name in textgrid_files:
                     tg_name = textgrid_files[file_name]
-                    if tg_name is None:
-                        self.no_transcription_files.append(wav_path)
-                        continue
-                    self.wav_files.append(file_name)
-                    self.wav_durations[file_name] = get_wav_duration(wav_path)
                     tg_path = os.path.join(root, tg_name)
-                    tg = TextGrid()
                     try:
-                        tg.read(tg_path)
-                    except Exception as e:
-                        exc_type, exc_value, exc_traceback = sys.exc_info()
-                        self.textgrid_read_errors[tg_path] = '\n'.join(
-                            traceback.format_exception(exc_type, exc_value, exc_traceback))
-                    n_channels = get_n_channels(wav_path)
-                    num_tiers = len(tg.tiers)
-                    if n_channels == 2:
-                        a_name = file_name + "_A"
-                        b_name = file_name + "_B"
-
-                        a_path, b_path = extract_temp_channels(wav_path, self.temp_directory)
-                    elif n_channels > 2:
-                        raise (Exception('More than two channels'))
-                    self.speaker_ordering[file_name] = []
-                    if not self.speaker_directories:
-                        if isinstance(speaker_characters, int):
-                            speaker_name = f[:speaker_characters]
-                        elif speaker_characters == 'prosodylab':
-                            speaker_name = f.split('_')[1]
-                        else:
-                            speaker_name = f
-                        speaker_name = speaker_name.strip().replace(' ', '_')
-                        self.speaker_ordering[file_name].append(speaker_name)
-                    for i, ti in enumerate(tg.tiers):
-                        if ti.name.lower() == 'notes':
-                            continue
-                        if not isinstance(ti, IntervalTier):
-                            continue
-                        if self.speaker_directories:
-                            speaker_name = ti.name.strip().replace(' ', '_')
-                            self.speaker_ordering[file_name].append(speaker_name)
-                        self.sample_rates[get_sample_rate(wav_path)].add(speaker_name)
-                        for interval in ti:
-                            text = interval.mark.lower().strip()
-                            words = parse_transcription(text)
-                            if not words:
-                                continue
-                            begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
-                            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
-                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
-                            if n_channels == 1:
-                                if self.feat_mapping and utt_name not in self.feat_mapping:
-                                    self.ignored_utterances.append(utt_name)
-                                self.segments[utt_name] = '{} {} {}'.format(file_name, begin, end)
-                                self.utt_wav_mapping[file_name] = wav_path
-                            else:
-                                if i < num_tiers / 2:
-                                    utt_name += '_A'
-                                    if self.feat_mapping and utt_name not in self.feat_mapping:
-                                        self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(a_name, begin, end)
-                                    self.utt_wav_mapping[a_name] = a_path
-                                else:
-                                    utt_name += '_B'
-                                    if self.feat_mapping and utt_name not in self.feat_mapping:
-                                        self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
-                                    self.utt_wav_mapping[b_name] = b_path
-                            self.text_mapping[utt_name] = ' '.join(words)
-                            self.utt_text_file_mapping[utt_name] = tg_path
+                        info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path,
+                                                   self.speaker_characters, self.temp_directory)
+                        wav_info = info['wav_info']
+                        sr = wav_info['sample_rate']
+                        self.wav_files.append(file_name)
+                        self.speaker_ordering[file_name] = info['speaker_ordering']
+                        for s in info['speaker_ordering']:
+                            self.sample_rates[sr].add(s)
+                        self.segments.update(info['segments'])
+                        self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                        self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
+                        for utt, words in info['text_mapping'].items():
                             self.word_counts.update(words)
-                            self.utt_speak_mapping[utt_name] = speaker_name
-                            self.speak_utt_mapping[speaker_name].append(utt_name)
-                    if n_channels == 2:
-                        self.file_directory_mapping[a_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-                        self.file_directory_mapping[b_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-                    self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-                    self.tg_count += 1
+                            self.text_mapping[utt] = ' '.join(words)
+                        self.utt_speak_mapping.update(info['utt_speak_mapping'])
+                        for speak, utts in info['speak_utt_mapping'].items():
+                            if speak not in self.speak_utt_mapping:
+                                self.speak_utt_mapping[speak] = utts
+                            else:
+                                self.speak_utt_mapping[speak].extend(utts)
+                        for fn in info['file_names']:
+                            self.file_directory_mapping[fn] = relative_path
+                        self.tg_count += 1
+                    except WavReadError:
+                        self.wav_read_errors.append(wav_path)
+                    except SampleRateError:
+                        self.unsupported_sample_rate.append(wav_path)
+                    except BitDepthError:
+                        self.unsupported_bit_depths.append(wav_path)
+                    except TextGridParseError as e:
+                        self.textgrid_read_errors[tg_path] = e.error
+
+                else:
+                    self.no_transcription_files.append(wav_path)
+                    continue
+                self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
         self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time()-begin_time))
+
+    def check_warnings(self):
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \
                             self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
 
@@ -225,7 +331,7 @@ class AlignableCorpus(BaseCorpus):
             msg = 'The following speakers had multiple speaking rates: {}. ' \
                   'Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))
             self.logger.error(msg)
-            raise (SampleRateError(msg))
+            raise (SampleRateMismatchError(msg))
 
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.speak_utt_mapping)
@@ -235,7 +341,6 @@ class AlignableCorpus(BaseCorpus):
                   'If you would like to use fewer parallel jobs, ' \
                   'please resample all wav files to the same sample rate.'.format(self.num_jobs)
             self.logger.warning(msg)
-        self.find_best_groupings()
 
     def update_utterance_text(self, utterance, new_text):
         new_text = new_text.lower().strip()
@@ -394,17 +499,26 @@ class AlignableCorpus(BaseCorpus):
         if subset is None or subset > self.num_utterances or subset <= 0:
             return self.split_directory()
         directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
-        if not os.path.exists(directory):
-            self.create_subset(subset, feature_config)
+        self.create_subset(subset, feature_config)
         return directory
 
     def write(self):
         super(AlignableCorpus, self).write()
         self._write_text()
+        self._write_utt_text_file()
+        self._write_speaker_ordering()
 
     def _write_text(self):
-        text = os.path.join(self.output_directory, 'text')
-        output_mapping(self.text_mapping, text)
+        path = os.path.join(self.output_directory, 'text')
+        output_mapping(self.text_mapping, path)
+
+    def _write_utt_text_file(self):
+        path = os.path.join(self.output_directory, 'text_file.scp')
+        output_mapping(self.utt_text_file_mapping, path)
+
+    def _write_speaker_ordering(self):
+        path = os.path.join(self.output_directory, 'speaker_ordering.scp')
+        output_mapping(self.speaker_ordering, path)
 
     def _split_utt2fst(self, directory, dictionary):
         pattern = 'utt2fst.{}'
@@ -434,44 +548,59 @@ class AlignableCorpus(BaseCorpus):
         self.figure_utterance_lengths()
 
     def create_subset(self, subset, feature_config):
-        larger_subset_num = subset * 10
-        if larger_subset_num < self.num_utterances:
-            # Get all shorter utterances that are not one word long
-            utts = sorted((x for x in self.utterance_lengths.keys() if ' ' in self.text_mapping[x]),
-                          key=lambda x: self.utterance_lengths[x])
-            larger_subset = utts[:larger_subset_num]
-        else:
-            larger_subset = self.utterance_lengths.keys()
 
-        subset_utts = set(random.sample(larger_subset, subset))
         split_directory = self.split_directory()
         subset_directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
-        log_dir = os.path.join(subset_directory, 'log')
-        os.makedirs(log_dir, exist_ok=True)
         subset_utt_path = os.path.join(subset_directory, 'included_utts.txt')
-        with open(subset_utt_path, 'w', encoding='utf8') as f:
-            for u in subset_utts:
-                f.write('{}\n'.format(u))
+        if os.path.exists(subset_utt_path):
+            subset_utts = []
+            with open(subset_utt_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    subset_utts.append(line.strip())
+        else:
+            larger_subset_num = subset * 10
+            if larger_subset_num < self.num_utterances:
+                # Get all shorter utterances that are not one word long
+                utts = sorted((x for x in self.utterance_lengths.keys() if ' ' in self.text_mapping[x]),
+                              key=lambda x: self.utterance_lengths[x])
+                larger_subset = utts[:larger_subset_num]
+            else:
+                larger_subset = self.utterance_lengths.keys()
+            random.seed(1234)  # make it deterministic sampling
+            subset_utts = set(random.sample(larger_subset, subset))
+            log_dir = os.path.join(subset_directory, 'log')
+            os.makedirs(log_dir, exist_ok=True)
+            with open(subset_utt_path, 'w', encoding='utf8') as f:
+                for u in subset_utts:
+                    f.write('{}\n'.format(u))
         for j in range(self.num_jobs):
             for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
-                with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
-                        open(os.path.join(subset_directory, fn.format(j)), 'w', encoding='utf8') as outf:
+                sub_path = os.path.join(subset_directory, fn.format(j))
+                if not os.path.exists(sub_path):
+                    with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
+                            open(sub_path, 'w', encoding='utf8') as outf:
+                        for line in inf:
+                            s = line.split()
+                            if s[0] not in subset_utts:
+                                continue
+                            outf.write(line)
+
+            sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(j))
+            if not os.path.exists(sub_path):
+                with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
+                        open(sub_path, 'w', encoding='utf8') as outf:
                     for line in inf:
-                        s = line.split()
-                        if s[0] not in subset_utts:
-                            continue
-                        outf.write(line)
-            with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
-                    open(os.path.join(subset_directory, 'spk2utt.{}'.format(j)), 'w', encoding='utf8') as outf:
-                for line in inf:
-                    line = line.split()
-                    speaker, utts = line[0], line[1:]
-                    filtered_utts = [x for x in utts if x in subset_utts]
-                    outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
+                        line = line.split()
+                        speaker, utts = line[0], line[1:]
+                        filtered_utts = [x for x in utts if x in subset_utts]
+                        outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
             if feature_config is not None:
-                base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(j))
-                subset_scp = os.path.join(subset_directory, feature_config.feature_id + '.{}.scp'.format(j))
-                filtered = filter_scp(subset_utts, base_path)
-                with open(subset_scp, 'w') as f:
-                    for line in filtered:
-                        f.write(line.strip() + '\n')
+                for fid in [feature_config.feature_id, feature_config.spliced_feature_id, feature_config.raw_feature_id]:
+                    base_path = os.path.join(split_directory, fid + '.{}.scp'.format(j))
+                    subset_scp = os.path.join(subset_directory, fid + '.{}.scp'.format(j))
+                    if os.path.exists(subset_scp):
+                        continue
+                    filtered = filter_scp(subset_utts, base_path)
+                    with open(subset_scp, 'w') as f:
+                        for line in filtered:
+                            f.write(line.strip() + '\n')

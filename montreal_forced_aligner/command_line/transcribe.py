@@ -41,6 +41,10 @@ def transcribe_corpus(args):
     if corpus_name == '':
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
+    if args.config_path:
+        transcribe_config = transcribe_yaml_to_config(args.config_path)
+    else:
+        transcribe_config = load_basic_transcribe()
     data_directory = os.path.join(temp_dir, corpus_name)
     print(data_directory, os.path.exists(data_directory))
     os.makedirs(data_directory, exist_ok=True)
@@ -68,21 +72,16 @@ def transcribe_corpus(args):
         if args.evaluate:
             corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                      speaker_characters=args.speaker_characters,
-                                     num_jobs=args.num_jobs)
+                                     num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         else:
             corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                                       speaker_characters=args.speaker_characters,
-                                      num_jobs=args.num_jobs)
+                                      num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         print(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=data_directory)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         dictionary = Dictionary(args.dictionary_path, data_directory)
         acoustic_model.validate(dictionary)
-
-        if args.config_path:
-            transcribe_config = transcribe_yaml_to_config(args.config_path)
-        else:
-            transcribe_config = load_basic_transcribe()
         begin = time.time()
         t = Transcriber(corpus, dictionary, acoustic_model, language_model, transcribe_config,
                         temp_directory=data_directory,

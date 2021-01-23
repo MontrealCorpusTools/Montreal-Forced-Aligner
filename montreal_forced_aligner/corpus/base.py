@@ -10,66 +10,36 @@ from ..exceptions import SampleRateError, CorpusError
 from ..helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp
 
 
-def get_n_channels(file_path):
-    """
-    Return the number of channels for a sound file
-
-    Parameters
-    ----------
-    file_path : str
-        Path to a wav file
-
-    Returns
-    -------
-    int
-        Number of channels (1 if mono, 2 if stereo)
-    """
-
+def get_wav_info(file_path):
     with soundfile.SoundFile(file_path, 'r') as inf:
         n_channels = inf.channels
         subtype = inf.subtype
         if not subtype.startswith('PCM'):
             raise SampleRateError('The file {} is not a PCM file.'.format(file_path))
-    return n_channels
-
-
-def get_sample_rate(file_path):
-    return librosa.get_samplerate(file_path)
-
-
-def get_bit_depth(file_path):
-    with soundfile.SoundFile(file_path, 'r') as inf:
-        subtype = inf.subtype
         bit_depth = int(subtype.replace('PCM_', ''))
-    return bit_depth
+        frames = inf.frames
+        sr = inf.samplerate
+        duration = frames / sr
+    return {'num_channels': n_channels, 'type': subtype, 'bit_depth': bit_depth,
+            'sample_rate' : sr, 'duration': duration}
 
 
-def get_wav_duration(file_path):
-    return librosa.get_duration(filename=file_path)
-
-
-def find_ext(files, ext):
-    """
-    Finds all files with extension `ext` in `files`.
-
-    Parameters
-    ----------
-    files : list
-        List of files to search in
-    ext : str
-        File extension
-
-    Returns
-    -------
-    dict
-        A dictionary of pairs (filename, full_filename)
-    """
-    dic = defaultdict(lambda: None)
+def find_exts(files):
+    wav_files = {}
+    lab_files = {}
+    textgrid_files = {}
     for full_filename in files:
         filename, fext = os.path.splitext(full_filename)
-        if fext.lower() == ext:
-            dic[filename] = full_filename
-    return dic
+        fext = fext.lower()
+        if fext == '.wav':
+            wav_files[filename] = full_filename
+        elif fext == '.lab':
+            lab_files[filename] = full_filename
+        elif fext == '.txt' and filename not in lab_files: # .lab files have higher priority than .txt files
+            lab_files[filename] = full_filename
+        elif fext== '.textgrid':
+            textgrid_files[filename] = full_filename
+    return wav_files, lab_files, textgrid_files
 
 
 def extract_temp_channels(wav_path, temp_directory):
@@ -140,8 +110,9 @@ class BaseCorpus(object):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None):
+                 num_jobs=3, debug=False, logger=None, use_mp=True):
         self.debug = debug
+        self.use_mp = use_mp
         log_dir = os.path.join(output_directory, 'logging')
         os.makedirs(log_dir, exist_ok=True)
         self.name = os.path.basename(directory)
@@ -161,12 +132,15 @@ class BaseCorpus(object):
 
         if num_jobs < 1:
             num_jobs = 1
+        if num_jobs == 1:
+            self.use_mp = False
         self.original_num_jobs = num_jobs
         self.logger.info('Setting up corpus information...')
         self.directory = directory
         self.output_directory = os.path.join(output_directory, 'corpus_data')
         self.temp_directory = os.path.join(self.output_directory, 'temp')
         os.makedirs(self.temp_directory, exist_ok=True)
+        self.speaker_characters = speaker_characters
         if speaker_characters == 0:
             self.speaker_directories = True
         else:
@@ -176,7 +150,7 @@ class BaseCorpus(object):
         self.unsupported_sample_rate = []
         self.text_mapping = {}
         self.wav_files = []
-        self.wav_durations = {}
+        self.wav_info = {}
         self.unsupported_bit_depths = []
         self.wav_read_errors = []
         self.speak_utt_mapping = defaultdict(list)
@@ -373,14 +347,16 @@ class BaseCorpus(object):
         return output
 
     def get_wav_duration(self, utt):
-        if utt in self.wav_durations:
-            return self.wav_durations[utt]
+        if utt in self.wav_info:
+            return self.wav_info[utt][-1]
         if not self.segments:
             wav_path = self.utt_wav_mapping[utt]
         else:
             rec = self.segments[utt].split(' ')[0]
+            if rec in self.wav_info:
+                return self.wav_info[rec][-1]
             wav_path = self.utt_wav_mapping[rec]
-        return get_wav_duration(wav_path)
+        return get_wav_info(wav_path)['wav_path']
 
     def split_directory(self):
         directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
@@ -395,8 +371,20 @@ class BaseCorpus(object):
         output_mapping(self.speak_utt_mapping, spk2utt)
 
     def _write_wavscp(self):
-        wavscp = os.path.join(self.output_directory, 'wav.scp')
-        output_mapping(self.utt_wav_mapping, wavscp)
+        path = os.path.join(self.output_directory, 'wav.scp')
+        output_mapping(self.utt_wav_mapping, path)
+
+    def _write_speaker_sr(self):
+        path = os.path.join(self.output_directory, 'sr.scp')
+        output_mapping(self.sample_rates, path)
+
+    def _write_wav_info(self):
+        path = os.path.join(self.output_directory, 'wav_info.scp')
+        output_mapping(self.wav_info, path)
+
+    def _write_file_directory(self):
+        path = os.path.join(self.output_directory, 'file_directory.scp')
+        output_mapping(self.file_directory_mapping, path)
 
     def _write_segments(self):
         if not self.segments:
@@ -454,18 +442,24 @@ class BaseCorpus(object):
 
     def figure_utterance_lengths(self):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
-        if os.path.exists(feat_path):
-            with open(os.devnull, 'w') as devnull:
-                dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
-                                             'scp:' + feat_path, 'ark,t:-'],
-                                            stdout=subprocess.PIPE,
-                                            stderr=devnull)
-                stdout, stderr = dim_proc.communicate()
-                feats = stdout.decode('utf8').strip()
-                for line in feats.splitlines():
-                    line = line.strip()
-                    line = line.split()
-                    self.utterance_lengths[line[0]] = int(line[1])
+        lengths_path = os.path.join(self.output_directory, 'utterance_lengths.scp')
+        if os.path.exists(feat_path) and not self.utterance_lengths:
+            if os.path.exists(lengths_path):
+                self.utterance_lengths = load_scp(lengths_path, int)
+            else:
+                with open(os.devnull, 'w') as devnull:
+                    dim_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+                                                 'scp:' + feat_path, 'ark,t:-'],
+                                                stdout=subprocess.PIPE,
+                                                stderr=devnull)
+                    stdout, stderr = dim_proc.communicate()
+                    feats = stdout.decode('utf8').strip()
+                    for line in feats.splitlines():
+                        line = line.strip()
+                        line = line.split()
+                        self.utterance_lengths[line[0]] = int(line[1])
+                output_mapping(self.utterance_lengths, lengths_path)
+
 
     def get_feat_dim(self, feature_config):
 
@@ -483,6 +477,9 @@ class BaseCorpus(object):
         self._write_speak_utt()
         self._write_utt_speak()
         self._write_wavscp()
+        self._write_speaker_sr()
+        self._write_wav_info()
+        self._write_file_directory()
 
     def split(self):
         split_dir = self.split_directory()

@@ -16,22 +16,7 @@ from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-class DummyArgs(object):
-    def __init__(self):
-        self.corpus_directory = ''
-        self.dictionary_path = ''
-        self.acoustic_model_path = ''
-        self.speaker_characters = 0
-        self.num_jobs = 0
-        self.verbose = False
-        self.clean = True
-        self.fast = True
-        self.debug = False
-        self.temp_directory = None
-        self.config_path = ''
-
-
-def align_corpus(args):
+def align_corpus(args, unknown_args=None):
     command = 'align'
     all_begin = time.time()
     if not args.temp_directory:
@@ -48,6 +33,8 @@ def align_corpus(args):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
+    if unknown_args:
+        align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         logger.info('Cleaning old directory!')
@@ -72,7 +59,7 @@ def align_corpus(args):
             'weird behavior for previous versions of the temporary directory.')
         if conf['dirty']:
             logger.debug('Previous run ended in an error (maybe ctrl-c?)')
-        if conf['type'] != 'train_ivector':
+        if conf['type'] != command:
             logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
         if conf['corpus_directory'] != args.corpus_directory:
             logger.debug('Previous run used source directory '
@@ -88,7 +75,7 @@ def align_corpus(args):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
-                                 num_jobs=args.num_jobs, logger=logger)
+                                 num_jobs=args.num_jobs, logger=logger, use_mp=align_config.use_mp)
         if corpus.issues_check:
             logger.warning('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -149,7 +136,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
                 args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
 
-def run_align_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None):
+def run_align_corpus(args, unknown_args=None, downloaded_acoustic_models=None, download_dictionaries=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:
@@ -162,7 +149,7 @@ def run_align_corpus(args, downloaded_acoustic_models=None, download_dictionarie
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
-    align_corpus(args)
+    align_corpus(args, unknown_args)
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -170,7 +157,9 @@ if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import align_parser, fix_path, unfix_path, acoustic_languages, \
         dict_languages
 
-    align_args, unknown = align_parser.parse_args()
+    align_args, unknown = align_parser.parse_known_args()
+    print(align_args)
+    print(unknown)
     fix_path()
-    run_align_corpus(align_args, acoustic_languages, dict_languages)
+    run_align_corpus(align_args, unknown, acoustic_languages, dict_languages)
     unfix_path()

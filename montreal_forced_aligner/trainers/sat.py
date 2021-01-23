@@ -133,6 +133,7 @@ class SatTrainer(TriphoneTrainer):
         self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
+        self.feature_config.fmllr = False
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')

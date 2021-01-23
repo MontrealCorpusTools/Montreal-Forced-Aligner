@@ -50,17 +50,9 @@ class TriphoneTrainer(BaseTrainer):
     def phone_type(self):
         return 'triphone'
 
-    def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
-        self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
-        done_path = os.path.join(self.train_directory, 'done')
+    def _setup_tree(self, align_directory):
         dirty_path = os.path.join(self.train_directory, 'dirty')
-        if os.path.exists(done_path):
-            self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
-            return
-        begin = time.time()
-
         try:
-            align_directory = previous_trainer.align_directory
             context_opts = []
             ci_phones = self.dictionary.silence_csl
 
@@ -111,7 +103,7 @@ class TriphoneTrainer(BaseTrainer):
                 subprocess.call([thirdparty_binary('gmm-mixup'),
                                  '--mix-up={}'.format(self.initial_gaussians),
                                  mdl_path, occs_path, mdl_path], stderr=log_file)
-            os.remove(treeacc_path)
+            #os.remove(treeacc_path)
             parse_logs(self.log_directory)
 
             compile_train_graphs(self.train_directory, self.dictionary.output_directory,
@@ -126,5 +118,16 @@ class TriphoneTrainer(BaseTrainer):
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
+
+    def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
+        self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
+        done_path = os.path.join(self.train_directory, 'done')
+        if os.path.exists(done_path):
+            self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
+            return
+        begin = time.time()
+        align_directory = previous_trainer.align_directory
+        self._setup_tree(align_directory)
+
         self.logger.info('Initialization complete!')
         self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))

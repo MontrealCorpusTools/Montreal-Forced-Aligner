@@ -65,13 +65,14 @@ class LdaTrainer(TriphoneTrainer):
         dirty_path = os.path.join(self.train_directory, 'dirty')
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
+            self.feature_config.set_features_to_use_lda()
             return
         begin = time.time()
         try:
             if self.feature_config.splice_left_context is not None:
                 self.feature_config.deltas = False
             self.feature_config.directory = None
-            self.feature_config.generate_spliced_features(self.corpus, overwrite=True)
+            self.feature_config.generate_spliced_features(self.corpus)
             lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
                           self.dictionary.silence_csl, self.corpus.num_jobs)
             self.feature_config.directory = self.train_directory
@@ -82,20 +83,22 @@ class LdaTrainer(TriphoneTrainer):
                 with open(subset_utt_path, 'r') as f:
                     for line in f:
                         utt_list.append(line.strip())
-                for j in range(self.corpus.num_jobs):
-                    base_path = os.path.join(corpus.split_directory(), self.feature_config.feature_id + '.{}.scp'.format(j))
-                    subset_scp = os.path.join(self.data_directory, self.feature_config.feature_id + '.{}.scp'.format(j))
-                    filtered = filter_scp(utt_list, base_path)
-                    with open(subset_scp, 'w') as f:
-                        for line in filtered:
-                            f.write(line.strip() + '\n')
+                #for j in range(self.corpus.num_jobs):
+                #    base_path = os.path.join(corpus.split_directory(), self.feature_config.feature_id + '.{}.scp'.format(j))
+                #    subset_scp = os.path.join(self.data_directory, self.feature_config.feature_id + '.{}.scp'.format(j))
+                #    filtered = filter_scp(utt_list, base_path)
+                #    with open(subset_scp, 'w') as f:
+                #        for line in filtered:
+                #            f.write(line.strip() + '\n')
         except Exception as e:
             with open(dirty_path, 'w') as _:
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
-        super(LdaTrainer, self).init_training(identifier, temporary_directory, corpus, dictionary, previous_trainer)
+        self.feature_config.generate_features(self.corpus, data_directory=self.data_directory,
+                                              overwrite=True, logger=self.logger)
+        self._setup_tree(previous_trainer.align_directory)
         self.logger.info('Initialization complete!')
         self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))
 
