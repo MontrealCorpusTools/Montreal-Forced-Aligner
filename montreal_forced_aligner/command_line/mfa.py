@@ -274,7 +274,6 @@ thirdparty_parser.add_argument('local_directory',
 def main():
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
-    print(args, unknown)
     fix_path()
     if args.subcommand in ['align', 'train', 'train_ivector']:
         from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries

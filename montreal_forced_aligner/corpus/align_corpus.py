@@ -3,6 +3,7 @@ import sys
 import traceback
 import random
 import time
+import re
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
 from ..helper import load_text, output_mapping, save_groups, filter_scp, load_scp
@@ -112,7 +113,9 @@ class AlignableCorpus(BaseCorpus):
         self.speak_utt_mapping = load_scp(spk2utt_path)
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
-            self.word_counts.update(text)
+            for w in text:
+                new_w = re.split(r"[-']", w)
+                self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
         self.sample_rates = {int(k): v for k,v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
@@ -187,7 +190,9 @@ class AlignableCorpus(BaseCorpus):
                     utt_name = fixed_utt_name
                 file_name = utt_name
                 words = info['words']
-                self.word_counts.update(words)
+                for w in words:
+                    new_w = re.split(r"[-']", w)
+                    self.word_counts.update(new_w + [w])
                 self.text_mapping[utt_name] = ' '.join(words)
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
@@ -208,7 +213,9 @@ class AlignableCorpus(BaseCorpus):
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                 for utt, words in info['text_mapping'].items():
-                    self.word_counts.update(words)
+                    for w in words:
+                        new_w = re.split(r"[-']", w)
+                        self.word_counts.update(new_w + [w])
                     self.text_mapping[utt] = ' '.join(words)
                 self.utt_speak_mapping.update(info['utt_speak_mapping'])
                 for speak, utts in info['speak_utt_mapping'].items():
@@ -255,7 +262,9 @@ class AlignableCorpus(BaseCorpus):
                             utt_name = fixed_utt_name
 
                         words = info['words']
-                        self.word_counts.update(words)
+                        for w in words:
+                            new_w = re.split(r"[-']", w)
+                            self.word_counts.update(new_w + [w])
                         self.text_mapping[utt_name] = ' '.join(words)
                         self.utt_text_file_mapping[utt_name] = lab_path
                         self.speak_utt_mapping[speaker_name].append(utt_name)
@@ -289,7 +298,9 @@ class AlignableCorpus(BaseCorpus):
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                         for utt, words in info['text_mapping'].items():
-                            self.word_counts.update(words)
+                            for w in words:
+                                new_w = re.split(r"[-']", w)
+                                self.word_counts.update(new_w + [w])
                             self.text_mapping[utt] = ' '.join(words)
                         self.utt_speak_mapping.update(info['utt_speak_mapping'])
                         for speak, utts in info['speak_utt_mapping'].items():
