@@ -58,8 +58,8 @@ class FeatureConfig(object):
         self.use_energy = False
         self.frame_shift = 10
         self.pitch = False
-        self.splice_left_context = None
-        self.splice_right_context = None
+        self.splice_left_context = 3
+        self.splice_right_context = 3
         self.use_mp = True
         self.job_specific_configuration = {}
 
@@ -133,7 +133,7 @@ class FeatureConfig(object):
         corpus.cmvn_mapping = load_scp(cmvn_scp)
         pattern = 'cmvn.{}.scp'
         save_groups(corpus.grouped_cmvn, split_dir, pattern)
-        apply_cmvn(split_dir, corpus.num_jobs, self)
+        #apply_cmvn(split_dir, corpus.num_jobs, self)
 
     def compute_vad(self, corpus, logger=None):
         if logger is None:
@@ -150,12 +150,11 @@ class FeatureConfig(object):
     @property
     def raw_feature_id(self):
         name = 'features_{}'.format(self.type)
-        if self.type == 'mfcc':
-            name += '_cmvn'
         return name
 
     @property
     def feature_id(self):
+        return 'feats'
         name = 'features_{}'.format(self.type)
         if self.type == 'mfcc':
             name += '_cmvn'
@@ -217,33 +216,65 @@ class FeatureConfig(object):
                 self.calc_cmvn(corpus)
         #corpus.parse_features_logs()
 
-    def generate_features(self, corpus, data_directory=None, overwrite=False, logger=None):
-        if data_directory is None:
-            data_directory = corpus.split_directory()
+    def construct_feature_proc_string(self, data_directory, model_directory, job_name, splice=False, voiced=False, cmvn=True):
         if self.directory is None:
             self.directory = data_directory
-        if not overwrite and os.path.exists(os.path.join(data_directory, self.feature_id + '.0.scp')):
-            return
-        self.generate_base_features(corpus, logger=logger)
-        if self.deltas:
-            add_deltas(data_directory, corpus.num_jobs, self)
-        elif self.lda:
-            apply_lda(data_directory, corpus.num_jobs, self)
-
-    def generate_spliced_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
-        if logger is None:
-            log_func = print
+        lda_mat_path = None
+        fmllr_trans_path = None
+        if model_directory is not None:
+            lda_mat_path = os.path.join(model_directory, 'lda.mat')
+            if not os.path.exists(lda_mat_path):
+                lda_mat_path = None
+            fmllr_trans_path = os.path.join(model_directory, 'trans.{}'.format(job_name))
+            if not os.path.exists(fmllr_trans_path):
+                fmllr_trans_path = None
+        if job_name is not None:
+            utt2spk_path = os.path.join(data_directory, 'utt2spk.{}'.format(job_name))
+            cmvn_path = os.path.join(data_directory, 'cmvn.{}.scp'.format(job_name))
+            feat_path = os.path.join(data_directory, 'feats.{}.scp'.format(job_name))
+            vad_path = os.path.join(data_directory, 'vad.{}.scp'.format(job_name))
         else:
-            log_func = logger.info
+            utt2spk_path = os.path.join(data_directory, 'utt2spk')
+            cmvn_path = os.path.join(data_directory, 'cmvn.scp')
+            feat_path = os.path.join(data_directory, 'feats.scp')
+            vad_path = os.path.join(data_directory, 'vad.scp')
+        if voiced:
+            feats = 'ark,s,cs:add-deltas scp:{} ark:- |'.format(feat_path)
+            if cmvn:
+                feats += ' apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |'
+            feats += ' select-voiced-frames ark:- scp,s,cs:{} ark:- |'.format(vad_path)
+        elif not os.path.exists(cmvn_path) and cmvn:
+            feats = 'ark,s,cs:add-deltas scp:{} ark:- |'.format(feat_path)
+            if cmvn:
+                feats += ' apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |'
+        else:
+            feats = "ark,s,cs:apply-cmvn --utt2spk=ark:{} scp:{} scp:{} ark:- |".format(utt2spk_path, cmvn_path, feat_path)
+            if lda_mat_path is not None:
+                if not os.path.exists(lda_mat_path):
+                    raise Exception('Could not find {}'.format(lda_mat_path))
+                feats += ' splice-feats --left-context={} --right-context={} ark:- ark:- |'.format(self.splice_left_context,
+                                                                                                   self.splice_right_context)
+                feats += " transform-feats {} ark:- ark:- |".format(lda_mat_path)
+            elif splice:
+                feats += ' splice-feats --left-context={} --right-context={} ark:- ark:- |'.format(self.splice_left_context,
+                                                                                                   self.splice_right_context)
+            elif self.deltas:
+                feats += " add-deltas ark:- ark:- |"
+
+            if fmllr_trans_path is not None:
+                if not os.path.exists(fmllr_trans_path):
+                    raise Exception('Could not find {}'.format(fmllr_trans_path))
+                feats += " transform-feats --utt2spk=ark:{} ark,s,cs:{} ark:- ark:- |".format(utt2spk_path, fmllr_trans_path)
+        return feats
+
+    def generate_features(self, corpus, data_directory=None, overwrite=False, logger=None, cmvn=True):
         if data_directory is None:
             data_directory = corpus.split_directory()
         if self.directory is None:
             self.directory = data_directory
-        if not overwrite and os.path.exists(os.path.join(data_directory, self.spliced_feature_id + '.0.scp')):
-            log_func('Spliced features already exist, skipping!')
+        if not overwrite and os.path.exists(os.path.join(data_directory, 'feats.0.scp')):
             return
-        generate_spliced_features(data_directory, corpus.num_jobs, self)
-        log_func('Finished generating spliced features!')
+        self.generate_base_features(corpus, logger=logger, compute_cmvn=cmvn)
 
     def generate_ivector_extract_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
         if logger is None:

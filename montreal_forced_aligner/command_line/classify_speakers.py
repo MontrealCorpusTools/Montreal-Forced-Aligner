@@ -43,7 +43,8 @@ def classify_speakers(args):
                 'begin': time.time(),
                 'version': __version__,
                 'type': command,
-                'corpus_directory': args.corpus_directory}
+                'corpus_directory': args.corpus_directory,
+                'ivector_extractor_path': args.ivector_extractor_path}
     if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__:
@@ -52,13 +53,16 @@ def classify_speakers(args):
             'weird behavior for previous versions of the temporary directory.')
         if conf['dirty']:
             logger.debug('Previous run ended in an error (maybe ctrl-c?)')
-        if conf['type'] != 'train_ivector':
+        if conf['type'] != command:
             logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
         if conf['corpus_directory'] != args.corpus_directory:
             logger.debug('Previous run used source directory '
                          'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
         if conf['version'] != __version__:
             logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
+        if conf['ivector_extractor_path'] != args.ivector_extractor_path:
+            logger.debug('Previous run used ivector extractor path {} '
+                         '(new run: {})'.format(conf['ivector_extractor_path'], args.ivector_extractor_path))
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
@@ -70,17 +74,18 @@ def classify_speakers(args):
         begin = time.time()
         a = SpeakerClassifier(corpus, ivector_extractor, diarization_config,
                               temp_directory=data_directory,
-                              debug=getattr(args, 'debug', False), logger=logger)
-        logger.debug('Setup speaker diarizer in {} seconds'.format(time.time() - begin))
+                              debug=getattr(args, 'debug', False), logger=logger, num_speakers=args.num_speakers,
+                              cluster=args.cluster)
+        logger.debug('Setup speaker classifier in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
 
         begin = time.time()
         a.classify()
-        logger.debug('Performed diarization in {} seconds'.format(time.time() - begin))
+        logger.debug('Performed classification in {} seconds'.format(time.time() - begin))
 
         begin = time.time()
-        a.export_textgrids(args.output_directory)
-        logger.debug('Exported TextGrids in {} seconds'.format(time.time() - begin))
+        a.export_classification(args.output_directory)
+        logger.debug('Exported classification in {} seconds'.format(time.time() - begin))
         logger.info('Done!')
         logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:
@@ -92,6 +97,8 @@ def classify_speakers(args):
 
 
 def validate_args(args, downloaded_ivector_extractors):
+    if args.cluster and not args.num_speakers:
+        raise ArgumentError('If using clustering, num_speakers must be specified')
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
@@ -101,7 +108,7 @@ def validate_args(args, downloaded_ivector_extractors):
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 
     if args.ivector_extractor_path.lower() in downloaded_ivector_extractors:
-        args.ivector_extractor_path = get_pretrained_ivector_path(args.acoustic_model_path.lower())
+        args.ivector_extractor_path = get_pretrained_ivector_path(args.ivector_extractor_path.lower())
     elif args.ivector_extractor_path.lower().endswith(IvectorExtractor.extension):
         if not os.path.exists(args.ivector_extractor_path):
             raise ArgumentError('The specified model path does not exist: ' + args.ivector_extractor_path)

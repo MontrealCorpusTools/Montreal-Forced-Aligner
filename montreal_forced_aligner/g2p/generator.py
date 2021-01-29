@@ -92,7 +92,7 @@ class RewriterWorker(mp.Process):
                     self.return_dict[word] = rep
             except Exception as e:
                 self.stopped.stop()
-                self.return_dict['error'] = word, Exception(traceback.format_exception(*sys.exc_info()))
+                self.return_dict['MFA_EXCEPTION'] = word, Exception(traceback.format_exception(*sys.exc_info()))
             self.counter.increment()
         return
 
@@ -200,8 +200,8 @@ class PyniniDictionaryGenerator(object):
                 job_queue.join()
             for p in procs:
                 p.join()
-            if 'error' in return_dict:
-                element, exc = return_dict['error']
+            if 'MFA_EXCEPTION' in return_dict:
+                element, exc = return_dict['MFA_EXCEPTION']
                 print(element)
                 raise exc
             to_return.update(return_dict)

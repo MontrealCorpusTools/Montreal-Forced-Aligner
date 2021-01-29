@@ -75,12 +75,14 @@ class MonophoneTrainer(BaseTrainer):
 
         try:
             feat_dim = corpus.get_feat_dim(self.feature_config)
-            feat_path = os.path.join(self.data_directory, self.feature_config.feature_id + '.0.scp')
+            print(feat_dim)
+            feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
+            #feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
             log_path = os.path.join(self.log_directory, 'init.log')
             with open(log_path, 'w') as log_file:
                 subprocess.call([thirdparty_binary('gmm-init-mono'), shared_phones_opt,
-                                 "--train-feats=scp:"+feat_path,
+                                 "--train-feats="+feature_string,
                                  os.path.join(dictionary.output_directory, 'topo'),
                                  str(feat_dim),
                                  mdl_path,

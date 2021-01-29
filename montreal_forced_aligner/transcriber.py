@@ -84,9 +84,6 @@ class Transcriber(object):
         if os.path.exists(hclg_path):
             return
         print('Generating decoding graph...')
-        with open(self.language_model.arpa_path, 'r', encoding='utf8') as f:
-            for line in f:
-                print(repr(line))
 
         with open(log_path, 'w') as log_file:
             if not os.path.exists(g_path):

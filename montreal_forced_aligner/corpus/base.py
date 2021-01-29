@@ -352,11 +352,14 @@ class BaseCorpus(object):
         if not self.segments:
             wav_path = self.utt_wav_mapping[utt]
         else:
-            rec = self.segments[utt].split(' ')[0]
-            if rec in self.wav_info:
-                return self.wav_info[rec][-1]
-            wav_path = self.utt_wav_mapping[rec]
-        return get_wav_info(wav_path)['wav_path']
+            if utt in self.utt_wav_mapping:
+                wav_path = self.utt_wav_mapping[utt]
+            else:
+                rec = self.segments[utt].split(' ')[0]
+                if rec in self.wav_info:
+                    return self.wav_info[rec][-1]
+                wav_path = self.utt_wav_mapping[rec]
+        return get_wav_info(wav_path)['duration']
 
     def split_directory(self):
         directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
@@ -463,12 +466,13 @@ class BaseCorpus(object):
 
     def get_feat_dim(self, feature_config):
 
-        path = os.path.join(self.split_directory(), feature_config.feature_id + '.0.scp')
+        feature_string = feature_config.construct_feature_proc_string(self.split_directory(), None, 0)
         with open(os.devnull, 'w') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
-                                         'scp:' + path, '-'],
+                                         feature_string, '-'],
                                         stdout=subprocess.PIPE,
-                                        stderr=devnull)
+                                        #stderr=devnull
+                                        )
             stdout, stderr = dim_proc.communicate()
             feats = stdout.decode('utf8').strip()
         return int(feats)

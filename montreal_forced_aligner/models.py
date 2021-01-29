@@ -85,6 +85,7 @@ class Archive(object):
 
 
 class AcousticModel(Archive):
+    files = ['final.mdl', 'final.occs', 'lda.mat', 'tree']
     def add_meta_file(self, aligner):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             yaml.dump(aligner.meta, f)
@@ -123,26 +124,21 @@ class AcousticModel(Archive):
             self._meta['phones'] = set(self._meta.get('phones', []))
         return self._meta
 
-    def add_lda_matrix(self, source):
-        copyfile(os.path.join(source, 'lda.mat'), os.path.join(self.dirname, 'lda.mat'))
-
     def add_model(self, source):
         """
         Add file into archive
         """
-        copyfile(os.path.join(source, 'final.mdl'), os.path.join(self.dirname, 'final.mdl'))
-        if os.path.exists(os.path.join(source, 'final.occs')):
-            copyfile(os.path.join(source, 'final.occs'), os.path.join(self.dirname, 'final.occs'))
-        copyfile(os.path.join(source, 'tree'), os.path.join(self.dirname, 'tree'))
+        for f in self.files:
+            if os.path.exists(os.path.join(source, f)):
+                copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
 
     def export_model(self, destination):
         """
         """
         os.makedirs(destination, exist_ok=True)
-        copyfile(os.path.join(self.dirname, 'final.mdl'), os.path.join(destination, 'final.mdl'))
-        if os.path.exists(os.path.join(self.dirname, 'final.occs')):
-            copyfile(os.path.join(self.dirname, 'final.occs'), os.path.join(destination, 'final.occs'))
-        copyfile(os.path.join(self.dirname, 'tree'), os.path.join(destination, 'tree'))
+        for f in self.files:
+            if os.path.exists(os.path.join(self.dirname, f)):
+                copyfile(os.path.join(self.dirname, f), os.path.join(destination, f))
 
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):

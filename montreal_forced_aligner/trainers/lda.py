@@ -59,24 +59,18 @@ class LdaTrainer(TriphoneTrainer):
                 'random_prune': self.random_prune}
 
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
-        self.feature_config.lda = False
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
-            self.feature_config.set_features_to_use_lda()
             return
         begin = time.time()
         try:
-            if self.feature_config.splice_left_context is not None:
-                self.feature_config.deltas = False
             self.feature_config.directory = None
-            self.feature_config.generate_spliced_features(self.corpus)
             lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
                           self.dictionary.silence_csl, self.corpus.num_jobs)
             self.feature_config.directory = self.train_directory
-            self.feature_config.set_features_to_use_lda()
             if self.data_directory != self.corpus.split_directory():
                 utt_list = []
                 subset_utt_path = os.path.join(self.data_directory, 'included_utts.txt')
@@ -96,8 +90,6 @@ class LdaTrainer(TriphoneTrainer):
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
             raise
-        self.feature_config.generate_features(self.corpus, data_directory=self.data_directory,
-                                              overwrite=True, logger=self.logger)
         self._setup_tree(previous_trainer.align_directory)
         self.logger.info('Initialization complete!')
         self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))
@@ -112,9 +104,9 @@ class LdaTrainer(TriphoneTrainer):
         try:
             num_gauss = self.initial_gaussians
             if call_back == print:
-                iters = tqdm(range(1, self.num_iterations))
+                iters = tqdm(range(0, self.num_iterations))
             else:
-                iters = range(1, self.num_iterations)
+                iters = range(0, self.num_iterations)
             sil_phones = self.dictionary.silence_csl
             for i in iters:
                 model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
@@ -152,7 +144,6 @@ class LdaTrainer(TriphoneTrainer):
                     for f in acc_files:
                         os.remove(f)
                 self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
-                compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
             shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
@@ -160,10 +151,7 @@ class LdaTrainer(TriphoneTrainer):
             shutil.copy(os.path.join(self.train_directory, '{}.occs'.format(self.num_iterations)),
                         os.path.join(self.train_directory, 'final.occs'))
             shutil.copy(os.path.join(self.train_directory, 'lda.mat'),
-                        os.path.join(self.corpus.output_directory, 'lda.mat'))
-            shutil.copy(os.path.join(self.train_directory, 'lda.mat'),
-                        os.path.join(self.corpus.split_directory(), 'lda.mat'))
-            self.feature_config.generate_features(self.corpus, overwrite=True)
+                        os.path.join(self.align_directory, 'lda.mat'))
             if not self.debug:
                 for i in range(1, self.num_iterations):
                     model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))

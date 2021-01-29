@@ -153,7 +153,7 @@ at michael.e.mcauliffe@gmail.com.
 .. csv-table::
    :header: "Language", "Link", "Corpus", "Phone set"
 
-   "Arabic", "Not available yet", "GlobalPhone", "GlobalPhone"
+   "Arabic", `Arabic acoustic model`_, "GlobalPhone", "GlobalPhone"
    "Bulgarian", `Bulgarian acoustic model`_, "GlobalPhone", "GlobalPhone"
    "Croatian", `Croatian acoustic model`_, "GlobalPhone", "GlobalPhone"
    "Czech", `Czech acoustic model`_, "GlobalPhone", "GlobalPhone"

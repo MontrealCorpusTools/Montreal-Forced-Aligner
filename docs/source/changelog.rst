@@ -18,7 +18,9 @@ Currently under development with major changes, see :ref:`whats_new_2_0`.
 - Optimized corpus parsing algorithm to be O(n log n) instead of O(n^2) (`PR #194`_)
 - Optimized corpus parsing algorithm to use multiprocessing and to load from saved files in temporary directories
 - Revamped and fixed training using subsets of the corpora
-- LDA training properly works
+- Fixed issue with training LDA systems
+- Fixed a long-standing issue with words being marked as OOV due to improperly parsing clitics
+
 
 1.1.0
 -----

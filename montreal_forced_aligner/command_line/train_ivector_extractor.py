@@ -61,7 +61,7 @@ def train_ivector(args):
             'weird behavior for previous versions of the temporary directory.')
         if conf['dirty']:
             logger.debug('Previous run ended in an error (maybe ctrl-c?)')
-        if conf['type'] != 'train_ivector':
+        if conf['type'] != command:
             logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
         if conf['corpus_directory'] != args.corpus_directory:
             logger.debug('Previous run used source directory '

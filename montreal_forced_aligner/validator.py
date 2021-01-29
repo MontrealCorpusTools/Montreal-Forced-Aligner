@@ -27,6 +27,9 @@ def test_utterances_func(validator, job_name):
     log_path = os.path.join(aligner.align_directory, 'log', 'decode.0.{}.log'.format(job_name))
     words_path = os.path.join(validator.dictionary.output_directory, 'words.txt')
     mdl_path = os.path.join(aligner.align_directory, 'final.mdl')
+
+    split_directory = validator.corpus.split_directory()
+    feat_string = aligner.feature_config.construct_feature_proc_string(split_directory, aligner.align_directory, job_name)
     feat_path = os.path.join(validator.corpus.split_directory(),
                              aligner.feature_file_base_name + '.{}.scp'.format(job_name))
     graphs_path = os.path.join(aligner.align_directory, 'utterance_graphs.{}.fst'.format(job_name))
@@ -45,7 +48,7 @@ def test_utterances_func(validator, job_name):
                                         '--beam={}'.format(beam),
                                         '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
                                         '--word-symbol-table=' + words_path,
-                                        mdl_path, 'ark:' + graphs_path, 'scp:' + feat_path, 'ark:' + lat_path],
+                                        mdl_path, 'ark:' + graphs_path, feat_string, 'ark:' + lat_path],
                                        stderr=logf)
         latgen_proc.communicate()
 

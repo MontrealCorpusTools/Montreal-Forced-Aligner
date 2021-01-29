@@ -18,6 +18,7 @@ Forced Alignment
    "validate", "Validate a corpus to ensure there are no issues with the data format", :ref:`validating_data`
    "train_dictionary", "Estimate pronunciation probabilities from aligning a corpus", :ref:`training_dictionary`
    "train_ivector", "Train an ivector extractor for speaker diarization", ""
+   "classify_speakers", "Use ivector extractor to classify files or cluster them", ""
 
 
 Transcription

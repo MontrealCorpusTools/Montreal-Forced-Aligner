@@ -111,6 +111,9 @@ class AlignableCorpus(BaseCorpus):
         self.cmvn_mapping = load_scp(cmvn_path)
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
+        for speak, utts in self.speak_utt_mapping.items():
+            if not isinstance(utts, list):
+                self.speak_utt_mapping[speak] = [utts]
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
             for w in text:
@@ -554,8 +557,7 @@ class AlignableCorpus(BaseCorpus):
             raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
         split_dir = self.split_directory()
         self.write()
-        if not os.path.exists(split_dir):
-            self.split(dictionary)
+        self.split(dictionary)
         self.figure_utterance_lengths()
 
     def create_subset(self, subset, feature_config):
@@ -587,24 +589,34 @@ class AlignableCorpus(BaseCorpus):
         for j in range(self.num_jobs):
             for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
                 sub_path = os.path.join(subset_directory, fn.format(j))
-                if not os.path.exists(sub_path):
-                    with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
-                            open(sub_path, 'w', encoding='utf8') as outf:
-                        for line in inf:
-                            s = line.split()
-                            if s[0] not in subset_utts:
-                                continue
-                            outf.write(line)
-
-            sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(j))
-            if not os.path.exists(sub_path):
-                with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
+                with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
                         open(sub_path, 'w', encoding='utf8') as outf:
                     for line in inf:
-                        line = line.split()
-                        speaker, utts = line[0], line[1:]
-                        filtered_utts = [x for x in utts if x in subset_utts]
-                        outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
+                        s = line.split()
+                        if s[0] not in subset_utts:
+                            continue
+                        outf.write(line)
+            subset_speakers = []
+            sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(j))
+            with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
+                    open(sub_path, 'w', encoding='utf8') as outf:
+                for line in inf:
+                    line = line.split()
+                    speaker, utts = line[0], line[1:]
+                    filtered_utts = [x for x in utts if x in subset_utts]
+                    if not filtered_utts:
+                        continue
+                    outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
+                    subset_speakers.append(speaker)
+            sub_path = os.path.join(subset_directory, 'cmvn.{}.scp'.format(j))
+            with open(os.path.join(split_directory, 'cmvn.{}.scp'.format(j)), 'r', encoding='utf8') as inf, \
+                    open(sub_path, 'w', encoding='utf8') as outf:
+                for line in inf:
+                    line = line.split()
+                    speaker, cmvn = line[0], line[1]
+                    if speaker not in subset_speakers:
+                        continue
+                    outf.write('{} {}\n'.format(speaker, cmvn))
             if feature_config is not None:
                 for fid in [feature_config.feature_id, feature_config.spliced_feature_id, feature_config.raw_feature_id]:
                     base_path = os.path.join(split_directory, fid + '.{}.scp'.format(j))

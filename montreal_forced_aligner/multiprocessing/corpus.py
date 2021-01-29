@@ -89,6 +89,7 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
     if sr < 16000:
         raise SampleRateError(wav_path)
     bit_depth = wav_info['bit_depth']
+    wav_max_time = wav_info['duration']
     if bit_depth != 16:
         raise BitDepthError(wav_path)
     tg = TextGrid()
@@ -137,6 +138,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             if not words:
                 continue
             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
+            if end > wav_max_time:
+                end = wav_max_time
             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
             if n_channels == 1:

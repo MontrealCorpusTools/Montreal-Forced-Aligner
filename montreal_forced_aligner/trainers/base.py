@@ -132,9 +132,11 @@ class BaseTrainer(object):
         self.temp_directory = temporary_directory
         self.identifier = identifier
         dirty_path = os.path.join(self.train_directory, 'dirty')
-        done_path = os.path.join(self.train_directory, 'done')
+        done_path = os.path.join(self.align_directory, 'done')
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.train_directory)
+        if os.path.exists(done_path):
+            return
         if self.logger is None and logger is not None:
             self.logger = logger
         self.logger.info('Initializing training for {}...'.format(identifier))
@@ -233,6 +235,9 @@ class BaseTrainer(object):
                 shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
                                 os.path.join(self.align_directory, 'final.mdl'))
 
+                if os.path.exists(os.path.join(self.train_directory, 'lda.mat')):
+                    shutil.copyfile(os.path.join(self.train_directory, 'lda.mat'),
+                                    os.path.join(self.align_directory, 'lda.mat'))
                 shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
                                 os.path.join(self.align_directory, 'final.occs'))
                 compile_train_graphs(self.align_directory, self.dictionary.output_directory,

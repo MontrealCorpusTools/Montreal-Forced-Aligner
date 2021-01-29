@@ -113,6 +113,8 @@ class IvectorExtractorTrainer(BaseTrainer):
         else:
             feat_name = self.feature_file_base_name
         all_feats_path = os.path.join(self.corpus.output_directory, feat_name + '.scp')
+        feature_string = self.feature_config.construct_feature_proc_string(self.corpus.output_directory,
+                                                                           self.train_directory, job_name=None)
         with open(all_feats_path, 'w') as outf:
             for i in range(self.corpus.num_jobs):
                 with open(os.path.join(self.data_directory,
@@ -126,7 +128,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                                               '--num_gauss={}'.format(self.ubm_num_gaussians),
                                               '--num_gauss_init={}'.format(num_gauss_init),
                                               '--num_iters={}'.format(self.ubm_num_iterations_init),
-                                              'scp:' + all_feats_path,
+                                              feature_string,
                                               os.path.join(self.train_directory, '0.dubm')],
                                              stderr=log_file)
             gmm_init_proc.communicate()

@@ -183,6 +183,7 @@ class TranscribeCorpus(BaseCorpus):
                     self.wav_read_errors.append(wav_path)
                     continue
                 bit_depth = wav_info['bit_depth']
+                wav_max_time = wav_info['duration']
                 if bit_depth != 16:
                     self.unsupported_bit_depths.append(wav_path)
                     continue
@@ -257,9 +258,10 @@ class TranscribeCorpus(BaseCorpus):
                                 continue
 
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
+                            if end > wav_max_time:
+                                end = wav_max_time
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
-                            self.text_mapping[utt_name] = text
                             if n_channels == 1:
                                 if self.feat_mapping and utt_name not in self.feat_mapping:
                                     self.ignored_utterances.append(utt_name)
@@ -278,6 +280,7 @@ class TranscribeCorpus(BaseCorpus):
                                         self.ignored_utterances.append(utt_name)
                                     self.segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
                                     self.utt_wav_mapping[b_name] = b_path
+                            self.text_mapping[utt_name] = text
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
 

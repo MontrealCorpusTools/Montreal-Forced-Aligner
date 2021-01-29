@@ -3,12 +3,12 @@ import os
 from .helper import run_mp, run_non_mp, thirdparty_binary
 
 
-def gmm_gselect_func(iteration, train_directory, config, feat_path, x):
+def gmm_gselect_func(iteration, train_directory, config, feature_string, x):
     log_path = os.path.join(train_directory, 'log', 'gselect.{}.log'.format(x))
     with open(log_path, 'w', encoding='utf8') as log_file:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config['subsample']),
-                                                 'scp:' + feat_path,
+                                                 feature_string,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=log_file)
@@ -45,12 +45,9 @@ def gmm_gselect(iteration, config, num_jobs, vad=True):
         The number of processes to use in calculation
 
     """
-    if vad:
-        feat_name = config.feature_config.voiced_feature_id + '.{}.scp'
-    else:
-        feat_name = config.feature_file_base_name + '.{}.scp'
-    jobs = [(iteration, config.train_directory, config.ivector_options,
-             os.path.join(config.data_directory, feat_name.format(x)),
+    directory = config.train_directory
+    jobs = [(iteration, directory, config.ivector_options,
+             config.feature_config.construct_feature_proc_string(config.data_directory, directory, x, voiced=vad),
              x) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(gmm_gselect_func, jobs, config.log_directory)
@@ -58,12 +55,12 @@ def gmm_gselect(iteration, config, num_jobs, vad=True):
         run_non_mp(gmm_gselect_func, jobs, config.log_directory)
 
 
-def acc_global_stats_func(train_directory, config, feat_path, x, iteration, full=False):
+def acc_global_stats_func(train_directory, config, feature_string, x, iteration, full=False):
     log_path = os.path.join(train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w', encoding='utf8') as log_file:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config['subsample']),
-                                                 'scp:' + feat_path,
+                                                 feature_string,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=log_file)
@@ -107,12 +104,9 @@ def acc_global_stats(config, num_jobs, iteration, full=False, vad=True):
     iteration : int
         Iteration to calculate stats for
     """
-    if vad:
-        feat_name = config.feature_config.voiced_feature_id + '.{}.scp'
-    else:
-        feat_name = config.feature_file_base_name + '.{}.scp'
-    jobs = [(config.train_directory, config.ivector_options,
-             os.path.join(config.data_directory, feat_name.format(x)),
+    directory = config.train_directory
+    jobs = [(directory, config.ivector_options,
+             config.feature_config.construct_feature_proc_string(config.data_directory, directory, x, voiced=vad),
              x, iteration, full) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(acc_global_stats_func, jobs, config.log_directory)
@@ -120,14 +114,14 @@ def acc_global_stats(config, num_jobs, iteration, full=False, vad=True):
         run_non_mp(acc_global_stats_func, jobs, config.log_directory)
 
 
-def gauss_to_post_vad_func(train_directory, config, feat_path, x):
+def gauss_to_post_vad_func(train_directory, config, feature_string, x):
     modified_posterior_scale = config['posterior_scale'] * config['subsample']
     log_path = os.path.join(train_directory, 'log', 'post.{}.log'.format(x))
     gselect_path = os.path.join(train_directory, 'gselect.{}'.format(x))
     with open(log_path, 'w', encoding='utf8') as log_file:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config['subsample']),
-                                                 'scp:' + feat_path,
+                                                 feature_string,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=log_file)
@@ -149,13 +143,13 @@ def gauss_to_post_vad_func(train_directory, config, feat_path, x):
         scale_post_proc.communicate()
 
 
-def gauss_to_post_func(train_directory, config, feat_path, x):
+def gauss_to_post_func(train_directory, config, feature_string, x):
     modified_posterior_scale = config['posterior_scale'] * config['subsample']
     log_path = os.path.join(train_directory, 'log', 'post.{}.log'.format(x))
     with open(log_path, 'w', encoding='utf8') as log_file:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config['subsample']),
-                                                 'scp:' + feat_path,
+                                                 feature_string,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=log_file)
@@ -200,13 +194,12 @@ def gauss_to_post(config, num_jobs, vad=True):
         The number of processes to use in calculation
     """
     if vad:
-        feat_name = config.feature_config.voiced_feature_id + '.{}.scp'
         func = gauss_to_post_vad_func
     else:
-        feat_name = config.feature_file_base_name + '.{}.scp'
         func = gauss_to_post_func
+    directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
-             os.path.join(config.data_directory, feat_name.format(x)),
+             config.feature_config.construct_feature_proc_string(config.data_directory, directory, x, voiced=vad),
              x) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(func, jobs, config.log_directory)
@@ -214,12 +207,12 @@ def gauss_to_post(config, num_jobs, vad=True):
         run_non_mp(func, jobs, config.log_directory)
 
 
-def acc_ivector_stats_func(train_directory, config, feat_path, x, iteration):
+def acc_ivector_stats_func(train_directory, config, feature_string, x, iteration):
     log_path = os.path.join(train_directory, 'log', 'acc.{}.{}.log'.format(iteration, x))
     with open(log_path, 'w', encoding='utf8') as log_file:
         subsample_feats_proc = subprocess.Popen([thirdparty_binary('subsample-feats'),
                                                  '--n=' + str(config['subsample']),
-                                                 'scp:' + feat_path,
+                                                 feature_string,
                                                  'ark:-'],
                                                 stdout=subprocess.PIPE,
                                                 stderr=log_file)
@@ -258,12 +251,9 @@ def acc_ivector_stats(config, num_jobs, iteration, vad=True):
     iteration : int
         Iteration to calculate stats for
     """
-    if vad:
-        feat_name = config.feature_config.voiced_feature_id + '.{}.scp'
-    else:
-        feat_name = config.feature_file_base_name + '.{}.scp'
+    directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
-             os.path.join(config.data_directory, feat_name.format(x)),
+             config.feature_config.construct_feature_proc_string(config.data_directory, directory, x, voiced=vad),
              x, iteration) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(acc_ivector_stats_func, jobs, config.log_directory)
@@ -285,7 +275,7 @@ def acc_ivector_stats(config, num_jobs, iteration, vad=True):
         os.remove(p)
 
 
-def extract_ivectors_vad_func(directory, config, features_path, job_id):
+def extract_ivectors_vad_func(directory, config, feature_string, job_id):
     """
 
     Parameters
@@ -313,14 +303,14 @@ def extract_ivectors_vad_func(directory, config, features_path, job_id):
         gselect_proc = subprocess.Popen([thirdparty_binary('gmm-gselect'),
                                          '--n=' + str(config['num_gselect']),
                                          dubm_path,
-                                         'scp:' + features_path,
+                                         feature_string,
                                          'ark:-'],
                                         stdout=subprocess.PIPE,
                                         stderr=log_file)
 
         post_proc = subprocess.Popen([thirdparty_binary('fgmm-global-gselect-to-post'),
                                       '--min-post={}'.format(config['min_post']),
-                                      ubm_path, 'scp:' + features_path,
+                                      ubm_path, feature_string,
                                       'ark,s,cs:-', 'ark:-'],
                                      stdin=gselect_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
         scale_proc = subprocess.Popen([thirdparty_binary('scale-post'),
@@ -328,14 +318,14 @@ def extract_ivectors_vad_func(directory, config, features_path, job_id):
                                       stdin=post_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
         extract_proc = subprocess.Popen([thirdparty_binary('ivector-extract'),
                                          '--verbose=2', ivector_mdl,
-                                         'scp:' + features_path,
+                                         feature_string,
                                          'ark,s,cs:-',
                                          'ark,scp,t:{},{}'.format(ivector_ark_path, ivector_scp_path)],
                                         stdin=scale_proc.stdout, stderr=log_file)
         extract_proc.communicate()
 
 
-def extract_ivectors_func(directory, split_directory, config, features_path, sil_phones, job_id, align_directory=None):
+def extract_ivectors_func(directory, split_directory, config, feature_string, sil_phones, job_id, align_directory=None):
     """
     Parameters
     ----------
@@ -386,7 +376,7 @@ def extract_ivectors_func(directory, split_directory, config, features_path, sil
                                                      '--n=' + str(config['num_gselect']),
                                                      '--min-post=' + str(config['min_post']),
                                                      os.path.join(directory, 'final.dubm'),
-                                                     'scp:' + features_path,
+                                                     feature_string,
                                                      'ark:-'],
                                                     stdout=subprocess.PIPE,
                                                     stderr=log_file)
@@ -403,7 +393,7 @@ def extract_ivectors_func(directory, split_directory, config, features_path, sil
                                          '--compute-objf-change=true',
                                          '--max-count={}'.format(max_count),
                                          ivector_mdl,
-                                         'scp:' + features_path,
+                                         feature_string,
                                          'ark,s,cs:-',
                                          'ark,t:' + ivectors_path],
                                         stderr=log_file,
@@ -436,14 +426,11 @@ def extract_ivectors(directory, split_directory, config, num_jobs, vad=True, ali
 
     log_dir = os.path.join(directory, 'log')
     os.makedirs(log_dir, exist_ok=True)
-    feat_name = 'feats_for_ivector.{}.scp'
-    if not os.path.exists(os.path.join(config.corpus.split_directory(), feat_name.format(0))):
-        feat_name = config.feature_file_base_name + '.{}.scp'
     if vad:
         data_directory = os.path.join(split_directory, 'subsegments')
         func = extract_ivectors_vad_func
         jobs = [(directory, config.ivector_options,
-                 os.path.join(data_directory, feat_name.format(x)),
+             config.feature_config.construct_feature_proc_string(data_directory, directory, x, voiced=vad),
                  x, align_directory) for x in range(num_jobs)]
     else:
         data_directory = split_directory
@@ -453,7 +440,7 @@ def extract_ivectors(directory, split_directory, config, num_jobs, vad=True, ali
         except AttributeError:
             csl = None
         jobs = [(directory, config.corpus.split_directory(), config.ivector_options,
-                 os.path.join(data_directory, feat_name.format(x)),
+             config.feature_config.construct_feature_proc_string(data_directory, directory, x, voiced=vad),
                  csl,
                  x, align_directory) for x in range(num_jobs)]
     if config.use_mp:
@@ -672,7 +659,6 @@ def classify_speakers_func(directory, job_name):
     x = []
     for utt, ivector in ivec.items():
         ivector = [float(x) for x in ivector]
-        print(utt, ivector)
         x.append(ivector)
     x = np.array(x)
     clf = load(mdl_path)
@@ -680,10 +666,8 @@ def classify_speakers_func(directory, job_name):
     speak_utt_mapping = defaultdict(list)
     utt_speak_mapping = {}
     for i, utt in enumerate(ivec.keys()):
-        print(i, utt)
         speak_ind = y[i]
         speaker = speakers[speak_ind]
-        print(speaker)
         speak_utt_mapping[speaker].append(utt)
         utt_speak_mapping[utt] = speaker
     save_scp(([k, v] for k,v in speak_utt_mapping.items()), spk2utt_path)

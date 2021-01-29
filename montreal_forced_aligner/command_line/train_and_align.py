@@ -35,6 +35,8 @@ def align_corpus(args, unknown_args=None):
     if unknown_args:
         align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
+    if args.debug:
+        logger.warning('Running in DEBUG mode, may have impact on performance and disk usage.')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         logger.info('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
@@ -48,8 +50,7 @@ def align_corpus(args, unknown_args=None):
                 'type': command,
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != command \
+    if  conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
@@ -87,7 +88,8 @@ def align_corpus(args, unknown_args=None):
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
-                             temp_directory=data_directory, logger=logger)
+                             temp_directory=data_directory, logger=logger,
+                                 debug=getattr(args, 'debug', False))
         a.verbose = args.verbose
         begin = time.time()
         a.train()

@@ -48,7 +48,8 @@ def align_corpus(args, unknown_args=None):
                 'version': __version__,
                 'type': command,
                 'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dictionary_path}
+                'dictionary_path': args.dictionary_path,
+                'acoustic_model_path': args.acoustic_model_path}
     if getattr(args, 'clean', False) \
             or conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
@@ -69,6 +70,9 @@ def align_corpus(args, unknown_args=None):
         if conf['dictionary_path'] != args.dictionary_path:
             logger.debug('Previous run used dictionary path {} '
                          '(new run: {})'.format(conf['dictionary_path'], args.dictionary_path))
+        if conf['acoustic_model_path'] != args.acoustic_model_path:
+            logger.debug('Previous run used acoustic model path {} '
+                         '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)

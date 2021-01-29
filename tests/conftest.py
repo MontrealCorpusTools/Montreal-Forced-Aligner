@@ -70,6 +70,12 @@ def english_acoustic_model():
 
 
 @pytest.fixture(scope='session')
+def english_ivector_model():
+    from montreal_forced_aligner.command_line.download import download_model
+    download_model('ivector', 'english_ivector')
+
+
+@pytest.fixture(scope='session')
 def transcription_acoustic_model(acoustic_model_dir):
     return os.path.join(acoustic_model_dir, 'mono_model.zip')
 

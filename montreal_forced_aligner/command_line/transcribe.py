@@ -9,6 +9,7 @@ from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.transcriber import Transcriber
 from montreal_forced_aligner.models import AcousticModel, LanguageModel, FORMAT
+from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.config import TEMP_DIR, transcribe_yaml_to_config, load_basic_transcribe, save_config
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_lm_languages, get_pretrained_language_model_path, \
@@ -16,22 +17,8 @@ from montreal_forced_aligner.utils import get_available_acoustic_languages, get_
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-class DummyArgs(object):
-    def __init__(self):
-        self.corpus_directory = ''
-        self.dictionary_path = ''
-        self.acoustic_model_path = ''
-        self.speaker_characters = 0
-        self.num_jobs = 0
-        self.verbose = False
-        self.clean = True
-        self.fast = True
-        self.debug = False
-        self.temp_directory = None
-        self.config_path = ''
-
-
 def transcribe_corpus(args):
+    command = 'transcribe'
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -46,7 +33,10 @@ def transcribe_corpus(args):
     else:
         transcribe_config = load_basic_transcribe()
     data_directory = os.path.join(temp_dir, corpus_name)
-    print(data_directory, os.path.exists(data_directory))
+    logger = setup_logger(command, data_directory)
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        logger.info('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     os.makedirs(data_directory, exist_ok=True)
@@ -60,14 +50,37 @@ def transcribe_corpus(args):
                 'version': __version__,
                 'type': 'transcribe',
                 'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dictionary_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != 'align' \
+                'dictionary_path': args.dictionary_path,
+                'acoustic_model_path': args.acoustic_model_path,
+                'language_model_path': args.language_model_path,
+                }
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
-            or conf['dictionary_path'] != args.dictionary_path:
-        pass  # FIXME
-        # shutil.rmtree(data_directory, ignore_errors=True)
+            or conf['dictionary_path'] != args.dictionary_path \
+            or conf['language_model_path'] != args.language_model_path \
+            or conf['acoustic_model_path'] != args.acoustic_model_path:
+        logger.warning(
+            'WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no '
+            'weird behavior for previous versions of the temporary directory.')
+        if conf['dirty']:
+            logger.debug('Previous run ended in an error (maybe ctrl-c?)')
+        if conf['type'] != command:
+            logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
+        if conf['corpus_directory'] != args.corpus_directory:
+            logger.debug('Previous run used source directory '
+                         'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
+        if conf['version'] != __version__:
+            logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
+        if conf['dictionary_path'] != args.dictionary_path:
+            logger.debug('Previous run used dictionary path {} '
+                         '(new run: {})'.format(conf['dictionary_path'], args.dictionary_path))
+        if conf['acoustic_model_path'] != args.acoustic_model_path:
+            logger.debug('Previous run used acoustic model path {} '
+                         '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
+        if conf['language_model_path'] != args.language_model_path:
+            logger.debug('Previous run used language model path {} '
+                         '(new run: {})'.format(conf['language_model_path'], args.language_model_path))
     try:
         if args.evaluate:
             corpus = AlignableCorpus(args.corpus_directory, data_directory,

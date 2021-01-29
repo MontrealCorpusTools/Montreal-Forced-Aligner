@@ -38,8 +38,6 @@ training:
       silence_weight: 0.0
       fmllr_update_type: "full"
       subset: 10000
-      features:
-          lda: true
 
   - sat:
       num_leaves: 4200
@@ -47,8 +45,4 @@ training:
       power: 0.2
       silence_weight: 0.0
       fmllr_update_type: "full"
-      subset: 30000
-      features:
-          lda: true
-          fmllr: true
 

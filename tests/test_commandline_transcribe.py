@@ -12,5 +12,4 @@ def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, ge
                transcription_language_model, output_path,
                '-t', temp_dir, '-q', '--clean', '-d']
     args, unknown = parser.parse_known_args(command)
-    print(transcription_language_model)
     run_transcribe_corpus(args)

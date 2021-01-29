@@ -71,6 +71,7 @@ class TrainableAligner(BaseAligner):
     def train(self):
         previous = None
         for identifier, trainer in self.training_config.items():
+            trainer.debug = self.debug
             trainer.logger = self.logger
             if previous is not None:
                 previous.align(trainer.subset)

@@ -132,6 +132,67 @@ class SatTrainer(TriphoneTrainer):
         self.logger.info('Training complete!')
         self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
+    def align(self, subset, call_back=None):
+        dirty_path = os.path.join(self.align_directory, 'dirty')
+        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
+            shutil.rmtree(self.align_directory)
+        done_path = os.path.join(self.align_directory, 'done')
+        if not os.path.exists(done_path):
+            message = 'Generating alignments using {} models'.format(self.identifier)
+            if subset:
+                message += ' using {} utterances...'.format(subset)
+            else:
+                message += ' for the whole corpus...'
+            self.logger.info(message)
+            begin = time.time()
+            self.logger.debug('Using {} as the feature name'.format(self.feature_file_base_name))
+            if subset is None:
+                align_data_directory = self.corpus.split_directory()
+            else:
+                align_data_directory = self.corpus.subset_directory(subset, self.feature_config)
+            try:
+                log_dir = os.path.join(self.align_directory, 'log')
+                os.makedirs(log_dir, exist_ok=True)
+                shutil.copy(os.path.join(self.train_directory, 'tree'), self.align_directory)
+                shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
+                                os.path.join(self.align_directory, 'final.mdl'))
+
+                if os.path.exists(os.path.join(self.train_directory, 'lda.mat')):
+                    shutil.copyfile(os.path.join(self.train_directory, 'lda.mat'),
+                                    os.path.join(self.align_directory, 'lda.mat'))
+                shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
+                                os.path.join(self.align_directory, 'final.occs'))
+                compile_train_graphs(self.align_directory, self.dictionary.output_directory,
+                                     align_data_directory, self.corpus.num_jobs, self)
+                if align_data_directory == self.data_directory and os.path.exists(os.path.join(self.train_directory, 'trans.0')):
+                    for i in range(self.corpus.num_jobs):
+                        shutil.copy(os.path.join(self.train_directory, 'trans.{}'.format(i)),
+                                    os.path.join(self.align_directory, 'trans.{}'.format(i)))
+                align('final', self.align_directory, align_data_directory,
+                      self.dictionary.optional_silence_csl,
+                      self.corpus.num_jobs, self, self.align_directory)
+
+                if not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
+                    calc_fmllr(self.align_directory, align_data_directory,
+                          self.dictionary.optional_silence_csl, self.corpus.num_jobs, self, initial=True, iteration='final')
+                    align('final', self.align_directory, align_data_directory,
+                          self.dictionary.optional_silence_csl,
+                          self.corpus.num_jobs, self, self.align_directory)
+                self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
+            except Exception as e:
+                with open(dirty_path, 'w'):
+                    pass
+                if isinstance(e, KaldiProcessingError):
+                    log_kaldi_errors(e.error_logs, self.logger)
+                raise
+            with open(done_path, 'w'):
+                pass
+            self.logger.debug('Alignment took {} seconds'.format(time.time() - begin))
+        else:
+            self.logger.info('Alignments using {} models already done'.format(self.identifier))
+        if self.debug:
+            self.export_textgrids()
+
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
         self.feature_config.fmllr = False
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
@@ -150,6 +211,8 @@ class SatTrainer(TriphoneTrainer):
         context_opts = []
         ci_phones = self.dictionary.silence_csl
         try:
+            if os.path.exists(os.path.join(align_directory, 'lda.mat')):
+                shutil.copyfile(os.path.join(align_directory, 'lda.mat'), os.path.join(self.train_directory, 'lda.mat'))
             tree_stats(self.train_directory, align_directory,
                        self.data_directory, ci_phones, self.corpus.num_jobs, self)
             log_path = os.path.join(self.log_directory, 'questions.log')
@@ -206,13 +269,14 @@ class SatTrainer(TriphoneTrainer):
 
             convert_alignments(self.train_directory, align_directory, self.corpus.num_jobs, self)
 
-            calc_fmllr(self.train_directory, self.data_directory,
-                       self.dictionary.silence_csl, self.corpus.num_jobs, self, initial=True)
-
             if os.path.exists(os.path.join(align_directory, 'trans.0')):
                 for i in range(self.corpus.num_jobs):
                     shutil.copy(os.path.join(align_directory, 'trans.{}'.format(i)),
                                 os.path.join(self.train_directory, 'trans.{}'.format(i)))
+            else:
+
+                calc_fmllr(self.train_directory, self.data_directory,
+                           self.dictionary.silence_csl, self.corpus.num_jobs, self, initial=True)
             parse_logs(self.log_directory)
         except Exception as e:
             with open(dirty_path, 'w'):

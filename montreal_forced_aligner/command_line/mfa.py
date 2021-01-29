@@ -223,6 +223,7 @@ classify_speakers_parser.add_argument('output_directory',
 
 classify_speakers_parser.add_argument('-s', '--num_speakers', type=int, default=0,
                                       help='Number of speakers if known')
+classify_speakers_parser.add_argument('--cluster', help="Using clustering instead of classification", action='store_true')
 classify_speakers_parser.add_argument('-t', '--temp_directory', type=str, default='',
                                       help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
 classify_speakers_parser.add_argument('-j', '--num_jobs', type=int, default=3,
