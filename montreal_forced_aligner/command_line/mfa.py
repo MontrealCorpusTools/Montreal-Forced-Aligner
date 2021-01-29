@@ -232,6 +232,8 @@ classify_speakers_parser.add_argument('-v', '--verbose', help="Output debug mess
                                       action='store_true')
 classify_speakers_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 classify_speakers_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+classify_speakers_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)",
+                                      action='store_true')
 classify_speakers_parser.add_argument('--config_path', type=str, default='',
                                       help='Path to config file to use for ivector extraction')
 

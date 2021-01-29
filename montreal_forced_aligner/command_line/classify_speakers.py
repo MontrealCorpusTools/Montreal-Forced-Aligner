@@ -29,9 +29,10 @@ def classify_speakers(args):
     conf_path = os.path.join(data_directory, 'config.yml')
     logger = setup_logger(command, data_directory)
     if args.config_path:
-        diarization_config = classification_yaml_to_config(args.config_path)
+        classification_config = classification_yaml_to_config(args.config_path)
     else:
-        diarization_config = load_basic_classification()
+        classification_config = load_basic_classification()
+    classification_config.use_mp = not args.disable_mp
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         logger.info('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
@@ -68,11 +69,11 @@ def classify_speakers(args):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = TranscribeCorpus(args.corpus_directory, data_directory,
-                        num_jobs=args.num_jobs, logger=logger, use_mp=diarization_config.use_mp)
+                        num_jobs=args.num_jobs, logger=logger, use_mp=classification_config.use_mp)
         ivector_extractor = IvectorExtractor(args.ivector_extractor_path, root_directory=data_directory)
 
         begin = time.time()
-        a = SpeakerClassifier(corpus, ivector_extractor, diarization_config,
+        a = SpeakerClassifier(corpus, ivector_extractor, classification_config,
                               temp_directory=data_directory,
                               debug=getattr(args, 'debug', False), logger=logger, num_speakers=args.num_speakers,
                               cluster=args.cluster)
