@@ -453,6 +453,11 @@ def basic_train_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def transcribe_config(config_directory):
+    return os.path.join(config_directory, 'transcribe.yaml')
+
+
+@pytest.fixture(scope='session')
 def basic_train_lm_config(config_directory):
     return os.path.join(config_directory, 'basic_train_lm.yaml')
 
