@@ -3,6 +3,7 @@ import math
 import subprocess
 import re
 import logging
+import sys
 from collections import defaultdict, Counter
 
 from .helper import thirdparty_binary
@@ -591,8 +592,11 @@ class Dictionary(object):
 
     def _write_word_file(self):
         words_path = os.path.join(self.output_directory, 'words.txt')
-
-        with open(words_path, 'w', encoding='utf8') as f:
+        if sys.platform == 'win32':
+            newline = ''
+        else:
+            newline = None
+        with open(words_path, 'w', encoding='utf8', newline=newline) as f:
             for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(w, i))
 

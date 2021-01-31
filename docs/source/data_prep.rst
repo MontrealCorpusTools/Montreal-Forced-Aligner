@@ -17,11 +17,22 @@ Prior to running the aligner, make sure the following are set up:
 
 The sound files and the orthographic annotations should be contained in one directory structured as follows::
 
-	+-- corpus_directory
+	+-- textgrid_corpus_directory
 	|	--- recording1.wav
 	|	--- recording1.TextGrid
 	|	--- recording2.wav
 	|	--- recording2.TextGrid
+	|	--- ...
+
+	+-- prosodylab_corpus_directory
+	|   +-- speaker1
+	|	    --- recording1.wav
+	|	    --- recording1.lab
+	|	    --- recording2.wav
+	|	    --- recording2.lab
+	|   +-- speaker2
+	|	    --- recording3.wav
+	|	    --- recording3.lab
 	|	--- ...
 
 

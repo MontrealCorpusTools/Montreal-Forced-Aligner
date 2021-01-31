@@ -21,7 +21,7 @@ All platforms
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
 2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1`
 3. Run :code:`pip install montreal-forced-aligner`
-5. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
+4. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
 
 .. _collect_binaries:
 
@@ -51,12 +51,11 @@ Supported functionality
 Currently in the 2.0 alpha, supported functionality is somewhat fragmented across platforms.  Native support for features
 is as follows.  Note that Windows can use Windows Subsystem for Linux to use the Linux version as necessary.
 
-
 .. csv-table::
    :header: "Feature", "Linux support", "Windows support", "MacOS support"
 
    "Alignment", "Yes", "Yes", "Yes"
    "G2P", "Yes", "No", "Yes"
-   "Transcribe", "Yes", "No", "Need kaldi binaries built locally"
+   "Transcribe", "Yes", "Yes", "Yes"
    "Train LM", "Yes", "No", "Yes"
-   "Train dictionary", "Yes", "No", "Need kaldi binaries built locally"
+   "Train dictionary", "Yes", "Yes", "Yes"

@@ -86,6 +86,10 @@ def create_segments(args, unknown_args=None):
         conf['dirty'] = True
         raise
     finally:
+        handlers = logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            logger.removeHandler(handler)
         with open(conf_path, 'w') as f:
             yaml.dump(conf, f)
 

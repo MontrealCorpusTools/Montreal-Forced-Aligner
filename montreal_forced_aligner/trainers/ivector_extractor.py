@@ -45,28 +45,22 @@ class IvectorExtractorTrainer(BaseTrainer):
         self.ubm_num_gselect = 30
         self.ubm_num_frames = 500000
         self.ubm_num_gaussians = 256
-        self.num_components = 2048
         self.ubm_num_iterations_init = 20
         self.ubm_initial_gaussian_proportion = 0.5
-        self.ubm_cleanup = True
         self.ubm_min_gaussian_weight = 0.0001
 
         self.ubm_remove_low_count_gaussians = True
 
         self.ivector_dimension = 128
-        self.use_weights = False
-        self.ivector_period = 10
         self.num_iterations = 10
         self.num_gselect = 20
         self.posterior_scale = 1.0
         self.silence_weight = 0.0
         self.min_post = 0.025
-        self.num_samples_for_weights = 3
         self.gaussian_min_count = 100
         self.subsample = 5
         self.max_count = 100
         self.apply_cmn = True
-        self.pca_dimension = -1
         self.previous_align_directory = None
 
     @property
@@ -76,7 +70,6 @@ class IvectorExtractorTrainer(BaseTrainer):
             'version': __version__,
             'ivector_dimension': self.ivector_dimension,
             'apply_cmn': self.apply_cmn,
-            'ivector_period': self.ivector_period,
             'num_gselect': self.num_gselect,
             'min_post': self.min_post,
             'posterior_scale': self.posterior_scale,
@@ -110,7 +103,8 @@ class IvectorExtractorTrainer(BaseTrainer):
         feat_name = self.feature_file_base_name
         all_feats_path = os.path.join(self.corpus.output_directory, feat_name + '.scp')
         feature_string = self.feature_config.construct_feature_proc_string(self.corpus.output_directory,
-                                                                           self.train_directory, job_name=None)
+                                                                           self.train_directory,
+                                                                           job_name=None, cmvn=self.apply_cmn)
         with open(all_feats_path, 'w') as outf:
             for i in range(self.corpus.num_jobs):
                 with open(os.path.join(self.data_directory,

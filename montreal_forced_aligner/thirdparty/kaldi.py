@@ -52,7 +52,7 @@ speaker_diarization_filenames = [
 
 included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames + speaker_diarization_filenames
 if sys.platform == 'win32':
-    included_filenames += ['fstcompile', 'fstarcsort']
+    included_filenames += ['fstcompile', 'fstarcsort', 'fstconvert']
 
 linux_libraries = [#'libfst.so.13', 'libfstfar.so.13',
                    #'libfstscript.so.13', 'libfstfarscript.so.13',

@@ -1,13 +1,13 @@
-.. _create_segments:
+.. _classify_speakers:
 
-***************
-Create segments
-***************
+**********************
+Speaker classification
+**********************
 
-The Montreal Forced Aligner can use Voice Activity Detection (VAD) capabilities from Kaldi to generate segments from
-a longer sound file.
+The Montreal Forced Aligner can use trained ivector models (see :ref:`train_ivector` for more information about training
+these models) to classify or cluster utterances according to speakers.
 
-Steps to create segments:
+Steps to classify speakers:
 
 
 1. Provided the steps in :ref:`installation` have been completed and you are in the same Conda/virtual environment that
@@ -16,14 +16,7 @@ Steps to create segments:
 
   .. code-block:: bash
 
-     mfa create_segments corpus_directory output_directory
-
-
-.. note::
-
-   The default configuration for VAD uses configuration values based on quiet speech. The algorithm is based on energy,
-   so if your recordings are more noisy, you may need to adjust the configuration.  See :ref:`configuration_segments`
-   for more information on changing these parameters.
+     mfa classify_speakers corpus_directory ivector_extractor_path output_directory
 
 
 Options available:
@@ -32,11 +25,6 @@ Options available:
                --help
 
   Display help message for the command
-
-.. option:: --config_path PATH
-
-   Path to a YAML config file that will specify the alignment configuration. See
-   :ref:`align_config` for more details.
 
 .. option:: -t DIRECTORY
                --temp_directory DIRECTORY
@@ -48,6 +36,17 @@ Options available:
 
   Number of jobs to use; defaults to 3, set higher if you have more
   processors available and would like to process faster
+
+.. option:: -s NUMBER
+               --num_speakers NUMBER
+
+  Number of speakers to return.  If ``--cluster`` is present, this specifies the number of clusters.  Otherwise,
+  MFA will sort speakers according to the first pass classification and then takes the top X speakers, and reclassify
+  the utterances to only use those speakers.
+
+.. option:: --cluster
+
+  MFA will perform clustering of utterance ivectors into the number of speakers specified by ``--num_speakers``
 
 .. option:: -v
                --verbose

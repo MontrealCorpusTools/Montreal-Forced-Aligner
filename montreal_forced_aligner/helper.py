@@ -43,7 +43,11 @@ def output_mapping(mapping, path):
 
 
 def save_scp(scp, path, sort=True, multiline=False):
-    with open(path, 'w', encoding='utf8') as f:
+    if sys.platform == 'win32':
+        newline = ''
+    else:
+        newline = None
+    with open(path, 'w', encoding='utf8', newline=newline) as f:
         if sort:
             scp = sorted(scp)
         for line in scp:

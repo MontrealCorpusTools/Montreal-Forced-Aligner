@@ -108,6 +108,10 @@ def train_ivector(args):
         conf['dirty'] = True
         raise e
     finally:
+        handlers = logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            logger.removeHandler(handler)
         with open(conf_path, 'w') as f:
             yaml.dump(conf, f)
 

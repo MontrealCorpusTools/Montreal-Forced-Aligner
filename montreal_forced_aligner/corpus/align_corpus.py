@@ -618,12 +618,11 @@ class AlignableCorpus(BaseCorpus):
                         continue
                     outf.write('{} {}\n'.format(speaker, cmvn))
             if feature_config is not None:
-                for fid in [feature_config.feature_id, feature_config.spliced_feature_id, feature_config.raw_feature_id]:
-                    base_path = os.path.join(split_directory, fid + '.{}.scp'.format(j))
-                    subset_scp = os.path.join(subset_directory, fid + '.{}.scp'.format(j))
-                    if os.path.exists(subset_scp):
-                        continue
-                    filtered = filter_scp(subset_utts, base_path)
-                    with open(subset_scp, 'w') as f:
-                        for line in filtered:
-                            f.write(line.strip() + '\n')
+                base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(j))
+                subset_scp = os.path.join(subset_directory, feature_config.feature_id + '.{}.scp'.format(j))
+                if os.path.exists(subset_scp):
+                    continue
+                filtered = filter_scp(subset_utts, base_path)
+                with open(subset_scp, 'w') as f:
+                    for line in filtered:
+                        f.write(line.strip() + '\n')

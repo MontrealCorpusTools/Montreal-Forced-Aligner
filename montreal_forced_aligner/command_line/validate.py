@@ -47,6 +47,10 @@ def validate_corpus(args):
     logger.debug('Validation took {} seconds'.format(time.time() - begin))
     logger.info('All done!')
     logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        logger.removeHandler(handler)
 
 
 def validate_args(args, downloaded_acoustic_models=None, download_dictionaries=None):

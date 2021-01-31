@@ -19,11 +19,9 @@ Contents:
    data_validation.rst
    aligning.rst
    example.rst
-   configuration.rst
+   corpus_creation.rst
    g2p.rst
-   transcribing.rst
-   training_dictionary.rst
-   training_lm.rst
+   configuration.rst
    annotator.rst
    pretrained_models.rst
    changelog.rst
