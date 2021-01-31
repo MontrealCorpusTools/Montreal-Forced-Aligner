@@ -8,7 +8,7 @@ from .config import TEMP_DIR
 from .helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
 
-from .multiprocessing import extract_ivectors, transform_ivectors, score_plda, cluster, classify_speakers
+from .multiprocessing import extract_ivectors, classify_speakers
 
 from .helper import load_scp, save_scp
 
@@ -70,20 +70,6 @@ class SpeakerClassifier(object):
         return self.ivector_extractor.meta
 
     @property
-    def plda_options(self):
-        return {'target_energy': self.classification_config.target_energy}
-
-    @property
-    def cluster_options(self):
-        return {
-            'cluster_threshold': self.classification_config.cluster_threshold,
-            'max_speaker_fraction': self.classification_config.max_speaker_fraction,
-            'first_pass_max_utterances': self.classification_config.first_pass_max_utterances,
-            'rttm_channel': self.classification_config.rttm_channel,
-            'read_costs': self.classification_config.read_costs,
-        }
-
-    @property
     def use_mp(self):
         return self.classification_config.use_mp
 
@@ -139,8 +125,11 @@ class SpeakerClassifier(object):
                 self.ivectors[utt] = ivector
 
     def load_classifier(self):
+        import warnings
         mdl_path = os.path.join(self.classify_directory, 'speaker_classifier.mdl')
-        self.classifier = load(mdl_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.classifier = load(mdl_path)
 
         labels_path = os.path.join(self.classify_directory, 'speaker_labels.txt')
         with open(labels_path, 'r', encoding='utf8') as f:

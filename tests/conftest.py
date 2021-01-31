@@ -468,6 +468,11 @@ def basic_align_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def basic_segment_config(config_directory):
+    return os.path.join(config_directory, 'basic_segment_config.yaml')
+
+
+@pytest.fixture(scope='session')
 def train_ivector_config(config_directory):
     return os.path.join(config_directory, 'ivector_train.yaml')
 

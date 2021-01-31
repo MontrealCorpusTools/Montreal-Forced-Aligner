@@ -6,6 +6,7 @@ from .train_config import TrainingConfig, load_basic_train, load_basic_train_ive
     train_yaml_to_config
 from .train_lm_config import TrainLMConfig, load_basic_train_lm, train_lm_yaml_to_config
 from .transcribe_config import TranscribeConfig, load_basic_transcribe, transcribe_yaml_to_config
+from .segmentation_config import SegmentationConfig, segmentation_yaml_to_config, load_basic_segmentation
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 

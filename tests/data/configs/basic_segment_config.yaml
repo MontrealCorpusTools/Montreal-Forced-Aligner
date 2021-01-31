@@ -1,0 +1,6 @@
+use_mp: false
+
+energy_threshold: 9
+energy_mean_scale: 0.5
+max_segment_length: 30
+min_pause_duration: 0.25

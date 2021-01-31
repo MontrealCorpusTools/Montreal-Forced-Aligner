@@ -17,6 +17,7 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import run_tra
 from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
+from montreal_forced_aligner.command_line.create_segments import run_create_segments
 
 
 def fix_path():
@@ -237,6 +238,24 @@ classify_speakers_parser.add_argument('--disable_mp', help="Disable multiprocess
 classify_speakers_parser.add_argument('--config_path', type=str, default='',
                                       help='Path to config file to use for ivector extraction')
 
+create_segments_parser = subparsers.add_parser('create_segments')
+create_segments_parser.add_argument('corpus_directory', help='Full path to the source directory to '
+                                                               'run VAD segmentation')
+create_segments_parser.add_argument('output_directory',
+                                      help="Full path to output directory, will be created if it doesn't exist")
+
+create_segments_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                                      help='Temporary directory root to use for segmentation, default is '
+                                           '~/Documents/MFA')
+create_segments_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                                      help='Number of cores to use while creating segments')
+create_segments_parser.add_argument('-v', '--verbose', help="Output debug messages about segmentation",
+                                      action='store_true')
+create_segments_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+create_segments_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+create_segments_parser.add_argument('--config_path', type=str, default='',
+                                      help='Path to config file to use for segmentation')
+
 transcribe_parser = subparsers.add_parser('transcribe')
 transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')
 transcribe_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
@@ -339,6 +358,8 @@ def main():
         run_thirdparty(args)
     elif args.subcommand == 'transcribe':
         run_transcribe_corpus(args)
+    elif args.subcommand == 'create_segments':
+        run_create_segments(args, unknown)
     unfix_path()
 
 

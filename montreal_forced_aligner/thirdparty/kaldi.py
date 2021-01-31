@@ -29,7 +29,7 @@ alignment_filenames = ['acc-lda', 'acc-tree-stats', 'add-deltas', 'ali-to-pdf', 
                        'nbest-to-ctm', 'paste-feats', 'post-to-weights', 'select-feats',
                        'show-transitions',
                        'splice-feats', 'sum-lda-accs', 'sum-tree-stats', 'transform-feats',
-                       'tree-info', 'weight-silence-post']
+                       'tree-info', 'weight-silence-post', 'subset-feats']
 
 train_dict_filenames = ['nbest-to-prons']
 
@@ -42,13 +42,12 @@ transcribe_filenames = [
 ]
 
 speaker_diarization_filenames = [
-    'compute-vad', 'apply-cmvn-sliding', 'fgmm-global-to-gmm', 'fgmm-global-gselect-to-post', 'ivector-mean', 'est-pca',
-    'ivector-subtract-global-mean', 'transform-vec', 'ivector-normalize-length', 'ivector-plda-scoring-dense',
-    'agglomerative-cluster', 'ivector-compute-plda', 'subsample-feats', 'scale-post',
+    'compute-vad', 'apply-cmvn-sliding',
+    'subsample-feats', 'scale-post',
     'ivector-extract', 'ivector-extractor-acc-stats', 'ivector-extractor-est', 'ivector-extractor-init',
-    'ivector-extractor-sum-accs', 'fgmm-global-acc-stats', 'gmm-global-acc-stats', 'gmm-global-est',
+    'ivector-extractor-sum-accs', 'gmm-global-acc-stats', 'gmm-global-est',
     'gmm-global-get-post', 'gmm-global-init-from-feats', 'gmm-global-sum-accs', 'gmm-global-to-fgmm',
-    'gmm-gselect', 'select-voiced-frames', 'fgmm-global-est', 'fgmm-global-sum-accs', #'copy-vector'
+    'gmm-gselect', 'select-voiced-frames',
 ]
 
 included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames + speaker_diarization_filenames
@@ -96,9 +95,12 @@ def collect_kaldi_binaries(directory):
             if value == exe_ext:
                 if key not in included_filenames:
                     continue
-                shutil.copy(os.path.join(root, name), bin_out)
-                st = os.stat(bin_out)
-                os.chmod(bin_out, st.st_mode | stat.S_IEXEC)
+                try:
+                    shutil.copy(os.path.join(root, name), bin_out)
+                    st = os.stat(bin_out)
+                    os.chmod(bin_out, st.st_mode | stat.S_IEXEC)
+                except OSError:
+                    pass
             elif name in included_libraries[sys.platform]:
                 shutil.copy(os.path.join(root, name), bin_out)
             else:

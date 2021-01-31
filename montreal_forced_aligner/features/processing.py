@@ -76,14 +76,13 @@ def mfcc(mfcc_directory, num_jobs, feature_config):
 
 def compute_vad_func(directory, vad_config, job_name):
     feats_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
-    vad_ark_path = os.path.join(directory, 'vad.{}.ark'.format(job_name))
     vad_scp_path = os.path.join(directory, 'vad.{}.scp'.format(job_name))
     with open(os.path.join(directory, 'log', 'vad.{}.log'.format(job_name)), 'w') as log_file:
         vad_proc = subprocess.Popen([thirdparty_binary('compute-vad'),
                                      '--vad-energy-mean-scale={}'.format(vad_config['energy_mean_scale']),
                                      '--vad-energy-threshold={}'.format(vad_config['energy_threshold']),
                                      'scp:' + feats_path,
-                                     'ark,scp:{},{}'.format(vad_ark_path, vad_scp_path)],
+                                     'ark,t:{}'.format(vad_scp_path)],
                                     stderr=log_file
                                     )
         vad_proc.communicate()

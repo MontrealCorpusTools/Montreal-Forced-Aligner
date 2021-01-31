@@ -12,7 +12,7 @@ from .helper import make_path_safe, run_mp, run_non_mp, thirdparty_binary, parse
 
 
 
-def generate_pronunciations_func(align_config, model_directory, dictionary, corpus, job_name):
+def generate_pronunciations_func(model_directory, dictionary, corpus, job_name):
     text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'pronunciation.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
@@ -46,12 +46,14 @@ def generate_pronunciations_func(align_config, model_directory, dictionary, corp
 
 def generate_pronunciations(align_config, model_directory, dictionary, corpus, num_jobs):
     from collections import Counter, defaultdict
-    jobs = [(align_config, model_directory, dictionary, corpus, x)
+    log_directory = os.path.join(model_directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(model_directory, dictionary, corpus, x)
             for x in range(num_jobs)]
     if align_config.use_mp:
-        run_mp(generate_pronunciations_func, jobs, align_config.log_directory)
+        run_mp(generate_pronunciations_func, jobs, log_directory)
     else:
-        run_non_mp(generate_pronunciations_func, jobs, align_config.log_directory)
+        run_non_mp(generate_pronunciations_func, jobs, log_directory)
 
     word_lookup = dictionary.reversed_word_mapping
     phone_lookup = dictionary.reversed_phone_mapping

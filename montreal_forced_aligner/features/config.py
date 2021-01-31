@@ -135,7 +135,7 @@ class FeatureConfig(object):
         save_groups(corpus.grouped_cmvn, split_dir, pattern)
         #apply_cmvn(split_dir, corpus.num_jobs, self)
 
-    def compute_vad(self, corpus, logger=None):
+    def compute_vad(self, corpus, logger=None, vad_config=None):
         if logger is None:
             log_func = print
         else:
@@ -145,46 +145,11 @@ class FeatureConfig(object):
             log_func('VAD already computed, skipping!')
             return
         log_func('Computing VAD...')
-        compute_vad(split_directory, corpus.num_jobs, self.use_mp)
-
-    @property
-    def raw_feature_id(self):
-        name = 'features_{}'.format(self.type)
-        return name
+        compute_vad(split_directory, corpus.num_jobs, self.use_mp, vad_config=vad_config)
 
     @property
     def feature_id(self):
         return 'feats'
-        name = 'features_{}'.format(self.type)
-        if self.type == 'mfcc':
-            name += '_cmvn'
-        if self.deltas:
-            name += '_deltas'
-        elif self.lda:
-            name += '_lda'
-        if self.fmllr:
-            name += '_fmllr'
-        return name
-
-    @property
-    def voiced_feature_id(self):
-        name = 'feats_voiced'
-        return name
-
-    @property
-    def pre_ivector_feature_id(self):
-        name = 'feats_for_ivector'
-        return name
-
-    @property
-    def pre_lda_feature_id(self):
-        name = 'feats_spliced'
-        return name
-
-    @property
-    def spliced_feature_id(self):
-        name = self.raw_feature_id + '_spliced'
-        return name
 
     @property
     def fmllr_path(self):
@@ -202,10 +167,7 @@ class FeatureConfig(object):
         split_directory = corpus.split_directory()
         for job_name, config in enumerate(corpus.frequency_configs):
             self.add_job_specific_config(job_name, config[1])
-        if compute_cmvn:
-            feat_id = self.raw_feature_id
-        else:
-            feat_id = 'feats'
+        feat_id = 'feats'
         if not os.path.exists(os.path.join(split_directory, feat_id + '.0.scp')):
             log_func('Generating base features ({})...'.format(self.type))
             if self.type == 'mfcc':
@@ -214,7 +176,6 @@ class FeatureConfig(object):
             if compute_cmvn:
                 log_func('Calculating CMVN...')
                 self.calc_cmvn(corpus)
-        #corpus.parse_features_logs()
 
     def construct_feature_proc_string(self, data_directory, model_directory, job_name, splice=False, voiced=False, cmvn=True):
         if self.directory is None:
@@ -276,32 +237,4 @@ class FeatureConfig(object):
             return
         self.generate_base_features(corpus, logger=logger, compute_cmvn=cmvn)
 
-    def generate_ivector_extract_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
-        if logger is None:
-            log_func = print
-        else:
-            log_func = logger.info
-        if data_directory is None:
-            data_directory = corpus.split_directory()
-        if self.directory is None:
-            self.directory = data_directory
-        if not overwrite and os.path.exists(os.path.join(data_directory, self.pre_ivector_feature_id + '.0.scp')):
-            log_func('Features for ivector already exist, skipping!')
-            return
-        compute_ivector_features(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
-        log_func('Finished generating features for ivector extraction!')
 
-    def generate_voiced_features(self, corpus, data_directory=None, overwrite=False, apply_cmn=False, logger=None):
-        if logger is None:
-            log_func = print
-        else:
-            log_func = logger.info
-        if data_directory is None:
-            data_directory = corpus.split_directory()
-        if self.directory is None:
-            self.directory = data_directory
-        if not overwrite and os.path.exists(os.path.join(data_directory, self.voiced_feature_id + '.0.scp')):
-            log_func('Voiced features already selected, skipping!')
-            return
-        select_voiced(data_directory, corpus.num_jobs, self, apply_cmn=apply_cmn)
-        log_func('Finished selecting voiced features!')

@@ -75,9 +75,8 @@ class MonophoneTrainer(BaseTrainer):
 
         try:
             feat_dim = corpus.get_feat_dim(self.feature_config)
-            print(feat_dim)
             feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
-            #feature_string += " subset-feats --n=10 ark:- ark:-| "
+            feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
             log_path = os.path.join(self.log_directory, 'init.log')
             with open(log_path, 'w') as log_file:
