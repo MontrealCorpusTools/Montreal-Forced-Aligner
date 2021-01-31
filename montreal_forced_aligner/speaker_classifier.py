@@ -53,7 +53,6 @@ class SpeakerClassifier(object):
         self.compute_segments = compute_segments
         self.verbose = verbose
         self.logger = logger
-        self.use_vad = False
         self.classifier = None
         self.speaker_labels = {}
         self.ivectors = {}
@@ -87,7 +86,7 @@ class SpeakerClassifier(object):
         try:
             self.corpus.initialize_corpus()
             self.feature_config.generate_features(self.corpus, logger=self.logger, cmvn=False)
-            extract_ivectors(self.classify_directory, self.corpus.split_directory(), self, self.corpus.num_jobs, vad=self.use_vad)
+            extract_ivectors(self.classify_directory, self.corpus.split_directory(), self, self.corpus.num_jobs)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
