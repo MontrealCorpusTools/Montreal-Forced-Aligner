@@ -52,4 +52,3 @@ Default training config file
          silence_weight: 0.0
          posterior_scale: 0.1
          max_count: 100
-

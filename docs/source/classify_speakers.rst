@@ -18,6 +18,11 @@ Steps to classify speakers:
 
      mfa classify_speakers corpus_directory ivector_extractor_path output_directory
 
+If the input uses TextGrids, the output TextGrids will have utterances sorted into tiers by each identified speaker. At
+the moment, there is no way to retrain the classifier based on new data.
+
+If the input corpus directory does not have TextGrids associated with them, then the speaker classifier will output
+speaker directories with a text file that contains all the utterances that were classified.
 
 Options available:
 

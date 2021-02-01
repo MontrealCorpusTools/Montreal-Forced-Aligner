@@ -34,10 +34,10 @@ def generate_dictionary(args):
 
         word_set = get_word_set(corpus, args.include_bracketed)
     else:
-        word_set = set()
+        word_set = []
         with open(args.input_path, 'r', encoding='utf8') as f:
             for line in f:
-                word_set.update(line.strip().split())
+                word_set.extend(line.strip().split())
         if not args.include_bracketed:
             word_set = [x for x in word_set if not check_bracketed(x)]
 
@@ -49,7 +49,7 @@ def generate_dictionary(args):
         model.clean_up()
     else:
         with open(args.output_path, "w", encoding='utf8') as f:
-            for word in sorted(word_set):
+            for word in word_set:
                 pronunciation = list(word)
                 f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
 

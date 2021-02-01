@@ -393,7 +393,7 @@ class AlignableCorpus(BaseCorpus):
 
     @property
     def word_set(self):
-        return set(self.word_counts)
+        return list(self.word_counts)
 
     def normalized_text_iter(self, dictionary=None, min_count=1):
         unk_words = set(k for k, v in self.word_counts.items() if v <= min_count)

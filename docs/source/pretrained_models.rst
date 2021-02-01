@@ -123,6 +123,12 @@
 .. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/fr.dict
 .. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionaries/de.dict
 
+.. _`GlobalPhone language models`: https://www.csl.uni-bremen.de/GlobalPhone/
+
+.. _`LibriSpeech language models`: https://www.openslr.org/11/
+
+.. _`FalaBrasil language models`: https://gitlab.com/fb-asr/fb-asr-resources/kaldi-resources/-/tree/master/lm
+.. _`FalaBrasil dictionary`: https://gitlab.com/fb-nlp/nlp-resources/-/tree/master/res
 
 .. _pretrained_models:
 
@@ -256,12 +262,24 @@ can get a full list of the currently available dictionaries via :code:`mfa downl
 by users will be periodically added. If you would like to contribute your dictionaries, please contact Michael McAuliffe
 at michael.e.mcauliffe@gmail.com.
 
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| Language        | Link                                          | Orthography system     | Phone set              |
-+=================+===============================================+========================+========================+
-| English         | `English pronunciation dictionary`_           |   Latin                |   Arpabet (stressed)   |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| French          | `French Prosodylab dictionary`_               |   Latin                |   Prosodylab French    |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| German          | `German Prosodylab dictionary`_               |   Latin                |   Prosodylab German    |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
+.. csv-table::
+   :header: "Language", "Link", "Orthography system", "Phone set"
+
+   "English", `English pronunciation dictionary`_ , "Latin", "Arpabet (stressed)"
+   "French", `French Prosodylab dictionary`_, "Latin", "Prosodylab French"
+   "German", `German Prosodylab dictionary`_, "Latin", "Prosodylab German"
+   "Brazilian Portuguese", `FalaBrasil dictionary`_, "Latin", ""
+
+.. _language_models:
+
+Available language models
+=========================
+
+There are several places that contain pretrained language models that can be imported to MFA.
+
+.. csv-table::
+   :header: "Source", "Language", "Link"
+
+   "GlobalPhone", "Various languages", `GlobalPhone language models`_
+   "LibriSpeech", "English", `LibriSpeech language models`_
+   "FalaBrasil", "Brazilian Portuguese", `FalaBrasil language models`_

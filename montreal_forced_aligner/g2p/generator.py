@@ -145,7 +145,7 @@ class PyniniDictionaryGenerator(object):
         job_queue = mp.JoinableQueue(100)
         ind = 0
         num_words = len(self.words)
-        words = sorted(self.words)
+        words = self.words
         begin = time.time()
         last_value = 0
         missing_graphemes = set()
@@ -204,9 +204,11 @@ class PyniniDictionaryGenerator(object):
                 element, exc = return_dict['MFA_EXCEPTION']
                 print(element)
                 raise exc
-            to_return.update(return_dict)
-        print('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
-        self.logger.debug('Processed {} in {} seconds'.format(len(self.words), time.time()-begin))
+            for w in self.words:
+                if w in return_dict:
+                    to_return[w] = return_dict[w]
+        print('Processed {} in {} seconds'.format(num_words, time.time()-begin))
+        self.logger.debug('Processed {} in {} seconds'.format(num_words, time.time()-begin))
         return to_return
 
     def output(self, outfile):
