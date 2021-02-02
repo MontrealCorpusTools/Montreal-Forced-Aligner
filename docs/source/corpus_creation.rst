@@ -1,8 +1,8 @@
 .. _corpus_creation:
 
-***************
-Corpus creation
-***************
+*************************
+Corpus creation utilities
+*************************
 
 MFA now contains several command line utilities for helping to create corpora from scratch.  The main workflow is as
 follows:

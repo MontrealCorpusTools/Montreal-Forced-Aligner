@@ -42,7 +42,8 @@ Files created when using the Montreal Forced Aligner
 The aligner will save data and logs for the models it trains in a new folder,
 ``Documents/MFA`` (which it creates in your user's home directory).  If a model for a corpus already
 exists in MFA, it will use any existing models if you try to align it again.
-(If this is not desired, delete or move the old model folder.)  You can specify your own temporary directory by using the ``-t``
+(If this is not desired, delete or move the old model folder or use the ``--clean`` flag.)
+You can specify your own temporary directory by using the ``-t``
 flag when calling the executable.
 
 Supported functionality
@@ -59,3 +60,8 @@ is as follows.  Note that Windows can use Windows Subsystem for Linux to use the
    "Transcribe", "Yes", "Yes", "Yes"
    "Train LM", "Yes", "No", "Yes"
    "Train dictionary", "Yes", "Yes", "Yes"
+
+.. warning::
+
+   The prebuilt Kaldi binaries were built on Ubuntu 18.04 and MacOSX 10.15 (Catalina).  If you're using an older version
+   of either of those, follow the instructions in :ref:`collect_binaries`.
