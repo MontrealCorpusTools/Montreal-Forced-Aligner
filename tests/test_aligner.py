@@ -4,23 +4,11 @@ import shutil
 
 from montreal_forced_aligner.aligner import TrainableAligner, PretrainedAligner
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.config import load_basic_align
 
 
 #@pytest.mark.skip(reason='Optimization')
-def test_sick_ivector(sick_dict, sick_corpus, generated_dir, ivector_train_config):
-    shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
-    os.makedirs(sick_corpus.output_directory, exist_ok=True)
-    ivector_train_config, align_config = ivector_train_config
-    data_directory = os.path.join(generated_dir, 'temp', 'ivector_test')
-    shutil.rmtree(data_directory, ignore_errors=True)
-    a = TrainableAligner(sick_corpus, sick_dict, ivector_train_config, align_config,
-                         temp_directory=data_directory)
-    a.train()
-
-
-#@pytest.mark.skip(reason='Optimization')
-def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config, mono_align_model_path, mono_align_config, mono_output_directory):
+def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config, mono_align_model_path,
+                   mono_align_config, mono_output_directory):
     shutil.rmtree(sick_corpus.output_directory, ignore_errors=True)
     os.makedirs(sick_corpus.output_directory, exist_ok=True)
     mono_train_config, align_config = mono_train_config

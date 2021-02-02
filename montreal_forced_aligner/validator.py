@@ -2,7 +2,8 @@ import os
 from decimal import Decimal
 import subprocess
 
-from .helper import thirdparty_binary, load_scp, edit_distance
+from .helper import thirdparty_binary, load_scp, edit_distance, log_kaldi_errors
+from .exceptions import KaldiProcessingError
 from .multiprocessing import run_mp, run_non_mp
 
 from .trainers import MonophoneTrainer
@@ -26,6 +27,9 @@ def test_utterances_func(validator, job_name):
     log_path = os.path.join(aligner.align_directory, 'log', 'decode.0.{}.log'.format(job_name))
     words_path = os.path.join(validator.dictionary.output_directory, 'words.txt')
     mdl_path = os.path.join(aligner.align_directory, 'final.mdl')
+
+    split_directory = validator.corpus.split_directory()
+    feat_string = aligner.feature_config.construct_feature_proc_string(split_directory, aligner.align_directory, job_name)
     feat_path = os.path.join(validator.corpus.split_directory(),
                              aligner.feature_file_base_name + '.{}.scp'.format(job_name))
     graphs_path = os.path.join(aligner.align_directory, 'utterance_graphs.{}.fst'.format(job_name))
@@ -44,7 +48,7 @@ def test_utterances_func(validator, job_name):
                                         '--beam={}'.format(beam),
                                         '--max-active={}'.format(max_active), '--lattice-beam={}'.format(lattice_beam),
                                         '--word-symbol-table=' + words_path,
-                                        mdl_path, 'ark:' + graphs_path, 'scp:' + feat_path, 'ark:' + lat_path],
+                                        mdl_path, 'ark:' + graphs_path, feat_string, 'ark:' + lat_path],
                                        stderr=logf)
         latgen_proc.communicate()
 
@@ -83,7 +87,7 @@ def compile_utterance_train_graphs_func(validator, job_name):  # pragma: no cove
                                  '--read-disambig-syms={}'.format(disambig_int_path),
                                  tree_path, mdl_path,
                                  lexicon_fst_path,
-                                 "ark:"+fsts_path, "ark:" + graphs_path],
+                                 "ark:" + fsts_path, "ark:" + graphs_path],
                                 stderr=logf)
 
         proc.communicate()
@@ -162,17 +166,20 @@ class CorpusValidator(object):
     '''
 
     def __init__(self, corpus, dictionary, temp_directory=None, ignore_acoustics=False, test_transcriptions=False,
-                 use_mp=True):
+                 use_mp=True, logger=None):
         self.dictionary = dictionary
         self.corpus = corpus
         self.temp_directory = temp_directory
         self.test_transcriptions = test_transcriptions
         self.ignore_acoustics = ignore_acoustics
         self.trainer = MonophoneTrainer(FeatureConfig())
+        self.logger = logger
+        self.trainer.logger = logger
         self.trainer.update({"use_mp": use_mp})
         self.setup()
 
     def setup(self):
+        self.dictionary.set_word_set(self.corpus.word_set)
         self.dictionary.write()
         if self.test_transcriptions:
             self.dictionary.write(disambig=True)
@@ -190,22 +197,22 @@ class CorpusValidator(object):
         ignored_count = len(self.corpus.no_transcription_files)
         ignored_count += len(self.corpus.textgrid_read_errors)
         ignored_count += len(self.corpus.decode_error_files)
-        print(self.corpus_analysis_template.format(len(self.corpus.wav_files),
-                                                   self.corpus.lab_count,
-                                                   self.corpus.tg_count,
-                                                   ignored_count,
-                                                   len(self.corpus.speak_utt_mapping),
-                                                   self.corpus.num_utterances,
-                                                   total_duration,
-                                                   self.analyze_oovs(),
-                                                   self.analyze_wav_errors(),
-                                                   self.analyze_missing_features(),
-                                                   self.analyze_files_with_no_transcription(),
-                                                   self.analyze_transcriptions_with_no_wavs(),
-                                                   self.analyze_textgrid_read_errors(),
-                                                   self.analyze_unreadable_text_files(),
-                                                   self.analyze_unsupported_sample_rates()
-                                                   ))
+        self.logger.info(self.corpus_analysis_template.format(len(self.corpus.wav_files),
+                                                              self.corpus.lab_count,
+                                                              self.corpus.tg_count,
+                                                              ignored_count,
+                                                              len(self.corpus.speak_utt_mapping),
+                                                              self.corpus.num_utterances,
+                                                              total_duration,
+                                                              self.analyze_oovs(),
+                                                              self.analyze_wav_errors(),
+                                                              self.analyze_missing_features(),
+                                                              self.analyze_files_with_no_transcription(),
+                                                              self.analyze_transcriptions_with_no_wavs(),
+                                                              self.analyze_textgrid_read_errors(),
+                                                              self.analyze_unreadable_text_files(),
+                                                              self.analyze_unsupported_sample_rates()
+                                                              ))
 
     def analyze_oovs(self):
         output_dir = self.corpus.output_directory
@@ -391,55 +398,63 @@ class CorpusValidator(object):
             self.test_utterance_transcriptions()
 
     def test_utterance_transcriptions(self):
-        print('Checking utterance transcriptions...')
+        self.logger.info('Checking utterance transcriptions...')
 
         split_directory = self.corpus.split_directory()
         model_directory = self.trainer.align_directory
+        log_directory = os.path.join(model_directory, 'log')
 
-        jobs = [(self, x)
-                for x in range(self.corpus.num_jobs)]
-        if self.trainer.feature_config.use_mp:
-            run_mp(compile_utterance_train_graphs_func, jobs)
-        else:
-            run_non_mp(compile_utterance_train_graphs_func, jobs)
-        print('Utterance FSTs compiled!')
-        print('Decoding utterances (this will take some time)...')
-        if self.trainer.feature_config.use_mp:
-            run_mp(test_utterances_func, jobs)
-        else:
-            run_non_mp(test_utterances_func, jobs)
-        print('Finished decoding utterances!')
+        try:
 
-        word_mapping = self.dictionary.reversed_word_mapping
-        errors = {}
+            jobs = [(self, x)
+                    for x in range(self.corpus.num_jobs)]
+            if self.trainer.feature_config.use_mp:
+                run_mp(compile_utterance_train_graphs_func, jobs, log_directory)
+            else:
+                run_non_mp(compile_utterance_train_graphs_func, jobs, log_directory)
+            self.logger.info('Utterance FSTs compiled!')
+            self.logger.info('Decoding utterances (this will take some time)...')
+            if self.trainer.feature_config.use_mp:
+                run_mp(test_utterances_func, jobs, log_directory)
+            else:
+                run_non_mp(test_utterances_func, jobs, log_directory)
+            self.logger.info('Finished decoding utterances!')
 
-        for job in range(self.corpus.num_jobs):
-            text_path = os.path.join(split_directory, 'text.{}'.format(job))
-            texts = load_scp(text_path)
-            aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
-            with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
-                for utt, line in sorted(aligned_int.items()):
-                    text = []
-                    for t in line:
-                        text.append(word_mapping[int(t)])
-                    outf.write('{} {}\n'.format(utt, ' '.join(text)))
-                    ref_text = texts[utt]
-                    edits = edit_distance(text, ref_text)
+            word_mapping = self.dictionary.reversed_word_mapping
+            errors = {}
 
-                    if edits:
-                        errors[utt] = (edits, ref_text, text)
-        if not errors:
-            message = 'There were no utterances with transcription issues.'
-        else:
-            out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
-            with open(out_path, 'w') as problemf:
-                problemf.write('Utterance,Edits,Reference,Decoded\n')
-                for utt, (edits, ref_text, text) in sorted(errors.items(),
-                                                           key=lambda x: -1 * (
-                                                                   len(x[1][1]) + len(x[1][2]))):
-                    problemf.write('{},{},{},{}\n'.format(utt, edits,
-                                                          ' '.join(ref_text), ' '.join(text)))
-            message = 'There were {} of {} utterances with at least one transcription issue. ' \
-                      'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
+            for job in range(self.corpus.num_jobs):
+                text_path = os.path.join(split_directory, 'text.{}'.format(job))
+                texts = load_scp(text_path)
+                aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))
+                with open(os.path.join(model_directory, 'aligned.{}'.format(job)), 'w') as outf:
+                    for utt, line in sorted(aligned_int.items()):
+                        text = []
+                        for t in line:
+                            text.append(word_mapping[int(t)])
+                        outf.write('{} {}\n'.format(utt, ' '.join(text)))
+                        ref_text = texts[utt]
+                        edits = edit_distance(text, ref_text)
 
-        print(self.transcription_analysis_template.format(message))
+                        if edits:
+                            errors[utt] = (edits, ref_text, text)
+            if not errors:
+                message = 'There were no utterances with transcription issues.'
+            else:
+                out_path = os.path.join(self.corpus.output_directory, 'transcription_problems.csv')
+                with open(out_path, 'w') as problemf:
+                    problemf.write('Utterance,Edits,Reference,Decoded\n')
+                    for utt, (edits, ref_text, text) in sorted(errors.items(),
+                                                               key=lambda x: -1 * (
+                                                                       len(x[1][1]) + len(x[1][2]))):
+                        problemf.write('{},{},{},{}\n'.format(utt, edits,
+                                                              ' '.join(ref_text), ' '.join(text)))
+                message = 'There were {} of {} utterances with at least one transcription issue. ' \
+                          'Please see the outputted csv file {}.'.format(len(errors), self.corpus.num_utterances, out_path)
+
+            self.logger.info(self.transcription_analysis_template.format(message))
+
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+            raise

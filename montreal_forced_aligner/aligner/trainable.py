@@ -1,6 +1,9 @@
 from ..multiprocessing import (convert_ali_to_textgrids)
 from .base import BaseAligner
 
+from ..helper import log_kaldi_errors
+from ..exceptions import KaldiProcessingError
+
 
 class TrainableAligner(BaseAligner):
     """
@@ -24,16 +27,22 @@ class TrainableAligner(BaseAligner):
     """
 
     def __init__(self, corpus, dictionary, training_config, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False):
+                 call_back=None, debug=False, verbose=False, logger=None):
         self.training_config = training_config
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
-                                               call_back, debug, verbose)
+                                               call_back, debug, verbose, logger)
 
     def setup(self):
-        self.dictionary.write()
+        if self.dictionary is not None:
+            self.dictionary.set_word_set(self.corpus.word_set)
+            self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         for identifier, trainer in self.training_config.items():
-            trainer.feature_config.generate_features(self.corpus)
+            try:
+                trainer.feature_config.generate_features(self.corpus)
+            except Exception as e:
+                if isinstance(e, KaldiProcessingError):
+                    log_kaldi_errors(e.error_logs, self.logger)
             break
 
     def save(self, path):
@@ -46,7 +55,7 @@ class TrainableAligner(BaseAligner):
             Path to save acoustic model and dictionary
         """
         self.training_config.values()[-1].save(path)
-        print('Saved model to {}'.format(path))
+        self.logger.info('Saved model to {}'.format(path))
 
     @property
     def meta(self):
@@ -62,6 +71,8 @@ class TrainableAligner(BaseAligner):
     def train(self):
         previous = None
         for identifier, trainer in self.training_config.items():
+            trainer.debug = self.debug
+            trainer.logger = self.logger
             if previous is not None:
                 previous.align(trainer.subset)
             trainer.init_training(identifier, self.temp_directory, self.corpus, self.dictionary, previous)

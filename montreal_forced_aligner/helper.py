@@ -2,7 +2,11 @@ import os
 import shutil
 import numpy
 from typing import Any, List, Tuple
-from .exceptions import ThirdpartyError
+import logging
+import sys
+
+from .exceptions import ThirdpartyError, KaldiProcessingError
+
 Labels = List[Any]
 
 
@@ -33,13 +37,17 @@ def output_mapping(mapping, path):
     with open(path, 'w', encoding='utf8') as f:
         for k in sorted(mapping.keys()):
             v = mapping[k]
-            if isinstance(v, list):
-                v = ' '.join(v)
+            if isinstance(v, (list, set, tuple)):
+                v = ' '.join(map(str, v))
             f.write('{} {}\n'.format(k, v))
 
 
 def save_scp(scp, path, sort=True, multiline=False):
-    with open(path, 'w', encoding='utf8') as f:
+    if sys.platform == 'win32':
+        newline = ''
+    else:
+        newline = None
+    with open(path, 'w', encoding='utf8', newline=newline) as f:
         if sort:
             scp = sorted(scp)
         for line in scp:
@@ -55,7 +63,7 @@ def save_groups(groups, seg_dir, pattern, multiline=False):
         save_scp(g, path, multiline=multiline)
 
 
-def load_scp(path):
+def load_scp(path, data_type=str):
     """
     Load a Kaldi script file (.scp)
 
@@ -65,6 +73,8 @@ def load_scp(path):
     ----------
     path : str
         Path to Kaldi script file
+    data_type : type
+        Type to coerce the data to
 
     Returns
     -------
@@ -84,7 +94,7 @@ def load_scp(path):
             if len(line_list) == 1:
                 value = line_list[0]
             else:
-                value = line_list
+                value = [ data_type(x) for x in line_list if x not in ['[', ']']]
             scp[key] = value
     return scp
 
@@ -143,3 +153,54 @@ def score(args: Tuple[Labels, Labels]) -> Tuple[int, int]:
     """Computes sufficient statistics for LER calculation."""
     edits = edit_distance(gold, hypo)
     return edits, len(gold)
+
+
+def setup_logger(identifier, output_directory):
+    os.makedirs(output_directory, exist_ok=True)
+    log_path = os.path.join(output_directory, identifier + '.log')
+    if os.path.exists(log_path):
+        os.remove(log_path)
+    print(log_path)
+    logger = logging.getLogger(identifier)
+    logger.setLevel(logging.DEBUG)
+
+    handler = logging.FileHandler(log_path)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return logger
+
+
+def parse_logs(log_directory):
+    error_logs = []
+    for name in os.listdir(log_directory):
+        log_path = os.path.join(log_directory, name)
+        with open(log_path, 'r', encoding='utf8') as f:
+            for line in f:
+                line = line.strip()
+                if 'error while loading shared libraries: libopenblas.so.0' in line:
+                    raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
+                                          'Try installing openblas via system package manager?')
+                if line.startswith('ERROR') or line.startswith('ASSERTION_FAILED'):
+                    error_logs.append(log_path)
+                    break
+    if error_logs:
+        raise KaldiProcessingError(error_logs)
+
+
+def log_kaldi_errors(error_logs, logger):
+    logger.debug('There were {} kaldi processing files that had errors:'.format(len(error_logs)))
+    for path in error_logs:
+        logger.debug('')
+        logger.debug(path)
+        with open(path, 'r', encoding='utf8') as f:
+            for line in f:
+                logger.debug('\t' + line.strip())

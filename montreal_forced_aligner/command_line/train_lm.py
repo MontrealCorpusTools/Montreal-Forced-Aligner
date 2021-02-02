@@ -11,40 +11,52 @@ from montreal_forced_aligner.exceptions import ArgumentError
 
 from montreal_forced_aligner.lm.trainer import LmTrainer
 from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.helper import setup_logger
 
 
 def train_lm(args):
+    command = 'train_lm'
+    all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
-    all_begin = time.time()
-    corpus_name = os.path.basename(args.source_path)
-    if corpus_name == '':
-        args.source_path = os.path.dirname(args.source_path)
-        corpus_name = os.path.basename(args.source_path)
-    if args.source_path.lower().endswith('.arpa'):
-        source = args.source_path
-        dictionary = None
-        corpus_name = os.path.splitext(corpus_name)[0]
-        data_directory = os.path.join(temp_dir, corpus_name)
-    else:
-        data_directory = os.path.join(temp_dir, corpus_name)
-        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs)
-        if args.dictionary_path is not None:
-            dictionary = Dictionary(args.dictionary_path, data_directory)
-        else:
-            dictionary = None
     if args.config_path:
         train_config = train_lm_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_lm()
+    corpus_name = os.path.basename(args.source_path)
+    if corpus_name == '':
+        args.source_path = os.path.dirname(args.source_path)
+        corpus_name = os.path.basename(args.source_path)
+    source = args.source_path
+    dictionary = None
+    if args.source_path.lower().endswith('.arpa'):
+        corpus_name = os.path.splitext(corpus_name)[0]
+        data_directory = os.path.join(temp_dir, corpus_name)
+    else:
+        data_directory = os.path.join(temp_dir, corpus_name)
+
+    logger = setup_logger(command, data_directory)
+    if not args.source_path.lower().endswith('.arpa'):
+        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=args.num_jobs>1)
+        if args.dictionary_path is not None:
+            dictionary = Dictionary(args.dictionary_path, data_directory)
+        else:
+            dictionary = None
     trainer = LmTrainer(source, train_config, args.output_model_path, dictionary=dictionary,
                         temp_directory=data_directory,
                         supplemental_model_path=args.model_path, supplemental_model_weight=args.model_weight)
+    begin = time.time()
     trainer.train()
+    logger.debug('Training took {} seconds'.format(time.time() - begin))
 
-    print('Done! Everything took {} seconds'.format(time.time() - all_begin))
+    logger.info('All done!')
+    logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        logger.removeHandler(handler)
 
 
 def validate_args(args, download_dictionaries=None):

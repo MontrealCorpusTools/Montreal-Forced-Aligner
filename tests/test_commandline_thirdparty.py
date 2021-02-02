@@ -6,11 +6,8 @@ from montreal_forced_aligner.command_line.thirdparty import run_thirdparty, Argu
 from montreal_forced_aligner.thirdparty.download import download_binaries
 from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries, collect_kaldi_binaries
 from montreal_forced_aligner.config import TEMP_DIR
+from montreal_forced_aligner.command_line.mfa import parser
 
-
-class ThirdpartyDummyArgs(object):
-    def __init__(self):
-        self.command = ''
 
 
 def test_download():
@@ -20,7 +17,9 @@ def test_download():
 
     assert not validate_kaldi_binaries()
 
-    download_binaries()
+    command = ['thirdparty', 'download']
+    args, unknown = parser.parse_known_args(command)
+    run_thirdparty(args)
 
     assert validate_kaldi_binaries()
 
@@ -36,15 +35,14 @@ def test_collect():
 
     assert not validate_kaldi_binaries()
 
-    collect_kaldi_binaries(backup_dir)
+    command = ['thirdparty', 'kaldi', backup_dir]
+    args, unknown = parser.parse_known_args(command)
+    run_thirdparty(args)
 
     assert validate_kaldi_binaries()
 
 
 def test_validate():
-    args = ThirdpartyDummyArgs()
-    with pytest.raises(ArgumentError):
-
-        run_thirdparty(args)
-    args.command = 'validate'
+    command = ['thirdparty', 'validate']
+    args, unknown = parser.parse_known_args(command)
     run_thirdparty(args)

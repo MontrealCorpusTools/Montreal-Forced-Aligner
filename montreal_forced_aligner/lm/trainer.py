@@ -1,9 +1,7 @@
 import os
 import subprocess
-import random
 from ..models import LanguageModel
 from ..corpus import AlignableCorpus
-from ..helper import thirdparty_binary
 from ..exceptions import LMError
 from ..config import TEMP_DIR
 
@@ -35,6 +33,7 @@ class LmTrainer(object):
                  supplemental_model_path=None, supplemental_model_weight=1):
         if not temp_directory:
             temp_directory = TEMP_DIR
+        self.models_temp_dir = os.path.join(temp_directory, 'models', 'LM')
         temp_directory = os.path.join(temp_directory, 'LM')
 
         self.name, _ = os.path.splitext(os.path.basename(output_model_path))
@@ -48,8 +47,18 @@ class LmTrainer(object):
         self.source_model_weight = 1
         self.supplemental_model_weight = supplemental_model_weight
 
+    @property
+    def meta(self):
+        from .. import __version__
+        return {'type': 'ngram',
+                    'order': self.config.order,
+                    'method': self.config.method,
+                    'prune': self.config.prune,
+                    'version': __version__}
+
     def train(self):
         mod_path = os.path.join(self.temp_directory, self.name + '.mod')
+        large_model_path = os.path.join(self.temp_directory, self.name + '.arpa')
         if isinstance(self.source, AlignableCorpus):
             sym_path = os.path.join(self.temp_directory, self.name + '.sym')
             far_path = os.path.join(self.temp_directory, self.name + '.far')
@@ -82,7 +91,13 @@ class LmTrainer(object):
                              mod_path, supplemental_path, merged_path])
             mod_path = merged_path
 
-        subprocess.call(['ngramprint', '--ARPA', mod_path, self.output_model_path])
+        subprocess.call(['ngramprint', '--ARPA', mod_path, large_model_path])
+
+        directory, filename = os.path.split(self.output_model_path)
+        basename, _ = os.path.splitext(filename)
+        model = LanguageModel.empty(basename, root_directory=self.models_temp_dir)
+        model.add_meta_file(self)
+        model.add_arpa_file(large_model_path)
 
         if self.config.prune:
             small_mod_path = mod_path.replace('.mod', '_small.mod')
@@ -97,6 +112,11 @@ class LmTrainer(object):
             med_output_path = self.output_model_path.replace('.arpa', '_med.arpa')
             subprocess.call(['ngramprint', '--ARPA', small_mod_path, small_output_path])
             subprocess.call(['ngramprint', '--ARPA', med_mod_path, med_output_path])
+            model.add_arpa_file(med_output_path)
+            model.add_arpa_file(small_output_path)
+        basename, _ = os.path.splitext(self.output_model_path)
+        model.dump(basename)
+        model.clean_up()
 
 
 

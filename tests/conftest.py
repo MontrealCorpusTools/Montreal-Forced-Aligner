@@ -6,7 +6,7 @@ import os
 import shutil
 import pytest
 
-from montreal_forced_aligner.corpus import AlignableCorpus
+from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.config import train_yaml_to_config, align_yaml_to_config
 
@@ -70,13 +70,19 @@ def english_acoustic_model():
 
 
 @pytest.fixture(scope='session')
+def english_ivector_model():
+    from montreal_forced_aligner.command_line.download import download_model
+    download_model('ivector', 'english_ivector')
+
+
+@pytest.fixture(scope='session')
 def transcription_acoustic_model(acoustic_model_dir):
     return os.path.join(acoustic_model_dir, 'mono_model.zip')
 
 
 @pytest.fixture(scope='session')
-def transcription_language_model(language_model_dir):
-    return os.path.join(language_model_dir, 'basic_lm.arpa')
+def transcription_language_model(language_model_dir, generated_dir):
+    return os.path.join(language_model_dir, 'basic_lm.zip')
 
 
 @pytest.fixture(scope='session')
@@ -320,6 +326,13 @@ def sick_corpus(basic_corpus_dir, generated_dir):
 
 
 @pytest.fixture(scope='session')
+def sick_corpus_transcribe(basic_corpus_dir, generated_dir):
+    output_directory = os.path.join(generated_dir, 'sickcorpus_transcribe')
+    corpus = TranscribeCorpus(basic_corpus_dir, output_directory, num_jobs=2)
+    return corpus
+
+
+@pytest.fixture(scope='session')
 def textgrid_directory(test_dir):
     return os.path.join(test_dir, 'textgrid')
 
@@ -440,6 +453,11 @@ def basic_train_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def transcribe_config(config_directory):
+    return os.path.join(config_directory, 'transcribe.yaml')
+
+
+@pytest.fixture(scope='session')
 def basic_train_lm_config(config_directory):
     return os.path.join(config_directory, 'basic_train_lm.yaml')
 
@@ -450,8 +468,13 @@ def basic_align_config(config_directory):
 
 
 @pytest.fixture(scope='session')
-def basic_train_ivector_config(config_directory):
-    return os.path.join(config_directory, 'basic_train_ivector.yaml')
+def basic_segment_config(config_directory):
+    return os.path.join(config_directory, 'basic_segment_config.yaml')
+
+
+@pytest.fixture(scope='session')
+def train_ivector_config(config_directory):
+    return os.path.join(config_directory, 'ivector_train.yaml')
 
 
 @pytest.fixture(scope='session')

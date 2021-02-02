@@ -1,5 +1,6 @@
 import shutil
 import os
+import time
 import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -7,10 +8,15 @@ from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.validator import CorpusValidator
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
+    get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.models import AcousticModel
 
 
 def validate_corpus(args):
+    command = 'validate'
+    all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -23,18 +29,31 @@ def validate_corpus(args):
     shutil.rmtree(data_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
+    logger = setup_logger(command, data_directory)
 
     corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                    num_jobs=getattr(args, 'num_jobs', 3))
-    dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
+                    num_jobs=getattr(args, 'num_jobs', 3), logger=logger, use_mp=not args.disable_mp)
+    dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
+    if args.acoustic_model_path:
+        acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model.validate(dictionary)
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,
                         ignore_acoustics=getattr(args, 'ignore_acoustics', False),
-                        test_transcriptions=getattr(args, 'test_transcriptions', False), use_mp=not args.disable_mp)
+                        test_transcriptions=getattr(args, 'test_transcriptions', False), use_mp=not args.disable_mp,
+                        logger=logger)
+    begin = time.time()
     a.validate()
+    logger.debug('Validation took {} seconds'.format(time.time() - begin))
+    logger.info('All done!')
+    logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        logger.removeHandler(handler)
 
 
-def validate_args(args, download_dictionaries=None):
+def validate_args(args, downloaded_acoustic_models=None, download_dictionaries=None):
     if args.test_transcriptions and args.ignore_acoustics:
         raise ArgumentError('Cannot test transcriptions without acoustic feature generation.')
     if not os.path.exists(args.corpus_directory):
@@ -49,23 +68,38 @@ def validate_args(args, download_dictionaries=None):
     if not os.path.isfile(args.dictionary_path):
         raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
+    if args.acoustic_model_path:
+        if args.acoustic_model_path.lower() in downloaded_acoustic_models:
+            args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
+        elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
+            if not os.path.exists(args.acoustic_model_path):
+                raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
+        else:
+            raise ArgumentError(
+                'The language \'{}\' is not currently included in the distribution, '
+                'please align via training or specify one of the following language names: {}.'.format(
+                    args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
-def run_validate_corpus(args, download_dictionaries=None):
+
+def run_validate_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None):
+    if downloaded_acoustic_models is None:
+        downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:
         download_dictionaries = get_available_dict_languages()
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
-    validate_args(args, download_dictionaries)
+    validate_args(args, downloaded_acoustic_models, download_dictionaries)
     validate_corpus(args)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import validate_parser, fix_path, unfix_path, dict_languages
+    from montreal_forced_aligner.command_line.mfa import validate_parser, fix_path, unfix_path, acoustic_languages, \
+        dict_languages
     validate_args = validate_parser.parse_args()
 
     fix_path()
-    run_validate_corpus(validate_args, dict_languages)
+    run_validate_corpus(validate_args, acoustic_languages, dict_languages)
     unfix_path()

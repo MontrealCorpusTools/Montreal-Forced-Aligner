@@ -4,7 +4,7 @@ import argparse
 import multiprocessing as mp
 
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_available_g2p_languages, \
-    get_available_dict_languages, get_available_lm_languages
+    get_available_dict_languages, get_available_lm_languages, get_available_ivector_languages
 from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.train_and_align import run_train_corpus
 from montreal_forced_aligner.command_line.g2p import run_g2p
@@ -14,8 +14,10 @@ from montreal_forced_aligner.command_line.download import run_download
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
+from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
+from montreal_forced_aligner.command_line.create_segments import run_create_segments
 
 
 def fix_path():
@@ -40,6 +42,7 @@ def unfix_path():
 
 
 acoustic_languages = get_available_acoustic_languages()
+ivector_languages = get_available_ivector_languages()
 lm_languages = get_available_lm_languages()
 g2p_languages = get_available_g2p_languages()
 dict_languages = get_available_dict_languages()
@@ -191,12 +194,13 @@ train_dictionary_parser.add_argument('-c', '--clean', help="Remove files from pr
 train_dictionary_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
 
 train_ivector_parser = subparsers.add_parser('train_ivector')
-train_ivector_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
-train_ivector_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use',
-                                  default='')
-
+train_ivector_parser.add_argument('corpus_directory', help='Full path to the source directory to '
+                                                           'train the ivector extractor')
+train_ivector_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
+train_ivector_parser.add_argument('acoustic_model_path', type=str, default='',
+                                  help='Full path to acoustic model for alignment')
 train_ivector_parser.add_argument('output_model_path', type=str, default='',
-                                  help='Full path to save resulting ivector_extractor')
+                                  help='Full path to save resulting ivector extractor')
 train_ivector_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                                   help='Number of characters of filenames to use for determining speaker, '
                                        'default is to use directory names')
@@ -209,6 +213,48 @@ train_ivector_parser.add_argument('-c', '--clean', help="Remove files from previ
 train_ivector_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
 train_ivector_parser.add_argument('--config_path', type=str, default='',
                                   help='Path to config file to use for training')
+
+classify_speakers_parser = subparsers.add_parser('classify_speakers')
+classify_speakers_parser.add_argument('corpus_directory', help='Full path to the source directory to '
+                                                               'run speaker classification')
+classify_speakers_parser.add_argument('ivector_extractor_path', type=str, default='',
+                                      help='Full path to ivector extractor model')
+classify_speakers_parser.add_argument('output_directory',
+                                      help="Full path to output directory, will be created if it doesn't exist")
+
+classify_speakers_parser.add_argument('-s', '--num_speakers', type=int, default=0,
+                                      help='Number of speakers if known')
+classify_speakers_parser.add_argument('--cluster', help="Using clustering instead of classification", action='store_true')
+classify_speakers_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                                      help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+classify_speakers_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                                      help='Number of cores to use while performing speaker classification')
+classify_speakers_parser.add_argument('-v', '--verbose', help="Output debug messages about speaker classification",
+                                      action='store_true')
+classify_speakers_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+classify_speakers_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+classify_speakers_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)",
+                                      action='store_true')
+classify_speakers_parser.add_argument('--config_path', type=str, default='',
+                                      help='Path to config file to use for ivector extraction')
+
+create_segments_parser = subparsers.add_parser('create_segments')
+create_segments_parser.add_argument('corpus_directory', help='Full path to the source directory to '
+                                                               'run VAD segmentation')
+create_segments_parser.add_argument('output_directory',
+                                      help="Full path to output directory, will be created if it doesn't exist")
+
+create_segments_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                                      help='Temporary directory root to use for segmentation, default is '
+                                           '~/Documents/MFA')
+create_segments_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                                      help='Number of cores to use while creating segments')
+create_segments_parser.add_argument('-v', '--verbose', help="Output debug messages about segmentation",
+                                      action='store_true')
+create_segments_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+create_segments_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
+create_segments_parser.add_argument('--config_path', type=str, default='',
+                                      help='Path to config file to use for segmentation')
 
 transcribe_parser = subparsers.add_parser('transcribe')
 transcribe_parser.add_argument('corpus_directory', help='Full path to the directory to transcribe')
@@ -249,8 +295,7 @@ thirdparty_parser.add_argument('local_directory',
 
 def main():
     mp.freeze_support()
-    args = parser.parse_args()
-
+    args, unknown = parser.parse_known_args()
     fix_path()
     if args.subcommand in ['align', 'train', 'train_ivector']:
         from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
@@ -287,7 +332,7 @@ def main():
                   "please use the Windows Subsystem for Linux to use g2p functionality.")
             sys.exit(1)
     if args.subcommand == 'align':
-        run_align_corpus(args, acoustic_languages)
+        run_align_corpus(args, unknown, acoustic_languages)
     elif args.subcommand == 'train':
         run_train_corpus(args)
     elif args.subcommand == 'g2p':
@@ -304,6 +349,8 @@ def main():
         run_train_dictionary(args)
     elif args.subcommand == 'train_ivector':
         run_train_ivector_extractor(args)
+    elif args.subcommand == 'classify_speakers':
+        run_classify_speakers(args)
     elif args.subcommand == 'annotator':
         from montreal_forced_aligner.command_line.annotator import run_annotator
         run_annotator(args)
@@ -311,6 +358,8 @@ def main():
         run_thirdparty(args)
     elif args.subcommand == 'transcribe':
         run_transcribe_corpus(args)
+    elif args.subcommand == 'create_segments':
+        run_create_segments(args, unknown)
     unfix_path()
 
 

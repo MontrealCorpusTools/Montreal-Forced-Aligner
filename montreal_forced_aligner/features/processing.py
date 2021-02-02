@@ -1,43 +1,43 @@
 import subprocess
 import os
 
-from ..helper import make_path_safe, thirdparty_binary, filter_scp
-from ..exceptions import CorpusError
+from ..helper import thirdparty_binary, make_safe
 
 from ..multiprocessing import run_mp, run_non_mp
 
 
-def mfcc_func(directory, job_name, mfcc_config_path):  # pragma: no cover
+def mfcc_func(directory, job_name, mfcc_options):
     log_directory = os.path.join(directory, 'log')
     raw_mfcc_path = os.path.join(directory, 'raw_mfcc.{}.ark'.format(job_name))
     raw_scp_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
     segment_path = os.path.join(directory, 'segments.{}'.format(job_name))
     scp_path = os.path.join(directory, 'wav.{}.scp'.format(job_name))
-
-    with open(log_path, 'w') as f:
+    utt2num_frames_path = os.path.join(directory, 'utt2num_frames.{}'.format(job_name))
+    mfcc_base_command = [thirdparty_binary('compute-mfcc-feats'), '--verbose=2']
+    for k, v in mfcc_options.items():
+        mfcc_base_command.append('--{}={}'.format(k.replace('_', '-'), make_safe(v)))
+    with open(log_path, 'w') as log_file:
         if os.path.exists(segment_path):
+            mfcc_base_command += ['ark:-', 'ark:-']
             seg_proc = subprocess.Popen([thirdparty_binary('extract-segments'),
                                          'scp,p:' + scp_path, segment_path, 'ark:-'],
-                                        stdout=subprocess.PIPE, stderr=f)
-            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
-                                          '--config=' + mfcc_config_path,
-                                          'ark:-', 'ark:-'],
-                                         stdout=subprocess.PIPE, stderr=f, stdin=seg_proc.stdout)
+                                        stdout=subprocess.PIPE, stderr=log_file)
+            comp_proc = subprocess.Popen(mfcc_base_command,
+                                         stdout=subprocess.PIPE, stderr=log_file, stdin=seg_proc.stdout)
         else:
-
-            comp_proc = subprocess.Popen([thirdparty_binary('compute-mfcc-feats'), '--verbose=2',
-                                          '--config=' + mfcc_config_path,
-                                          'scp,p:' + scp_path, 'ark:-'],
-                                         stdout=subprocess.PIPE, stderr=f)
+            mfcc_base_command += ['scp,p:' + scp_path, 'ark:-']
+            comp_proc = subprocess.Popen(mfcc_base_command,
+                                         stdout=subprocess.PIPE, stderr=log_file)
         copy_proc = subprocess.Popen([thirdparty_binary('copy-feats'),
-                                      '--compress=true', 'ark:-',
+                                      '--compress=true', '--write-num-frames=ark,t:' + utt2num_frames_path,
+                                      'ark:-',
                                       'ark,scp:{},{}'.format(raw_mfcc_path, raw_scp_path)],
-                                     stdin=comp_proc.stdout, stderr=f)
+                                     stdin=comp_proc.stdout, stderr=log_file)
         copy_proc.wait()
 
 
-def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
+def mfcc(mfcc_directory, num_jobs, feature_config):
     """
     Multiprocessing function that converts wav files into MFCCs
 
@@ -63,114 +63,235 @@ def mfcc(mfcc_directory, num_jobs, feature_config, frequency_configs):
         If the files per speaker exceeds the number of files that are
         allowed to be open on the computer (for Unix-based systems)
     """
+    log_directory = os.path.join(mfcc_directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
 
-    os.makedirs(os.path.join(mfcc_directory, 'log'), exist_ok=True)
-    paths = []
-    for j, p in frequency_configs:
-        paths.append(feature_config.write(mfcc_directory, j, p))
-    jobs = [(mfcc_directory, x, paths[x])
+    jobs = [(mfcc_directory, x, feature_config.mfcc_options(x))
             for x in range(num_jobs)]
     if feature_config.use_mp:
-        run_mp(mfcc_func, jobs)
+        run_mp(mfcc_func, jobs, log_directory)
     else:
-        run_non_mp(mfcc_func, jobs)
+        run_non_mp(mfcc_func, jobs, log_directory)
+
+
+def compute_vad_func(directory, vad_config, job_name):
+    feats_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
+    vad_scp_path = os.path.join(directory, 'vad.{}.scp'.format(job_name))
+    with open(os.path.join(directory, 'log', 'vad.{}.log'.format(job_name)), 'w') as log_file:
+        vad_proc = subprocess.Popen([thirdparty_binary('compute-vad'),
+                                     '--vad-energy-mean-scale={}'.format(vad_config['energy_mean_scale']),
+                                     '--vad-energy-threshold={}'.format(vad_config['energy_threshold']),
+                                     'scp:' + feats_path,
+                                     'ark,t:{}'.format(vad_scp_path)],
+                                    stderr=log_file
+                                    )
+        vad_proc.communicate()
+
+
+def compute_vad(directory, num_jobs, use_mp, vad_config=None):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    if vad_config is None:
+        vad_config = {'energy_threshold': 5.5,
+                      'energy_mean_scale': 0.5}
+    jobs = [(directory, vad_config, x)
+            for x in range(num_jobs)]
+    if use_mp:
+        run_mp(compute_vad_func, jobs, log_directory)
+    else:
+        run_non_mp(compute_vad_func, jobs, log_directory)
 
 
 def apply_cmvn_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     normed_ark_path = os.path.join(directory, config.raw_feature_id + '.{}.ark'.format(job_name))
-    with open(os.path.join(directory, 'log', 'norm.{}.log'.format(job_name)), 'w') as logf:
-        utt2spkpath = os.path.join(directory, 'utt2spk.{}'.format(job_name))
-        cmvnpath = os.path.join(directory, 'cmvn.{}.scp'.format(job_name))
-        featspath = os.path.join(directory, 'feats.{}.scp'.format(job_name))
+    with open(os.path.join(directory, 'log', 'norm.{}.log'.format(job_name)), 'w') as log_file:
+        utt2spk_path = os.path.join(directory, 'utt2spk.{}'.format(job_name))
+        cmvn_path = os.path.join(directory, 'cmvn.{}.scp'.format(job_name))
+        feats_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
         if not os.path.exists(normed_scp_path):
             cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn'),
-                                          '--utt2spk=ark:' + utt2spkpath,
-                                          'scp:' + cmvnpath,
-                                          'scp:' + featspath,
+                                          '--utt2spk=ark:' + utt2spk_path,
+                                          'scp:' + cmvn_path,
+                                          'scp:' + feats_path,
                                           'ark,scp:{},{}'.format(normed_ark_path, normed_scp_path)],
-                                         stderr=logf
+                                         stderr=log_file
                                          )
             cmvn_proc.communicate()
 
 
 def apply_cmvn(directory, num_jobs, config):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(apply_cmvn_func, jobs)
+        run_mp(apply_cmvn_func, jobs, log_directory)
     else:
-        run_non_mp(apply_cmvn_func, jobs)
+        run_non_mp(apply_cmvn_func, jobs, log_directory)
+
+
+def select_voiced_func(directory, job_name, apply_cmn):
+    feats_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
+    vad_scp_path = os.path.join(directory, 'vad.{}.scp'.format(job_name))
+    voiced_scp_path = os.path.join(directory, 'feats_voiced.{}.scp'.format(job_name))
+    voiced_ark_path = os.path.join(directory, 'feats_voiced.{}.ark'.format(job_name))
+    with open(os.path.join(directory, 'log', 'select-voiced.{}.log'.format(job_name)), 'w') as log_file:
+        deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
+                                        'scp:' + feats_path,
+                                        'ark:-'
+                                        ], stdout=subprocess.PIPE, stderr=log_file)
+        if apply_cmn:
+            cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn-sliding'),
+                                          '--norm-vars=false',
+                                          '--center=true',
+                                          '--cmn-window=300',
+                                          'ark:-', 'ark:-'],
+                                         stdin=deltas_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+            select_proc = subprocess.Popen([thirdparty_binary('select-voiced-frames'),
+                                            'ark:-',
+                                            'scp,s,cs:' + vad_scp_path,
+                                            'ark,scp:{},{}'.format(voiced_ark_path, voiced_scp_path)],
+                                           stdin=cmvn_proc.stdout, stderr=log_file)
+        else:
+            select_proc = subprocess.Popen([thirdparty_binary('select-voiced-frames'),
+                                            'ark:-',
+                                            'scp,s,cs:' + vad_scp_path,
+                                            'ark,scp:{},{}'.format(voiced_ark_path, voiced_scp_path)],
+                                           stdin=deltas_proc.stdout, stderr=log_file)
+        select_proc.communicate()
+
+
+def select_voiced(directory, num_jobs, config, apply_cmn=False):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(directory, x, apply_cmn)
+            for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(select_voiced_func, jobs, log_directory)
+    else:
+        run_non_mp(select_voiced_func, jobs, log_directory)
+
+
+def compute_ivector_features_func(directory, job_name, apply_cmn):
+    feats_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
+    out_feats_scp_path = os.path.join(directory, 'feats_for_ivector.{}.scp'.format(job_name))
+    out_feats_ark_path = os.path.join(directory, 'feats_for_ivector.{}.ark'.format(job_name))
+
+    with open(os.path.join(directory, 'log', 'cmvn_sliding.{}.log'.format(job_name)), 'w') as log_file:
+        if apply_cmn:
+            deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
+                                            'scp:' + feats_path,
+                                            'ark:-'
+                                            ], stdout=subprocess.PIPE, stderr=log_file)
+
+            cmvn_proc = subprocess.Popen([thirdparty_binary('apply-cmvn-sliding'),
+                                          '--norm-vars=false',
+                                          '--center=true',
+                                          '--cmn-window=300',
+                                          'ark:-', 'ark,scp:{},{}'.format(out_feats_ark_path, out_feats_scp_path)],
+                                         stdin=deltas_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+            cmvn_proc.communicate()
+        else:
+            deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
+                                            'scp:' + feats_path,
+                                            'ark,scp:{},{}'.format(out_feats_ark_path, out_feats_scp_path)
+                                            ],  stderr=log_file)
+            deltas_proc.communicate()
+
+
+def compute_ivector_features(directory, num_jobs, config, apply_cmn=False):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(directory, x, apply_cmn)
+            for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(compute_ivector_features_func, jobs, log_directory)
+    else:
+        run_non_mp(compute_ivector_features_func, jobs, log_directory)
+
+
+def generate_spliced_features_func(directory, raw_feature_id, config, job_name):
+    normed_scp_path = os.path.join(directory, raw_feature_id + '.{}.scp'.format(job_name))
+    spliced_feature_id = raw_feature_id + '_spliced'
+    ark_path = os.path.join(directory, spliced_feature_id + '.{}.ark'.format(job_name))
+    scp_path = os.path.join(directory, spliced_feature_id + '.{}.scp'.format(job_name))
+    log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
+    with open(log_path, 'a') as log_file:
+        splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
+                                              '--left-context={}'.format(config['splice_left_context']),
+                                              '--right-context={}'.format(config['splice_right_context']),
+                                              'scp:' + normed_scp_path,
+                                              'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                             stderr=log_file)
+        splice_feats_proc.communicate()
+
+
+def generate_spliced_features(directory, num_jobs, config):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(directory, config.raw_feature_id, config.splice_options, x)
+            for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(generate_spliced_features_func, jobs, log_directory)
+    else:
+        run_non_mp(generate_spliced_features_func, jobs, log_directory)
 
 
 def add_deltas_func(directory, job_name, config):
     normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
     ark_path = os.path.join(directory, config.feature_id + '.{}.ark'.format(job_name))
     scp_path = os.path.join(directory, config.feature_id + '.{}.scp'.format(job_name))
-    with open(os.path.join(directory, 'log', 'add_deltas.{}.log'.format(job_name)), 'w') as logf:
+    with open(os.path.join(directory, 'log', 'add_deltas.{}.log'.format(job_name)), 'w') as log_file:
         if config.fmllr_path is not None and os.path.exists(config.fmllr_path):
             deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
                                             'scp:' + normed_scp_path, 'ark:-'],
-                                           stderr=logf,
+                                           stderr=log_file,
                                            stdout=subprocess.PIPE)
             trans_proc = subprocess.Popen([thirdparty_binary('transform-feats'),
                                            'ark:' + config.fmllr_path, 'ark:-',
                                            'ark,scp:{},{}'.format(ark_path, scp_path)],
                                           stdin=deltas_proc.stdout,
-                                          stderr=logf)
+                                          stderr=log_file)
             trans_proc.communicate()
         else:
             deltas_proc = subprocess.Popen([thirdparty_binary('add-deltas'),
                                             'scp:' + normed_scp_path, 'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                           stderr=logf)
+                                           stderr=log_file)
             deltas_proc.communicate()
 
 
 def add_deltas(directory, num_jobs, config):
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, x, config)
             for x in range(num_jobs)]
     if config.use_mp:
-        run_mp(add_deltas_func, jobs)
+        run_mp(add_deltas_func, jobs, log_directory)
     else:
-        run_non_mp(add_deltas_func, jobs)
+        run_non_mp(add_deltas_func, jobs, log_directory)
 
 
-def apply_lda_func(directory, job_name, config):
-    normed_scp_path = os.path.join(directory, config.raw_feature_id + '.{}.scp'.format(job_name))
-    ark_path = os.path.join(directory, config.feature_id + '.{}.ark'.format(job_name))
-    scp_path = os.path.join(directory, config.feature_id + '.{}.scp'.format(job_name))
+def apply_lda_func(directory, spliced_feature_id, feature_id, lda_path, job_name):
+    normed_scp_path = os.path.join(directory, spliced_feature_id + '.{}.scp'.format(job_name))
+    ark_path = os.path.join(directory, feature_id + '.{}.ark'.format(job_name))
+    scp_path = os.path.join(directory, feature_id + '.{}.scp'.format(job_name))
     log_path = os.path.join(directory, 'log', 'lda.{}.log'.format(job_name))
-    with open(log_path, 'a') as logf:
-        if os.path.exists(config.lda_path):
-            splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                                  '--left-context={}'.format(config.splice_left_context),
-                                                  '--right-context={}'.format(config.splice_right_context),
-                                                  'scp:' + normed_scp_path,
-                                                  'ark:-'],
-                                                 stdout=subprocess.PIPE,
-                                                 stderr=logf)
-            transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
-                                                     config.lda_path,
-                                                     'ark:-',
-                                                     'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                                    stdin=splice_feats_proc.stdout,
-                                                    stderr=logf)
-            transform_feats_proc.communicate()
-        else:
-            logf.write('could not find "{}"\n'.format(config.lda_path))
-            splice_feats_proc = subprocess.Popen([thirdparty_binary('splice-feats'),
-                                                  '--left-context={}'.format(config.splice_left_context),
-                                                  '--right-context={}'.format(config.splice_right_context),
-                                                  'scp:' + normed_scp_path,
-                                                  'ark,scp:{},{}'.format(ark_path, scp_path)],
-                                                 stderr=logf)
-            splice_feats_proc.communicate()
+    with open(log_path, 'a') as log_file:
+        transform_feats_proc = subprocess.Popen([thirdparty_binary("transform-feats"),
+                                                 lda_path,
+                                                 'scp:'+ normed_scp_path,
+                                                 'ark,scp:{},{}'.format(ark_path, scp_path)],
+                                                stderr=log_file)
+        transform_feats_proc.communicate()
 
 
 def apply_lda(directory, num_jobs, config):
-    jobs = [(directory, x, config)
+    log_directory = os.path.join(directory, 'log')
+    os.makedirs(log_directory, exist_ok=True)
+    jobs = [(directory, config.spliced_feature_id, config.feature_id, config.lda_path, x)
             for x in range(num_jobs)]
-    if config.use_mp:
-        run_mp(apply_lda_func, jobs)
+    if config.use_mp and False: # Looks to be threaded
+        run_mp(apply_lda_func, jobs, log_directory)
     else:
-        run_non_mp(apply_lda_func, jobs)
+        run_non_mp(apply_lda_func, jobs, log_directory)

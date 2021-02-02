@@ -6,7 +6,6 @@ from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
 from . import __version__
 from .exceptions import PronunciationAcousticMismatchError
 
-
 # default format for output
 FORMAT = "zip"
 
@@ -37,6 +36,18 @@ class Archive(object):
             if not os.path.exists(self.dirname):
                 os.makedirs(root_directory, exist_ok=True)
                 unpack_archive(source, base)
+
+    @property
+    def meta(self):
+        if not self._meta:
+            meta_path = os.path.join(self.dirname, 'meta.yaml')
+            with open(meta_path, 'r', encoding='utf8') as f:
+                self._meta = yaml.load(f, Loader=yaml.SafeLoader)
+        return self._meta
+
+    def add_meta_file(self, trainer):
+        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
+            yaml.dump(trainer.meta, f)
 
     @classmethod
     def empty(cls, head, root_directory=None):
@@ -74,6 +85,7 @@ class Archive(object):
 
 
 class AcousticModel(Archive):
+    files = ['final.mdl', 'final.occs', 'lda.mat', 'tree']
     def add_meta_file(self, aligner):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             yaml.dump(aligner.meta, f)
@@ -112,30 +124,21 @@ class AcousticModel(Archive):
             self._meta['phones'] = set(self._meta.get('phones', []))
         return self._meta
 
-    def add_lda_matrix(self, source):
-        copyfile(os.path.join(source, 'lda.mat'), os.path.join(self.dirname, 'lda.mat'))
-
-    def add_ivector_model(self, source):
-        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
-        copyfile(os.path.join(source, 'final.dubm'), os.path.join(self.dirname, 'final.dubm'))
-
     def add_model(self, source):
         """
         Add file into archive
         """
-        copyfile(os.path.join(source, 'final.mdl'), os.path.join(self.dirname, 'final.mdl'))
-        if os.path.exists(os.path.join(source, 'final.occs')):
-            copyfile(os.path.join(source, 'final.occs'), os.path.join(self.dirname, 'final.occs'))
-        copyfile(os.path.join(source, 'tree'), os.path.join(self.dirname, 'tree'))
+        for f in self.files:
+            if os.path.exists(os.path.join(source, f)):
+                copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
 
     def export_model(self, destination):
         """
         """
         os.makedirs(destination, exist_ok=True)
-        copyfile(os.path.join(self.dirname, 'final.mdl'), os.path.join(destination, 'final.mdl'))
-        if os.path.exists(os.path.join(self.dirname, 'final.occs')):
-            copyfile(os.path.join(self.dirname, 'final.occs'), os.path.join(destination, 'final.occs'))
-        copyfile(os.path.join(self.dirname, 'tree'), os.path.join(destination, 'tree'))
+        for f in self.files:
+            if os.path.exists(os.path.join(self.dirname, f)):
+                copyfile(os.path.join(self.dirname, f), os.path.join(destination, f))
 
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):
@@ -147,6 +150,36 @@ class AcousticModel(Archive):
             print('model phones: {}'.format(self.meta['phones']))
             raise (PronunciationAcousticMismatchError(missing_phones))
 
+
+class IvectorExtractor(Archive):
+    """
+    Archive for i-vector extractors
+    """
+    model_files = ['final.ie', 'final.ubm', 'final.dubm', 'plda', 'mean.vec', 'trans.mat',
+                   'speaker_classifier.mdl', 'speaker_labels.txt']
+
+    def add_model(self, source):
+        """
+        Add file into archive
+        """
+        for filename in self.model_files:
+            if os.path.exists(os.path.join(source, filename)):
+                copyfile(os.path.join(source, filename), os.path.join(self.dirname, filename))
+
+    def export_model(self, destination):
+        """
+        """
+        os.makedirs(destination, exist_ok=True)
+        for filename in self.model_files:
+            if os.path.exists(os.path.join(self.dirname, filename)):
+                copyfile(os.path.join(self.dirname, filename), os.path.join(destination, filename))
+
+    @property
+    def feature_config(self):
+        from .features.config import FeatureConfig
+        fc = FeatureConfig(self.dirname)
+        fc.update(self.meta['features'])
+        return fc
 
 
 class G2PModel(Archive):
@@ -171,7 +204,6 @@ class G2PModel(Archive):
                     self._meta = yaml.load(f, Loader=yaml.SafeLoader)
             self._meta['phones'] = set(self._meta.get('phones', []))
             self._meta['graphemes'] = set(self._meta.get('graphemes', []))
-            print(self._meta)
         return self._meta
 
     @property
@@ -213,33 +245,6 @@ class G2PModel(Archive):
             return True
 
 
-class IvectorExtractor(Archive):
-    """
-    Archive for i-vector extractors
-    """
-    def add_meta_file(self, trainer):
-        with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
-            yaml.dump(trainer.meta, f)
-
-    @property
-    def meta(self):
-        if not self._meta:
-            meta_path = os.path.join(self.dirname, 'meta.yaml')
-            with open(meta_path, 'r', encoding='utf8') as f:
-                self._meta = yaml.load(f, Loader=yaml.SafeLoader)
-        return self._meta
-
-    def add_model(self, source):
-        """
-        Add file into archive
-        """
-        copyfile(os.path.join(source, 'final.ie'), os.path.join(self.dirname, 'final.ie'))
-        copyfile(os.path.join(source, 'final.dubm'), os.path.join(self.dirname, 'final.dubm'))
-        lda_path = os.path.join(source, 'lda.mat')
-        if os.path.exists(lda_path):
-            copyfile(lda_path, os.path.join(self.dirname, 'lda.mat'))
-
-
 class LanguageModel(Archive):
     extension = '.arpa'
 
@@ -266,5 +271,9 @@ class LanguageModel(Archive):
 
     @property
     def arpa_path(self):
+        print(os.listdir(self.dirname))
         return os.path.join(self.dirname, self.name + self.extension)
 
+    def add_arpa_file(self, arpa_path):
+        name = os.path.basename(arpa_path)
+        copyfile(arpa_path, os.path.join(self.dirname, name))

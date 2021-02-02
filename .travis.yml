@@ -7,7 +7,7 @@ branches:
 notifications:
   email: false
 
-dist: xenial
+dist: bionic
 
 addons:
   apt:

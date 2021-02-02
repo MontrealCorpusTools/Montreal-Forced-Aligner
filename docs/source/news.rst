@@ -67,8 +67,7 @@ See also :ref:`annotator` for more information on using the annotation GUI.
 Transcription
 -------------
 
-Transcribing audio files is not currently implemented, but is planned for eventual release.  As part of this functionality,
-MFA will support:
+MFA now supports:
 
 - Transcribing a corpus of sound files using an acoustic model, dictionary, and language model, see :ref:`transcribing` for
   more information.

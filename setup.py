@@ -43,7 +43,7 @@ class PyTest(TestCommand):
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
-          version='2.0.0a2',
+          version='2.0.0a3',
           description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
                       'acoustic models and dictionaries using Kaldi functionality.',
           long_description=readme(),
@@ -68,6 +68,7 @@ if __name__ == '__main__':
                     'montreal_forced_aligner.g2p',
                     'montreal_forced_aligner.gui',
                     'montreal_forced_aligner.lm',
+                    'montreal_forced_aligner.multiprocessing',
                     'montreal_forced_aligner.thirdparty',
                     'montreal_forced_aligner.trainers'],
           install_requires=[
@@ -79,6 +80,8 @@ if __name__ == '__main__':
               'pyqt5',
               'pyqtgraph',
               'requests',
+              'sklearn',
+              'joblib'
           ],
           python_requires='>=3.8',
           entry_points={

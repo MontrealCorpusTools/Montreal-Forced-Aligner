@@ -8,7 +8,8 @@ from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.transcriber import Transcriber
-from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.models import AcousticModel, LanguageModel, FORMAT
+from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.config import TEMP_DIR, transcribe_yaml_to_config, load_basic_transcribe, save_config
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_lm_languages, get_pretrained_language_model_path, \
@@ -16,22 +17,8 @@ from montreal_forced_aligner.utils import get_available_acoustic_languages, get_
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-class DummyArgs(object):
-    def __init__(self):
-        self.corpus_directory = ''
-        self.dictionary_path = ''
-        self.acoustic_model_path = ''
-        self.speaker_characters = 0
-        self.num_jobs = 0
-        self.verbose = False
-        self.clean = True
-        self.fast = True
-        self.debug = False
-        self.temp_directory = None
-        self.config_path = ''
-
-
 def transcribe_corpus(args):
+    command = 'transcribe'
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -41,8 +28,15 @@ def transcribe_corpus(args):
     if corpus_name == '':
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
+    if args.config_path:
+        transcribe_config = transcribe_yaml_to_config(args.config_path)
+    else:
+        transcribe_config = load_basic_transcribe()
     data_directory = os.path.join(temp_dir, corpus_name)
-    print(data_directory, os.path.exists(data_directory))
+    logger = setup_logger(command, data_directory)
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        logger.info('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     os.makedirs(data_directory, exist_ok=True)
@@ -54,35 +48,53 @@ def transcribe_corpus(args):
         conf = {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
-                'type': 'align',
+                'type': 'transcribe',
                 'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dictionary_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != 'align' \
+                'dictionary_path': args.dictionary_path,
+                'acoustic_model_path': args.acoustic_model_path,
+                'language_model_path': args.language_model_path,
+                }
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
-            or conf['dictionary_path'] != args.dictionary_path:
-        pass  # FIXME
-        # shutil.rmtree(data_directory, ignore_errors=True)
+            or conf['dictionary_path'] != args.dictionary_path \
+            or conf['language_model_path'] != args.language_model_path \
+            or conf['acoustic_model_path'] != args.acoustic_model_path:
+        logger.warning(
+            'WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no '
+            'weird behavior for previous versions of the temporary directory.')
+        if conf['dirty']:
+            logger.debug('Previous run ended in an error (maybe ctrl-c?)')
+        if conf['type'] != command:
+            logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
+        if conf['corpus_directory'] != args.corpus_directory:
+            logger.debug('Previous run used source directory '
+                         'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
+        if conf['version'] != __version__:
+            logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
+        if conf['dictionary_path'] != args.dictionary_path:
+            logger.debug('Previous run used dictionary path {} '
+                         '(new run: {})'.format(conf['dictionary_path'], args.dictionary_path))
+        if conf['acoustic_model_path'] != args.acoustic_model_path:
+            logger.debug('Previous run used acoustic model path {} '
+                         '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
+        if conf['language_model_path'] != args.language_model_path:
+            logger.debug('Previous run used language model path {} '
+                         '(new run: {})'.format(conf['language_model_path'], args.language_model_path))
     try:
         if args.evaluate:
             corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                      speaker_characters=args.speaker_characters,
-                                     num_jobs=args.num_jobs)
+                                     num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         else:
             corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                                       speaker_characters=args.speaker_characters,
-                                      num_jobs=args.num_jobs)
+                                      num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         print(corpus.speaker_utterance_info())
-        acoustic_model = AcousticModel(args.acoustic_model_path)
-        language_model = LanguageModel(args.language_model_path)
+        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=data_directory)
+        language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         dictionary = Dictionary(args.dictionary_path, data_directory)
         acoustic_model.validate(dictionary)
-
-        if args.config_path:
-            transcribe_config = transcribe_yaml_to_config(args.config_path)
-        else:
-            transcribe_config = load_basic_transcribe()
         begin = time.time()
         t = Transcriber(corpus, dictionary, acoustic_model, language_model, transcribe_config,
                         temp_directory=data_directory,
@@ -109,6 +121,10 @@ def transcribe_corpus(args):
         conf['dirty'] = True
         raise
     finally:
+        handlers = logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            logger.removeHandler(handler)
         if os.path.exists(data_directory):
             with open(conf_path, 'w') as f:
                 yaml.dump(conf, f)
@@ -142,7 +158,8 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries,  down
 
     if args.language_model_path.lower() in downloaded_language_models:
         args.language_model_path = get_pretrained_language_model_path(args.language_model_path.lower())
-    elif args.language_model_path.lower().endswith(LanguageModel.extension):
+    elif args.language_model_path.lower().endswith(LanguageModel.extension) or \
+            args.language_model_path.lower().endswith(FORMAT):
         if not os.path.exists(args.language_model_path):
             raise ArgumentError('The specified model path does not exist: ' + args.language_model_path)
     else:
@@ -152,7 +169,8 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries,  down
                 args.language_model_path.lower(), ', '.join(downloaded_language_models)))
 
 
-def run_transcribe_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None, downloaded_language_models=None):
+def run_transcribe_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None,
+                          downloaded_language_models=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:

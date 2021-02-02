@@ -1,8 +1,9 @@
 import requests
 
 from montreal_forced_aligner.exceptions import ArgumentError
-from montreal_forced_aligner.models import G2PModel, AcousticModel
-from montreal_forced_aligner.utils import get_pretrained_acoustic_path, get_pretrained_g2p_path, get_dictionary_path
+from montreal_forced_aligner.models import G2PModel, AcousticModel, IvectorExtractor
+from montreal_forced_aligner.utils import get_pretrained_acoustic_path, get_pretrained_g2p_path, get_dictionary_path, \
+    get_pretrained_ivector_path
 
 
 def tqdm_hook(t):
@@ -41,6 +42,9 @@ def download_model(model_type, language):
     elif model_type == 'dictionary':
         extension = '.dict'
         out_path = get_dictionary_path(language)
+    elif model_type == 'ivector':
+        extension = IvectorExtractor.extension
+        out_path = get_pretrained_ivector_path(language)
     else:
         raise NotImplementedError
     url = 'https://github.com/MontrealCorpusTools/mfa-models/raw/master/{}/{}{}'.format(model_type, language, extension)

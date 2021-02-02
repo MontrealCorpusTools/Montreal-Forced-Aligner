@@ -123,6 +123,12 @@
 .. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/fr.dict
 .. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/de.dict
 
+.. _`GlobalPhone language models`: https://www.csl.uni-bremen.de/GlobalPhone/
+
+.. _`LibriSpeech language models`: https://www.openslr.org/11/
+
+.. _`FalaBrasil language models`: https://gitlab.com/fb-asr/fb-asr-resources/kaldi-resources/-/tree/master/lm
+.. _`FalaBrasil dictionary`: https://gitlab.com/fb-nlp/nlp-resources/-/tree/master/res
 
 .. _pretrained_models:
 
@@ -151,34 +157,34 @@ by users will be periodically added. If you would like to contribute your traine
 at michael.e.mcauliffe@gmail.com.
 
 .. csv-table::
-   :header: "Language", "Link", "Corpus", "Phone set"
+   :header: "Language", "Link", "Corpus", "Number of speakers", "Audio (hours)", "Phone set"
 
-   "Arabic", "Not available yet", "GlobalPhone", "GlobalPhone"
-   "Bulgarian", `Bulgarian acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Croatian", `Croatian acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Czech", `Czech acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "English", `English acoustic model`_, "LibriSpeech", "Arpabet (stressed)"
-   "French (FR)", `French (FR) acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "French (FR)", `French (Prosodylab) acoustic model`_, "GlobalPhone", "Prosodylab [1]_"
-   "French (QC)", `French (QC) acoustic model`_, "Lab speech", "Prosodylab [1]_"
-   "German", `German acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "German", `German (Prosodylab) acoustic model`_, "GlobalPhone", "Prosodylab [3]_"
-   "Hausa", `Hausa acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Japanese", "Not available yet", "GlobalPhone", "GlobalPhone"
-   "Korean", `Korean acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Mandarin", `Mandarin acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Polish", `Polish acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Portuguese", `Portuguese acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Russian", `Russian acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Spanish", `Spanish acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Swahili", `Swahili acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Swedish", `Swedish acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Tamil", "Not available yet", "GlobalPhone", "GlobalPhone"
-   "Thai", `Thai acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Turkish", `Turkish acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Ukrainian", `Ukrainian acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Vietnamese", `Vietnamese acoustic model`_, "GlobalPhone", "GlobalPhone"
-   "Wu", "Not available yet", "GlobalPhone", "GlobalPhone"
+   "Arabic", `Arabic acoustic model`_, "GlobalPhone", 80, 19.0, "GlobalPhone"
+   "Bulgarian", `Bulgarian acoustic model`_, "GlobalPhone", 79, 21.4, "GlobalPhone"
+   "Croatian", `Croatian acoustic model`_, "GlobalPhone", 94, 15.9, "GlobalPhone"
+   "Czech", `Czech acoustic model`_, "GlobalPhone", 102, 31.7, "GlobalPhone"
+   "English", `English acoustic model`_, "LibriSpeech", 2484, 982.3, "Arpabet (stressed)"
+   "French (FR)", `French (FR) acoustic model`_, "GlobalPhone", 100, 26.9, "GlobalPhone"
+   "French (FR)", `French (Prosodylab) acoustic model`_, "GlobalPhone", 100, 26.9, "Prosodylab [1]_"
+   "French (QC)", `French (QC) acoustic model`_, "Lab speech", "N/A", "N/A", "Prosodylab [1]_"
+   "German", `German acoustic model`_, "GlobalPhone", 77, 18, "GlobalPhone"
+   "German", `German (Prosodylab) acoustic model`_, "GlobalPhone", 77, 18, "Prosodylab [3]_"
+   "Hausa", `Hausa acoustic model`_, "GlobalPhone", 103, 8.7, "GlobalPhone"
+   "Japanese", "Not available yet", "GlobalPhone", 144, 34, "GlobalPhone"
+   "Korean", `Korean acoustic model`_, "GlobalPhone", 101, 20.8, "GlobalPhone"
+   "Mandarin", `Mandarin acoustic model`_, "GlobalPhone", 132, 31.2, "GlobalPhone"
+   "Polish", `Polish acoustic model`_, "GlobalPhone", 99, 24.6, "GlobalPhone"
+   "Portuguese", `Portuguese acoustic model`_, "GlobalPhone", 101, 26.3, "GlobalPhone"
+   "Russian", `Russian acoustic model`_, "GlobalPhone", 115, 26.5, "GlobalPhone"
+   "Spanish", `Spanish acoustic model`_, "GlobalPhone", 102, 22.1, "GlobalPhone"
+   "Swahili", `Swahili acoustic model`_, "GlobalPhone", 70, 11.1, "GlobalPhone"
+   "Swedish", `Swedish acoustic model`_, "GlobalPhone", 98, 21.7, "GlobalPhone"
+   "Tamil", "Not available yet", "GlobalPhone", "N/A", "N/A", "GlobalPhone"
+   "Thai", `Thai acoustic model`_, "GlobalPhone", 98, 28.2, "GlobalPhone"
+   "Turkish", `Turkish acoustic model`_, "GlobalPhone", 100, 17.1, "GlobalPhone"
+   "Ukrainian", `Ukrainian acoustic model`_, "GlobalPhone", 119, 14.1, "GlobalPhone"
+   "Vietnamese", `Vietnamese acoustic model`_, "GlobalPhone", 129, 19.7, "GlobalPhone"
+   "Wu", "Not available yet", "GlobalPhone", 41, 9.3, "GlobalPhone"
 
 .. _pretrained_g2p:
 
@@ -256,12 +262,24 @@ can get a full list of the currently available dictionaries via :code:`mfa downl
 by users will be periodically added. If you would like to contribute your dictionaries, please contact Michael McAuliffe
 at michael.e.mcauliffe@gmail.com.
 
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| Language        | Link                                          | Orthography system     | Phone set              |
-+=================+===============================================+========================+========================+
-| English         | `English pronunciation dictionary`_           |   Latin                |   Arpabet (stressed)   |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| French          | `French Prosodylab dictionary`_               |   Latin                |   Prosodylab French    |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
-| German          | `German Prosodylab dictionary`_               |   Latin                |   Prosodylab German    |
-+-----------------+-----------------------------------------------+------------------------+------------------------+
+.. csv-table::
+   :header: "Language", "Link", "Orthography system", "Phone set"
+
+   "English", `English pronunciation dictionary`_ , "Latin", "Arpabet (stressed)"
+   "French", `French Prosodylab dictionary`_, "Latin", "Prosodylab French"
+   "German", `German Prosodylab dictionary`_, "Latin", "Prosodylab German"
+   "Brazilian Portuguese", `FalaBrasil dictionary`_, "Latin", ""
+
+.. _language_models:
+
+Available language models
+=========================
+
+There are several places that contain pretrained language models that can be imported to MFA.
+
+.. csv-table::
+   :header: "Source", "Language", "Link"
+
+   "GlobalPhone", "Various languages", `GlobalPhone language models`_
+   "LibriSpeech", "English", `LibriSpeech language models`_
+   "FalaBrasil", "Brazilian Portuguese", `FalaBrasil language models`_

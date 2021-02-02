@@ -1,0 +1,15 @@
+import os
+import pytest
+
+from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
+from montreal_forced_aligner.command_line.mfa import parser
+
+
+def test_train_dict(basic_corpus_dir, sick_dict_path, english_acoustic_model, generated_dir,
+                    transcription_acoustic_model, transcription_language_model, temp_dir, basic_align_config):
+    output_path = os.path.join(generated_dir, 'trained_dict.txt')
+    command = ['train_dictionary', basic_corpus_dir, sick_dict_path, transcription_acoustic_model,
+               output_path,
+               '-t', temp_dir, '-q', '--clean', '-d', '--config', basic_align_config]
+    args, unknown = parser.parse_known_args(command)
+    run_train_dictionary(args)

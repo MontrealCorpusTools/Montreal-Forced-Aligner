@@ -27,6 +27,10 @@ def train_dictionary(args):
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
+    if args.config_path:
+        align_config = align_yaml_to_config(args.config_path)
+    else:
+        align_config = load_basic_align()
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -48,7 +52,7 @@ def train_dictionary(args):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
-                        num_jobs=args.num_jobs)
+                        num_jobs=args.num_jobs, use_mp=align_config.use_mp)
         if corpus.issues_check:
             print('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
@@ -58,10 +62,6 @@ def train_dictionary(args):
         acoustic_model.validate(dictionary)
 
         begin = time.time()
-        if args.config_path:
-            align_config = align_yaml_to_config(args.config_path)
-        else:
-            align_config = load_basic_align()
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
                               temp_directory=data_directory,
                               debug=getattr(args, 'debug', False))

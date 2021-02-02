@@ -36,19 +36,13 @@ training:
       max_gaussians: 15000
       power: 0.2
       silence_weight: 0.0
-      fmllr_update_type: "diag"
+      fmllr_update_type: "full"
       subset: 10000
-      features:
-          lda: true
 
   - sat:
       num_leaves: 4200
       max_gaussians: 40000
       power: 0.2
       silence_weight: 0.0
-      fmllr_update_type: "diag"
-      subset: 30000
-      features:
-          lda: true
-          fmllr: true
+      fmllr_update_type: "full"
 

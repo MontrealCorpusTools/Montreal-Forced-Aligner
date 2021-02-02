@@ -1,23 +1,11 @@
 
 from montreal_forced_aligner.command_line.validate import run_validate_corpus
+from montreal_forced_aligner.command_line.mfa import parser
 
 
-class ValidatorDummyArgs(object):
-    def __init__(self):
-        self.temp_directory = None
-        self.test_transcriptions = False
-        self.num_jobs = 0
-        self.speaker_characters = 0
-        self.ignore_acoustics = False
-        self.disable_mp = False
+def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary, temp_dir):
 
-
-def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary,temp_dir):
-    args = ValidatorDummyArgs()
-    args.num_jobs = 2
-    args.corpus_directory = large_prosodylab_format_directory
-    args.dictionary_path = large_dataset_dictionary
-    args.temp_directory = temp_dir
-    args.test_transcriptions = True
-    args.disable_mp = True
+    command = ['validate', large_prosodylab_format_directory, large_dataset_dictionary, 'english',
+               '-t', temp_dir, '-q', '--clean', '-d', '--disable_mp', '--test_transcriptions', '-j', '0']
+    args, unknown = parser.parse_known_args(command)
     run_validate_corpus(args)
