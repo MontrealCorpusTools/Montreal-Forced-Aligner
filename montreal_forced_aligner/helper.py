@@ -13,7 +13,13 @@ Labels = List[Any]
 def thirdparty_binary(binary_name):
     bin_path = shutil.which(binary_name)
     if bin_path is None:
-        raise ThirdpartyError("Could not find '{}'.  Please ensure that you have downloaded the correct binaries.".format(binary_name))
+        if binary_name in ['fstcompile', 'fstarcsort', 'fstconvert'] and sys.platform != 'win32':
+            raise ThirdpartyError("Could not find '{}'.  Please ensure that you are in an environment that has the "
+                                  "openfst conda package installed, or that the openfst binaries are on your path "
+                                  "if you compiled them yourself.".format(binary_name))
+        else:
+            raise ThirdpartyError("Could not find '{}'.  Please ensure that you have downloaded the "
+                                  "correct binaries.".format(binary_name))
     return bin_path
 
 
