@@ -77,7 +77,7 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     speaker_name = speaker_name.strip().replace(' ', '_')
     utt_name = utt_name.strip().replace(' ', '_')
     return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path':wav_path,
-            'words': words, 'wav_info': wav_info, 'relative_path': relative_path}
+            'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
 
 def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, temp_directory):
     file_name = recording_name

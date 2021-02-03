@@ -193,6 +193,7 @@ class AlignableCorpus(BaseCorpus):
                     utt_name = fixed_utt_name
                 file_name = utt_name
                 words = info['words']
+                words = words.split()
                 for w in words:
                     new_w = re.split(r"[-']", w)
                     self.word_counts.update(new_w + [w])
@@ -216,6 +217,7 @@ class AlignableCorpus(BaseCorpus):
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                 for utt, words in info['text_mapping'].items():
+                    words = words.split()
                     for w in words:
                         new_w = re.split(r"[-']", w)
                         self.word_counts.update(new_w + [w])
@@ -265,6 +267,7 @@ class AlignableCorpus(BaseCorpus):
                             utt_name = fixed_utt_name
 
                         words = info['words']
+                        words = words.split()
                         for w in words:
                             new_w = re.split(r"[-']", w)
                             self.word_counts.update(new_w + [w])
@@ -301,6 +304,7 @@ class AlignableCorpus(BaseCorpus):
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                         for utt, words in info['text_mapping'].items():
+                            words = words.split()
                             for w in words:
                                 new_w = re.split(r"[-']", w)
                                 self.word_counts.update(new_w + [w])

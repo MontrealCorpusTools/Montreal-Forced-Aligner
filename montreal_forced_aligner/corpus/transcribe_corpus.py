@@ -147,7 +147,7 @@ class TranscribeCorpus(BaseCorpus):
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 for utt, words in info['text_mapping'].items():
-                    self.text_mapping[utt] = ' '.join(words)
+                    self.text_mapping[utt] = words
                 self.utt_speak_mapping.update(info['utt_speak_mapping'])
                 for speak, utts in info['speak_utt_mapping'].items():
                     if speak not in self.speak_utt_mapping:
@@ -304,7 +304,6 @@ class TranscribeCorpus(BaseCorpus):
             msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
                   'If you would like to use fewer parallel jobs, ' \
                   'please resample all wav files to the same sample rate.'.format(self.num_jobs)
-            print('WARNING: ' + msg)
             self.logger.warning(msg)
 
     def initialize_corpus(self, dictionary=None):

@@ -5,6 +5,11 @@
 Changelog
 =========
 
+2.0.0a4
+-------
+
+- Fixed a corpus parsing bug introduced by new optimized parsing system in 2.0.0a3
+
 2.0.0a3
 -------
 

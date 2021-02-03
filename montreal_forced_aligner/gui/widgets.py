@@ -347,7 +347,7 @@ class InformationWidget(QtWidgets.QWidget):  # pragma: no cover
         cur_index = 0
         for word, prons in sorted(self.dictionary.words.items()):
             for p in prons:
-                pronunciation = ' '.join(p[0])
+                pronunciation = ' '.join(p['pronunciation'])
                 self.dictionary_widget.setItem(cur_index, 0, QtWidgets.QTableWidgetItem(word))
                 self.dictionary_widget.setItem(cur_index, 1, QtWidgets.QTableWidgetItem(pronunciation))
                 cur_index += 1

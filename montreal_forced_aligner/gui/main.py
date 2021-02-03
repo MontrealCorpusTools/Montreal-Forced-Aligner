@@ -14,6 +14,8 @@ from ..utils import get_available_g2p_languages, get_pretrained_g2p_path, \
     get_available_ivector_languages, get_pretrained_ivector_path, \
     get_available_lm_languages, get_pretrained_language_model_path
 
+from ..helper import setup_logger
+
 from .widgets import UtteranceListWidget, UtteranceDetailWidget, InformationWidget
 
 
@@ -70,6 +72,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.create_actions()
         self.create_menus()
         self.default_directory = os.path.dirname(TEMP_DIR)
+        self.logger = setup_logger('annotator', self.default_directory)
         self.setWindowTitle("MFA Annotator")
         self.loading_corpus = False
         self.loading_dictionary = False
@@ -206,7 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
             return
         corpus_name = os.path.basename(directory)
         corpus_temp_dir = os.path.join(self.config['temp_directory'], corpus_name)
-        self.corpus = AlignableCorpus(directory, corpus_temp_dir)
+        self.corpus = AlignableCorpus(directory, corpus_temp_dir, logger=self.logger)
         self.loading_corpus = False
         self.corpusLoaded.emit(self.corpus)
 

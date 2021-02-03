@@ -29,6 +29,38 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, default
     assert c.get_feat_dim(default_feature_config) == 39
 
 
+def test_alignable_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config):
+    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
+    dictionary.write()
+    output_directory = os.path.join(generated_dir, 'basic')
+    c = AlignableCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
+    assert len(c.no_transcription_files) == 0
+    c.initialize_corpus(dictionary)
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
+
+    c = AlignableCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
+    assert len(c.no_transcription_files) == 0
+    c.initialize_corpus(dictionary)
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
+
+
+def test_transcribe_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config):
+    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
+    dictionary.write()
+    output_directory = os.path.join(generated_dir, 'basic')
+    c = TranscribeCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
+    c.initialize_corpus(dictionary)
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
+
+    c = TranscribeCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
+    c.initialize_corpus(dictionary)
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
+
+
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
     corpus = AlignableCorpus(extra_corpus_dir, output_directory, num_jobs=2, use_mp=False)
