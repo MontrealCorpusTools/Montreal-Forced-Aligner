@@ -86,6 +86,8 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 else:
                     speaker_directory = out_directory
                 os.makedirs(speaker_directory, exist_ok=True)
+                if k.startswith(speaker) and speaker in k.split('_')[1:]:  # deal with prosodylab speaker prefixing
+                    k = '_'.join(k.split('_')[1:])
                 outpath = os.path.join(speaker_directory, k + '.TextGrid')
                 tg.write(outpath)
             except Exception as e:

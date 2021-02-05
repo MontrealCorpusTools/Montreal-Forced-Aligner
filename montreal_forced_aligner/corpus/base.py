@@ -471,7 +471,7 @@ class BaseCorpus(object):
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          feature_string, '-'],
                                         stdout=subprocess.PIPE,
-                                        #stderr=devnull
+                                        stderr=devnull
                                         )
             stdout, stderr = dim_proc.communicate()
             feats = stdout.decode('utf8').strip()
