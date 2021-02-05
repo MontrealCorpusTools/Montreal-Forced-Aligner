@@ -103,8 +103,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
     n_channels = wav_info['num_channels']
     num_tiers = len(tg.tiers)
     if n_channels == 2:
-        a_name = file_name + "_A"
-        b_name = file_name + "_B"
+        a_name = file_name + "_channel1"
+        b_name = file_name + "_channel2"
 
         a_path, b_path = extract_temp_channels(wav_path, temp_directory)
     elif n_channels > 2:
@@ -149,11 +149,11 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
                 utt_wav_mapping[file_name] = wav_path
             else:
                 if i < num_tiers / 2:
-                    utt_name += '_A'
+                    utt_name += '_channel1'
                     segments[utt_name] = '{} {} {}'.format(a_name, begin, end)
                     utt_wav_mapping[a_name] = a_path
                 else:
-                    utt_name += '_B'
+                    utt_name += '_channel2'
                     segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
                     utt_wav_mapping[b_name] = b_path
             text_mapping[utt_name] = ' '.join(words)

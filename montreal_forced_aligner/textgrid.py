@@ -27,7 +27,7 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                 filename = corpus.segments[utt]
                 filename, utt_begin, utt_end = filename.split(' ')
                 utt_begin = Decimal(utt_begin)
-                if filename.endswith('_A') or filename.endswith('_B'):
+                if filename.endswith('_channel1') or filename.endswith('_channel2'):
                     filename = filename[:-2]
                 begin += utt_begin
                 end += utt_begin
