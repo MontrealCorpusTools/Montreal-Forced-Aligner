@@ -72,11 +72,12 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
         speaker_name = utt_name[:speaker_characters]
     elif speaker_characters == 'prosodylab':
         speaker_name = utt_name.split('_')[1]
-        utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
     else:
         speaker_name = utt_name
     speaker_name = speaker_name.strip().replace(' ', '_')
     utt_name = utt_name.strip().replace(' ', '_')
+    if not utt_name.startswith(speaker_name):
+        utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
 
     return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path':wav_path,
             'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
