@@ -7,7 +7,7 @@ import subprocess
 from collections import defaultdict, Counter
 
 from ..exceptions import SampleRateError, CorpusError
-from ..helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp
+from ..helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp, save_scp
 
 
 def get_wav_info(file_path):
@@ -424,23 +424,44 @@ class BaseCorpus(object):
         self.feat_mapping = {}
         split_directory = self.split_directory()
         feat_path = os.path.join(self.output_directory, 'feats.scp')
-        with open(feat_path, 'w') as outf:
+        lengths_path = os.path.join(self.output_directory, 'utterance_lengths.scp')
+        with open(feat_path, 'w') as outf, open(lengths_path, 'w') as lengths_out_f:
             for i in range(self.num_jobs):
                 path = os.path.join(split_directory, 'feats.{}.scp'.format(i))
+                run_filter = False
+                lengths_path = os.path.join(split_directory, 'utterance_lengths.{}.scp'.format(i))
+                with open(lengths_path, 'r') as inf:
+                    for line in inf:
+                        line = line.strip()
+                        utt, length = line.split()
+                        length = int(length)
+                        if length < 13: # Minimum length to align one phone plus silence
+                            self.ignored_utterances.append(utt)
+                            run_filter = True
+                        else:
+                            self.utterance_lengths[line[0]] = int(line[1])
+                            lengths_out_f.write(line + '\n')
+                if run_filter:
+                    filtered = filter_scp(self.ignored_utterances, path, exclude=True)
+                    with open(path, 'w') as f:
+                        for line in filtered:
+                            f.write(line.strip() + '\n')
                 with open(path, 'r') as inf:
                     for line in inf:
                         line = line.strip()
                         if line == '':
                             continue
                         f = line.split(maxsplit=1)
+                        if f[0] in self.ignored_utterances:
+                            continue
                         self.feat_mapping[f[0]] = f[1]
                         outf.write(line + '\n')
-        if len(self.feat_mapping.keys()) != len(self.utt_speak_mapping.keys()):
-            for k in self.utt_speak_mapping.keys():
-                if k not in self.feat_mapping:
-                    self.ignored_utterances.append(k)
+        if self.ignored_utterances:
             for k, v in self.speak_utt_mapping.items():
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
+            self.logger.warning('There were some utterances ignored due to short duration, see the log file for full '
+                                'details or run `mfa validate` on the corpus.')
+            self.logger.debug('The following utterances were too short to run alignment: {}'.format(' ,'.join(self.ignored_utterances)))
         self.figure_utterance_lengths()
 
     def figure_utterance_lengths(self):
@@ -459,8 +480,12 @@ class BaseCorpus(object):
                     feats = stdout.decode('utf8').strip()
                     for line in feats.splitlines():
                         line = line.strip()
-                        line = line.split()
-                        self.utterance_lengths[line[0]] = int(line[1])
+                        utt, length = line.split()
+                        length = int(length)
+                        if length < 13: # Minimum length to align one phone plus silence
+                            self.ignored_utterances.append(utt)
+                        else:
+                            self.utterance_lengths[line[0]] = int(line[1])
                 output_mapping(self.utterance_lengths, lengths_path)
 
 

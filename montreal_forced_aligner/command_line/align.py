@@ -50,8 +50,7 @@ def align_corpus(args, unknown_args=None):
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path,
                 'acoustic_model_path': args.acoustic_model_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != command \
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:

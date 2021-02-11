@@ -3,7 +3,8 @@ import re
 from collections import Counter
 
 from .base import BaseAligner
-from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs, generate_pronunciations)
+from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs,
+                               calc_fmllr, generate_pronunciations)
 from ..exceptions import KaldiProcessingError
 from ..helper import log_kaldi_errors
 
@@ -62,7 +63,7 @@ class PretrainedAligner(BaseAligner):
         log_dir = os.path.join(self.align_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
 
-        print('Done with setup.')
+        self.logger.info('Done with setup!')
 
     @property
     def model_directory(self):
@@ -88,9 +89,19 @@ class PretrainedAligner(BaseAligner):
             self.acoustic_model.feature_config.generate_features(self.corpus)
             log_dir = os.path.join(self.align_directory, 'log')
             os.makedirs(log_dir, exist_ok=True)
+            self.logger.info('Performing first-pass alignment...')
             align('final', self.align_directory, self.align_config.data_directory,
                   self.dictionary.optional_silence_csl,
                   self.corpus.num_jobs, self.align_config)
+            if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
+                    and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
+                self.logger.info('Calculating fMLLR for speaker adaptation...')
+                calc_fmllr(self.align_directory, self.align_config.data_directory,
+                      self.dictionary.optional_silence_csl, self.corpus.num_jobs, self.align_config, initial=True, iteration='final')
+                self.logger.info('Performing second-pass alignment...')
+                align('final', self.align_directory, self.align_config.data_directory,
+                      self.dictionary.optional_silence_csl,
+                      self.corpus.num_jobs, self.align_config)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass

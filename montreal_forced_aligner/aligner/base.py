@@ -61,7 +61,7 @@ class BaseAligner(object):
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary)
         try:
-            self.align_config.feature_config.generate_features(self.corpus)
+            self.align_config.feature_config.generate_features(self.corpus, logger=self.logger)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)

@@ -126,7 +126,6 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
     utt_text_file_mapping = {}
     utt_speak_mapping = {}
     speak_utt_mapping = {}
-    file_directory_mapping = {}
     for i, ti in enumerate(tg.tiers):
         if ti.name.lower() == 'notes':
             continue

@@ -41,8 +41,7 @@ def train_dictionary(args):
                 'type': 'align',
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path}
-    if getattr(args, 'clean', False) \
-            or conf['dirty'] or conf['type'] != 'align' \
+    if conf['dirty'] or conf['type'] != 'align' \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:

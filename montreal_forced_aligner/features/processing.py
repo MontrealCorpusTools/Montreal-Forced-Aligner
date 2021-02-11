@@ -10,6 +10,7 @@ def mfcc_func(directory, job_name, mfcc_options):
     log_directory = os.path.join(directory, 'log')
     raw_mfcc_path = os.path.join(directory, 'raw_mfcc.{}.ark'.format(job_name))
     raw_scp_path = os.path.join(directory, 'feats.{}.scp'.format(job_name))
+    lengths_path = os.path.join(directory, 'utterance_lengths.{}.scp'.format(job_name))
     log_path = os.path.join(log_directory, 'make_mfcc.{}.log'.format(job_name))
     segment_path = os.path.join(directory, 'segments.{}'.format(job_name))
     scp_path = os.path.join(directory, 'wav.{}.scp'.format(job_name))
@@ -34,7 +35,12 @@ def mfcc_func(directory, job_name, mfcc_options):
                                       'ark:-',
                                       'ark,scp:{},{}'.format(raw_mfcc_path, raw_scp_path)],
                                      stdin=comp_proc.stdout, stderr=log_file)
-        copy_proc.wait()
+        copy_proc.communicate()
+
+        utt_lengths_proc = subprocess.Popen([thirdparty_binary('feat-to-len'),
+                                                 'scp:' + raw_scp_path, 'ark,t:'+ lengths_path],
+            stderr=log_file)
+        utt_lengths_proc.communicate()
 
 
 def mfcc(mfcc_directory, num_jobs, feature_config):
