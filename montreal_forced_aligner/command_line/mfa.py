@@ -3,6 +3,8 @@ import os
 import argparse
 import multiprocessing as mp
 
+from montreal_forced_aligner import __version__
+
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_available_g2p_languages, \
     get_available_dict_languages, get_available_lm_languages, get_available_ivector_languages
 from montreal_forced_aligner.command_line.align import run_align_corpus
@@ -51,6 +53,8 @@ parser = argparse.ArgumentParser()
 
 subparsers = parser.add_subparsers(dest="subcommand")
 subparsers.required = True
+
+version_parser = subparsers.add_parser('version')
 
 align_parser = subparsers.add_parser('align')
 align_parser.add_argument('corpus_directory', help='Full path to the directory to align')
@@ -360,6 +364,8 @@ def main():
         run_transcribe_corpus(args)
     elif args.subcommand == 'create_segments':
         run_create_segments(args, unknown)
+    elif args.subcommand == 'version':
+        print(__version__)
     unfix_path()
 
 
