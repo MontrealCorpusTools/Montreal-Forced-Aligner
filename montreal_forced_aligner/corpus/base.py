@@ -439,7 +439,7 @@ class BaseCorpus(object):
                             self.ignored_utterances.append(utt)
                             run_filter = True
                         else:
-                            self.utterance_lengths[line[0]] = int(line[1])
+                            self.utterance_lengths[utt] = length
                             lengths_out_f.write(line + '\n')
                 if run_filter:
                     filtered = filter_scp(self.ignored_utterances, path, exclude=True)
@@ -456,13 +456,15 @@ class BaseCorpus(object):
                             continue
                         self.feat_mapping[f[0]] = f[1]
                         outf.write(line + '\n')
+        for utt in self.utt_speak_mapping.keys():
+            if utt not in self.feat_mapping and utt not in self.ignored_utterances:
+                self.ignored_utterances.append(utt)
         if self.ignored_utterances:
             for k, v in self.speak_utt_mapping.items():
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
             self.logger.warning('There were some utterances ignored due to short duration, see the log file for full '
                                 'details or run `mfa validate` on the corpus.')
             self.logger.debug('The following utterances were too short to run alignment: {}'.format(' ,'.join(self.ignored_utterances)))
-        self.figure_utterance_lengths()
 
     def figure_utterance_lengths(self):
         feat_path = os.path.join(self.output_directory, 'feats.scp')

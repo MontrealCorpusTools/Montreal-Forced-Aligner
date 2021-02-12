@@ -195,7 +195,6 @@ class G2PModel(Archive):
     def meta(self):
         if not self._meta:
             meta_path = os.path.join(self.dirname, 'meta.yaml')
-            print(meta_path)
             if not os.path.exists(meta_path):
                 self._meta = {'version': '0.9.0',
                               'architecture': 'phonetisaurus'}

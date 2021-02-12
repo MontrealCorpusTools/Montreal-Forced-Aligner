@@ -93,13 +93,15 @@ def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, def
     corpus = AlignableCorpus(shortsegments_corpus_dir, temp, use_mp=False)
     corpus.initialize_corpus(dictionary)
     default_feature_config.generate_features(corpus)
-    assert len(corpus.feat_mapping.keys()) == 2
+    assert len(corpus.feat_mapping.keys()) == 1
     assert len(corpus.utt_speak_mapping.keys()) == 3
     assert len(corpus.speak_utt_mapping.keys()) == 1
     assert len(corpus.text_mapping.keys()) == 3
     assert len(corpus.utt_wav_mapping.keys()) == 1
     assert len(corpus.segments.keys()) == 3
-    assert len(corpus.ignored_utterances) == 1
+    print(corpus.segments)
+    print(corpus.ignored_utterances)
+    assert len(corpus.ignored_utterances) == 2
 
 
 def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_dataset_dictionary, default_feature_config):
