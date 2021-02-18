@@ -15,6 +15,7 @@ class AlignConfig(BaseConfig):
         self.beam = 10
         self.retry_beam = 40
         self.data_directory = None # Gets set later
+        self.fmllr_update_type = 'full'
         self.use_mp = True
 
     @property

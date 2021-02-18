@@ -5,6 +5,17 @@
 Changelog
 =========
 
+2.0.0a5
+-------
+
+- Fixed a bug in feature where sorting was not correct due to lack of speakers at the beginnings
+  of utterances
+- Fixed a bug where alignment was not performing speaker adaptation correctly
+- Added a flag to :code:`align` command to disable speaker adaptation if desired
+- Fixed a bug where the aligner was not properly ignored short utterances (< 0.13 seconds)
+- Changed the internal handling of stereo files to use :code:`_channelX` rather than :code:`_A` and :code:`_B`
+- Add a :code:`version` subcommand to output the version
+
 2.0.0a4
 -------
 

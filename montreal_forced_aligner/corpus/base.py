@@ -165,6 +165,8 @@ class BaseCorpus(object):
         self.speaker_groups = []
         self.frequency_configs = []
         self.segments = {}
+        self.file_utt_mapping = {}
+        self.utt_file_mapping = {}
         self.ignored_utterances = []
         self.utterance_lengths = {}
         feat_path = os.path.join(self.output_directory, 'feats.scp')

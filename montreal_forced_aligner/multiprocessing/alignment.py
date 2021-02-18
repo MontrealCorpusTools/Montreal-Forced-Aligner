@@ -818,6 +818,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
             model_name = 'final'
     else:
         model_name = iteration
+    log_directory = os.path.join(directory, 'log')
 
 
     jobs = [(directory, split_directory, sil_phones, x,
@@ -826,7 +827,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     # if config.use_mp:
     #    run_mp(calc_fmllr_func, jobs)
     # else:
-    run_non_mp(calc_fmllr_func, jobs, config.log_directory)
+    run_non_mp(calc_fmllr_func, jobs, log_directory)
 
 
 def lda_acc_stats_func(directory, feature_string, align_directory, config, ci_phones, i):

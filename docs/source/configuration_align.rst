@@ -84,8 +84,8 @@ https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_deltas.sh
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
-   "num_iterations", 40, "Number of training iterations"
-   "max_gaussians", 40, "Total number of gaussians"
+   "num_iterations", 35, "Number of training iterations"
+   "max_gaussians", 10000, "Total number of gaussians"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
    "num_leaves", 1000, "Number of states in the decision tree"
    "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
@@ -101,8 +101,8 @@ https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_lda_mllt.s
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
-   "num_iterations", 40, "Number of training iterations"
-   "max_gaussians", 40, "Total number of gaussians"
+   "num_iterations", 35, "Number of training iterations"
+   "max_gaussians", 10000, "Total number of gaussians"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
    "num_leaves", 1000, "Number of states in the decision tree"
    "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
@@ -123,8 +123,8 @@ https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_sat.sh
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
-   "num_iterations", 40, "Number of training iterations"
-   "max_gaussians", 1000, "Total number of gaussians"
+   "num_iterations", 35, "Number of training iterations"
+   "max_gaussians", 10000, "Total number of gaussians"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
    "num_leaves", 1000, "Number of states in the decision tree"
    "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"

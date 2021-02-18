@@ -126,6 +126,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
     utt_text_file_mapping = {}
     utt_speak_mapping = {}
     speak_utt_mapping = {}
+    utt_file_mapping = {}
+    file_utt_mapping = {file_name: []}
     for i, ti in enumerate(tg.tiers):
         if ti.name.lower() == 'notes':
             continue
@@ -159,6 +161,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             text_mapping[utt_name] = ' '.join(words)
             utt_text_file_mapping[utt_name] = textgrid_path
             utt_speak_mapping[utt_name] = speaker_name
+            utt_file_mapping[utt_name] = file_name
+            file_utt_mapping[file_name].append(utt_name)
             if speaker_name not in speak_utt_mapping:
                 speak_utt_mapping[speaker_name] = []
             speak_utt_mapping[speaker_name].append(utt_name)
@@ -170,7 +174,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             'utt_wav_mapping': utt_wav_mapping, 'text_mapping': text_mapping,
             'utt_text_file_mapping': utt_text_file_mapping, 'utt_speak_mapping': utt_speak_mapping,
             'speak_utt_mapping': speak_utt_mapping, 'speaker_ordering': speaker_ordering,
-            'file_names': file_names, 'relative_path': relative_path, 'recording_name': recording_name
+            'file_names': file_names, 'relative_path': relative_path, 'recording_name': recording_name,
+            'file_utt_mapping': file_utt_mapping, 'utt_file_mapping': utt_file_mapping
             }
 
 

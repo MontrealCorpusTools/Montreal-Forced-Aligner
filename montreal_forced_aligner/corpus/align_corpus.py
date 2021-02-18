@@ -56,7 +56,6 @@ class AlignableCorpus(BaseCorpus):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
                                               num_jobs, debug, logger, use_mp)
-        # Set up mapping dictionaries
         self.utt_text_file_mapping = {}
         self.word_counts = Counter()
         self.utterance_oovs = {}
@@ -215,6 +214,8 @@ class AlignableCorpus(BaseCorpus):
                     self.sample_rates[sr].add(s)
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                self.file_utt_mapping.update(info['file_utt_mapping'])
+                self.utt_file_mapping.update(info['utt_file_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                 for utt, words in info['text_mapping'].items():
                     words = words.split()
@@ -359,6 +360,29 @@ class AlignableCorpus(BaseCorpus):
                   'If you would like to use fewer parallel jobs, ' \
                   'please resample all wav files to the same sample rate.'.format(self.num_jobs)
             self.logger.warning(msg)
+
+    def save_text_file(self, file_name):
+        text_file_path = None
+        if self.segments:
+            first_utt = self.file_utt_mapping[file_name][0]
+            text_file_path = self.utt_text_file_mapping[first_utt]
+            tg = TextGrid()
+            tg.read(text_file_path)
+            tiers = {}
+
+            for utt in self.file_utt_mapping[file_name]:
+                seg = self.segments[utt]
+                fn, begin, end = seg.split()
+                begin = round(float(begin), 4)
+                end = round(float(end), 4)
+                text =  self.text_mapping[utt]
+                speaker = self.utt_speak_mapping[utt]
+                if speaker not in tiers:
+                    tiers[speaker] = IntervalTier(name=speaker, maxTime=tg.maxTime)
+                tiers[speaker].add(begin, end, text)
+            tg.tiers = [x for x in tiers.values()]
+            tg.write(text_file_path)
+
 
     def update_utterance_text(self, utterance, new_text):
         new_text = new_text.lower().strip()
