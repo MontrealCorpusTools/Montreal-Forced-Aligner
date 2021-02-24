@@ -32,7 +32,7 @@ brackets = [('[', ']'), ('{', '}'), ('<', '>'), ('(', ')')]
 
 def check_bracketed(word):
     for b in brackets:
-        if word[0] == b[0] and word[-1] == b[-1]:
+        if word.startswith(b[0]) and word.endswith(b[-1]):
             return True
     return False
 
