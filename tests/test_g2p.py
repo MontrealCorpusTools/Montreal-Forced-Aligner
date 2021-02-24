@@ -17,6 +17,12 @@ def test_clean_up_word():
     assert m == ['+']
 
 
+def test_check_bracketed():
+    word_set = ['uh',  '(the)', 'sick', '<corpus>', '[a]', '{cold}', '']
+    expected_result = ['uh', 'sick', '']
+    assert [x for x in word_set if not check_bracketed(x)] == expected_result
+
+
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):
     if G2P_DISABLED:
         pytest.skip('No Pynini found')
