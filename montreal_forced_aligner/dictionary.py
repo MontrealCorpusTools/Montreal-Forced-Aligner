@@ -267,12 +267,16 @@ class Dictionary(object):
                 return s
             return [item]
         if "'" in item and not item.endswith("'") and not item.startswith("'"):
-            m = re.match(r"(\w+)'(\w+)", item)
-            initial, final = m.groups()
+            initial, final = item.split("'", maxsplit=1)
+            if "'" in final:
+                final = self.split_clitics(final)
+            else:
+                final = [final]
             if initial + "'" in self.clitic_set:
-                return [initial + "'", final]
-            elif "'" + final in self.clitic_set:
-                return [initial, "'" + final]
+                return [initial + "'"] + final
+            elif "'" + final[0] in self.clitic_set:
+                final[0] = "'" + final[0]
+                return [initial] + final
         return [item]
 
     def __len__(self):
