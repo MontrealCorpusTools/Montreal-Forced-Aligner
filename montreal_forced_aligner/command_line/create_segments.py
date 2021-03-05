@@ -25,7 +25,6 @@ def create_segments(args, unknown_args=None):
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
-    logger = setup_logger(command, data_directory)
     if args.config_path:
         segmentation_config = segmentation_yaml_to_config(args.config_path)
     else:
@@ -33,8 +32,9 @@ def create_segments(args, unknown_args=None):
     if unknown_args:
         segmentation_config.update_from_args(unknown_args)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
+        print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)

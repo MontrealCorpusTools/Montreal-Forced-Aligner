@@ -28,7 +28,6 @@ def align_corpus(args, unknown_args=None):
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
-    logger = setup_logger(command, data_directory)
     if args.config_path:
         align_config = align_yaml_to_config(args.config_path)
     else:
@@ -37,8 +36,9 @@ def align_corpus(args, unknown_args=None):
         align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
+        print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -80,7 +80,7 @@ def align_corpus(args, unknown_args=None):
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, logger=logger, use_mp=align_config.use_mp)
         if corpus.issues_check:
-            logger.warning('WARNING: Some issues parsing the corpus were detected. '
+            logger.warning('Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)

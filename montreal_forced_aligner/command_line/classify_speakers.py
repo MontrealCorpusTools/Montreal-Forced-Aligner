@@ -27,15 +27,15 @@ def classify_speakers(args):
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, 'config.yml')
-    logger = setup_logger(command, data_directory)
     if args.config_path:
         classification_config = classification_yaml_to_config(args.config_path)
     else:
         classification_config = load_basic_classification()
     classification_config.use_mp = not args.disable_mp
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
+        print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)

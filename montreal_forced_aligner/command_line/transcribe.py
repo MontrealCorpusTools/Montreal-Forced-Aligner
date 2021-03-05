@@ -33,10 +33,10 @@ def transcribe_corpus(args):
     else:
         transcribe_config = load_basic_transcribe()
     data_directory = os.path.join(temp_dir, corpus_name)
-    logger = setup_logger(command, data_directory)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
+        print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     os.makedirs(data_directory, exist_ok=True)

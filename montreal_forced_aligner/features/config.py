@@ -87,7 +87,7 @@ class FeatureConfig(object):
         self.job_specific_configuration[job_name] = config
 
     def mfcc_options(self, job_name):
-        options = {'use_energy': self.use_energy}
+        options = {'use_energy': self.use_energy, 'frame_shift': self.frame_shift}
         options.update(self.job_specific_configuration[job_name])
         return options
 

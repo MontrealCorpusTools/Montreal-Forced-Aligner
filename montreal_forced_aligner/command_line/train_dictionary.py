@@ -12,10 +12,12 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
 def train_dictionary(args):
+    command = 'train_dictionary'
     all_begin = time.time()
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -31,6 +33,10 @@ def train_dictionary(args):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        print('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -38,40 +44,57 @@ def train_dictionary(args):
         conf = {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
-                'type': 'align',
+                'type': command,
                 'corpus_directory': args.corpus_directory,
-                'dictionary_path': args.dictionary_path}
-    if conf['dirty'] or conf['type'] != 'align' \
+                'dictionary_path': args.dictionary_path,
+                'acoustic_model_path': args.acoustic_model_path
+                }
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
-        shutil.rmtree(data_directory, ignore_errors=True)
+        logger.warning(
+            'WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no '
+            'weird behavior for previous versions of the temporary directory.')
+        if conf['dirty']:
+            logger.debug('Previous run ended in an error (maybe ctrl-c?)')
+        if conf['type'] != command:
+            logger.debug('Previous run was a different subcommand than {} (was {})'.format(command, conf['type']))
+        if conf['corpus_directory'] != args.corpus_directory:
+            logger.debug('Previous run used source directory '
+                         'path {} (new run: {})'.format(conf['corpus_directory'], args.corpus_directory))
+        if conf['version'] != __version__:
+            logger.debug('Previous run was on {} version (new run: {})'.format(conf['version'], __version__))
+        if conf['dictionary_path'] != args.dictionary_path:
+            logger.debug('Previous run used dictionary path {} '
+                         '(new run: {})'.format(conf['dictionary_path'], args.dictionary_path))
+        if conf['acoustic_model_path'] != args.acoustic_model_path:
+            logger.debug('Previous run used acoustic model path {} '
+                         '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
 
     os.makedirs(data_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                         speaker_characters=args.speaker_characters,
-                        num_jobs=args.num_jobs, use_mp=align_config.use_mp)
+                        num_jobs=args.num_jobs, use_mp=align_config.use_mp, logger=logger)
         if corpus.issues_check:
-            print('WARNING: Some issues parsing the corpus were detected. '
+            logger.warning('WARNING: Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
-        print(corpus.speaker_utterance_info())
+        logger.info(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path)
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set)
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
         acoustic_model.validate(dictionary)
 
         begin = time.time()
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
                               temp_directory=data_directory,
-                              debug=getattr(args, 'debug', False))
-        if args.debug:
-            print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
+                              debug=getattr(args, 'debug', False), logger=logger)
+        logger.debug('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
         a.verbose = args.verbose
 
         begin = time.time()
         a.align()
-        if args.debug:
-            print('Performed alignment in {} seconds'.format(time.time() - begin))
+        logger.debug('Performed alignment in {} seconds'.format(time.time() - begin))
 
         a.generate_pronunciations(args.output_directory)
         print('Done! Everything took {} seconds'.format(time.time() - all_begin))

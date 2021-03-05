@@ -29,15 +29,15 @@ def train_ivector(args):
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
-    logger = setup_logger(command, data_directory)
     if args.config_path:
         train_config, align_config = train_yaml_to_config(args.config_path)
     else:
         train_config, align_config = load_basic_train_ivector()
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
+        print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
 
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:

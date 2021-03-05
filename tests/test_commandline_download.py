@@ -23,8 +23,8 @@ def test_get_available_languages():
     model_type = 'dictionary'
     langs = list_available_languages(model_type)
     assert 'english' in langs
-    assert 'fr' in langs
-    assert 'de' in langs
+    assert 'french_prosodylab' in langs
+    assert 'german_prosodylab' in langs
 
 
 def test_download():

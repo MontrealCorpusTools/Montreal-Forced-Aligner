@@ -27,7 +27,6 @@ def align_corpus(args, unknown_args=None):
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
-    logger = setup_logger(command, data_directory)
     if args.config_path:
         train_config, align_config = train_yaml_to_config(args.config_path)
     else:
@@ -35,11 +34,12 @@ def align_corpus(args, unknown_args=None):
     if unknown_args:
         align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        print('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
+    logger = setup_logger(command, data_directory)
     if args.debug:
         logger.warning('Running in DEBUG mode, may have impact on performance and disk usage.')
-    if getattr(args, 'clean', False) and os.path.exists(data_directory):
-        logger.info('Cleaning old directory!')
-        shutil.rmtree(data_directory, ignore_errors=True)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
