@@ -1,19 +1,20 @@
 import os
 import re
 import logging
-from typing import Union
+import functools
 import multiprocessing as mp
 try:
     import pynini
-    from pynini import Fst
+    from pynini import Fst, TokenType
+    from pynini.lib import rewrite
     G2P_DISABLED = False
-
-    TokenType = Union[str, pynini.SymbolTable]
 except ImportError:
     pynini = None
+    TokenType = None
     Fst = None
+    rewrite = None
     G2P_DISABLED = True
-    TokenType = Union[str]
+
 import tqdm
 import queue
 import traceback
@@ -34,21 +35,17 @@ class Rewriter:
         input_token_type: TokenType,
         output_token_type: TokenType,
     ):
-        self.fst = fst
-        self.input_token_type = input_token_type
-        self.output_token_type = output_token_type
-        self.logger = logging.getLogger('g2p')
+        self.rewrite = functools.partial(
+            rewrite.top_rewrite,
+            rule=fst,
+            input_token_type=input_token_type,
+            output_token_type=output_token_type)
 
-    def rewrite(self, i: str) -> str:
-        lattice = (
-            pynini.acceptor(i, token_type=self.input_token_type) @ self.fst
-        )
-        if lattice.start() == pynini.NO_STATE_ID:
-            logging.error("Composition failure: %s", i)
+    def __call__(self, i: str) -> str:
+        try:
+            return self.rewrite(i)
+        except rewrite.Error:
             return "<composition failure>"
-        lattice.project(True).rmepsilon()
-        return pynini.shortestpath(lattice).string(self.output_token_type)
-
 
 def parse_errors(error_output):
     missing_symbols = []
@@ -215,4 +212,6 @@ class PyniniDictionaryGenerator(object):
         results = self.generate()
         with open(outfile, "w", encoding='utf8') as f:
             for (word, pronunciation) in results.items():
+                if not pronunciation:
+                    continue
                 f.write('{}\t{}\n'.format(word, pronunciation))

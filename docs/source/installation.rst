@@ -15,14 +15,20 @@ All platforms
 .. warning::
 
    Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting
-   only Linux and MacOS. To use the aligner properly on Windows, please set up the "Windows Subsystem
+   only Linux and MacOS. To use G2P functionality on Windows, please set up the "Windows Subsystem
    For Linux" and use the Bash console to continue the instructions.
 
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
-2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst=1.7.6 pynini=2.1.0 ngram=1.3.9 baumwelch=0.3.1`
+2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst pynini ngram baumwelch`
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 4. Run :code:`pip install montreal-forced-aligner`
 5. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
+
+.. note::
+
+   MFA 2.0.0a5 and earlier used Pynini version 2.1.0.  As of 2.0.0a6, versions have been upgraded to the latest version
+   of Pynini, but there were some breaking changes, so please be sure to upgrade via :code:`conda install -c conda-forge openfst pynini ngram baumwelch`
+   if you installed a previous 2.0 alpha version to ensure correct performance.
 
 .. _collect_binaries:
 

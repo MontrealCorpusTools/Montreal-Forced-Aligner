@@ -11,23 +11,22 @@ import time
 import shutil
 import traceback
 import sys
-from typing import Set, Union
+from typing import Set, Union, List, NamedTuple, Optional, Tuple
 
 try:
     import pynini
-    from pynini import Fst
+    from pynini import Fst, TokenType
     import pywrapfst
     from pywrapfst import convert
     G2P_DISABLED = False
 
-    TokenType = Union[str, pynini.SymbolTable]
 except ImportError:
     pynini = None
     pywrapfst = None
+    TokenType = None
     Fst = None
     convert = lambda x: x
     G2P_DISABLED = True
-    TokenType = Union[str]
 import tqdm
 
 from ..config import TEMP_DIR
@@ -44,6 +43,17 @@ TOKEN_TYPES = ["byte", "utf8"]
 DEV_NULL = open(os.devnull, "w")
 INF = float("inf")
 RAND_MAX = 32767
+
+class RandomStart(NamedTuple):
+
+    idx: int
+    seed: int
+    g_path: str
+    p_path: str
+    c_path: str
+    tempdir: str
+    train_opts: List[str]
+
 
 
 def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
@@ -153,10 +163,12 @@ class PairNGramAligner:
             cores: int,
             random_starts: int,
             seed: int,
-            delta: str = "",
+            batch_size: int = 0,
+            delta: float = 1 / 1024,
+            lr: float = 1.0,
+            max_iters: int = 50,
             fst_default_cache_gc: str = "",
             fst_default_cache_gc_limit: str = "",
-            max_iters: str = "",
     ):
         """Runs the entire alignment regimen."""
         self._lexicon_covering(
@@ -170,10 +182,12 @@ class PairNGramAligner:
             cores,
             random_starts,
             seed,
+            batch_size,
             delta,
+            lr,
+            max_iters,
             fst_default_cache_gc,
             fst_default_cache_gc_limit,
-            max_iters,
         )
         self._encode(far_path, encoder_path)
         self.logger.info(
@@ -189,7 +203,7 @@ class PairNGramAligner:
         dst = side.add_state()
         if epsilon:
             labels.add(0)
-        one = pynini.Weight.One(side.weight_type())
+        one = pynini.Weight.one(side.weight_type())
         for label in labels:
             side.add_arc(src, pynini.Arc(label, label, one, dst))
         side.set_final(dst)
@@ -215,13 +229,6 @@ class PairNGramAligner:
         # Sets of labels for the covering grammar.
         g_labels: Set[int] = set()
         p_labels: Set[int] = set()
-        # Curries compiler functions for the FARs.
-        icompiler = functools.partial(
-            pynini.acceptor, token_type=input_token_type
-        )
-        ocompiler = functools.partial(
-            pynini.acceptor, token_type=output_token_type
-        )
         self.logger.info("Constructing grapheme and phoneme FARs")
         g_writer = pywrapfst.FarWriter.create(self.g_path)
         p_writer = pywrapfst.FarWriter.create(self.p_path)
@@ -231,10 +238,10 @@ class PairNGramAligner:
                 (g, p) = line.rstrip().split("\t", 1)
                 # For both G and P, we compile a FSA, store the labels, and
                 # then write the compact version to the FAR.
-                g_fst = icompiler(g)
+                g_fst = pynini.accep(g, token_type=input_token_type)
                 g_labels.update(g_fst.paths().ilabels())
                 g_writer[key] = self._compactor(g_fst)
-                p_fst = ocompiler(p)
+                p_fst = pynini.accep(p, token_type=output_token_type)
                 p_labels.update(p_fst.paths().ilabels())
                 p_writer[key] = self._compactor(p_fst)
         self.logger.info("Processed %s examples", f"{linenum:,d}")
@@ -244,7 +251,7 @@ class PairNGramAligner:
         self.logger.info("%d unique phones", len(p_labels))
         p_side = self._label_union(p_labels, output_epsilon)
         # The covering grammar is given by (G x P)^*.
-        covering = pynini.transducer(g_side, p_side).closure().optimize()
+        covering = pynini.cross(g_side, p_side).closure().optimize()
         assert covering.num_states() == 1, "Covering grammar FST is ill-formed"
         self.logger.info(
             "Covering grammar has %s arcs",
@@ -253,89 +260,106 @@ class PairNGramAligner:
         covering.write(self.c_path)
 
     @staticmethod
-    def _random_start(args: list) -> Tuple[str, float]:
+    def _random_start(random_start: RandomStart) -> Tuple[str, float]:
         """Performs a single random start."""
-        (*cmd, idx) = args
         start = time.time()
-        fst_path = cmd[-1]
-        likelihood_path = fst_path.replace('.fst', '.like')
-        if not os.path.exists(fst_path):
+        logger = logging.getLogger('g2p_aligner')
+        # Randomize channel model.
+        c_path = os.path.join(
+            random_start.tempdir, f"c-{random_start.seed:05d}.fst"
+        )
+        t_path = os.path.join(
+            random_start.tempdir, f"t-{random_start.seed:05d}.fst"
+        )
+        likelihood_path = t_path.replace('.fst', '.like')
+        if not os.path.exists(t_path):
+            cmd = [
+                "baumwelchrandomize",
+                f"--seed={random_start.seed}",
+                random_start.c_path,
+                c_path,
+            ]
+            logging.debug("Subprocess call: %s", cmd)
+            subprocess.check_call(cmd)
+            # Train on randomized channel model.
+
             likelihood = INF
-            logger = logging.getLogger('g2p_aligner')
+            cmd = [
+                "baumwelchtrain",
+                *random_start.train_opts,
+                random_start.g_path,
+                random_start.p_path,
+                c_path,
+                t_path,
+            ]
             logger.debug("Subprocess call: %s", cmd)
             with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
                 # Parses STDERR to capture the likelihood.
-                for line in proc.stderr:
-                    match = re.match(
-                        r"INFO: Best likelihood:\s(-?\d*(\.\d*))", line
-                    )
-                    if match:
-                        likelihood = float(match.group(1))
-                        logger.info(
-                            "Random start %d; likelihood: %f; time elapsed: %ds, %s",
-                            idx,
-                            likelihood,
-                            time.time() - start,
-                            cmd
-                        )
+                for line in proc.stderr:  # type: ignore
+                    line = line.rstrip()
+                    match = re.match(r"INFO: Iteration \d+: (-?\d*(\.\d*)?)", line)
+                    assert match, line
+                    likelihood = float(match.group(1))
                 with open(likelihood_path, 'w') as f:
                     f.write(str(likelihood))
         else:
             with open(likelihood_path, 'r') as f:
                 likelihood = f.read().strip()
-        return cmd[-1], likelihood
+        return t_path, likelihood
 
     def _alignments(
             self,
             cores: int,
             random_starts: int,
             seed: int,
-            delta: str = "",
+            batch_size: Optional[int] = None,
+            delta: Optional[float] = None,
+            lr: Optional[float] = None,
+            max_iters: Optional[int] = None,
             fst_default_cache_gc: str = "",
             fst_default_cache_gc_limit: str = "",
-            max_iters: str = "",
     ) -> None:
         """Trains the aligner and constructs the alignments FAR."""
         if not os.path.exists(self.align_path):
             self.logger.info("Training aligner")
-            cmd_fixed = ["baumwelchtrain", "--expectation_table=ilabel"]
+            train_opts = []
+            if batch_size:
+                train_opts.append(f"--batch_size={batch_size}")
             if delta:
-                cmd_fixed.append(f"--delta={delta}")
+                train_opts.append(f"--delta={delta}")
             if fst_default_cache_gc:
-                cmd_fixed.append(f"--fst_default_cache_gc={fst_default_cache_gc}")
+                train_opts.append(f"--fst_default_cache_gc={fst_default_cache_gc}")
             if fst_default_cache_gc_limit:
-                cmd_fixed.append(
+                train_opts.append(
                     f"--fst_default_cache_gc_limit={fst_default_cache_gc_limit}"
                 )
+            if lr:
+                train_opts.append(f"--lr={lr}")
             if max_iters:
-                cmd_fixed.append(f"--max_iters={max_iters}")
-            # Adds more arguments shared across all commands.
-            if max_iters:
-                cmd_fixed.append(f"--max_iters={max_iters}")
-            cmd_fixed.append("--remove_zero_arcs=false")
-            cmd_fixed.append("--flat_start=false")
-            cmd_fixed.append("--random_starts=1")
+                train_opts.append(f"--max_iters={max_iters}")
             # Constructs the actual command vectors (plus an index for logging
             # purposes).
             random.seed(seed)
-            commands = [
+            starts = [
                 (
-                    *cmd_fixed,
-                    f"--seed={seed}",
-                    self.g_path,
-                    self.p_path,
-                    self.c_path,
-                    os.path.join(self.tempdir, f"{seed:010d}.fst"),
-                    idx,
+                    RandomStart(
+                        idx,
+                        seed,
+                        self.g_path,
+                        self.p_path,
+                        self.c_path,
+                        self.tempdir,
+                        train_opts,
+                    )
                 )
                 for (idx, seed) in enumerate(
                     random.sample(range(1, RAND_MAX), random_starts), 1
                 )
             ]
             stopped = Stopped()
-            num_commands = len(commands)
-            if cores > len(commands):
-                cores = len(commands)
+            num_commands = len(starts)
+            if cores > len(starts):
+                cores = len(starts)
             job_queue = mp.JoinableQueue(cores + 2)
 
             # Actually runs starts.
@@ -349,7 +373,7 @@ class PairNGramAligner:
                     if ind == num_commands:
                         break
                     try:
-                        job_queue.put(commands[ind], False)
+                        job_queue.put(starts[ind], False)
                     except queue.Full:
                         break
                     ind += 1
@@ -364,7 +388,7 @@ class PairNGramAligner:
                 while True:
                     if ind == num_commands:
                         break
-                    job_queue.put(commands[ind])
+                    job_queue.put(starts[ind])
                     value = counter.value()
                     pbar.update(value - last_value)
                     last_value = value
@@ -424,7 +448,8 @@ class PairNGramAligner:
 class PyniniTrainer(object):
     def __init__(self, dictionary, model_path, temp_directory=None, order=7, evaluate=False,
                  input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
-                 max_iters=None, smoothing_method='kneser_ney', pruning_method='relative_entropy',
+                 delta = 1/1024, lr = 1.0, batch_size=0,
+                 max_iters=50, smoothing_method='kneser_ney', pruning_method='relative_entropy',
                  model_size=1000000, use_mp=False):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:
@@ -449,11 +474,9 @@ class PyniniTrainer(object):
         self.random_starts = random_starts
         self.seed = seed
         self.max_iters = max_iters
-        if self.max_iters is None:
-            self.max_iters = ''
-        else:
-            self.max_iters = str(self.max_iters)
-        self.delta = ''
+        self.delta = delta
+        self.lr = lr
+        self.batch_size = batch_size
         self.fst_default_cache_gc = ''
         self.fst_default_cache_gc_limit = ''
         self.order = order
@@ -562,10 +585,12 @@ class PyniniTrainer(object):
                           self.num_jobs,
                           self.random_starts,
                           self.seed,
+                          self.batch_size,
                           self.delta,
+                          self.lr,
+                          self.max_iters,
                           self.fst_default_cache_gc,
-                          self.fst_default_cache_gc_limit,
-                          self.max_iters)
+                          self.fst_default_cache_gc_limit)
         self.logger.debug('Aligning {} words took {} seconds'.format(len(word_dict), time.time() - begin))
         begin = time.time()
         self.generate_model()

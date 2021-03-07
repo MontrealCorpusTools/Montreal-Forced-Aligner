@@ -1,9 +1,18 @@
 .. _`PR #194`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/194
+.. _`PR #235`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/235
 
 .. _changelog:
 
 Changelog
 =========
+
+2.0.0a6
+-------
+
+- Upgraded dependency of Pynini version to 2.1.4, please update package versions via :code:`conda install -c conda-forge openfst pynini ngram baumwelch`
+  if you had previously installed MFA.
+- Allowed for splitting clitics on multiple apostrophes
+- Fixed bug in checking for brackets in G2P (`PR #194`_)
 
 2.0.0a5
 -------
