@@ -222,7 +222,7 @@ class Dictionary(object):
                 if not any(x in self.sil_phones for x in pron):
                     if self.word_set is None or word in self.word_set:
                         self.nonsil_phones.update(pron)
-                if word in self.words and pron in set(x['pronunciation'] for x in self.words[word]):
+                if word in self.words and pron in {x['pronunciation'] for x in self.words[word]}:
                     continue
                 self.words[word].append(pronunciation)
                 # test whether a word is a clitic
@@ -345,7 +345,7 @@ class Dictionary(object):
             self.max_disambig = max(last_used.values())
         else:
             self.max_disambig = 0
-        self.disambig = set('#{}'.format(x) for x in range(self.max_disambig + 2))
+        self.disambig = {'#{}'.format(x) for x in range(self.max_disambig + 2)}
         i = max(self.phone_mapping.values())
         for p in sorted(self.disambig):
             i += 1
