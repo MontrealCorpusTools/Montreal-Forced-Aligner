@@ -256,8 +256,7 @@ class TranscribeCorpus(BaseCorpus):
                                 continue
 
                             begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
-                            if end > wav_max_time:
-                                end = wav_max_time
+                            end = min(end, wav_max_time)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
                             if n_channels == 1:

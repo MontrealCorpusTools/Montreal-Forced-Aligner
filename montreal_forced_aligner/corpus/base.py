@@ -130,8 +130,7 @@ class BaseCorpus(object):
         if not os.path.isdir(directory):
             raise CorpusError('The specified path for the corpus ({}) is not a directory.'.format(directory))
 
-        if num_jobs < 1:
-            num_jobs = 1
+        num_jobs = max(num_jobs, 1)
         if num_jobs == 1:
             self.use_mp = False
         self.original_num_jobs = num_jobs
