@@ -57,6 +57,7 @@ class FeatureConfig(object):
         self.fmllr = False
         self.use_energy = False
         self.frame_shift = 10
+        self.snip_edges = False
         self.pitch = False
         self.splice_left_context = 3
         self.splice_right_context = 3
@@ -67,6 +68,7 @@ class FeatureConfig(object):
         return {'type': self.type,
                 'use_energy': self.use_energy,
                 'frame_shift': self.frame_shift,
+                'snip_edges': self.snip_edges,
                 'pitch': self.pitch,
                 'deltas': self.deltas,
                 'lda': self.lda,
@@ -108,8 +110,11 @@ class FeatureConfig(object):
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, f)
         with open(path, 'w', encoding='utf8') as f:
+            f.write('--{}={}\n'.format('allow-downsample', 'true'))
+            f.write('--{}={}\n'.format('sample-frequency', '16000'))
             f.write('--{}={}\n'.format('use-energy', make_safe(self.use_energy)))
             f.write('--{}={}\n'.format('frame-shift', make_safe(self.frame_shift)))
+            f.write('--{}={}\n'.format('snip-edges', make_safe(self.snip_edges)))
             if extra_params is not None:
                 for k, v in extra_params.items():
                     f.write('--{}={}\n'.format(k, make_safe(v)))
