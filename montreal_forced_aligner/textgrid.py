@@ -70,12 +70,13 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 tg = TextGrid(maxTime=maxtime)
                 wordtier = IntervalTier(name='words', maxTime=maxtime)
                 phonetier = IntervalTier(name='phones', maxTime=maxtime)
+                phonetier_len = len(phone_ctm[k][speaker])
                 for interval in v:
                     if maxtime - interval[1] < frameshift:  # Fix rounding issues
                         interval[1] = maxtime
                     wordtier.add(*interval)
-                for interval in phone_ctm[k][speaker]:
-                    if maxtime - interval[1] < frameshift:
+                for j, interval in enumerate(phone_ctm[k][speaker]):
+                    if j == phonetier_len - 1:  # sync last phone boundary to end of audio file
                         interval[1] = maxtime
                     phonetier.add(*interval)
                 tg.append(wordtier)
