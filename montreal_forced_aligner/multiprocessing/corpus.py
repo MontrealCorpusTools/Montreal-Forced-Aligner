@@ -5,14 +5,14 @@ import sys
 import os
 from textgrid import TextGrid, IntervalTier
 
-from ..helper import parse_logs, thirdparty_binary, make_path_safe, load_text
+from ..helper import load_text
 
 from ..dictionary import sanitize
 
-from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
+from ..exceptions import SampleRateError, WavReadError, \
     BitDepthError, TextParseError, TextGridParseError
 
-from ..corpus.base import extract_temp_channels, get_wav_info
+from ..corpus.base import get_wav_info
 
 
 def parse_transcription(text):
@@ -79,7 +79,7 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     if not utt_name.startswith(speaker_name):
         utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
 
-    return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path':wav_path,
+    return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
             'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
 
 def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, temp_directory):
@@ -103,12 +103,7 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
         raise TextGridParseError(textgrid_path, '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
     n_channels = wav_info['num_channels']
     num_tiers = len(tg.tiers)
-    if n_channels == 2:
-        a_name = file_name + "_channel1"
-        b_name = file_name + "_channel2"
-
-        a_path, b_path = extract_temp_channels(wav_path, temp_directory)
-    elif n_channels > 2:
+    if n_channels > 2:
         raise (Exception('More than two channels'))
     speaker_ordering = []
     if speaker_characters:
@@ -145,20 +140,16 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             end = min(end, wav_max_time)
             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+            utt_wav_mapping[file_name] = wav_path
             if n_channels == 1:
-                segments[utt_name] = '{} {} {}'.format(file_name, begin, end)
-                utt_wav_mapping[file_name] = wav_path
+                segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end, 'channel': 0}
             else:
                 if i < num_tiers / 2:
-                    utt_name += '_channel1'
-                    segments[utt_name] = '{} {} {}'.format(a_name, begin, end)
-                    utt_wav_mapping[a_name] = a_path
+                    segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end, 'channel': 0}
                 else:
-                    utt_name += '_channel2'
-                    segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
-                    utt_wav_mapping[b_name] = b_path
+                    segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end, 'channel': 1}
             text_mapping[utt_name] = ' '.join(words)
-            utt_text_file_mapping[utt_name] = textgrid_path
+            utt_text_file_mapping[file_name] = textgrid_path
             utt_speak_mapping[utt_name] = speaker_name
             utt_file_mapping[utt_name] = file_name
             file_utt_mapping[file_name].append(utt_name)
@@ -166,9 +157,6 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
                 speak_utt_mapping[speaker_name] = []
             speak_utt_mapping[speaker_name].append(utt_name)
     file_names = [file_name]
-    if n_channels == 2:
-        file_names.append(a_name)
-        file_names.append(b_name)
     return {'text_file': textgrid_path, 'wav_path':wav_path, 'wav_info': wav_info, 'segments': segments,
             'utt_wav_mapping': utt_wav_mapping, 'text_mapping': text_mapping,
             'utt_text_file_mapping': utt_text_file_mapping, 'utt_speak_mapping': utt_speak_mapping,

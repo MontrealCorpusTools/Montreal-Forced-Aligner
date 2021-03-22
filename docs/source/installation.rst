@@ -27,7 +27,7 @@ All platforms
 .. note::
 
    MFA 2.0.0a5 and earlier used Pynini version 2.1.0.  As of 2.0.0a6, versions have been upgraded to the latest version
-   of Pynini, but there were some breaking changes, so please be sure to upgrade via :code:`conda install -c conda-forge openfst pynini ngram baumwelch`
+   of Pynini, but there were some breaking changes, so please be sure to upgrade via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch`
    if you installed a previous 2.0 alpha version to ensure correct performance.
 
 .. _collect_binaries:

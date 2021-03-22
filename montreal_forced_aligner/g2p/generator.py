@@ -87,6 +87,8 @@ class RewriterWorker(mp.Process):
                 rep = self.rewriter.rewrite(word)
                 if rep != '<composition failure>':
                     self.return_dict[word] = rep
+            except rewrite.Error:
+                pass
             except Exception as e:
                 self.stopped.stop()
                 self.return_dict['MFA_EXCEPTION'] = word, Exception(traceback.format_exception(*sys.exc_info()))
@@ -142,7 +144,7 @@ class PyniniDictionaryGenerator(object):
         job_queue = mp.JoinableQueue(100)
         ind = 0
         num_words = len(self.words)
-        words = self.words
+        words = list(self.words)
         begin = time.time()
         last_value = 0
         missing_graphemes = set()

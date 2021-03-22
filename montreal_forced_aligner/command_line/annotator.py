@@ -1,12 +1,12 @@
 import sys
-from montreal_forced_aligner.gui import MainWindow, QtWidgets
+from montreal_forced_aligner.gui import MainWindow, Application, QtWidgets
 import warnings
 
 
 def run_annotator(args):  # pragma: no cover
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        app = QtWidgets.QApplication(sys.argv)
+        app = Application(sys.argv)
         main = MainWindow()
 
         app.setActiveWindow(main)

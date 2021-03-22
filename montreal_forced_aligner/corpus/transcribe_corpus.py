@@ -2,18 +2,17 @@ import os
 import sys
 import traceback
 import time
-from collections import defaultdict
 from textgrid import TextGrid, IntervalTier
 
-from .base import BaseCorpus, get_wav_info, find_exts, extract_temp_channels
-from ..helper import save_groups, load_scp, save_scp
+from .base import BaseCorpus, get_wav_info, find_exts
+from ..helper import load_scp
 
 from ..exceptions import SampleRateError, CorpusError
 from ..multiprocessing import segment_vad
 import multiprocessing as mp
 from queue import Empty
 from ..multiprocessing.helper import Stopped
-from ..multiprocessing.corpus import CorpusProcessWorker, parse_transcription, parse_lab_file, parse_textgrid_file
+from ..multiprocessing.corpus import CorpusProcessWorker
 
 
 class TranscribeCorpus(BaseCorpus):
@@ -64,13 +63,16 @@ class TranscribeCorpus(BaseCorpus):
         self.cmvn_mapping = load_scp(cmvn_path)
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
-        self.sample_rates = {int(k): v for k,v in load_scp(sr_path).items()}
+        self.sample_rates = {int(k): v for k, v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
         segments_path = os.path.join(self.output_directory, 'segments.scp')
         if os.path.exists(segments_path):
             self.segments = load_scp(segments_path)
+            for k, v in self.segments.items():
+                self.segments[k] = {'file_name': v[0], 'begin': round(float(v[1]), 4),
+                                    'end': round(float(v[2]), 4), 'channel': int(v[3])}
         speaker_ordering_path = os.path.join(self.output_directory, 'speaker_ordering.scp')
         if os.path.exists(speaker_ordering_path):
             self.speaker_ordering = load_scp(speaker_ordering_path)
@@ -79,7 +81,7 @@ class TranscribeCorpus(BaseCorpus):
             self.text_mapping = load_scp(text_path)
             for utt, text in self.text_mapping.items():
                 self.text_mapping[utt] = ' '.join(text)
-        self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time()-begin_time))
+        self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time() - begin_time))
         return True
 
     def _load_from_source_mp(self):
@@ -107,7 +109,8 @@ class TranscribeCorpus(BaseCorpus):
                     transcription_path = os.path.join(root, tg_name)
                 else:
                     transcription_path = None
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.temp_directory))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                               self.temp_directory))
         job_queue.join()
 
         for p in procs:
@@ -167,7 +170,8 @@ class TranscribeCorpus(BaseCorpus):
                         getattr(self, k).update(return_dict[k])
                     else:
                         setattr(self, k, return_dict[k])
-        self.logger.debug('Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time()-begin_time))
+        self.logger.debug(
+            'Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time() - begin_time))
 
     def _load_from_source(self):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
@@ -224,12 +228,7 @@ class TranscribeCorpus(BaseCorpus):
                             traceback.format_exception(exc_type, exc_value, exc_traceback))
                     n_channels = wav_info['num_channels']
                     num_tiers = len(tg.tiers)
-                    if n_channels == 2:
-                        a_name = file_name + "_A"
-                        b_name = file_name + "_B"
-
-                        a_path, b_path = extract_temp_channels(wav_path, self.temp_directory)
-                    elif n_channels > 2:
+                    if n_channels > 2:
                         raise (Exception('More than two channels'))
                     self.speaker_ordering[file_name] = []
                     if not self.speaker_directories:
@@ -259,24 +258,23 @@ class TranscribeCorpus(BaseCorpus):
                             end = min(end, wav_max_time)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+                            self.utt_wav_mapping[file_name] = wav_path
                             if n_channels == 1:
                                 if self.feat_mapping and utt_name not in self.feat_mapping:
                                     self.ignored_utterances.append(utt_name)
-                                self.segments[utt_name] = '{} {} {}'.format(file_name, begin, end)
-                                self.utt_wav_mapping[file_name] = wav_path
+                                self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
+                                                           'channel': 0}
                             else:
                                 if i < num_tiers / 2:
-                                    utt_name += '_A'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(a_name, begin, end)
-                                    self.utt_wav_mapping[a_name] = a_path
+                                    self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
+                                                               'channel': 0}
                                 else:
-                                    utt_name += '_B'
                                     if self.feat_mapping and utt_name not in self.feat_mapping:
                                         self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = '{} {} {}'.format(b_name, begin, end)
-                                    self.utt_wav_mapping[b_name] = b_path
+                                    self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
+                                                               'channel': 1}
                             self.text_mapping[utt_name] = text
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)

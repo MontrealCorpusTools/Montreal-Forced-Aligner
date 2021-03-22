@@ -9,10 +9,12 @@ Changelog
 2.0.0a6
 -------
 
-- Upgraded dependency of Pynini version to 2.1.4, please update package versions via :code:`conda install -c conda-forge openfst pynini ngram baumwelch`
+- Upgraded dependency of Pynini version to 2.1.4, please update package versions via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch`
   if you had previously installed MFA.
 - Allowed for splitting clitics on multiple apostrophes
 - Fixed bug in checking for brackets in G2P (`PR #194`_)
+- Updated Annotator utility (:ref:`annotator` for more details) to be generally more usable for TextGrid use cases and
+  adjusting segments and their transcriptions
 
 2.0.0a5
 -------

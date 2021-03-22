@@ -1,6 +1,4 @@
 import os
-import sys
-import traceback
 import random
 import time
 import re
@@ -11,11 +9,11 @@ from ..helper import load_text, output_mapping, save_groups, filter_scp, load_sc
 from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
     BitDepthError, TextParseError, TextGridParseError
 
-from .base import BaseCorpus, extract_temp_channels, find_exts, get_wav_info
+from .base import BaseCorpus, find_exts
 import multiprocessing as mp
 from queue import Empty
 from ..multiprocessing.helper import Stopped
-from ..multiprocessing.corpus import CorpusProcessWorker, parse_transcription, parse_lab_file, parse_textgrid_file
+from ..multiprocessing.corpus import CorpusProcessWorker, parse_lab_file, parse_textgrid_file
 
 
 class AlignableCorpus(BaseCorpus):
@@ -65,8 +63,9 @@ class AlignableCorpus(BaseCorpus):
         self.tg_count = 0
         self.lab_count = 0
 
-        loaded = self._load_from_temp()
-        if not loaded:
+        self.loaded_from_temp = self._load_from_temp()
+        if not self.loaded_from_temp:
+            print('loading from source')
             if self.use_mp:
                 self._load_from_source_mp()
             else:
@@ -74,19 +73,25 @@ class AlignableCorpus(BaseCorpus):
         self.check_warnings()
         self.find_best_groupings()
 
+    def delete_utterance(self, utterance):
+        super(AlignableCorpus, self).delete_utterance(utterance)
+
+    def add_utterance(self, utterance, speaker, file, text, wav_file=None, seg=None):
+        super(AlignableCorpus, self).add_utterance(utterance, speaker, file, text, wav_file, seg)
+
     def _load_from_temp(self):
         begin_time = time.time()
-        feat_path = os.path.join(self.output_directory, 'feats.scp')
-        if not os.path.exists(feat_path):
-            return False
-        cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
-        if not os.path.exists(cmvn_path):
-            return False
         utt2spk_path = os.path.join(self.output_directory, 'utt2spk')
         if not os.path.exists(utt2spk_path):
             return False
         spk2utt_path = os.path.join(self.output_directory, 'spk2utt')
         if not os.path.exists(spk2utt_path):
+            return False
+        utt_file_path = os.path.join(self.output_directory, 'utt2file')
+        if not os.path.exists(utt_file_path):
+            return False
+        file_utt_path = os.path.join(self.output_directory, 'file2utt')
+        if not os.path.exists(file_utt_path):
             return False
         text_path = os.path.join(self.output_directory, 'text')
         if not os.path.exists(text_path):
@@ -106,20 +111,25 @@ class AlignableCorpus(BaseCorpus):
         wav_info_path = os.path.join(self.output_directory, 'wav_info.scp')
         if not os.path.exists(wav_info_path):
             return False
-        self.feat_mapping = load_scp(feat_path)
-        self.cmvn_mapping = load_scp(cmvn_path)
+
+
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
         for speak, utts in self.speak_utt_mapping.items():
             if not isinstance(utts, list):
                 self.speak_utt_mapping[speak] = [utts]
+        self.utt_file_mapping = load_scp(utt_file_path)
+        self.file_utt_mapping = load_scp(file_utt_path)
+        for file, utts in self.file_utt_mapping.items():
+            if not isinstance(utts, list):
+                self.file_utt_mapping[file] = [utts]
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
             for w in text:
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
-        self.sample_rates = {int(k): v for k,v in load_scp(sr_path).items()}
+        self.sample_rates = {int(k): v if isinstance(v, list) else [v] for k,v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.utt_text_file_mapping = load_scp(text_file_path)
@@ -129,12 +139,24 @@ class AlignableCorpus(BaseCorpus):
             else:
                 self.lab_count += 1
         self.file_directory_mapping = load_scp(file_directory_path)
+        feat_path = os.path.join(self.output_directory, 'feats.scp')
+        if os.path.exists(feat_path):
+            self.feat_mapping = load_scp(feat_path)
+        cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
+        if os.path.exists(cmvn_path):
+            self.cmvn_mapping = load_scp(cmvn_path)
         segments_path = os.path.join(self.output_directory, 'segments.scp')
         if os.path.exists(segments_path):
             self.segments = load_scp(segments_path)
+            for k, v in self.segments.items():
+                self.segments[k] = {'file_name': v[0], 'begin': round(float(v[1]), 4),
+                                    'end': round(float(v[2]), 4), 'channel': int(v[3])}
         speaker_ordering_path = os.path.join(self.output_directory, 'speaker_ordering.scp')
         if os.path.exists(speaker_ordering_path):
             self.speaker_ordering = load_scp(speaker_ordering_path)
+            for file, speakers in self.speaker_ordering.items():
+                if not isinstance(speakers, list):
+                    self.speaker_ordering[file] = [speakers]
         self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time()-begin_time))
         return True
 
@@ -362,10 +384,8 @@ class AlignableCorpus(BaseCorpus):
             self.logger.warning(msg)
 
     def save_text_file(self, file_name):
-        text_file_path = None
         if self.segments:
-            first_utt = self.file_utt_mapping[file_name][0]
-            text_file_path = self.utt_text_file_mapping[first_utt]
+            text_file_path = self.utt_text_file_mapping[file_name]
             tg = TextGrid()
             tg.read(text_file_path)
             tiers = {}
@@ -382,6 +402,10 @@ class AlignableCorpus(BaseCorpus):
                 tiers[speaker].add(begin, end, text)
             tg.tiers = [x for x in tiers.values()]
             tg.write(text_file_path)
+        else:
+            lab_path = self.utt_text_file_mapping[file_name]
+            with open(lab_path, 'w', encoding='utf8') as f:
+                f.write(self.text_mapping[file_name])
 
 
     def update_utterance_text(self, utterance, new_text):
@@ -563,6 +587,8 @@ class AlignableCorpus(BaseCorpus):
         output_mapping(self.speaker_ordering, path)
 
     def _split_utt2fst(self, directory, dictionary):
+        if dictionary is None:
+            return
         pattern = 'utt2fst.{}'
         save_groups(self.grouped_utt2fst(dictionary), directory, pattern, multiline=True)
 

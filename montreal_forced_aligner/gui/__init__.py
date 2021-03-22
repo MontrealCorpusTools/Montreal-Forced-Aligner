@@ -1,2 +1,2 @@
 
-from .main import MainWindow, QtWidgets
+from .main import MainWindow, QtWidgets, Application

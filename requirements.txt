@@ -2,6 +2,7 @@ textgrid
 numpy
 tqdm
 pyyaml
+soundfile
 librosa
 pyqt5
 pyqtgraph

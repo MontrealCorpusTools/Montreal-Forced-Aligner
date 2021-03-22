@@ -279,7 +279,6 @@ class PairNGramAligner:
                 random_start.c_path,
                 c_path,
             ]
-            logging.debug("Subprocess call: %s", cmd)
             subprocess.check_call(cmd)
             # Train on randomized channel model.
 
@@ -292,7 +291,6 @@ class PairNGramAligner:
                 c_path,
                 t_path,
             ]
-            logger.debug("Subprocess call: %s", cmd)
             with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
                 # Parses STDERR to capture the likelihood.
                 for line in proc.stderr:  # type: ignore

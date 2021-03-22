@@ -1,13 +1,12 @@
 import os
 import logging
-import librosa
 import soundfile
 import re
 import subprocess
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 from ..exceptions import SampleRateError, CorpusError
-from ..helper import thirdparty_binary, load_text, load_scp, output_mapping, save_groups, filter_scp, save_scp
+from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, filter_scp
 
 
 def get_wav_info(file_path):
@@ -21,7 +20,7 @@ def get_wav_info(file_path):
         sr = inf.samplerate
         duration = frames / sr
     return {'num_channels': n_channels, 'type': subtype, 'bit_depth': bit_depth,
-            'sample_rate' : sr, 'duration': duration}
+            'sample_rate': sr, 'duration': duration}
 
 
 def find_exts(files):
@@ -35,45 +34,11 @@ def find_exts(files):
             wav_files[filename] = full_filename
         elif fext == '.lab':
             lab_files[filename] = full_filename
-        elif fext == '.txt' and filename not in lab_files: # .lab files have higher priority than .txt files
+        elif fext == '.txt' and filename not in lab_files:  # .lab files have higher priority than .txt files
             lab_files[filename] = full_filename
-        elif fext== '.textgrid':
+        elif fext == '.textgrid':
             textgrid_files[filename] = full_filename
     return wav_files, lab_files, textgrid_files
-
-
-def extract_temp_channels(wav_path, temp_directory):
-    """
-    Extract a single channel from a stereo file to a new mono wav file
-
-    Parameters
-    ----------
-    wav_path : str
-        Path to stereo wav file
-    temp_directory : str
-        Directory to save extracted
-    """
-    name, ext = os.path.splitext(wav_path)
-    base = os.path.basename(name)
-    a_path = os.path.join(temp_directory, base + '_A.wav')
-    b_path = os.path.join(temp_directory, base + '_B.wav')
-    if not os.path.exists(a_path):
-        with soundfile.SoundFile(wav_path, 'r') as inf:
-            sr = inf.samplerate
-            sound_format = inf.format
-            endian = inf.endian
-            subtype = inf.subtype
-        stream = librosa.stream(wav_path,
-                                block_length=256,
-                                frame_length=2048,
-                                hop_length=2048, mono=False)
-        with soundfile.SoundFile(a_path, 'w', samplerate=sr, channels=1, endian=endian, subtype=subtype, format=sound_format) as af, \
-             soundfile.SoundFile(b_path, 'w', samplerate=sr, channels=1, endian=endian, subtype=subtype, format=sound_format) as bf:
-
-            for s in stream:
-                af.write(s[0, :])
-                bf.write(s[1, :])
-    return a_path, b_path
 
 
 class BaseCorpus(object):
@@ -172,14 +137,40 @@ class BaseCorpus(object):
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
 
+    def add_utterance(self, utterance, speaker, file, text, wav_file=None, seg=None):
+        if seg is not None:
+            self.segments[utterance] = seg
+        self.utt_file_mapping[utterance] = file
+        self.file_utt_mapping[file] = sorted(self.file_utt_mapping[file] + [utterance])
+
+        self.utt_speak_mapping[utterance] = speaker
+        self.speak_utt_mapping[speaker] = sorted(self.speak_utt_mapping[speaker] + [utterance])
+
+        self.text_mapping[utterance] = text
+        if wav_file is not None:
+            self.utt_wav_mapping[utterance] = wav_file
+
+    def delete_utterance(self, utterance):
+        if utterance in self.segments:
+            del self.segments[utterance]
+        file = self.utt_file_mapping[utterance]
+        del self.utt_file_mapping[utterance]
+        self.file_utt_mapping[file] = [x for x in self.file_utt_mapping[file] if x != utterance]
+
+        speaker = self.utt_speak_mapping[utterance]
+        del self.utt_speak_mapping[utterance]
+        self.speak_utt_mapping[speaker] = [x for x in self.speak_utt_mapping[speaker] if x != utterance]
+
+        if utterance in self.feat_mapping:
+            del self.feat_mapping[utterance]
+        if utterance in self.utterance_lengths:
+            del self.utterance_lengths[utterance]
+
+        del self.text_mapping[utterance]
+        if utterance in self.utt_wav_mapping:
+            del self.utt_wav_mapping[utterance]
+
     def find_best_groupings(self):
-        if self.segments:
-            ratio = len(self.segments.keys()) / len(self.utt_speak_mapping.keys())
-            segment_job_num = int(ratio * self.num_jobs)
-            if segment_job_num == 0:
-                segment_job_num = 1
-        else:
-            segment_job_num = 0
         num_sample_rates = len(self.sample_rates.keys())
         jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
         remaining_jobs = self.num_jobs - num_sample_rates
@@ -194,7 +185,8 @@ class BaseCorpus(object):
         job_num = 0
         for k, v in jobs_per_sample_rate.items():
             speakers = sorted(self.sample_rates[k])
-            groups = [[] for x in range(v)]
+
+            groups = [[] for _ in range(v)]
 
             configs = [(job_num + x, {'sample-frequency': k, 'low-freq': 20, 'high-freq': 7800}) for x in range(v)]
             ind = 0
@@ -262,7 +254,7 @@ class BaseCorpus(object):
                         pass
                 else:
                     try:
-                        r = self.segments[u].split(' ')[0]
+                        r = self.segments[u]['file_name']
                     except KeyError:
                         continue
                     if r not in done:
@@ -328,7 +320,7 @@ class BaseCorpus(object):
             output_g = []
             for u in g:
                 try:
-                    output_g.append([u, self.segments[u]])
+                    output_g.append([u, '{file_name} {begin} {end} {channel}'.format(**self.segments[u])])
                 except KeyError:
                     pass
             output.append(output_g)
@@ -374,6 +366,14 @@ class BaseCorpus(object):
         spk2utt = os.path.join(self.output_directory, 'spk2utt')
         output_mapping(self.speak_utt_mapping, spk2utt)
 
+    def _write_utt_file(self):
+        utt2file = os.path.join(self.output_directory, 'utt2file')
+        output_mapping(self.utt_file_mapping, utt2file)
+
+    def _write_file_utt(self):
+        file2utt = os.path.join(self.output_directory, 'file2utt')
+        output_mapping(self.file_utt_mapping, file2utt)
+
     def _write_wavscp(self):
         path = os.path.join(self.output_directory, 'wav.scp')
         output_mapping(self.utt_wav_mapping, path)
@@ -393,8 +393,11 @@ class BaseCorpus(object):
     def _write_segments(self):
         if not self.segments:
             return
-        segments = os.path.join(self.output_directory, 'segments')
-        output_mapping(self.segments, segments)
+        segs = {}
+        for k, v in self.segments.items():
+            segs[k] = '{file_name} {begin} {end} {channel}'.format(**v)
+        segments = os.path.join(self.output_directory, 'segments.scp')
+        output_mapping(segs, segments)
 
     def _split_utt2spk(self, directory):
         pattern = 'utt2spk.{}'
@@ -436,7 +439,7 @@ class BaseCorpus(object):
                         line = line.strip()
                         utt, length = line.split()
                         length = int(length)
-                        if length < 13: # Minimum length to align one phone plus silence
+                        if length < 13:  # Minimum length to align one phone plus silence
                             self.ignored_utterances.append(utt)
                             run_filter = True
                         else:
@@ -465,7 +468,8 @@ class BaseCorpus(object):
                 self.speak_utt_mapping[k] = list(filter(lambda x: x in self.feat_mapping, v))
             self.logger.warning('There were some utterances ignored due to short duration, see the log file for full '
                                 'details or run `mfa validate` on the corpus.')
-            self.logger.debug('The following utterances were too short to run alignment: {}'.format(' ,'.join(self.ignored_utterances)))
+            self.logger.debug('The following utterances were too short to run alignment: {}'.format(
+                ' ,'.join(self.ignored_utterances)))
 
     def figure_utterance_lengths(self):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
@@ -485,12 +489,11 @@ class BaseCorpus(object):
                         line = line.strip()
                         utt, length = line.split()
                         length = int(length)
-                        if length < 13: # Minimum length to align one phone plus silence
+                        if length < 13:  # Minimum length to align one phone plus silence
                             self.ignored_utterances.append(utt)
                         else:
                             self.utterance_lengths[line[0]] = int(line[1])
                 output_mapping(self.utterance_lengths, lengths_path)
-
 
     def get_feat_dim(self, feature_config):
 
@@ -508,6 +511,9 @@ class BaseCorpus(object):
     def write(self):
         self._write_speak_utt()
         self._write_utt_speak()
+        self._write_file_utt()
+        self._write_utt_file()
+        self._write_segments()
         self._write_wavscp()
         self._write_speaker_sr()
         self._write_wav_info()

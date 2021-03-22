@@ -33,7 +33,7 @@ https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/online/nnet2/tra
    "apply_cmn", True, "Flag for whether to apply CMVN to input features"
 
 
-.. _default_training_config:
+.. _default_ivector_training_config:
 
 Default training config file
 ----------------------------

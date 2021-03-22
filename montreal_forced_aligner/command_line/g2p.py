@@ -4,7 +4,8 @@ import traceback
 
 from textgrid import TextGrid, IntervalTier
 
-from montreal_forced_aligner.corpus.align_corpus import load_text, parse_transcription, AlignableCorpus
+from montreal_forced_aligner.multiprocessing.corpus import parse_transcription
+from montreal_forced_aligner.corpus.align_corpus import load_text, AlignableCorpus
 
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
 from montreal_forced_aligner.models import G2PModel
