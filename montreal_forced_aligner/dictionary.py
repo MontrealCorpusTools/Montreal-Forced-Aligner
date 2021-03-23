@@ -325,7 +325,7 @@ class Dictionary(object):
                 continue
             for p in prons:
                 pronunciation_counts[p['pronunciation']] += 1
-                pron = [x for x in p['pronunciation']][:-1]
+                pron = p['pronunciation'][:-1]
                 while pron:
                     subsequences.add(tuple(p))
                     pron = pron[:-1]
@@ -613,7 +613,7 @@ class Dictionary(object):
                     continue
                 for pron in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
 
-                    phones = [x for x in pron['pronunciation']]
+                    phones = pron['pronunciation']
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += '_S'
@@ -626,7 +626,7 @@ class Dictionary(object):
                                 else:
                                     phones[i] += '_I'
                     p = ' '.join(str(self.phone_mapping[x]) for x in phones)
-                    f.write('{} {} {}\n'.format(i, i, p))
+                    f.write('{i} {i} {p}\n'.format(i=i, p=p))
 
     def _write_topo(self):
         filepath = os.path.join(self.output_directory, 'topo')
@@ -818,9 +818,6 @@ class Dictionary(object):
             silphone = self.optional_silence
             nonoptsil = self.nonoptional_silence
 
-            def is_sil(element):
-                return element in [silphone, silphone + '_S']
-
             silcost = -1 * math.log(self.sil_prob)
             nosilcost = -1 * math.log(1.0 - self.sil_prob)
             startstate = 0
@@ -851,7 +848,6 @@ class Dictionary(object):
                     phones = pron['pronunciation']
                     prob = pron['probability']
                     disambig_symbol = pron['disambiguation']
-                    phones = [x for x in phones]
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += '_S'

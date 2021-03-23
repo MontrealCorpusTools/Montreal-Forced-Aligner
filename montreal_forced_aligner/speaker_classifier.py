@@ -210,7 +210,7 @@ class SpeakerClassifier(object):
         else:
             valid_speakers = [x for x in counts.keys() if counts[x] > 1]
         if not valid_speakers:  # Only single utterance count speakers
-            valid_speakers = [x for x in counts.keys()]
+            valid_speakers = counts.keys()
         reanalyze_utts = []
         for speak, c in counts.items():
             if c == 1 or speak not in valid_speakers:

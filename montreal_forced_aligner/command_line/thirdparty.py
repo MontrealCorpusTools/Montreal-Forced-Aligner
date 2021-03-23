@@ -9,7 +9,7 @@ def validate_args(args):
     available_commands = ['download', 'validate', 'kaldi']
     if args.command not in available_commands:
         raise ArgumentError(
-            '{} is not a valid thirdparty command ({})'.format(args.command, ', '.format(available_commands)))
+            '{} is not a valid thirdparty command ({})'.format(args.command, ', '.join(available_commands)))
     if args.command not in ['download', 'validate']:
         if not args.local_directory:
             raise ArgumentError('Specify a directory to extract {} binaries from.'.format(args.command))

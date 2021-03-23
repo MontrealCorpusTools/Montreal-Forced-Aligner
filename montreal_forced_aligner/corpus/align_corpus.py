@@ -400,7 +400,7 @@ class AlignableCorpus(BaseCorpus):
                 if speaker not in tiers:
                     tiers[speaker] = IntervalTier(name=speaker, maxTime=tg.maxTime)
                 tiers[speaker].add(begin, end, text)
-            tg.tiers = [x for x in tiers.values()]
+            tg.tiers = tiers.values()
             tg.write(text_file_path)
         else:
             lab_path = self.utt_text_file_mapping[file_name]

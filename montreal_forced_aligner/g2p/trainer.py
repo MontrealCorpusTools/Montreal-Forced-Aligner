@@ -11,7 +11,8 @@ import time
 import shutil
 import traceback
 import sys
-from typing import Set, Union, List, NamedTuple, Optional, Tuple
+import tqdm
+from typing import Set, NamedTuple, Optional, Any, List, Tuple
 
 try:
     import pynini
@@ -27,15 +28,12 @@ except ImportError:
     Fst = None
     convert = lambda x: x
     G2P_DISABLED = True
-import tqdm
 
 from ..config import TEMP_DIR
 from ..models import G2PModel
 from ..multiprocessing import Stopped, Counter
 
 from ..helper import score
-
-from typing import Any, List, Tuple
 
 Labels = List[Any]
 

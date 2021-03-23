@@ -22,7 +22,7 @@ def list_available_languages(model_type):
     url = 'https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/{}/index.txt'.format(model_type)
     r = requests.get(url)
     if r.status_code == 404:
-        raise
+        raise Exception('Could not find model type "{}"'.format(model_type))
     out = r.text
     return out.split('\n')
 

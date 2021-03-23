@@ -148,7 +148,7 @@ def validate_binaries(file_list):
         print('The following kaldi binaries were not found in {}: {}'.format(bin_out, ', '.join(sorted(not_found))))
         return False
     if erroring:
-        print('The following kaldi binaries had errors in running: {}'.format(bin_out, ', '.join(sorted(erroring))))
+        print('The following kaldi binaries had errors in running: {}'.format(', '.join(sorted(erroring))))
         return False
     print('All required kaldi binaries were found!')
     return True

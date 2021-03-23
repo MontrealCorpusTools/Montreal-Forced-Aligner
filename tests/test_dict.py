@@ -32,13 +32,13 @@ def test_extra_annotations(extra_annotations_path, generated_dir):
 
 def test_basic_noposition(basic_dict_path, generated_dir):
     d = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'), position_dependent_phones=False)
-    x = d.write()
+    d.write()
     assert set(d.phones) == {'sil', 'sp', 'spn', 'phonea', 'phoneb', 'phonec'}
 
 
 def test_frclitics(frclitics_dict_path, generated_dir):
     d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, 'frclitics'))
-    x = d.write()
+    d.write()
     assert d.split_clitics('aujourd') == ['aujourd']
     assert d.split_clitics('aujourd\'hui') == ['aujourd\'hui']
     assert d.split_clitics('vingt-six') == ['vingt', 'six']

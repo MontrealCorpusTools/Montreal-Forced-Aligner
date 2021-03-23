@@ -533,8 +533,6 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.ax.getPlotItem().setMenuEnabled(False)
         self.ax.scene().sigMouseClicked.connect(self.update_current_time)
         layout = QtWidgets.QVBoxLayout()
-        # shortcut = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Tab), self)
-        # shortcut.activated.connect(self.play_audio)
 
         self.scroll_bar = QtWidgets.QScrollBar(QtCore.Qt.Horizontal)
         self.scroll_bar.valueChanged.connect(self.update_from_slider)
@@ -1093,8 +1091,8 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         ret = reply.exec_()
 
     def play_audio(self):
-        if self.m_audioOutput.state() == QtMultimedia.QMediaPlayer.StoppedState or \
-                self.m_audioOutput.state() == QtMultimedia.QMediaPlayer.PausedState:
+        if self.m_audioOutput.state() in [QtMultimedia.QMediaPlayer.StoppedState,
+                                          QtMultimedia.QMediaPlayer.PausedState]:
             self.m_audioOutput.play()
         elif self.m_audioOutput.state() == QtMultimedia.QMediaPlayer.PlayingState:
             self.m_audioOutput.pause()
