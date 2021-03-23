@@ -135,13 +135,13 @@ class BaseTrainer(object):
         done_path = os.path.join(self.align_directory, 'done')
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.train_directory)
-        if os.path.exists(done_path):
-            return
         if self.logger is None and logger is not None:
             self.logger = logger
         self.logger.info('Initializing training for {}...'.format(identifier))
         self.corpus = corpus
         self.dictionary = dictionary
+        if os.path.exists(done_path):
+            return
         os.makedirs(self.train_directory, exist_ok=True)
         os.makedirs(self.align_directory, exist_ok=True)
         os.makedirs(self.log_directory, exist_ok=True)
@@ -371,6 +371,7 @@ class BaseTrainer(object):
         acoustic_model = AcousticModel.empty(basename)
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.train_directory)
-        os.makedirs(directory, exist_ok=True)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
         acoustic_model.dump(basename)
