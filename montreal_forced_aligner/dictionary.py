@@ -613,7 +613,7 @@ class Dictionary(object):
                     continue
                 for pron in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
 
-                    phones = pron['pronunciation']
+                    phones = list(pron['pronunciation'])
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += '_S'
@@ -845,7 +845,7 @@ class Dictionary(object):
                 if self.word_set is not None and w not in self.word_set:
                     continue
                 for pron in sorted(self.words[w], key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
-                    phones = pron['pronunciation']
+                    phones = list(pron['pronunciation'])
                     prob = pron['probability']
                     disambig_symbol = pron['disambiguation']
                     if self.position_dependent_phones:
