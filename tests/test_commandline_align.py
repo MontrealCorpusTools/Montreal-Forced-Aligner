@@ -33,3 +33,11 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
+def test_align_stereo(stereo_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
+                     basic_align_config, english_acoustic_model):
+
+    command = ['align', stereo_corpus_dir, large_dataset_dictionary, 'english', os.path.join(generated_dir, 'stereo_output'),
+               '-t', temp_dir, '-c', basic_align_config, '-q', '--clean', '-d']
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
