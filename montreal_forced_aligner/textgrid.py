@@ -23,12 +23,11 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
             end = begin + duration
             label = line[4]
             speaker = corpus.utt_speak_mapping[utt]
-            if corpus.segments:
-                filename = corpus.segments[utt]
-                filename, utt_begin, utt_end = filename.split(' ')
+            if utt in corpus.segments:
+                seg = corpus.segments[utt]
+                filename = seg['file_name']
+                utt_begin = seg['begin']
                 utt_begin = Decimal(utt_begin)
-                if filename.endswith('_channel1') or filename.endswith('_channel2'):
-                    filename = filename[:-2]
                 begin += utt_begin
                 end += utt_begin
             else:

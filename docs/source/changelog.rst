@@ -6,7 +6,12 @@
 Changelog
 =========
 
-2.0.0a6
+2.0.0a8
+-------
+
+- Fixed a bug in generating alignments for TextGrid corpora
+
+2.0.0a7
 -------
 
 - Upgraded dependency of Pynini version to 2.1.4, please update package versions via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch`
@@ -15,6 +20,7 @@ Changelog
 - Fixed bug in checking for brackets in G2P (`PR #194`_)
 - Updated Annotator utility (:ref:`annotator` for more details) to be generally more usable for TextGrid use cases and
   adjusting segments and their transcriptions
+- Improved handling of stereo files with TextGrids so that MFA doesn't need to generate temporary files for each channel
 
 2.0.0a5
 -------
