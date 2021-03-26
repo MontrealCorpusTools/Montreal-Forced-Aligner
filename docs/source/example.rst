@@ -11,6 +11,10 @@
 
 .. _`Mandarin pinyin G2P model`: http://mlmlab.org/mfa/mfa-models/g2p/mandarin_pinyin_g2p.zip
 
+.. _`Google Colab notebook`: https://gist.github.com/NTT123/12264d15afad861cb897f7a20a01762e
+
+.. _`NTT123`: https://github.com/NTT123
+
 .. _examples:
 
 ********
@@ -21,6 +25,10 @@ Examples
 
 Example 1: Aligning LibriSpeech (English)
 =========================================
+
+.. note::
+
+   There is also a `Google Colab notebook`_ for running the alignment example with a custom Librispeech dataset, created by `NTT123`_.
 
 Set up
 ------
