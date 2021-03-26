@@ -172,7 +172,7 @@ at michael.e.mcauliffe@gmail.com.
    "Hausa", `Hausa acoustic model`_, "GlobalPhone", 103, 8.7, "GlobalPhone"
    "Japanese", "Not available yet", "GlobalPhone", 144, 34, "GlobalPhone"
    "Korean", `Korean acoustic model`_, "GlobalPhone", 101, 20.8, "GlobalPhone"
-   "Mandarin", `Mandarin acoustic model`_, "GlobalPhone", 132, 31.2, "GlobalPhone"
+   "Mandarin", `Mandarin acoustic model`_, "GlobalPhone", 132, 31.2, "Pinyin phones [6]_"
    "Polish", `Polish acoustic model`_, "GlobalPhone", 99, 24.6, "GlobalPhone"
    "Portuguese", `Portuguese acoustic model`_, "GlobalPhone", 101, 26.3, "GlobalPhone"
    "Russian", `Russian acoustic model`_, "GlobalPhone", 115, 26.5, "GlobalPhone"
@@ -225,7 +225,7 @@ tested on 10%:
    "Korean", `Korean Hangul G2P model`_, 11.85, 1.38, "Hangul", "GlobalPhone"
    "Korean", `Korean Jamo G2P model`_, 8.94, 0.95, "Jamo", "GlobalPhone"
    "Mandarin", `Mandarin Pinyin G2P model`_, 0.27, 0.06, "Pinyin", "Pinyin phones"
-   "Mandarin", `Mandarin Character G2P model`_ [4]_, 23.81, 11.2, "Hanzi", "Pinyin phones"
+   "Mandarin", `Mandarin Character G2P model`_ [4]_, 23.81, 11.2, "Hanzi", "Pinyin phones [6]_"
    "Polish", `Polish G2P model`_, 1.23, 0.33, "Latin alphabet", "GlobalPhone"
    "Portuguese", `Portuguese G2P model`_, 10.67, 1.62, "Latin alphabet", "GlobalPhone"
    "Russian", `Russian G2P model`_, 4.04, 0.65, "Cyrillic alphabet", "GlobalPhone"
@@ -251,6 +251,9 @@ tested on 10%:
 .. [5] The Wu G2P model was trained a fairly small lexicon, so it likely does not have the coverage to be a robust model
    for most purposes.  Please check carefully any resulting dictionaries, as they are likely to have missing syllables from
    from unknown symbols.
+.. [6] The phoneset for Mandarin was created by GlobalPhone by splitting Pinyin into onset, nucleus (any vowel sequence),
+   and codas, and then associating the tone of the syllable onto the nucleus (i.e. "fang2" -> "f a2 ng" and "xiao4" ->
+   "x iao4"
 
 .. _dictionaries:
 
