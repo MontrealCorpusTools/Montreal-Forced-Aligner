@@ -3,10 +3,12 @@ import re
 import logging
 import functools
 import multiprocessing as mp
+
 try:
     import pynini
     from pynini import Fst, TokenType
     from pynini.lib import rewrite
+
     G2P_DISABLED = False
 except ImportError:
     pynini = None
@@ -30,13 +32,15 @@ class Rewriter:
     """Helper object for rewriting."""
 
     def __init__(
-        self,
-        fst: Fst,
-        input_token_type: TokenType,
-        output_token_type: TokenType,
+            self,
+            fst: Fst,
+            input_token_type: TokenType,
+            output_token_type: TokenType,
+            nshortest=1
     ):
         self.rewrite = functools.partial(
-            rewrite.top_rewrite,
+            rewrite.top_rewrites,
+            nshortest=nshortest,
             rule=fst,
             input_token_type=input_token_type,
             output_token_type=output_token_type)
@@ -46,6 +50,7 @@ class Rewriter:
             return self.rewrite(i)
         except rewrite.Error:
             return "<composition failure>"
+
 
 def parse_errors(error_output):
     missing_symbols = []
@@ -108,7 +113,7 @@ def clean_up_word(word, graphemes):
 
 
 class PyniniDictionaryGenerator(object):
-    def __init__(self, g2p_model, word_set, temp_directory=None, num_jobs=3):
+    def __init__(self, g2p_model, word_set, temp_directory=None, num_jobs=3, num_pronunciations=1):
         super(PyniniDictionaryGenerator, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -126,6 +131,7 @@ class PyniniDictionaryGenerator(object):
         self.logger.addHandler(handler)
         self.words = word_set
         self.num_jobs = num_jobs
+        self.num_pronunciations = num_pronunciations
 
     def generate(self):
         if self.model.meta['architecture'] == 'phonetisaurus':
@@ -138,7 +144,7 @@ class PyniniDictionaryGenerator(object):
         output_token_type = 'utf8'
         if self.model.sym_path is not None and os.path.exists(self.model.sym_path):
             output_token_type = pynini.SymbolTable.read_text(self.model.sym_path)
-        rewriter = Rewriter(fst, input_token_type, output_token_type)
+        rewriter = Rewriter(fst, input_token_type, output_token_type, self.num_pronunciations)
 
         stopped = Stopped()
         job_queue = mp.JoinableQueue(100)
@@ -156,8 +162,9 @@ class PyniniDictionaryGenerator(object):
                 missing_graphemes.update(m)
                 if not w:
                     continue
-                pron = rewriter.rewrite(w)
-                if pron == '<composition failure>':
+                try:
+                    pron = rewriter.rewrite(w)
+                except rewrite.Error:
                     continue
                 to_return[word] = pron
         else:
@@ -193,7 +200,7 @@ class PyniniDictionaryGenerator(object):
                         continue
                     job_queue.put(w)
                     value = counter.value()
-                    pbar.update(value-last_value)
+                    pbar.update(value - last_value)
                     last_value = value
                     ind += 1
                 job_queue.join()
@@ -206,8 +213,8 @@ class PyniniDictionaryGenerator(object):
             for w in self.words:
                 if w in return_dict:
                     to_return[w] = return_dict[w]
-        print('Processed {} in {} seconds'.format(num_words, time.time()-begin))
-        self.logger.debug('Processed {} in {} seconds'.format(num_words, time.time()-begin))
+        print('Processed {} in {} seconds'.format(num_words, time.time() - begin))
+        self.logger.debug('Processed {} in {} seconds'.format(num_words, time.time() - begin))
         return to_return
 
     def output(self, outfile):
@@ -216,4 +223,10 @@ class PyniniDictionaryGenerator(object):
             for (word, pronunciation) in results.items():
                 if not pronunciation:
                     continue
-                f.write('{}\t{}\n'.format(word, pronunciation))
+                if isinstance(pronunciation, list):
+                    for p in pronunciation:
+                        if not p:
+                            continue
+                        f.write('{}\t{}\n'.format(word, p))
+                else:
+                    f.write('{}\t{}\n'.format(word, pronunciation))

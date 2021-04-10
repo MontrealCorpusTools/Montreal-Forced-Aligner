@@ -154,10 +154,18 @@ def edit_distance(x: Labels, y: Labels) -> int:
     return int(table[-1][-1])
 
 
-def score(args: Tuple[Labels, Labels]) -> Tuple[int, int]:
-    gold, hypo = args
+def score(gold : Labels, hypo: (Labels, List)) -> Tuple[int, int]:
     """Computes sufficient statistics for LER calculation."""
-    edits = edit_distance(gold, hypo)
+    if isinstance(hypo, list):
+        edits = 100000
+        for h in hypo:
+            e = edit_distance(gold, h)
+            if e < edits:
+                edits = e
+            if not edits:
+                break
+    else:
+        edits = edit_distance(gold, hypo)
     return edits, len(gold)
 
 

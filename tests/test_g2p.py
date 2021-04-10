@@ -1,5 +1,6 @@
 import os
 import pytest
+from montreal_forced_aligner.utils import get_pretrained_g2p_path
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer, G2P_DISABLED
 
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
@@ -47,3 +48,14 @@ def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output):
     gen = PyniniDictionaryGenerator(model, sick_corpus.word_set)
     gen.output(g2p_sick_output)
     assert os.path.exists(g2p_sick_output)
+
+def test_generator_pretrained(english_g2p_model):
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
+    model_path = get_pretrained_g2p_path('english_g2p')
+    model = G2PModel(model_path)
+    words = ['petted', 'petted-patted', 'pedal']
+    gen = PyniniDictionaryGenerator(model, words, num_pronunciations=3)
+    results = gen.generate()
+    print(results)
+    assert len(results['petted']) == 3

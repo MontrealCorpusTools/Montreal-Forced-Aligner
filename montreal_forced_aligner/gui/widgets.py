@@ -1296,7 +1296,7 @@ class InformationWidget(QtWidgets.QWidget):  # pragma: no cover
         if self.g2p_model is not None and not G2P_DISABLED:
             gen = Generator(self.g2p_model, [word])
             results = gen.generate()
-            pronunciation = results[word]
+            pronunciation = results[word][0]
             pron = {'pronunciation': tuple(pronunciation.split(' ')), 'probability': 1}
             self.dictionary.words[word].append(pron)
         for i in range(self.dictionary_widget.rowCount()):

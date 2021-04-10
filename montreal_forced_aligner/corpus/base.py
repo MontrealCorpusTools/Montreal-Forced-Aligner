@@ -434,22 +434,23 @@ class BaseCorpus(object):
                 path = os.path.join(split_directory, 'feats.{}.scp'.format(i))
                 run_filter = False
                 lengths_path = os.path.join(split_directory, 'utterance_lengths.{}.scp'.format(i))
-                with open(lengths_path, 'r') as inf:
-                    for line in inf:
-                        line = line.strip()
-                        utt, length = line.split()
-                        length = int(length)
-                        if length < 13:  # Minimum length to align one phone plus silence
-                            self.ignored_utterances.append(utt)
-                            run_filter = True
-                        else:
-                            self.utterance_lengths[utt] = length
-                            lengths_out_f.write(line + '\n')
-                if run_filter:
-                    filtered = filter_scp(self.ignored_utterances, path, exclude=True)
-                    with open(path, 'w') as f:
-                        for line in filtered:
-                            f.write(line.strip() + '\n')
+                if os.path.exists(lengths_path):
+                    with open(lengths_path, 'r') as inf:
+                        for line in inf:
+                            line = line.strip()
+                            utt, length = line.split()
+                            length = int(length)
+                            if length < 13:  # Minimum length to align one phone plus silence
+                                self.ignored_utterances.append(utt)
+                                run_filter = True
+                            else:
+                                self.utterance_lengths[utt] = length
+                                lengths_out_f.write(line + '\n')
+                    if run_filter:
+                        filtered = filter_scp(self.ignored_utterances, path, exclude=True)
+                        with open(path, 'w') as f:
+                            for line in filtered:
+                                f.write(line.strip() + '\n')
                 with open(path, 'r') as inf:
                     for line in inf:
                         line = line.strip()

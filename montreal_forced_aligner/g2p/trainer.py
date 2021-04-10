@@ -66,11 +66,10 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
     with mp.Pool(num_jobs) as pool:
         to_comp = []
         for word, hyp in hypothesis_values.items():
-            print(word, gold_values[word])
             g = gold_values[word][0]['pronunciation']
-            h = hyp.split(' ')
-            to_comp.append((g, h))
-        gen = pool.map(score, to_comp)
+            hyp = [ h.split(' ') for h in hyp]
+            to_comp.append((g, hyp))
+        gen = pool.starmap(score, to_comp)
         for (edits, length) in gen:
             if edits == 0:
                 correct += 1
@@ -81,7 +80,6 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
         for w, gold in gold_values.items():
             if w not in hypothesis_values:
                 incorrect += 1
-                print(w, gold)
                 gold = gold[0]['pronunciation']
                 total_edits += len(gold)
                 total_length += len(gold)
@@ -446,7 +444,7 @@ class PyniniTrainer(object):
                  input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
                  delta = 1/1024, lr = 1.0, batch_size=0,
                  max_iters=50, smoothing_method='kneser_ney', pruning_method='relative_entropy',
-                 model_size=1000000, use_mp=False):
+                 model_size=1000000, use_mp=False, num_pronunciations=1):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -476,6 +474,7 @@ class PyniniTrainer(object):
         self.fst_default_cache_gc = ''
         self.fst_default_cache_gc_limit = ''
         self.order = order
+        self.num_pronunciations = num_pronunciations
         self.train_log_path = os.path.join(self.temp_directory, 'train.log')
 
         self.logger = logging.getLogger('g2p_trainer')
@@ -613,7 +612,7 @@ class PyniniTrainer(object):
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
                                         temp_directory=os.path.join(self.temp_directory, 'validation'),
-                                        num_jobs=self.num_jobs)
+                                        num_jobs=self.num_jobs, num_pronunciations=self.num_pronunciations)
         output = gen.generate()
         begin = time.time()
         wer, ler = compute_validation_errors(validation_dictionary, output, num_jobs=self.num_jobs)

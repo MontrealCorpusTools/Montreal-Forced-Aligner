@@ -132,7 +132,9 @@ g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
 g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
                         action='store_true')
 g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
-                        help='Number of cores to use while training')
+                        help='Number of cores to use while generating pronunciations')
+g2p_parser.add_argument('-n', '--num_pronunciations', type=int, default=1,
+                        help='Number of candidate pronunciations to output')
 g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 train_g2p_parser = subparsers.add_parser('train_g2p')

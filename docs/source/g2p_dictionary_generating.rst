@@ -44,6 +44,27 @@ grapheme-to-phoneme mapping.
 
     mfa g2p input_path output_path
 
+Extra options:
+
+.. option:: -t DIRECTORY
+               --temp_directory DIRECTORY
+
+   Temporary directory root to use for generating dictionary, default is ``~/Documents/MFA``
+
+.. option:: -j NUMBER
+               --num_jobs NUMBER
+
+  Number of jobs to use; defaults to 3, set higher if you have more
+  processors available and would like to generate pronunciations faster
+
+.. option:: -n NUMBER
+               --num_pronunciations NUMBER
+
+  Number of pronunciation variants to generate per word, the default is 1
+
+.. option:: --include_bracketed
+
+  Flag for whether to generate pronunciations for words that are enclosed in brackets (i.e., [...], (...), <...>)
 
 See :ref:`dict_generating_example` for an example of how to use G2P functionality with a premade example.
 

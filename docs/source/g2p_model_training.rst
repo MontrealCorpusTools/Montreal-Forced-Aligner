@@ -29,6 +29,17 @@ The ``dictionary_path`` should be a full path to a pronunciation dictionary to t
 
 Extra options:
 
+.. option:: -t DIRECTORY
+               --temp_directory DIRECTORY
+
+   Temporary directory root to use for training, default is ``~/Documents/MFA``
+
+.. option:: -j NUMBER
+               --num_jobs NUMBER
+
+  Number of jobs to use; defaults to 3, set higher if you have more
+  processors available and would like to train the G2P model faster
+
 .. cmdoption:: --order ORDER
 
    Defines the ngram model order, defaults to 7

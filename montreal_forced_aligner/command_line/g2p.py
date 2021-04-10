@@ -45,7 +45,8 @@ def generate_dictionary(args):
     if args.g2p_model_path is not None:
         model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models'))
         model.validate(word_set)
-        gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs)
+        gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs,
+                        num_pronunciations=args.num_pronunciations)
         gen.output(args.output_path)
         model.clean_up()
     else:

@@ -6,6 +6,13 @@
 Changelog
 =========
 
+2.0.0a9
+-------
+
+- Fixed a bug when loading :code:`utterance_lengths.scp` from previous failed runs
+- Added the ability to generate multiple pronunciations per word when running G2P, see the extra options in
+  :ref:`g2p_dictionary_generating` for more details.
+
 2.0.0a8
 -------
 
