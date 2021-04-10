@@ -24,6 +24,11 @@ All platforms
 4. Run :code:`pip install montreal-forced-aligner`
 5. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
 
+To upgrade to the latest version of MFA:
+
+1. Activate your conda environment (i.e., :code:`conda activate aligner`)
+2. Run :code:`pip install montreal-forced-aligner -U`
+
 .. note::
 
    MFA 2.0.0a5 and earlier used Pynini version 2.1.0.  As of 2.0.0a6, versions have been upgraded to the latest version
