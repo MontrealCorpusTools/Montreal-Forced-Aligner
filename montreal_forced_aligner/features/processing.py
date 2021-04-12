@@ -43,7 +43,7 @@ def mfcc_func(directory, job_name, mfcc_options):
         utt_lengths_proc.communicate()
 
 
-def mfcc(mfcc_directory, num_jobs, feature_config):
+def mfcc(mfcc_directory, speakers, num_jobs, feature_config):
     """
     Multiprocessing function that converts wav files into MFCCs
 
@@ -58,6 +58,8 @@ def mfcc(mfcc_directory, num_jobs, feature_config):
     ----------
     mfcc_directory : str
         Directory to save MFCC feature matrices
+    speakers : list
+        List of speaker identifiers
     num_jobs : int
         The number of processes to use in calculation
     feature_config : :class:`~montreal_forced_aligner.features_config.FeatureConfig`
@@ -71,11 +73,10 @@ def mfcc(mfcc_directory, num_jobs, feature_config):
     """
     log_directory = os.path.join(mfcc_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-
-    jobs = [(mfcc_directory, x, feature_config.mfcc_options(x))
-            for x in range(num_jobs)]
+    jobs = [(mfcc_directory, x, feature_config.mfcc_options())
+            for x in speakers]
     if feature_config.use_mp:
-        run_mp(mfcc_func, jobs, log_directory)
+        run_mp(mfcc_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(mfcc_func, jobs, log_directory)
 
@@ -94,16 +95,16 @@ def compute_vad_func(directory, vad_config, job_name):
         vad_proc.communicate()
 
 
-def compute_vad(directory, num_jobs, use_mp, vad_config=None):
+def compute_vad(directory, speakers, num_jobs, use_mp, vad_config=None):
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     if vad_config is None:
         vad_config = {'energy_threshold': 5.5,
                       'energy_mean_scale': 0.5}
     jobs = [(directory, vad_config, x)
-            for x in range(num_jobs)]
+            for x in speakers]
     if use_mp:
-        run_mp(compute_vad_func, jobs, log_directory)
+        run_mp(compute_vad_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(compute_vad_func, jobs, log_directory)
 

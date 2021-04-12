@@ -85,23 +85,23 @@ class PretrainedAligner(BaseAligner):
             return
         try:
             compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                 self.align_config.data_directory, self.corpus.num_jobs, self.align_config)
+                                 self.align_config.data_directory, self.corpus.speakers, self.corpus.num_jobs, self.align_config)
             self.acoustic_model.feature_config.generate_features(self.corpus)
             log_dir = os.path.join(self.align_directory, 'log')
             os.makedirs(log_dir, exist_ok=True)
             self.logger.info('Performing first-pass alignment...')
             align('final', self.align_directory, self.align_config.data_directory,
                   self.dictionary.optional_silence_csl,
-                  self.corpus.num_jobs, self.align_config)
+                  self.corpus.speakers, self.corpus.num_jobs, self.align_config)
             if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
                     and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                 self.logger.info('Calculating fMLLR for speaker adaptation...')
                 calc_fmllr(self.align_directory, self.align_config.data_directory,
-                      self.dictionary.optional_silence_csl, self.corpus.num_jobs, self.align_config, initial=True, iteration='final')
+                      self.dictionary.optional_silence_csl, self.corpus.speakers, self.corpus.num_jobs, self.align_config, initial=True, iteration='final')
                 self.logger.info('Performing second-pass alignment...')
                 align('final', self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl,
-                      self.corpus.num_jobs, self.align_config)
+                      self.corpus.speakers, self.corpus.num_jobs, self.align_config)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
@@ -117,7 +117,7 @@ class PretrainedAligner(BaseAligner):
         """
         ali_directory = self.align_directory
         convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs, self)
+                                 self.corpus, self.corpus.speakers, self.corpus.num_jobs, self)
         self.compile_information(ali_directory, output_directory)
 
     def generate_pronunciations(self, output_path, calculate_silence_probs=False, min_count=1):

@@ -86,5 +86,5 @@ class TrainableAligner(BaseAligner):
         """
         ali_directory = self.training_config.values()[-1].align_directory
         convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs, self)
+                                 self.corpus, self.corpus.speakers, self.corpus.num_jobs, self)
         self.compile_information(ali_directory, output_directory)

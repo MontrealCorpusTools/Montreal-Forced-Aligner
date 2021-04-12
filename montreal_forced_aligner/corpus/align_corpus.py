@@ -4,7 +4,7 @@ import time
 import re
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
-from ..helper import load_text, output_mapping, save_groups, filter_scp, load_scp
+from ..helper import load_text, output_mapping, save_speaker_groups, filter_scp, load_scp
 
 from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
     BitDepthError, TextParseError, TextGridParseError
@@ -71,7 +71,6 @@ class AlignableCorpus(BaseCorpus):
             else:
                 self._load_from_source()
         self.check_warnings()
-        self.find_best_groupings()
 
     def delete_utterance(self, utterance):
         super(AlignableCorpus, self).delete_utterance(utterance)
@@ -129,7 +128,7 @@ class AlignableCorpus(BaseCorpus):
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
-        self.sample_rates = {int(k): v if isinstance(v, list) else [v] for k,v in load_scp(sr_path).items()}
+        self.sample_rates = {k: v if isinstance(v, list) else [v] for k,v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.utt_text_file_mapping = load_scp(text_file_path)
@@ -222,7 +221,7 @@ class AlignableCorpus(BaseCorpus):
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
-                self.sample_rates[sr].add(speaker_name)
+                self.sample_rates[speaker_name].add(sr)
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
                 self.lab_count += 1
@@ -233,7 +232,7 @@ class AlignableCorpus(BaseCorpus):
                 self.wav_files.append(file_name)
                 self.speaker_ordering[file_name] = info['speaker_ordering']
                 for s in info['speaker_ordering']:
-                    self.sample_rates[sr].add(s)
+                    self.sample_rates[s].add(sr)
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 self.file_utt_mapping.update(info['file_utt_mapping'])
@@ -298,7 +297,7 @@ class AlignableCorpus(BaseCorpus):
                         self.utt_text_file_mapping[utt_name] = lab_path
                         self.speak_utt_mapping[speaker_name].append(utt_name)
                         self.utt_wav_mapping[utt_name] = wav_path
-                        self.sample_rates[sr].add(speaker_name)
+                        self.sample_rates[speaker_name].add(sr)
                         self.utt_speak_mapping[utt_name] = speaker_name
                         self.file_directory_mapping[utt_name] = relative_path
                         self.lab_count += 1
@@ -322,7 +321,7 @@ class AlignableCorpus(BaseCorpus):
                         self.wav_files.append(file_name)
                         self.speaker_ordering[file_name] = info['speaker_ordering']
                         for s in info['speaker_ordering']:
-                            self.sample_rates[sr].add(s)
+                            self.sample_rates[s].add(sr)
                         self.segments.update(info['segments'])
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
@@ -362,11 +361,8 @@ class AlignableCorpus(BaseCorpus):
 
         bad_speakers = []
         for speaker in self.speak_utt_mapping.keys():
-            count = 0
-            for k, v in self.sample_rates.items():
-                if speaker in v:
-                    count += 1
-            if count > 1:
+
+            if len(self.sample_rates[speaker]) > 1:
                 bad_speakers.append(speaker)
         if bad_speakers:
             msg = 'The following speakers had multiple speaking rates: {}. ' \
@@ -469,8 +465,8 @@ class AlignableCorpus(BaseCorpus):
             yield ' '.join(new_text)
 
     def grouped_text(self, dictionary=None):
-        output = []
-        for g in self.groups:
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
             output_g = []
             for u in g:
                 if u in self.ignored_utterances:
@@ -492,15 +488,15 @@ class AlignableCorpus(BaseCorpus):
                             continue
                         new_text.extend(x for x in lookup if x != '')
                 output_g.append([u, new_text])
-            output.append(output_g)
+            output[s] = output_g
         return output
 
     def grouped_text_int(self, dictionary):
         oov_code = dictionary.oov_int
         self.utterance_oovs = {}
-        output = []
+        output = {}
         grouped_texts = self.grouped_text(dictionary)
-        for g in grouped_texts:
+        for s, g in grouped_texts.items():
             output_g = []
             for u, text in g:
                 if u in self.ignored_utterances:
@@ -518,7 +514,7 @@ class AlignableCorpus(BaseCorpus):
                     self.utterance_oovs[u] = oovs
                 new_text = map(str, (x for x in new_text if isinstance(x, int)))
                 output_g.append([u, ' '.join(new_text)])
-            output.append(output_g)
+            output[s] = output_g
         return output
 
     def get_word_frequency(self, dictionary):
@@ -538,8 +534,8 @@ class AlignableCorpus(BaseCorpus):
         word_frequencies = self.get_word_frequency(dictionary)
         most_frequent = sorted(word_frequencies.items(), key=lambda x: -x[1])[:num_frequent_words]
 
-        output = []
-        for g in self.groups:
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
             output_g = []
             for u in g:
                 try:
@@ -558,7 +554,7 @@ class AlignableCorpus(BaseCorpus):
                     print(u, text, new_text)
                     raise
                 output_g.append([u, fst_text])
-            output.append(output_g)
+            output[s] = output_g
         return output
 
     def subset_directory(self, subset, feature_config):
@@ -590,15 +586,15 @@ class AlignableCorpus(BaseCorpus):
         if dictionary is None:
             return
         pattern = 'utt2fst.{}'
-        save_groups(self.grouped_utt2fst(dictionary), directory, pattern, multiline=True)
+        save_speaker_groups(self.grouped_utt2fst(dictionary), directory, pattern, multiline=True)
 
     def _split_texts(self, directory, dictionary=None):
         pattern = 'text.{}'
-        save_groups(self.grouped_text(dictionary), directory, pattern)
+        save_speaker_groups(self.grouped_text(dictionary), directory, pattern)
         if dictionary is not None:
             pattern = 'text.{}.int'
             ints = self.grouped_text_int(dictionary)
-            save_groups(ints, directory, pattern)
+            save_speaker_groups(ints, directory, pattern)
 
     def split(self, dictionary):
         split_dir = self.split_directory()
@@ -609,7 +605,6 @@ class AlignableCorpus(BaseCorpus):
     def initialize_corpus(self, dictionary):
         if not self.utt_wav_mapping:
             raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
-        split_dir = self.split_directory()
         self.write()
         self.split(dictionary)
         self.figure_utterance_lengths()
@@ -640,10 +635,10 @@ class AlignableCorpus(BaseCorpus):
             with open(subset_utt_path, 'w', encoding='utf8') as f:
                 for u in subset_utts:
                     f.write('{}\n'.format(u))
-        for j in range(self.num_jobs):
+        for i in self.speak_utt_mapping.keys():
             for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
-                sub_path = os.path.join(subset_directory, fn.format(j))
-                with open(os.path.join(split_directory, fn.format(j)), 'r', encoding='utf8') as inf, \
+                sub_path = os.path.join(subset_directory, fn.format(i))
+                with open(os.path.join(split_directory, fn.format(i)), 'r', encoding='utf8') as inf, \
                         open(sub_path, 'w', encoding='utf8') as outf:
                     for line in inf:
                         s = line.split()
@@ -651,8 +646,8 @@ class AlignableCorpus(BaseCorpus):
                             continue
                         outf.write(line)
             subset_speakers = []
-            sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(j))
-            with open(os.path.join(split_directory, 'spk2utt.{}'.format(j)), 'r', encoding='utf8') as inf, \
+            sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(i))
+            with open(os.path.join(split_directory, 'spk2utt.{}'.format(i)), 'r', encoding='utf8') as inf, \
                     open(sub_path, 'w', encoding='utf8') as outf:
                 for line in inf:
                     line = line.split()
@@ -662,8 +657,8 @@ class AlignableCorpus(BaseCorpus):
                         continue
                     outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
                     subset_speakers.append(speaker)
-            sub_path = os.path.join(subset_directory, 'cmvn.{}.scp'.format(j))
-            with open(os.path.join(split_directory, 'cmvn.{}.scp'.format(j)), 'r', encoding='utf8') as inf, \
+            sub_path = os.path.join(subset_directory, 'cmvn.{}.scp'.format(i))
+            with open(os.path.join(split_directory, 'cmvn.{}.scp'.format(i)), 'r', encoding='utf8') as inf, \
                     open(sub_path, 'w', encoding='utf8') as outf:
                 for line in inf:
                     line = line.split()
@@ -672,8 +667,8 @@ class AlignableCorpus(BaseCorpus):
                         continue
                     outf.write('{} {}\n'.format(speaker, cmvn))
             if feature_config is not None:
-                base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(j))
-                subset_scp = os.path.join(subset_directory, feature_config.feature_id + '.{}.scp'.format(j))
+                base_path = os.path.join(split_directory, feature_config.feature_id + '.{}.scp'.format(i))
+                subset_scp = os.path.join(subset_directory, feature_config.feature_id + '.{}.scp'.format(i))
                 if os.path.exists(subset_scp):
                     continue
                 filtered = filter_scp(subset_utts, base_path)

@@ -22,8 +22,6 @@ class IvectorExtractorTrainer(BaseTrainer):
     ----------
     ivector_dimension : int
         Dimension of the extracted i-vector
-    ivector_period : int
-        Number of frames between i-vector extractions
     num_iterations : int
         Number of training iterations to perform
     num_gselect : int
@@ -106,7 +104,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                                                                            self.train_directory,
                                                                            job_name=None, cmvn=self.apply_cmn)
         with open(all_feats_path, 'w') as outf:
-            for i in range(self.corpus.num_jobs):
+            for i in self.corpus.speakers:
                 with open(os.path.join(self.data_directory,
                                        feat_name + '.{}.scp'.format(i))) as inf:
                     for line in inf:
@@ -124,7 +122,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             gmm_init_proc.communicate()
 
         # Store Gaussian selection indices on disk
-        gmm_gselect('0', self, self.corpus.num_jobs)
+        gmm_gselect('0', self, self.corpus.speakers, self.corpus.num_jobs)
         final_dubm_path = os.path.join(self.train_directory, 'final.dubm')
 
         if not os.path.exists(final_dubm_path):
@@ -135,7 +133,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                 iters = range(0, self.ubm_num_iterations)
             for i in iters:
                 # Accumulate stats
-                acc_global_stats(self, self.corpus.num_jobs, i)
+                acc_global_stats(self, self.corpus.speakers, self.corpus.num_jobs, i)
 
                 # Don't remove low-count Gaussians till the last tier,
                 # or gselect info won't be valid anymore
@@ -147,7 +145,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                 log_path = os.path.join(self.train_directory, 'log', 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(self.corpus.num_jobs)]
+                                 for x in self.corpus.speakers]
                     gmm_global_est_proc = subprocess.Popen([thirdparty_binary('gmm-global-est'),
                                                             opt,
                                                             '--min-gaussian-weight=' + str(self.ubm_min_gaussian_weight),
@@ -207,7 +205,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                             stderr=log_file)
 
         # Do Gaussian selection and posterior extraction
-        gauss_to_post(self, self.corpus.num_jobs)
+        gauss_to_post(self, self.corpus.speakers, self.corpus.num_jobs)
         parse_logs(log_directory)
         self.logger.debug('Initialization ivectors took {} seconds'.format(time.time() - begin))
 
@@ -218,7 +216,7 @@ class IvectorExtractorTrainer(BaseTrainer):
 
     def train(self, call_back=None):
         from sklearn.naive_bayes import GaussianNB
-        from joblib import dump, load
+        from joblib import dump
         import numpy as np
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
@@ -235,7 +233,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             if not os.path.exists(os.path.join(self.train_directory, 'final.ie')):
                 for i in iters:
                     # Accumulate stats and sum
-                    acc_ivector_stats(self, self.corpus.num_jobs, i)
+                    acc_ivector_stats(self, self.corpus.speakers, self.corpus.num_jobs, i)
 
                     # Est extractor
                     log_path = os.path.join(log_dir, 'update.{}.log'.format(i))
@@ -252,11 +250,11 @@ class IvectorExtractorTrainer(BaseTrainer):
                 # Rename to final
                 shutil.copy(os.path.join(self.train_directory, '{}.ie'.format(self.num_iterations)),
                             os.path.join(self.train_directory, 'final.ie'))
-            extract_ivectors(self.train_directory, self.corpus.split_directory(), self, self.corpus.num_jobs)
+            extract_ivectors(self.train_directory, self.corpus.split_directory(), self, self.corpus.speakers, self.corpus.num_jobs)
             x = []
             y = []
             speakers = sorted(self.corpus.speak_utt_mapping.keys())
-            for i in range(self.corpus.num_jobs):
+            for i in self.corpus.speakers:
                 ivec = load_scp(os.path.join(self.train_directory, 'ivectors.{}'.format(i)))
                 for utt, ivector in ivec.items():
                     ivector = [float(x) for x in ivector]

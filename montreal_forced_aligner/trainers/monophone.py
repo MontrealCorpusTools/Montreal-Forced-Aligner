@@ -75,7 +75,7 @@ class MonophoneTrainer(BaseTrainer):
 
         try:
             feat_dim = corpus.get_feat_dim(self.feature_config)
-            feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
+            feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, self.corpus.speakers[0])
             feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
             log_path = os.path.join(self.log_directory, 'init.log')
@@ -90,12 +90,12 @@ class MonophoneTrainer(BaseTrainer):
             num_gauss = self.get_num_gauss()
             self.initial_gaussians = num_gauss
             compile_train_graphs(self.train_directory, dictionary.output_directory,
-                                 self.data_directory, corpus.num_jobs, self)
+                                 self.data_directory, corpus.speakers, corpus.num_jobs, self)
             mono_align_equal(self.train_directory,
-                             self.data_directory, corpus.num_jobs, self)
+                             self.data_directory, corpus.speakers, corpus.num_jobs, self)
             log_path = os.path.join(self.train_directory, 'log', 'update.0.log')
             with open(log_path, 'w') as log_file:
-                acc_files = [os.path.join(self.train_directory, '0.{}.acc'.format(x)) for x in range(corpus.num_jobs)]
+                acc_files = [os.path.join(self.train_directory, '0.{}.acc'.format(x)) for x in corpus.speakers]
                 est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                              '--min-gaussian-occupancy=3',
                                              '--mix-up={}'.format(num_gauss), '--power={}'.format(self.power),
@@ -110,7 +110,7 @@ class MonophoneTrainer(BaseTrainer):
             parse_logs(self.log_directory)
             if self.debug:
                 self.logger.info('Initializing alignment improvement calculations')
-                compute_alignment_improvement(0, self, self.train_directory, self.corpus.num_jobs)
+                compute_alignment_improvement(0, self, self.train_directory, corpus.speakers, self.corpus.num_jobs)
 
         except Exception as e:
             with open(dirty_path, 'w'):

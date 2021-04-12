@@ -81,20 +81,21 @@ def transcribe(transcriber):
     mdl_path = os.path.join(directory, 'final.mdl')
     corpus = transcriber.corpus
     num_jobs = corpus.num_jobs
+    speakers = corpus.speakers
 
     if config.use_mp and num_jobs > 1:
         jobs = [(directory, x, mdl_path, config,
                  config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
                  output_directory)
-                for x in range(num_jobs)]
+                for x in speakers]
     else:
         jobs = [(directory, x, mdl_path, config,
                  config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
                  output_directory, corpus.original_num_jobs)
-                for x in range(num_jobs)]
+                for x in speakers]
 
     if config.use_mp and num_jobs > 1:
-        run_mp(decode_func, jobs, log_directory)
+        run_mp(decode_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(decode_func, jobs, log_directory)
 
@@ -107,9 +108,9 @@ def transcribe(transcriber):
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
                 jobs = [(directory, x, config, out_dir, lmwt, wip)
-                        for x in range(num_jobs)]
+                        for x in speakers]
                 if config.use_mp:
-                    run_mp(score_func, jobs, log_dir)
+                    run_mp(score_func, jobs, log_dir, num_jobs)
                 else:
                     run_non_mp(score_func, jobs, log_dir)
                 ser, wer = transcriber.evaluate(out_dir, out_dir)
@@ -119,9 +120,9 @@ def transcribe(transcriber):
         transcriber.transcribe_config.word_insertion_penalty = best[1]
     else:
         jobs = [(directory, x, config, output_directory)
-                for x in range(num_jobs)]
+                for x in speakers]
         if config.use_mp:
-            run_mp(score_func, jobs, log_directory)
+            run_mp(score_func, jobs, log_directory, num_jobs)
         else:
             run_non_mp(score_func, jobs, log_directory)
 

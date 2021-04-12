@@ -6,7 +6,7 @@ import subprocess
 from collections import defaultdict
 
 from ..exceptions import SampleRateError, CorpusError
-from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, filter_scp
+from ..helper import thirdparty_binary, load_scp, output_mapping, save_speaker_groups, filter_scp
 
 
 def get_wav_info(file_path):
@@ -125,8 +125,6 @@ class BaseCorpus(object):
         self.file_directory_mapping = {}
         self.textgrid_read_errors = {}
         self.speaker_ordering = {}
-        self.groups = []
-        self.speaker_groups = []
         self.frequency_configs = []
         self.segments = {}
         self.file_utt_mapping = {}
@@ -136,6 +134,10 @@ class BaseCorpus(object):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
+
+    @property
+    def speakers(self):
+        return sorted(self.speak_utt_mapping.keys())
 
     def add_utterance(self, utterance, speaker, file, text, wav_file=None, seg=None):
         if seg is not None:
@@ -170,43 +172,6 @@ class BaseCorpus(object):
         if utterance in self.utt_wav_mapping:
             del self.utt_wav_mapping[utterance]
 
-    def find_best_groupings(self):
-        num_sample_rates = len(self.sample_rates.keys())
-        jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
-        remaining_jobs = self.num_jobs - num_sample_rates
-        while remaining_jobs > 0:
-            min_num = min(jobs_per_sample_rate.values())
-            addable = sorted([k for k, v in jobs_per_sample_rate.items() if v == min_num],
-                             key=lambda x: -1 * len(self.sample_rates[x]))
-            jobs_per_sample_rate[addable[0]] += 1
-            remaining_jobs -= 1
-        self.speaker_groups = []
-        self.frequency_configs = []
-        job_num = 0
-        for k, v in jobs_per_sample_rate.items():
-            speakers = sorted(self.sample_rates[k])
-
-            groups = [[] for _ in range(v)]
-
-            configs = [(job_num + x, {'sample-frequency': k, 'low-freq': 20, 'high-freq': 7800}) for x in range(v)]
-            ind = 0
-            while speakers:
-                s = speakers.pop(0)
-                groups[ind].append(s)
-                ind += 1
-                if ind >= v:
-                    ind = 0
-
-            job_num += v
-            self.speaker_groups.extend(groups)
-            self.frequency_configs.extend(configs)
-        self.groups = []
-        for x in self.speaker_groups:
-            g = []
-            for s in x:
-                g.extend(self.speak_utt_mapping[s])
-            self.groups.append(g)
-
     @property
     def utterances(self):
         return list(self.utt_speak_mapping.keys())
@@ -222,46 +187,6 @@ class BaseCorpus(object):
     @property
     def features_log_directory(self):
         return os.path.join(self.features_directory, 'log')
-
-    @property
-    def grouped_feat(self):
-        output = []
-        for g in self.groups:
-            output_g = []
-            for u in g:
-                if u in self.ignored_utterances:
-                    continue
-                try:
-                    output_g.append([u, self.feat_mapping[u]])
-                except KeyError:
-                    pass
-            output.append(output_g)
-        return output
-
-    @property
-    def grouped_wav(self):
-        output = []
-        for g in self.groups:
-            done = set()
-            output_g = []
-            for u in g:
-                if u in self.ignored_utterances:
-                    continue
-                if not self.segments:
-                    try:
-                        output_g.append([u, self.utt_wav_mapping[u]])
-                    except KeyError:
-                        pass
-                else:
-                    try:
-                        r = self.segments[u]['file_name']
-                    except KeyError:
-                        continue
-                    if r not in done:
-                        output_g.append([r, self.utt_wav_mapping[r]])
-                        done.add(r)
-            output.append(output_g)
-        return output
 
     def parse_features_logs(self):
         line_reg_ex = r'Did not find features for utterance (\w+)'
@@ -282,16 +207,15 @@ class BaseCorpus(object):
 
     @property
     def grouped_cmvn(self):
-        output = []
+        output = {}
         try:
-            for g in self.speaker_groups:
+            for s, g in self.speak_utt_mapping.items():
                 output_g = []
-                for s in sorted(g):
-                    try:
-                        output_g.append([s, self.cmvn_mapping[s]])
-                    except KeyError:
-                        pass
-                output.append(output_g)
+                try:
+                    output_g.append([s, self.cmvn_mapping[s]])
+                except KeyError:
+                    pass
+                output[s] = output_g
         except KeyError:
             raise (CorpusError(
                 'Something went wrong while setting up the corpus. Please delete the {} folder and try again.'.format(
@@ -300,8 +224,8 @@ class BaseCorpus(object):
 
     @property
     def grouped_utt2spk(self):
-        output = []
-        for g in self.groups:
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
             output_g = []
             for u in sorted(g):
                 if u in self.ignored_utterances:
@@ -310,33 +234,72 @@ class BaseCorpus(object):
                     output_g.append([u, self.utt_speak_mapping[u]])
                 except KeyError:
                     pass
-            output.append(output_g)
+            output[s] = output_g
+        return output
+
+    @property
+    def grouped_feat(self):
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
+            output_g = []
+            for u in g:
+                if u in self.ignored_utterances:
+                    continue
+                try:
+                    output_g.append([u, self.feat_mapping[u]])
+                except KeyError:
+                    pass
+            output[s] = output_g
+        return output
+
+    @property
+    def grouped_wav(self):
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
+            done = set()
+            output_g = []
+            for u in g:
+                if u in self.ignored_utterances:
+                    continue
+                if not self.segments:
+                    try:
+                        output_g.append([u, self.utt_wav_mapping[u]])
+                    except KeyError:
+                        pass
+                else:
+                    try:
+                        r = self.segments[u]['file_name']
+                    except KeyError:
+                        continue
+                    if r not in done:
+                        output_g.append([r, self.utt_wav_mapping[r]])
+                        done.add(r)
+            output[s] = output_g
         return output
 
     @property
     def grouped_segments(self):
-        output = []
-        for g in self.groups:
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
             output_g = []
             for u in g:
                 try:
                     output_g.append([u, '{file_name} {begin} {end} {channel}'.format(**self.segments[u])])
                 except KeyError:
                     pass
-            output.append(output_g)
+            output[s] = output_g
         return output
 
     @property
     def grouped_spk2utt(self):
-        output = []
-        for g in self.speaker_groups:
+        output = {}
+        for s, g in self.speak_utt_mapping.items():
             output_g = []
-            for s in sorted(g):
-                try:
-                    output_g.append([s, sorted(self.speak_utt_mapping[s])])
-                except KeyError:
-                    pass
-            output.append(output_g)
+            try:
+                output_g.append([s, sorted(g)])
+            except KeyError:
+                pass
+            output[s] = output_g
         return output
 
     def get_wav_duration(self, utt):
@@ -355,7 +318,7 @@ class BaseCorpus(object):
         return get_wav_info(wav_path)['duration']
 
     def split_directory(self):
-        directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
+        directory = os.path.join(self.output_directory, 'split')
         return directory
 
     def _write_utt_speak(self):
@@ -401,28 +364,28 @@ class BaseCorpus(object):
 
     def _split_utt2spk(self, directory):
         pattern = 'utt2spk.{}'
-        save_groups(self.grouped_utt2spk, directory, pattern)
+        save_speaker_groups(self.grouped_utt2spk, directory, pattern)
 
     def _split_segments(self, directory):
         if not self.segments:
             return
         pattern = 'segments.{}'
-        save_groups(self.grouped_segments, directory, pattern)
+        save_speaker_groups(self.grouped_segments, directory, pattern)
 
     def _split_spk2utt(self, directory):
         pattern = 'spk2utt.{}'
-        save_groups(self.grouped_spk2utt, directory, pattern)
+        save_speaker_groups(self.grouped_spk2utt, directory, pattern)
 
     def _split_wavs(self, directory):
         pattern = 'wav.{}.scp'
-        save_groups(self.grouped_wav, directory, pattern)
+        save_speaker_groups(self.grouped_wav, directory, pattern)
 
     def _split_cmvns(self, directory):
         if not self.cmvn_mapping:
             cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
             self.cmvn_mapping = load_scp(cmvn_path)
         pattern = 'cmvn.{}.scp'
-        save_groups(self.grouped_cmvn, directory, pattern)
+        save_speaker_groups(self.grouped_cmvn, directory, pattern)
 
     def combine_feats(self):
         self.feat_mapping = {}
@@ -430,10 +393,10 @@ class BaseCorpus(object):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         lengths_path = os.path.join(self.output_directory, 'utterance_lengths.scp')
         with open(feat_path, 'w') as outf, open(lengths_path, 'w') as lengths_out_f:
-            for i in range(self.num_jobs):
-                path = os.path.join(split_directory, 'feats.{}.scp'.format(i))
+            for s in self.speak_utt_mapping.keys():
+                path = os.path.join(split_directory, 'feats.{}.scp'.format(s))
                 run_filter = False
-                lengths_path = os.path.join(split_directory, 'utterance_lengths.{}.scp'.format(i))
+                lengths_path = os.path.join(split_directory, 'utterance_lengths.{}.scp'.format(s))
                 if os.path.exists(lengths_path):
                     with open(lengths_path, 'r') as inf:
                         for line in inf:
@@ -498,7 +461,7 @@ class BaseCorpus(object):
 
     def get_feat_dim(self, feature_config):
 
-        feature_string = feature_config.construct_feature_proc_string(self.split_directory(), None, 0)
+        feature_string = feature_config.construct_feature_proc_string(self.split_directory(), None, self.speakers[0])
         with open(os.devnull, 'w') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          feature_string, '-'],

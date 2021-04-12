@@ -31,7 +31,6 @@ class TranscribeCorpus(BaseCorpus):
             else:
                 self._load_from_source()
         self.check_warnings()
-        self.find_best_groupings()
 
     def _load_from_temp(self):
         begin_time = time.time()
@@ -63,7 +62,7 @@ class TranscribeCorpus(BaseCorpus):
         self.cmvn_mapping = load_scp(cmvn_path)
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
-        self.sample_rates = {int(k): v for k, v in load_scp(sr_path).items()}
+        self.sample_rates = {k: v for k, v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
@@ -136,7 +135,7 @@ class TranscribeCorpus(BaseCorpus):
                 file_name = utt_name
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
-                self.sample_rates[sr].add(speaker_name)
+                self.sample_rates[speaker_name].add(sr)
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
             else:
@@ -146,7 +145,7 @@ class TranscribeCorpus(BaseCorpus):
                 self.wav_files.append(file_name)
                 self.speaker_ordering[file_name] = info['speaker_ordering']
                 for s in info['speaker_ordering']:
-                    self.sample_rates[sr].add(s)
+                    self.sample_rates[s].add(sr)
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 for utt, words in info['text_mapping'].items():
@@ -316,6 +315,6 @@ class TranscribeCorpus(BaseCorpus):
         segment_vad(self, segmentation_config)
         directory = self.split_directory()
         self.vad_segments = {}
-        for i in range(self.num_jobs):
+        for i in self.speakers:
             vad_segments_path = os.path.join(directory, 'vad_segments.{}.scp'.format(i))
             self.vad_segments.update(load_scp(vad_segments_path))

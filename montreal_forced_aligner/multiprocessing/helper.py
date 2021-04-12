@@ -66,7 +66,7 @@ def run_non_mp(function, argument_list, log_directory):
     parse_logs(log_directory)
 
 
-def run_mp(function, argument_list, log_directory):  # pragma: no cover
+def run_mp(function, argument_list, log_directory, num_jobs):  # pragma: no cover
     stopped = Stopped()
     manager = mp.Manager()
     job_queue = manager.Queue()
@@ -74,7 +74,7 @@ def run_mp(function, argument_list, log_directory):  # pragma: no cover
     for a in argument_list:
         job_queue.put(a, False)
     procs = []
-    for i in range(len(argument_list)):
+    for i in range(num_jobs):
         p = ProcessWorker(job_queue, function, return_dict, stopped)
         procs.append(p)
         p.start()

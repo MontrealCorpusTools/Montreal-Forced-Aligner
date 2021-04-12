@@ -46,7 +46,7 @@ def acc_stats_func(directory, iteration, job_name, feature_string):
         acc_proc.communicate()
 
 
-def acc_stats(iteration, directory, split_directory, num_jobs, config):
+def acc_stats(iteration, directory, split_directory, speakers, num_jobs, config):
     """
     Multiprocessing function that computes stats for GMM training
 
@@ -70,10 +70,10 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
     """
     jobs = [(directory, iteration, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x)
-             ) for x in range(num_jobs)]
+             ) for x in speakers]
 
     if config.use_mp:
-        run_mp(acc_stats_func, jobs, config.log_directory)
+        run_mp(acc_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(acc_stats_func, jobs, config.log_directory)
 
@@ -160,7 +160,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                         pass
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, config, debug=False):
+def compile_train_graphs(directory, lang_directory, split_directory, speakers, num_jobs, config, debug=False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -179,15 +179,17 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, c
         Directory of the language model used
     split_directory : str
         Directory of training data split into the number of jobs
+    speakers : list
+        List of speakers in corpus
     num_jobs : int
         The number of processes to use
     """
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, lang_directory, split_directory, x, debug)
-            for x in range(num_jobs)]
+            for x in speakers]
     if config.use_mp:
-        run_mp(compile_train_graphs_func, jobs, log_directory)
+        run_mp(compile_train_graphs_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(compile_train_graphs_func, jobs, log_directory)
 
@@ -209,7 +211,7 @@ def mono_align_equal_func(mono_directory, job_name, feature_string):
         stats_proc.communicate()
 
 
-def mono_align_equal(mono_directory, split_directory, num_jobs, config):
+def mono_align_equal(mono_directory, split_directory, speakers, num_jobs, config):
     """
     Multiprocessing function that creates equal alignments for base monophone training
 
@@ -232,10 +234,10 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
     jobs = [(mono_directory, x,
              config.feature_config.construct_feature_proc_string(split_directory, mono_directory, x),
              )
-            for x in range(num_jobs)]
+            for x in speakers]
 
     if config.use_mp:
-        run_mp(mono_align_equal_func, jobs, config.log_directory)
+        run_mp(mono_align_equal_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(mono_align_equal_func, jobs, config.log_directory)
 
@@ -260,7 +262,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None):
+def align(iteration, directory, split_directory, optional_silence, speakers, num_jobs, config, output_directory=None):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -296,15 +298,15 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 
     jobs = [(directory, iteration, x, mdl, config.align_options,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     output_directory) for x in range(num_jobs)]
+                     output_directory) for x in speakers]
 
     if config.use_mp:
-        run_mp(align_func, jobs, log_directory)
+        run_mp(align_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(align_func, jobs, log_directory)
 
     error_logs = []
-    for i in range(num_jobs):
+    for i in speakers:
         log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, i))
         with open(log_path, 'r', encoding='utf8') as f:
             for line in f:
@@ -338,11 +340,11 @@ def compile_information_func(log_directory, corpus, job_num):
             f.write('{} {}\n'.format(k, v))
 
 
-def compile_information(model_directory, corpus, num_jobs, config):
+def compile_information(model_directory, corpus, speakers, num_jobs, config):
     log_dir = os.path.join(model_directory, 'log')
 
     jobs = [(log_dir, corpus, x)
-            for x in range(num_jobs)]
+            for x in speakers]
 
     run_non_mp(compile_information_func, jobs, log_dir)
 
@@ -421,9 +423,9 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
         raise (Exception(str(e)))
 
 
-def parse_iteration_alignments(directory, iteration, num_jobs):
+def parse_iteration_alignments(directory, iteration, speakers, num_jobs):
     data = {}
-    for j in range(num_jobs):
+    for j in speakers:
         phone_ctm_path = os.path.join(directory, 'phone.{}.{}.ctm'.format(iteration, j))
         with open(phone_ctm_path, 'r', encoding='utf8') as f:
             for line in f:
@@ -480,10 +482,10 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
     return utterances_aligned_diff, mean_difference
 
 
-def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
-    jobs = [(iteration, config, model_directory, x) for x in range(num_jobs)]
+def compute_alignment_improvement(iteration, config, model_directory, speakers, num_jobs):
+    jobs = [(iteration, config, model_directory, x) for x in speakers]
     if config.use_mp:
-        run_mp(compute_alignment_improvement_func, jobs, config.log_directory)
+        run_mp(compute_alignment_improvement_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(compute_alignment_improvement_func, jobs, config.log_directory)
 
@@ -496,10 +498,10 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
     else:
         previous_iteration = 0
     try:
-        previous_alignments = parse_iteration_alignments(model_directory, previous_iteration, num_jobs)
+        previous_alignments = parse_iteration_alignments(model_directory, previous_iteration, speakers, num_jobs)
     except FileNotFoundError:
         return
-    current_alignments = parse_iteration_alignments(model_directory, iteration, num_jobs)
+    current_alignments = parse_iteration_alignments(model_directory, iteration, speakers, num_jobs)
     utterance_aligned_diff, mean_difference = compare_alignments(previous_alignments, current_alignments,
                                                                  config.feature_config.frame_shift)
     if not os.path.exists(alignment_diff_path):
@@ -511,7 +513,7 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
             f.write('{},{},{},{},{}\n'.format(iteration, len(current_alignments),
                                               len(previous_alignments), utterance_aligned_diff, mean_difference))
     if not config.debug:
-        for j in range(num_jobs):
+        for j in speakers:
             phone_ctm_path = os.path.join(model_directory, 'phone.{}.{}.ctm'.format(previous_iteration, j))
             os.remove(phone_ctm_path)
 
@@ -564,7 +566,7 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
         nbest_proc.communicate()
 
 
-def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs, config):
+def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, speakers, num_jobs, config):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -606,15 +608,15 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     frame_shift = align_config.feature_config.frame_shift / 1000
     word_path = os.path.join(dictionary.phones_dir, 'word_boundary.int')
     jobs = [(model_directory, word_path, corpus.split_directory(), x, frame_shift)
-            for x in range(num_jobs)]
+            for x in speakers]
     if align_config.use_mp:
-        run_mp(ali_to_textgrid_func, jobs, log_directory)
+        run_mp(ali_to_textgrid_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(ali_to_textgrid_func, jobs, log_directory)
 
     word_ctm = {}
     phone_ctm = {}
-    for i in range(num_jobs):
+    for i in speakers:
         word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
         phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
         if not os.path.exists(word_ctm_path):
@@ -647,7 +649,7 @@ def tree_stats_func(directory, ci_phones, mdl, feature_string, ali_path, job_nam
                          treeacc_path], stderr=log_file)
 
 
-def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs, config):
+def tree_stats(directory, align_directory, split_directory, ci_phones, speakers, num_jobs, config):
     """
     Multiprocessing function that computes stats for decision tree training
 
@@ -673,20 +675,20 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, num_jobs,
 
     jobs = [(directory, ci_phones, mdl_path,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-             os.path.join(align_directory, 'ali.{}'.format(x)), x) for x in range(num_jobs)]
+             os.path.join(align_directory, 'ali.{}'.format(x)), x) for x in speakers]
 
     if config.use_mp:
-        run_mp(tree_stats_func, jobs, config.log_directory)
+        run_mp(tree_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(tree_stats_func, jobs, config.log_directory)
 
-    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(num_jobs)]
+    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in speakers]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
     with open(log_path, 'w', encoding='utf8') as log_file:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
                         tree_accs, stderr=log_file)
-    # for f in tree_accs:
-    #    os.remove(f)
+    for f in tree_accs:
+        os.remove(f)
 
 
 def convert_alignments_func(directory, align_directory, job_name):
@@ -703,7 +705,7 @@ def convert_alignments_func(directory, align_directory, job_name):
                          "ark:" + new_ali_path], stderr=log_file)
 
 
-def convert_alignments(directory, align_directory, num_jobs, config):
+def convert_alignments(directory, align_directory, speakers, num_jobs, config):
     """
     Multiprocessing function that converts alignments from previous training
 
@@ -723,9 +725,9 @@ def convert_alignments(directory, align_directory, num_jobs, config):
     """
 
     jobs = [(directory, align_directory, x)
-            for x in range(num_jobs)]
+            for x in speakers]
     if config.use_mp:
-        run_mp(convert_alignments_func, jobs, config.log_directory)
+        run_mp(convert_alignments_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(convert_alignments_func, jobs, config.log_directory)
 
@@ -772,7 +774,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, feature_st
             trans_path = tmp_trans_path
 
 
-def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
+def calc_fmllr(directory, split_directory, sil_phones, speakers, num_jobs, config,
                initial=False, iteration=None):
     """
     Multiprocessing function that computes speaker adaptation (fMLLR)
@@ -807,7 +809,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     initial : bool, optional
         Whether this is the first computation of speaker-adaptation,
         defaults to False
-    iteration : int
+    iteration : int or str
         Specifies the current iteration, defaults to None
 
     """
@@ -823,7 +825,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
 
     jobs = [(directory, split_directory, sil_phones, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     config, initial, model_name) for x in range(num_jobs)]
+                     config, initial, model_name) for x in speakers]
     # if config.use_mp:
     #    run_mp(calc_fmllr_func, jobs)
     # else:
@@ -854,7 +856,7 @@ def lda_acc_stats_func(directory, feature_string, align_directory, config, ci_ph
         acc_lda_post_proc.communicate()
 
 
-def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones, num_jobs):
+def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones, speakers, num_jobs):
     """
     Multiprocessing function that accumulates LDA statistics
 
@@ -889,17 +891,17 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
     """
     jobs = [(directory,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x, splice=True),
-             align_directory, config.lda_options, ci_phones, x) for x in range(num_jobs)]
+             align_directory, config.lda_options, ci_phones, x) for x in speakers]
 
 
     if config.use_mp:
-        run_mp(lda_acc_stats_func, jobs, config.log_directory)
+        run_mp(lda_acc_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(lda_acc_stats_func, jobs, config.log_directory)
 
     log_path = os.path.join(directory, 'log', 'lda_est.log')
     acc_list = []
-    for x in range(num_jobs):
+    for x in speakers:
         acc_list.append(os.path.join(directory, 'lda.{}.acc'.format(x)))
     with open(log_path, 'w', encoding='utf8') as log_file:
         est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
@@ -941,7 +943,7 @@ def calc_lda_mllt_func(directory, feature_string, sil_phones, job_name, config,
         acc_proc.communicate()
 
 
-def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
+def calc_lda_mllt(directory, data_directory, sil_phones, speakers, num_jobs, config,
                   initial=False, iteration=None):
     """
     Multiprocessing function that calculates LDA+MLLT transformations
@@ -985,10 +987,10 @@ def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
         model_name = iteration
     jobs = [(directory,
                      config.feature_config.construct_feature_proc_string(data_directory, directory, x),
-         sil_phones, x, config.lda_options, initial, model_name) for x in range(num_jobs)]
+         sil_phones, x, config.lda_options, initial, model_name) for x in speakers]
 
     if config.use_mp:
-        run_mp(calc_lda_mllt_func, jobs, config.log_directory)
+        run_mp(calc_lda_mllt_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(calc_lda_mllt_func, jobs, config.log_directory)
 
@@ -999,7 +1001,7 @@ def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
     composed_path = os.path.join(directory, 'lda_composed.mat')
     with open(log_path, 'a', encoding='utf8') as log_file:
         macc_list = []
-        for x in range(num_jobs):
+        for x in speakers:
             macc_list.append(os.path.join(directory, '{}.{}.macc'.format(model_name, x)))
         subprocess.call([thirdparty_binary('est-mllt'),
                          new_mat_path]

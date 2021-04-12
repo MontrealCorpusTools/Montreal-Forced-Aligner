@@ -1,11 +1,10 @@
 import os
 import shutil
-import subprocess
 from joblib import load
 import numpy as np
 import time
 from .config import TEMP_DIR
-from .helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs
+from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
 
 from .multiprocessing import extract_ivectors, classify_speakers
@@ -86,7 +85,7 @@ class SpeakerClassifier(object):
         try:
             self.corpus.initialize_corpus()
             self.feature_config.generate_features(self.corpus, logger=self.logger, cmvn=False)
-            extract_ivectors(self.classify_directory, self.corpus.split_directory(), self, self.corpus.num_jobs)
+            extract_ivectors(self.classify_directory, self.corpus.split_directory(), self, self.corpus.speakers, self.corpus.num_jobs)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
@@ -103,7 +102,7 @@ class SpeakerClassifier(object):
             return
         try:
             if not self.cluster:
-                classify_speakers(self.classify_directory, self, self.corpus.num_jobs)
+                classify_speakers(self.classify_directory, self, self.corpus.speakers)
             parse_logs(log_directory)
         except Exception as e:
             with open(dirty_path, 'w'):
@@ -116,7 +115,7 @@ class SpeakerClassifier(object):
 
     def load_ivectors(self):
         self.ivectors = {}
-        for j in range(self.corpus.num_jobs):
+        for j in self.corpus.speakers:
             ivectors_path = os.path.join(self.classify_directory, 'ivectors.{}'.format(j))
             ivec = load_scp(ivectors_path)
             for utt, ivector in ivec.items():
@@ -192,10 +191,10 @@ class SpeakerClassifier(object):
         counts = Counter()
         utt2spk = {}
         spk2utt = {}
-        for j in range(self.corpus.num_jobs):
+        for j in self.corpus.speakers:
             utt2spk_path = os.path.join(self.classify_directory, 'utt2spk.{}'.format(j))
             utt2spk.update(load_scp(utt2spk_path))
-        for j in range(self.corpus.num_jobs):
+        for j in self.corpus.speakers:
             spk2utt_path = os.path.join(self.classify_directory, 'spk2utt.{}'.format(j))
             spk2utt.update(load_scp(spk2utt_path))
         spk2utt_path = os.path.join(self.classify_directory, 'spk2utt')

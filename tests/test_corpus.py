@@ -115,11 +115,12 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
     default_feature_config.generate_features(c)
     speakers = os.listdir(large_prosodylab_format_directory)
     for s in speakers:
-        assert any(s in x for x in c.speaker_groups)
+        assert s in c.grouped_utt2spk
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
             name, ext = os.path.splitext(f)
-            assert any(name in x for x in c.groups)
+            s = c.utt_speak_mapping[name]
+            assert any([name, s] in x for x in c.grouped_utt2spk.values())
 
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
@@ -133,11 +134,12 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
     c.initialize_corpus(d)
     default_feature_config.generate_features(c)
     for s in speakers:
-        assert any(s in x for x in c.speaker_groups)
+        assert s in c.grouped_utt2spk
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
             name, ext = os.path.splitext(f)
-            assert any(name in x for x in c.groups)
+            s = c.utt_speak_mapping[name]
+            assert any([name, s] in x for x in c.grouped_utt2spk.values())
 
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:

@@ -63,6 +63,12 @@ def save_scp(scp, path, sort=True, multiline=False):
                 f.write('{}\n'.format(' '.join(map(make_safe, line))))
 
 
+def save_speaker_groups(groups, seg_dir, pattern, multiline=False):
+    for i, g in groups.items():
+        path = os.path.join(seg_dir, pattern.format(i))
+        save_scp(g, path, multiline=multiline)
+
+
 def save_groups(groups, seg_dir, pattern, multiline=False):
     for i, g in enumerate(groups):
         path = os.path.join(seg_dir, pattern.format(i))

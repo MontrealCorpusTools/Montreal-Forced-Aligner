@@ -62,13 +62,13 @@ class BaseTrainer(object):
         self.architecture = 'gmm-hmm'
         self.feature_config = FeatureConfig()
         self.feature_config.update(default_feature_config.params())
-        self.initial_gaussians = None # Gets set later
+        self.initial_gaussians = None  # Gets set later
         self.temp_directory = None
         self.identifier = None
         self.corpus = None
         self.data_directory = None
         self.dictionary = None
-        self.debug =False
+        self.debug = False
         self.use_mp = True
 
     def compute_calculated_properties(self):
@@ -113,7 +113,7 @@ class BaseTrainer(object):
     @property
     def align_options(self):
         return {'beam': self.beam, 'retry_beam': self.retry_beam, 'transition_scale': self.transition_scale,
-                'acoustic_scale':self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
+                'acoustic_scale': self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
 
     def update(self, data):
         for k, v in data.items():
@@ -164,40 +164,21 @@ class BaseTrainer(object):
     def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
         raise NotImplementedError
 
-    def parse_log_directory(self, directory, iteration, num_jobs, call_back):
+    def parse_log_directory(self, directory, iteration, speakers, call_back):
         """
         Parse error files and relate relevant information about unaligned files
         """
         if call_back is None:
             return
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
-        too_little_data_regex = re.compile(
-            r'Gaussian has too little data but not removing it because it is the last Gaussian')
-        skipped_transition_regex = re.compile(r'(\d+) out of (\d+) transition-states skipped due to insufficient data')
-
-        log_like_regex = re.compile(r'Overall avg like per frame = ([-0-9.]+|nan) over (\d+) frames')
         error_files = []
-        for i in range(num_jobs):
+        for i in speakers:
             path = os.path.join(directory, 'align.{}.{}.log'.format(iteration - 1, i))
             if not os.path.exists(path):
                 continue
             with open(path, 'r') as f:
                 error_files.extend(error_regex.findall(f.read()))
-        update_path = os.path.join(directory, 'update.{}.log'.format(iteration))
-        #if os.path.exists(update_path):
-        #    with open(update_path, 'r') as f:
-        #        data = f.read()
-        #        m = log_like_regex.search(data)
-        #        if m is not None:
-        #            log_like, tot_frames = m.groups()
-        #            if log_like == 'nan':
-        #                raise (NoSuccessfulAlignments('Could not align any files.  Too little data?'))
-        #            log_like = float(log_like)
-        #        skipped_transitions = skipped_transition_regex.search(data)
-        #        skipped_transition = skipped_transitions.groups()
-        #        num_too_little_data = len(too_little_data_regex.findall(data))
-        #        call_back('missing data gaussians', num_too_little_data)
-        return error_files  # , log_like, num_too_little_data
+        return error_files
 
     def get_unaligned_utterances(self):
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
@@ -241,10 +222,10 @@ class BaseTrainer(object):
                 shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
                                 os.path.join(self.align_directory, 'final.occs'))
                 compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                     align_data_directory, self.corpus.num_jobs, self)
+                                     align_data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
                 align('final', self.align_directory, align_data_directory,
                       self.dictionary.optional_silence_csl,
-                      self.corpus.num_jobs, self, self.align_directory)
+                      self.corpus.speakers, self.corpus.num_jobs, self, self.align_directory)
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
             except Exception as e:
                 with open(dirty_path, 'w'):
@@ -283,14 +264,16 @@ class BaseTrainer(object):
                 if i in self.realignment_iterations:
                     align(i, self.train_directory, self.data_directory,
                           self.dictionary.optional_silence_csl,
-                          self.corpus.num_jobs, self)
+                          self.corpus.speakers, self.corpus.num_jobs, self)
                     if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.num_jobs, self)
+                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.speakers,
+                                                      self.corpus.num_jobs)
+                acc_stats(i, self.train_directory, self.data_directory, self.corpus.speakers, self.corpus.num_jobs,
+                          self)
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
                 with open(log_path, 'w') as logf:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(self.corpus.num_jobs)]
+                                 for x in self.corpus.speakers]
                     est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                                  '--write-occs=' + occs_path,
                                                  '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
@@ -304,8 +287,8 @@ class BaseTrainer(object):
                     for f in acc_files:
                         os.remove(f)
                 if not os.path.exists(next_model_path):
-                    raise(Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
-                self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
+                    raise (Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
+                self.parse_log_directory(self.log_directory, i, self.corpus.speakers, call_back)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
             shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
@@ -350,7 +333,7 @@ class BaseTrainer(object):
         begin = time.time()
         try:
             convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
-                                 self.dictionary, self.corpus, self.corpus.num_jobs, self)
+                                     self.dictionary, self.corpus, self.corpus.speakers, self.corpus.num_jobs, self)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)

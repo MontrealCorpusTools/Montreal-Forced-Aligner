@@ -76,7 +76,7 @@ class BaseAligner(object):
         return data
 
     def compile_information(self, model_directory, output_directory):
-        issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
+        issues = compile_information(model_directory, self.corpus, self.corpus.speakers, self.corpus.num_jobs, self)
         if issues:
             issue_path = os.path.join(output_directory, 'unaligned.txt')
             with open(issue_path, 'w', encoding='utf8') as f:

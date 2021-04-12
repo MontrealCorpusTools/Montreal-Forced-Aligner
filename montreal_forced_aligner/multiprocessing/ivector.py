@@ -24,7 +24,7 @@ def gmm_gselect_func(iteration, train_directory, config, feature_string, x):
         gselect_proc.communicate()
 
 
-def gmm_gselect(iteration, config, num_jobs):
+def gmm_gselect(iteration, config, speakers, num_jobs):
     """
     Multiprocessing function that stores Gaussian selection indices on disk
 
@@ -49,9 +49,9 @@ def gmm_gselect(iteration, config, num_jobs):
     directory = config.train_directory
     jobs = [(iteration, directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x) for x in range(num_jobs)]
+             x) for x in speakers]
     if config.use_mp:
-        run_mp(gmm_gselect_func, jobs, config.log_directory)
+        run_mp(gmm_gselect_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(gmm_gselect_func, jobs, config.log_directory)
 
@@ -78,7 +78,7 @@ def acc_global_stats_func(train_directory, config, feature_string, x, iteration)
         gmm_global_acc_proc.communicate()
 
 
-def acc_global_stats(config, num_jobs, iteration):
+def acc_global_stats(config, speakers, num_jobs, iteration):
     """
     Multiprocessing function that accumulates global GMM stats
 
@@ -104,9 +104,9 @@ def acc_global_stats(config, num_jobs, iteration):
     directory = config.train_directory
     jobs = [(directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x, iteration) for x in range(num_jobs)]
+             x, iteration) for x in speakers]
     if config.use_mp:
-        run_mp(acc_global_stats_func, jobs, config.log_directory)
+        run_mp(acc_global_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(acc_global_stats_func, jobs, config.log_directory)
 
@@ -139,7 +139,7 @@ def gauss_to_post_func(train_directory, config, feature_string, x):
         scale_post_proc.communicate()
 
 
-def gauss_to_post(config, num_jobs):
+def gauss_to_post(config, speakers, num_jobs):
     """
     Multiprocessing function that does Gaussian selection and posterior extraction
 
@@ -165,9 +165,9 @@ def gauss_to_post(config, num_jobs):
     directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x) for x in range(num_jobs)]
+             x) for x in speakers]
     if config.use_mp:
-        run_mp(func, jobs, config.log_directory)
+        run_mp(func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(func, jobs, config.log_directory)
 
@@ -192,7 +192,7 @@ def acc_ivector_stats_func(train_directory, config, feature_string, x, iteration
         acc_stats_proc.communicate()
 
 
-def acc_ivector_stats(config, num_jobs, iteration):
+def acc_ivector_stats(config, speakers, num_jobs, iteration):
     """
     Multiprocessing function that calculates i-vector extractor stats
 
@@ -219,13 +219,13 @@ def acc_ivector_stats(config, num_jobs, iteration):
     directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x, iteration) for x in range(num_jobs)]
+             x, iteration) for x in speakers]
     if config.use_mp:
-        run_mp(acc_ivector_stats_func, jobs, config.log_directory)
+        run_mp(acc_ivector_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(acc_ivector_stats_func, jobs, config.log_directory)
 
-    accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in range(num_jobs)]
+    accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in speakers]
     log_path = os.path.join(config.train_directory, 'log', 'sum_acc.{}.log'.format(iteration))
     with open(log_path, 'w', encoding='utf8') as log_file:
         sum_accs_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
@@ -316,7 +316,7 @@ def extract_ivectors_func(directory, split_directory, config, feature_string, si
         extract_proc.communicate()
 
 
-def extract_ivectors(directory, split_directory, config, num_jobs, align_directory=None):
+def extract_ivectors(directory, split_directory, config, speakers, num_jobs, align_directory=None):
     """
     Multiprocessing function that extracts i-vectors.
 
@@ -350,9 +350,9 @@ def extract_ivectors(directory, split_directory, config, num_jobs, align_directo
     jobs = [(directory, config.corpus.split_directory(), config.ivector_options,
          config.feature_config.construct_feature_proc_string(data_directory, directory, x),
              csl,
-             x, align_directory) for x in range(num_jobs)]
+             x, align_directory) for x in speakers]
     if config.use_mp:
-        run_mp(func, jobs, log_dir)
+        run_mp(func, jobs, log_dir, num_jobs)
     else:
         run_non_mp(func, jobs, log_dir)
 
@@ -415,9 +415,10 @@ def segment_vad(corpus, config):
     split_dir = corpus.split_directory()
     log_directory = os.path.join(split_dir, 'log')
     num_jobs = corpus.num_jobs
-    jobs = [(split_dir, x, config.segmentation_options) for x in range(num_jobs)]
+    speakers = corpus.speakers
+    jobs = [(split_dir, x, config.segmentation_options) for x in speakers]
     if config.use_mp:
-        run_mp(segment_vad_func, jobs, log_directory)
+        run_mp(segment_vad_func, jobs, log_directory, num_jobs)
     else:
         run_non_mp(segment_vad_func, jobs, log_directory)
 
@@ -460,11 +461,8 @@ def classify_speakers_func(directory, job_name):
     save_scp(([k, v] for k,v in utt_speak_mapping.items()), utt2spk_path)
 
 
-def classify_speakers(directory, config, num_jobs):
+def classify_speakers(directory, config, speakers):
     log_directory = os.path.join(directory, 'log')
-    jobs = [(directory, x) for x in range(num_jobs)]
+    jobs = [(directory, x) for x in speakers]
 
-    if config.use_mp:
-        run_mp(classify_speakers_func, jobs, log_directory)
-    else:
-        run_non_mp(classify_speakers_func, jobs, log_directory)
+    run_non_mp(classify_speakers_func, jobs, log_directory)

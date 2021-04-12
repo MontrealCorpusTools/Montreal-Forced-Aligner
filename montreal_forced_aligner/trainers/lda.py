@@ -5,7 +5,7 @@ import shutil
 import time
 
 from ..multiprocessing import (align, acc_stats, calc_lda_mllt, lda_acc_stats, compute_alignment_improvement)
-from ..helper import thirdparty_binary, make_path_safe, filter_scp, log_kaldi_errors, parse_logs
+from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors
 from ..exceptions import KaldiProcessingError
 from .triphone import TriphoneTrainer
 
@@ -69,7 +69,7 @@ class LdaTrainer(TriphoneTrainer):
         try:
             self.feature_config.directory = None
             lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
-                          self.dictionary.silence_csl, self.corpus.num_jobs)
+                          self.dictionary.silence_csl, self.corpus.speakers, self.corpus.num_jobs)
             self.feature_config.directory = self.train_directory
             if self.data_directory != self.corpus.split_directory():
                 utt_list = []
@@ -77,13 +77,6 @@ class LdaTrainer(TriphoneTrainer):
                 with open(subset_utt_path, 'r') as f:
                     for line in f:
                         utt_list.append(line.strip())
-                #for j in range(self.corpus.num_jobs):
-                #    base_path = os.path.join(corpus.split_directory(), self.feature_config.feature_id + '.{}.scp'.format(j))
-                #    subset_scp = os.path.join(self.data_directory, self.feature_config.feature_id + '.{}.scp'.format(j))
-                #    filtered = filter_scp(utt_list, base_path)
-                #    with open(subset_scp, 'w') as f:
-                #        for line in filtered:
-                #            f.write(line.strip() + '\n')
         except Exception as e:
             with open(dirty_path, 'w') as _:
                 pass
@@ -117,20 +110,21 @@ class LdaTrainer(TriphoneTrainer):
                 if i in self.realignment_iterations:
                     align(i, self.train_directory, self.data_directory,
                           self.dictionary.optional_silence_csl,
-                          self.corpus.num_jobs, self)
+                          self.corpus.speakers, self.corpus.num_jobs, self)
                     if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
+                        compute_alignment_improvement(i, self, self.train_directory,
+                                                      self.corpus.speakers, self.corpus.num_jobs)
                 if i in self.mllt_iterations:
                     calc_lda_mllt(self.train_directory, self.data_directory,  sil_phones,
-                                  self.corpus.num_jobs, self,
+                                  self.corpus.speakers, self.corpus.num_jobs, self,
                                   initial=False, iteration=i)
 
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.num_jobs,
+                acc_stats(i, self.train_directory, self.data_directory, self.corpus.speakers, self.corpus.num_jobs,
                           self)
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(self.corpus.num_jobs)]
+                                 for x in self.corpus.speakers]
                     est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                                  '--write-occs=' + occs_path,
                                                  '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
@@ -143,7 +137,7 @@ class LdaTrainer(TriphoneTrainer):
                 if not self.debug:
                     for f in acc_files:
                         os.remove(f)
-                self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
+                self.parse_log_directory(self.log_directory, i, self.corpus.speakers, call_back)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
             shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
