@@ -20,6 +20,9 @@ All platforms
 
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
 2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst pynini ngram baumwelch`
+
+   a. On Windows to use the aligner natively without G2P functionality, use the command :code:`conda create -n aligner -c conda-forge openblas python=3.8`
+
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 4. Run :code:`pip install montreal-forced-aligner`
 5. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
