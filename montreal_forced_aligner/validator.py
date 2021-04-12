@@ -16,7 +16,7 @@ def test_utterances_func(validator, job_name):
 
     Parameters
     ----------
-    validator : :class:`~aligner.aligner.validator.CorpusValidator`
+    validator : :class:`~montreal_forced_aligner.validator.CorpusValidator`
     job_name : int
 
     Returns
@@ -224,8 +224,6 @@ class CorpusValidator(object):
             with open(utterance_oov_path, 'w', encoding='utf8') as f:
                 for k in sorted(utterance_oovs.keys()):
                     oovs = utterance_oovs[k]
-                    if self.corpus.segments and k in self.corpus.segments:
-                        k = self.corpus.segments[k]
                     f.write('{} {}\n'.format(k, ', '.join(oovs)))
             self.dictionary.save_oovs_found(output_dir)
             total_instances = sum(len(x) for x in utterance_oovs.values())
@@ -277,9 +275,9 @@ class CorpusValidator(object):
             with open(path, 'w') as f:
                 for utt in missing_features:
                     if utt in self.corpus.segments:
-                        file_name, begin, end = self.corpus.segments[utt].split()
-                        file_path = self.corpus.utt_wav_mapping[file_name]
-                        f.write('{},{},{}\n'.format(file_path, begin, end))
+                        seg = self.corpus.segments[utt]
+                        file_path = self.corpus.utt_wav_mapping[seg['file_name']]
+                        f.write('{},{},{}\n'.format(file_path, seg['begin'], seg['end']))
                     else:
                         file_path = self.corpus.utt_wav_mapping[utt]
                         f.write('{}\n'.format(file_path))
@@ -372,9 +370,9 @@ class CorpusValidator(object):
                     utt_duration = Decimal(str(utt_duration)).quantize(Decimal('0.001'))
                     utt_length_words = self.corpus.text_mapping[utt].count(' ') + 1
                     if utt in self.corpus.segments:
-                        file_name, begin, end = self.corpus.segments[utt].split()
-                        file_path = self.corpus.utt_wav_mapping[file_name]
-                        f.write('{},{},{},{},{}\n'.format(file_path, begin, end, utt_duration, utt_length_words))
+                        seg = self.corpus.segments[utt]
+                        file_path = self.corpus.utt_wav_mapping[seg['file_name']]
+                        f.write('{},{},{},{},{}\n'.format(file_path, seg['begin'], seg['end'], utt_duration, utt_length_words))
                     else:
                         file_path = self.corpus.utt_wav_mapping[utt]
                         f.write('{},,,{},{}\n'.format(file_path, utt_duration, utt_length_words))

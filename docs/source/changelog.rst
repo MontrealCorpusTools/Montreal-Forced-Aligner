@@ -6,6 +6,11 @@
 Changelog
 =========
 
+2.0.0a11
+--------
+
+- Fixed a bug in analyzing unaligned utterances introduced by changes in segment representation
+
 2.0.0a9
 -------
 
