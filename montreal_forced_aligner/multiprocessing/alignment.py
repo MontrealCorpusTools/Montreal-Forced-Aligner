@@ -70,7 +70,7 @@ def acc_stats(iteration, directory, split_directory, speakers, num_jobs, config)
     """
     jobs = [(directory, iteration, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x)
-             ) for x in speakers]
+             ) for x in range(len(speakers))]
 
     if config.use_mp:
         run_mp(acc_stats_func, jobs, config.log_directory, num_jobs)
@@ -187,7 +187,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, speakers, n
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, lang_directory, split_directory, x, debug)
-            for x in speakers]
+            for x in range(len(speakers))]
     if config.use_mp:
         run_mp(compile_train_graphs_func, jobs, log_directory, num_jobs)
     else:
@@ -234,7 +234,7 @@ def mono_align_equal(mono_directory, split_directory, speakers, num_jobs, config
     jobs = [(mono_directory, x,
              config.feature_config.construct_feature_proc_string(split_directory, mono_directory, x),
              )
-            for x in speakers]
+            for x in range(len(speakers))]
 
     if config.use_mp:
         run_mp(mono_align_equal_func, jobs, config.log_directory, num_jobs)
@@ -298,7 +298,7 @@ def align(iteration, directory, split_directory, optional_silence, speakers, num
 
     jobs = [(directory, iteration, x, mdl, config.align_options,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     output_directory) for x in speakers]
+                     output_directory) for x in range(len(speakers))]
 
     if config.use_mp:
         run_mp(align_func, jobs, log_directory, num_jobs)
@@ -306,7 +306,7 @@ def align(iteration, directory, split_directory, optional_silence, speakers, num
         run_non_mp(align_func, jobs, log_directory)
 
     error_logs = []
-    for i in speakers:
+    for i in range(len(speakers)):
         log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, i))
         with open(log_path, 'r', encoding='utf8') as f:
             for line in f:
@@ -344,7 +344,7 @@ def compile_information(model_directory, corpus, speakers, num_jobs, config):
     log_dir = os.path.join(model_directory, 'log')
 
     jobs = [(log_dir, corpus, x)
-            for x in speakers]
+            for x in range(len(speakers))]
 
     run_non_mp(compile_information_func, jobs, log_dir)
 
@@ -425,7 +425,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
 
 def parse_iteration_alignments(directory, iteration, speakers, num_jobs):
     data = {}
-    for j in speakers:
+    for j in range(len(speakers)):
         phone_ctm_path = os.path.join(directory, 'phone.{}.{}.ctm'.format(iteration, j))
         with open(phone_ctm_path, 'r', encoding='utf8') as f:
             for line in f:
@@ -483,7 +483,7 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
 
 
 def compute_alignment_improvement(iteration, config, model_directory, speakers, num_jobs):
-    jobs = [(iteration, config, model_directory, x) for x in speakers]
+    jobs = [(iteration, config, model_directory, x) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(compute_alignment_improvement_func, jobs, config.log_directory, num_jobs)
     else:
@@ -513,7 +513,7 @@ def compute_alignment_improvement(iteration, config, model_directory, speakers, 
             f.write('{},{},{},{},{}\n'.format(iteration, len(current_alignments),
                                               len(previous_alignments), utterance_aligned_diff, mean_difference))
     if not config.debug:
-        for j in speakers:
+        for j in range(len(speakers)):
             phone_ctm_path = os.path.join(model_directory, 'phone.{}.{}.ctm'.format(previous_iteration, j))
             os.remove(phone_ctm_path)
 
@@ -608,7 +608,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     frame_shift = align_config.feature_config.frame_shift / 1000
     word_path = os.path.join(dictionary.phones_dir, 'word_boundary.int')
     jobs = [(model_directory, word_path, corpus.split_directory(), x, frame_shift)
-            for x in speakers]
+            for x in range(len(speakers))]
     if align_config.use_mp:
         run_mp(ali_to_textgrid_func, jobs, log_directory, num_jobs)
     else:
@@ -616,7 +616,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
 
     word_ctm = {}
     phone_ctm = {}
-    for i in speakers:
+    for i in range(len(speakers)):
         word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
         phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
         if not os.path.exists(word_ctm_path):
@@ -675,14 +675,14 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, speakers,
 
     jobs = [(directory, ci_phones, mdl_path,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-             os.path.join(align_directory, 'ali.{}'.format(x)), x) for x in speakers]
+             os.path.join(align_directory, 'ali.{}'.format(x)), x) for x in range(len(speakers))]
 
     if config.use_mp:
         run_mp(tree_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(tree_stats_func, jobs, config.log_directory)
 
-    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in speakers]
+    tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(len(speakers))]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
     with open(log_path, 'w', encoding='utf8') as log_file:
         subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
@@ -725,7 +725,7 @@ def convert_alignments(directory, align_directory, speakers, num_jobs, config):
     """
 
     jobs = [(directory, align_directory, x)
-            for x in speakers]
+            for x in range(len(speakers))]
     if config.use_mp:
         run_mp(convert_alignments_func, jobs, config.log_directory, num_jobs)
     else:
@@ -825,7 +825,7 @@ def calc_fmllr(directory, split_directory, sil_phones, speakers, num_jobs, confi
 
     jobs = [(directory, split_directory, sil_phones, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     config, initial, model_name) for x in speakers]
+                     config, initial, model_name) for x in range(len(speakers))]
     # if config.use_mp:
     #    run_mp(calc_fmllr_func, jobs)
     # else:
@@ -891,7 +891,7 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
     """
     jobs = [(directory,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x, splice=True),
-             align_directory, config.lda_options, ci_phones, x) for x in speakers]
+             align_directory, config.lda_options, ci_phones, x) for x in range(len(speakers))]
 
 
     if config.use_mp:
@@ -901,7 +901,7 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
 
     log_path = os.path.join(directory, 'log', 'lda_est.log')
     acc_list = []
-    for x in speakers:
+    for x in range(len(speakers)):
         acc_list.append(os.path.join(directory, 'lda.{}.acc'.format(x)))
     with open(log_path, 'w', encoding='utf8') as log_file:
         est_lda_proc = subprocess.Popen([thirdparty_binary('est-lda'),
@@ -987,7 +987,7 @@ def calc_lda_mllt(directory, data_directory, sil_phones, speakers, num_jobs, con
         model_name = iteration
     jobs = [(directory,
                      config.feature_config.construct_feature_proc_string(data_directory, directory, x),
-         sil_phones, x, config.lda_options, initial, model_name) for x in speakers]
+         sil_phones, x, config.lda_options, initial, model_name) for x in range(len(speakers))]
 
     if config.use_mp:
         run_mp(calc_lda_mllt_func, jobs, config.log_directory, num_jobs)
@@ -1001,7 +1001,7 @@ def calc_lda_mllt(directory, data_directory, sil_phones, speakers, num_jobs, con
     composed_path = os.path.join(directory, 'lda_composed.mat')
     with open(log_path, 'a', encoding='utf8') as log_file:
         macc_list = []
-        for x in speakers:
+        for x in range(len(speakers)):
             macc_list.append(os.path.join(directory, '{}.{}.macc'.format(model_name, x)))
         subprocess.call([thirdparty_binary('est-mllt'),
                          new_mat_path]

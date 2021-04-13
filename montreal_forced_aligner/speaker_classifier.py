@@ -115,7 +115,7 @@ class SpeakerClassifier(object):
 
     def load_ivectors(self):
         self.ivectors = {}
-        for j in self.corpus.speakers:
+        for j in range(len(self.corpus.speakers)):
             ivectors_path = os.path.join(self.classify_directory, 'ivectors.{}'.format(j))
             ivec = load_scp(ivectors_path)
             for utt, ivector in ivec.items():
@@ -191,10 +191,10 @@ class SpeakerClassifier(object):
         counts = Counter()
         utt2spk = {}
         spk2utt = {}
-        for j in self.corpus.speakers:
+        for j in range(len(self.corpus.speakers)):
             utt2spk_path = os.path.join(self.classify_directory, 'utt2spk.{}'.format(j))
             utt2spk.update(load_scp(utt2spk_path))
-        for j in self.corpus.speakers:
+        for j in range(len(self.corpus.speakers)):
             spk2utt_path = os.path.join(self.classify_directory, 'spk2utt.{}'.format(j))
             spk2utt.update(load_scp(spk2utt_path))
         spk2utt_path = os.path.join(self.classify_directory, 'spk2utt')

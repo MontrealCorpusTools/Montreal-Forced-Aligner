@@ -466,7 +466,8 @@ class AlignableCorpus(BaseCorpus):
 
     def grouped_text(self, dictionary=None):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             for u in g:
                 if u in self.ignored_utterances:
@@ -488,7 +489,7 @@ class AlignableCorpus(BaseCorpus):
                             continue
                         new_text.extend(x for x in lookup if x != '')
                 output_g.append([u, new_text])
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     def grouped_text_int(self, dictionary):
@@ -535,7 +536,8 @@ class AlignableCorpus(BaseCorpus):
         most_frequent = sorted(word_frequencies.items(), key=lambda x: -x[1])[:num_frequent_words]
 
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             for u in g:
                 try:
@@ -554,7 +556,7 @@ class AlignableCorpus(BaseCorpus):
                     print(u, text, new_text)
                     raise
                 output_g.append([u, fst_text])
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     def subset_directory(self, subset, feature_config):
@@ -635,7 +637,7 @@ class AlignableCorpus(BaseCorpus):
             with open(subset_utt_path, 'w', encoding='utf8') as f:
                 for u in subset_utts:
                     f.write('{}\n'.format(u))
-        for i in self.speak_utt_mapping.keys():
+        for i, s in enumerate(self.speakers):
             for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
                 sub_path = os.path.join(subset_directory, fn.format(i))
                 with open(os.path.join(split_directory, fn.format(i)), 'r', encoding='utf8') as inf, \

@@ -49,7 +49,7 @@ def gmm_gselect(iteration, config, speakers, num_jobs):
     directory = config.train_directory
     jobs = [(iteration, directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x) for x in speakers]
+             x) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(gmm_gselect_func, jobs, config.log_directory, num_jobs)
     else:
@@ -104,7 +104,7 @@ def acc_global_stats(config, speakers, num_jobs, iteration):
     directory = config.train_directory
     jobs = [(directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x, iteration) for x in speakers]
+             x, iteration) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(acc_global_stats_func, jobs, config.log_directory, num_jobs)
     else:
@@ -165,7 +165,7 @@ def gauss_to_post(config, speakers, num_jobs):
     directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x) for x in speakers]
+             x) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(func, jobs, config.log_directory, num_jobs)
     else:
@@ -219,13 +219,13 @@ def acc_ivector_stats(config, speakers, num_jobs, iteration):
     directory = config.train_directory
     jobs = [(config.train_directory, config.ivector_options,
              config.feature_config.construct_feature_proc_string(config.data_directory, directory, x),
-             x, iteration) for x in speakers]
+             x, iteration) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(acc_ivector_stats_func, jobs, config.log_directory, num_jobs)
     else:
         run_non_mp(acc_ivector_stats_func, jobs, config.log_directory)
 
-    accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in speakers]
+    accinits = [os.path.join(config.train_directory, 'accinit.{}.{}'.format(iteration, j)) for j in range(len(speakers))]
     log_path = os.path.join(config.train_directory, 'log', 'sum_acc.{}.log'.format(iteration))
     with open(log_path, 'w', encoding='utf8') as log_file:
         sum_accs_proc = subprocess.Popen([thirdparty_binary('ivector-extractor-sum-accs'),
@@ -350,7 +350,7 @@ def extract_ivectors(directory, split_directory, config, speakers, num_jobs, ali
     jobs = [(directory, config.corpus.split_directory(), config.ivector_options,
          config.feature_config.construct_feature_proc_string(data_directory, directory, x),
              csl,
-             x, align_directory) for x in speakers]
+             x, align_directory) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(func, jobs, log_dir, num_jobs)
     else:
@@ -416,7 +416,7 @@ def segment_vad(corpus, config):
     log_directory = os.path.join(split_dir, 'log')
     num_jobs = corpus.num_jobs
     speakers = corpus.speakers
-    jobs = [(split_dir, x, config.segmentation_options) for x in speakers]
+    jobs = [(split_dir, x, config.segmentation_options) for x in range(len(speakers))]
     if config.use_mp:
         run_mp(segment_vad_func, jobs, log_directory, num_jobs)
     else:
@@ -463,6 +463,6 @@ def classify_speakers_func(directory, job_name):
 
 def classify_speakers(directory, config, speakers):
     log_directory = os.path.join(directory, 'log')
-    jobs = [(directory, x) for x in speakers]
+    jobs = [(directory, x) for x in range(len(speakers))]
 
     run_non_mp(classify_speakers_func, jobs, log_directory)

@@ -209,13 +209,13 @@ class BaseCorpus(object):
     def grouped_cmvn(self):
         output = {}
         try:
-            for s, g in self.speak_utt_mapping.items():
+            for i, s in enumerate(self.speakers):
                 output_g = []
                 try:
                     output_g.append([s, self.cmvn_mapping[s]])
                 except KeyError:
                     pass
-                output[s] = output_g
+                output[i] = output_g
         except KeyError:
             raise (CorpusError(
                 'Something went wrong while setting up the corpus. Please delete the {} folder and try again.'.format(
@@ -225,7 +225,8 @@ class BaseCorpus(object):
     @property
     def grouped_utt2spk(self):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             for u in sorted(g):
                 if u in self.ignored_utterances:
@@ -234,13 +235,14 @@ class BaseCorpus(object):
                     output_g.append([u, self.utt_speak_mapping[u]])
                 except KeyError:
                     pass
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     @property
     def grouped_feat(self):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             for u in g:
                 if u in self.ignored_utterances:
@@ -249,13 +251,14 @@ class BaseCorpus(object):
                     output_g.append([u, self.feat_mapping[u]])
                 except KeyError:
                     pass
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     @property
     def grouped_wav(self):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             done = set()
             output_g = []
             for u in g:
@@ -274,32 +277,34 @@ class BaseCorpus(object):
                     if r not in done:
                         output_g.append([r, self.utt_wav_mapping[r]])
                         done.add(r)
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     @property
     def grouped_segments(self):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             for u in g:
                 try:
                     output_g.append([u, '{file_name} {begin} {end} {channel}'.format(**self.segments[u])])
                 except KeyError:
                     pass
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     @property
     def grouped_spk2utt(self):
         output = {}
-        for s, g in self.speak_utt_mapping.items():
+        for i, s in enumerate(self.speakers):
+            g = self.speak_utt_mapping[s]
             output_g = []
             try:
                 output_g.append([s, sorted(g)])
             except KeyError:
                 pass
-            output[s] = output_g
+            output[i] = output_g
         return output
 
     def get_wav_duration(self, utt):
@@ -393,7 +398,7 @@ class BaseCorpus(object):
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         lengths_path = os.path.join(self.output_directory, 'utterance_lengths.scp')
         with open(feat_path, 'w') as outf, open(lengths_path, 'w') as lengths_out_f:
-            for s in self.speak_utt_mapping.keys():
+            for s in range(len(self.speakers)):
                 path = os.path.join(split_directory, 'feats.{}.scp'.format(s))
                 run_filter = False
                 lengths_path = os.path.join(split_directory, 'utterance_lengths.{}.scp'.format(s))
@@ -461,7 +466,7 @@ class BaseCorpus(object):
 
     def get_feat_dim(self, feature_config):
 
-        feature_string = feature_config.construct_feature_proc_string(self.split_directory(), None, self.speakers[0])
+        feature_string = feature_config.construct_feature_proc_string(self.split_directory(), None, 0)
         with open(os.devnull, 'w') as devnull:
             dim_proc = subprocess.Popen([thirdparty_binary('feat-to-dim'),
                                          feature_string, '-'],

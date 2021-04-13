@@ -87,7 +87,7 @@ class SatTrainer(TriphoneTrainer):
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in self.corpus.speakers]
+                                 for x in range(len(self.corpus.speakers))]
                     est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                                  '--write-occs=' + occs_path,
                                                  '--mix-up=' + str(num_gauss), '--power=' + str(self.power),

@@ -75,7 +75,7 @@ class MonophoneTrainer(BaseTrainer):
 
         try:
             feat_dim = corpus.get_feat_dim(self.feature_config)
-            feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, self.corpus.speakers[0])
+            feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
             feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
             log_path = os.path.join(self.log_directory, 'init.log')
@@ -95,7 +95,7 @@ class MonophoneTrainer(BaseTrainer):
                              self.data_directory, corpus.speakers, corpus.num_jobs, self)
             log_path = os.path.join(self.train_directory, 'log', 'update.0.log')
             with open(log_path, 'w') as log_file:
-                acc_files = [os.path.join(self.train_directory, '0.{}.acc'.format(x)) for x in corpus.speakers]
+                acc_files = [os.path.join(self.train_directory, '0.{}.acc'.format(x)) for x in range(len(corpus.speakers))]
                 est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                              '--min-gaussian-occupancy=3',
                                              '--mix-up={}'.format(num_gauss), '--power={}'.format(self.power),

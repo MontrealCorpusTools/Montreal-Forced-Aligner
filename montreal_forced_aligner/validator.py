@@ -407,7 +407,7 @@ class CorpusValidator(object):
         try:
 
             jobs = [(self, x)
-                    for x in self.corpus.speakers]
+                    for x in range(len(self.corpus.speakers))]
             if self.trainer.feature_config.use_mp:
                 run_mp(compile_utterance_train_graphs_func, jobs, log_directory, self.corpus.num_jobs)
             else:
@@ -423,7 +423,7 @@ class CorpusValidator(object):
             word_mapping = self.dictionary.reversed_word_mapping
             errors = {}
 
-            for job in self.corpus.speakers:
+            for job in range(len(self.corpus.speakers)):
                 text_path = os.path.join(split_directory, 'text.{}'.format(job))
                 texts = load_scp(text_path)
                 aligned_int = load_scp(os.path.join(model_directory, 'aligned.{}.int'.format(job)))

@@ -114,7 +114,7 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
     c.initialize_corpus(d)
     default_feature_config.generate_features(c)
     speakers = os.listdir(large_prosodylab_format_directory)
-    for s in speakers:
+    for s in range(len(speakers)):
         assert s in c.grouped_utt2spk
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:
@@ -133,7 +133,7 @@ def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_da
 
     c.initialize_corpus(d)
     default_feature_config.generate_features(c)
-    for s in speakers:
+    for s in range(len(speakers)):
         assert s in c.grouped_utt2spk
     for root, dirs, files in os.walk(large_prosodylab_format_directory):
         for f in files:

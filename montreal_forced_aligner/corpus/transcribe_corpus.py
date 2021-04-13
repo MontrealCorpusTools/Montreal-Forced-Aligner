@@ -315,6 +315,6 @@ class TranscribeCorpus(BaseCorpus):
         segment_vad(self, segmentation_config)
         directory = self.split_directory()
         self.vad_segments = {}
-        for i in self.speakers:
+        for i in range(len(self.speakers)):
             vad_segments_path = os.path.join(directory, 'vad_segments.{}.scp'.format(i))
             self.vad_segments.update(load_scp(vad_segments_path))

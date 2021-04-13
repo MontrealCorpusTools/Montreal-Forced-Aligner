@@ -87,12 +87,12 @@ def transcribe(transcriber):
         jobs = [(directory, x, mdl_path, config,
                  config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
                  output_directory)
-                for x in speakers]
+                for x in range(len(speakers))]
     else:
         jobs = [(directory, x, mdl_path, config,
                  config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
                  output_directory, corpus.original_num_jobs)
-                for x in speakers]
+                for x in range(len(speakers))]
 
     if config.use_mp and num_jobs > 1:
         run_mp(decode_func, jobs, log_directory, num_jobs)
@@ -108,7 +108,7 @@ def transcribe(transcriber):
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
                 jobs = [(directory, x, config, out_dir, lmwt, wip)
-                        for x in speakers]
+                        for x in range(len(speakers))]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir, num_jobs)
                 else:
@@ -120,7 +120,7 @@ def transcribe(transcriber):
         transcriber.transcribe_config.word_insertion_penalty = best[1]
     else:
         jobs = [(directory, x, config, output_directory)
-                for x in speakers]
+                for x in range(len(speakers))]
         if config.use_mp:
             run_mp(score_func, jobs, log_directory, num_jobs)
         else:

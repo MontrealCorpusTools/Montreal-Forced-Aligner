@@ -152,8 +152,7 @@ class FeatureConfig(object):
         else:
             log_func = logger.info
         split_directory = corpus.split_directory()
-        feat_id = 'feats'
-        if not os.path.exists(os.path.join(split_directory, feat_id + '.0.scp')):
+        if not os.path.exists(os.path.join(split_directory, 'feats.0.scp')):
             log_func('Generating base features ({})...'.format(self.type))
             if self.type == 'mfcc':
                 mfcc(split_directory, corpus.speakers, corpus.num_jobs, self)

@@ -50,7 +50,7 @@ def generate_pronunciations(align_config, model_directory, dictionary, corpus, n
     log_directory = os.path.join(model_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(model_directory, dictionary, corpus, x)
-            for x in speakers]
+            for x in range(len(speakers))]
     if align_config.use_mp:
         run_mp(generate_pronunciations_func, jobs, log_directory, num_jobs)
     else:
@@ -59,7 +59,7 @@ def generate_pronunciations(align_config, model_directory, dictionary, corpus, n
     word_lookup = dictionary.reversed_word_mapping
     phone_lookup = dictionary.reversed_phone_mapping
     pron_counts = defaultdict(Counter)
-    for j in speakers:
+    for j in range(len(speakers)):
         pron_path = os.path.join(model_directory, 'prons.{}'.format(j))
         with open(pron_path, 'r', encoding='utf8') as f:
             utt_mapping = {}

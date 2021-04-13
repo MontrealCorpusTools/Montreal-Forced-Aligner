@@ -104,7 +104,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                                                                            self.train_directory,
                                                                            job_name=None, cmvn=self.apply_cmn)
         with open(all_feats_path, 'w') as outf:
-            for i in self.corpus.speakers:
+            for i in range(len(self.corpus.speakers)):
                 with open(os.path.join(self.data_directory,
                                        feat_name + '.{}.scp'.format(i))) as inf:
                     for line in inf:
@@ -145,7 +145,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                 log_path = os.path.join(self.train_directory, 'log', 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in self.corpus.speakers]
+                                 for x in range(len(self.corpus.speakers))]
                     gmm_global_est_proc = subprocess.Popen([thirdparty_binary('gmm-global-est'),
                                                             opt,
                                                             '--min-gaussian-weight=' + str(self.ubm_min_gaussian_weight),
@@ -254,7 +254,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             x = []
             y = []
             speakers = sorted(self.corpus.speak_utt_mapping.keys())
-            for i in self.corpus.speakers:
+            for i in range(len(self.corpus.speakers)):
                 ivec = load_scp(os.path.join(self.train_directory, 'ivectors.{}'.format(i)))
                 for utt, ivector in ivec.items():
                     ivector = [float(x) for x in ivector]

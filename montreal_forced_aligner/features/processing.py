@@ -74,7 +74,7 @@ def mfcc(mfcc_directory, speakers, num_jobs, feature_config):
     log_directory = os.path.join(mfcc_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(mfcc_directory, x, feature_config.mfcc_options())
-            for x in speakers]
+            for x in range(len(speakers))]
     if feature_config.use_mp:
         run_mp(mfcc_func, jobs, log_directory, num_jobs)
     else:
@@ -102,7 +102,7 @@ def compute_vad(directory, speakers, num_jobs, use_mp, vad_config=None):
         vad_config = {'energy_threshold': 5.5,
                       'energy_mean_scale': 0.5}
     jobs = [(directory, vad_config, x)
-            for x in speakers]
+            for x in range(len(speakers))]
     if use_mp:
         run_mp(compute_vad_func, jobs, log_directory, num_jobs)
     else:
