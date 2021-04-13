@@ -81,7 +81,7 @@ class SatTrainer(TriphoneTrainer):
                         compute_alignment_improvement(i, self, self.train_directory, self.corpus.speakers, self.corpus.num_jobs)
                 if i in self.fmllr_iterations:
                     calc_fmllr(self.train_directory, self.data_directory, sil_phones,
-                               self.corpus.speakers, self.corpus.num_jobs, self, initial=False, iteration=i)
+                               self.corpus.speakers, self, initial=False, iteration=i)
 
                 acc_stats(i, self.train_directory, self.data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
@@ -174,7 +174,7 @@ class SatTrainer(TriphoneTrainer):
 
                 if not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                     calc_fmllr(self.align_directory, align_data_directory,
-                          self.dictionary.optional_silence_csl, self.corpus.speakers, self.corpus.num_jobs, self, initial=True, iteration='final')
+                          self.dictionary.optional_silence_csl, self.corpus.speakers, self, initial=True, iteration='final')
                     align('final', self.align_directory, align_data_directory,
                           self.dictionary.optional_silence_csl,
                           self.corpus.speakers, self.corpus.num_jobs, self, self.align_directory)
@@ -276,7 +276,7 @@ class SatTrainer(TriphoneTrainer):
             else:
 
                 calc_fmllr(self.train_directory, self.data_directory,
-                           self.dictionary.silence_csl, self.corpus.speakers, self.corpus.num_jobs, self, initial=True)
+                           self.dictionary.silence_csl, self.corpus.speakers, self, initial=True)
             parse_logs(self.log_directory)
         except Exception as e:
             with open(dirty_path, 'w'):

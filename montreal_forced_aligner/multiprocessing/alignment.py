@@ -340,7 +340,7 @@ def compile_information_func(log_directory, corpus, job_num):
             f.write('{} {}\n'.format(k, v))
 
 
-def compile_information(model_directory, corpus, speakers, num_jobs, config):
+def compile_information(model_directory, corpus, speakers):
     log_dir = os.path.join(model_directory, 'log')
 
     jobs = [(log_dir, corpus, x)
@@ -423,7 +423,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
         raise (Exception(str(e)))
 
 
-def parse_iteration_alignments(directory, iteration, speakers, num_jobs):
+def parse_iteration_alignments(directory, iteration, speakers):
     data = {}
     for j in range(len(speakers)):
         phone_ctm_path = os.path.join(directory, 'phone.{}.{}.ctm'.format(iteration, j))
@@ -498,10 +498,10 @@ def compute_alignment_improvement(iteration, config, model_directory, speakers, 
     else:
         previous_iteration = 0
     try:
-        previous_alignments = parse_iteration_alignments(model_directory, previous_iteration, speakers, num_jobs)
+        previous_alignments = parse_iteration_alignments(model_directory, previous_iteration, speakers)
     except FileNotFoundError:
         return
-    current_alignments = parse_iteration_alignments(model_directory, iteration, speakers, num_jobs)
+    current_alignments = parse_iteration_alignments(model_directory, iteration, speakers)
     utterance_aligned_diff, mean_difference = compare_alignments(previous_alignments, current_alignments,
                                                                  config.feature_config.frame_shift)
     if not os.path.exists(alignment_diff_path):
@@ -566,7 +566,7 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
         nbest_proc.communicate()
 
 
-def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, speakers, num_jobs, config):
+def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, speakers, num_jobs):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -774,7 +774,7 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, feature_st
             trans_path = tmp_trans_path
 
 
-def calc_fmllr(directory, split_directory, sil_phones, speakers, num_jobs, config,
+def calc_fmllr(directory, split_directory, sil_phones, speakers, config,
                initial=False, iteration=None):
     """
     Multiprocessing function that computes speaker adaptation (fMLLR)

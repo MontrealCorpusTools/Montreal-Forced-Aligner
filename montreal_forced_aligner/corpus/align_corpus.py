@@ -111,7 +111,6 @@ class AlignableCorpus(BaseCorpus):
         if not os.path.exists(wav_info_path):
             return False
 
-
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
         for speak, utts in self.speak_utt_mapping.items():
@@ -128,7 +127,7 @@ class AlignableCorpus(BaseCorpus):
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
-        self.sample_rates = {k: v if isinstance(v, list) else [v] for k,v in load_scp(sr_path).items()}
+        self.sample_rates = {k: v if isinstance(v, list) else [v] for k, v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.utt_text_file_mapping = load_scp(text_file_path)
@@ -156,7 +155,7 @@ class AlignableCorpus(BaseCorpus):
             for file, speakers in self.speaker_ordering.items():
                 if not isinstance(speakers, list):
                     self.speaker_ordering[file] = [speakers]
-        self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time()-begin_time))
+        self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time() - begin_time))
         return True
 
     def _load_from_source_mp(self):
@@ -188,7 +187,8 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.temp_directory))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                               self.temp_directory))
         job_queue.join()
         stopped.stop()
         for p in procs:
@@ -262,7 +262,8 @@ class AlignableCorpus(BaseCorpus):
                         getattr(self, k).update(return_dict[k])
                     else:
                         setattr(self, k, return_dict[k])
-        self.logger.debug('Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time()-begin_time))
+        self.logger.debug(
+            'Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time() - begin_time))
 
     def _load_from_source(self):
         begin_time = time.time()
@@ -275,7 +276,8 @@ class AlignableCorpus(BaseCorpus):
                     lab_name = lab_files[file_name]
                     lab_path = os.path.join(root, lab_name)
                     try:
-                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path, speaker_characters=self.speaker_characters)
+                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path,
+                                              speaker_characters=self.speaker_characters)
                         utt_name = info['utt_name']
                         speaker_name = info['speaker_name']
                         wav_info = info['wav_info']
@@ -353,7 +355,7 @@ class AlignableCorpus(BaseCorpus):
                     self.no_transcription_files.append(wav_path)
                     continue
                 self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
-        self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time()-begin_time))
+        self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time() - begin_time))
 
     def check_warnings(self):
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \
@@ -391,7 +393,7 @@ class AlignableCorpus(BaseCorpus):
                 fn, begin, end = seg.split()
                 begin = round(float(begin), 4)
                 end = round(float(end), 4)
-                text =  self.text_mapping[utt]
+                text = self.text_mapping[utt]
                 speaker = self.utt_speak_mapping[utt]
                 if speaker not in tiers:
                     tiers[speaker] = IntervalTier(name=speaker, maxTime=tg.maxTime)
@@ -402,7 +404,6 @@ class AlignableCorpus(BaseCorpus):
             lab_path = self.utt_text_file_mapping[file_name]
             with open(lab_path, 'w', encoding='utf8') as f:
                 f.write(self.text_mapping[file_name])
-
 
     def update_utterance_text(self, utterance, new_text):
         new_text = new_text.lower().strip()

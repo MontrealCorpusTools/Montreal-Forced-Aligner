@@ -265,6 +265,7 @@ def transcribe_fmllr(transcriber):
     output_directory = transcriber.transcribe_directory
     config = transcriber.transcribe_config
     corpus = transcriber.corpus
+    speakers = corpus.speakers
     num_jobs = corpus.num_jobs
     split_directory = corpus.split_directory()
     sil_phones = transcriber.dictionary.optional_silence_csl
@@ -280,23 +281,23 @@ def transcribe_fmllr(transcriber):
         if num_jobs > 1:
             jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x), fmllr_directory)
-                    for x in range(num_jobs)]
+                    for x in range(len(speakers))]
         else:
             jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
                  config.feature_config.construct_feature_proc_string(split_directory, directory, x), fmllr_directory, corpus.original_num_jobs)
-                for x in range(num_jobs)]
+                for x in range(len(speakers))]
 
     run_non_mp(initial_fmllr_func, jobs, log_dir)
 
     if config.use_mp and num_jobs > 1:
-        run_mp(lat_gen_fmllr_func, jobs, log_dir)
+        run_mp(lat_gen_fmllr_func, jobs, log_dir, num_jobs)
     else:
         run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
 
     run_non_mp(final_fmllr_est_func, jobs, log_dir)
 
     if config.use_mp:
-        run_mp(fmllr_rescore_func, jobs, log_dir)
+        run_mp(fmllr_rescore_func, jobs, log_dir, num_jobs)
     else:
         run_non_mp(fmllr_rescore_func, jobs, log_dir)
 
@@ -311,7 +312,7 @@ def transcribe_fmllr(transcriber):
                 jobs = [(directory, x, config, out_dir, lmwt, wip)
                         for x in range(num_jobs)]
                 if config.use_mp:
-                    run_mp(score_func, jobs, log_dir)
+                    run_mp(score_func, jobs, log_dir, num_jobs)
                 else:
                     run_non_mp(score_func, jobs, log_dir)
                 ser, wer = transcriber.evaluate(out_dir, out_dir)
@@ -320,14 +321,14 @@ def transcribe_fmllr(transcriber):
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
         out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(best[0], best[1]))
-        for j in range(num_jobs):
+        for j in range(len(speakers)):
             tra_path = os.path.join(out_dir, 'tra.{}'.format(j))
             saved_tra_path = os.path.join(fmllr_directory, 'tra.{}'.format(j))
             shutil.copyfile(tra_path, saved_tra_path)
     else:
         jobs = [(directory, x, config, fmllr_directory)
-                for x in range(num_jobs)]
+                for x in range(len(speakers))]
         if config.use_mp:
-            run_mp(score_func, jobs, log_dir)
+            run_mp(score_func, jobs, log_dir, num_jobs)
         else:
             run_non_mp(score_func, jobs, log_dir)

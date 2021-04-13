@@ -62,7 +62,7 @@ class TranscribeCorpus(BaseCorpus):
         self.cmvn_mapping = load_scp(cmvn_path)
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
-        self.sample_rates = {k: v for k, v in load_scp(sr_path).items()}
+        self.sample_rates = load_scp(sr_path)
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
