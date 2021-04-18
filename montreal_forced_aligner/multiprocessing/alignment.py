@@ -551,6 +551,7 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
 
         subprocess.call([thirdparty_binary('nbest-to-ctm'),
                          '--frame-shift={}'.format(frame_shift),
+                         '--precision=3',
                          'ark:' + aligned_path,
                          word_ctm_path],
                         stderr=log_file)
@@ -560,6 +561,7 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
                                       stderr=log_file)
         nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'),
                                        '--frame-shift={}'.format(frame_shift),
+                                       '--precision=3',
                                        "ark:-", phone_ctm_path],
                                       stdin=phone_proc.stdout,
                                       stderr=log_file)
@@ -633,7 +635,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
                 phone_ctm[k] = v
             else:
                 phone_ctm[k].update(v)
-    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary)
+    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frameshift=frame_shift)
 
 
 def tree_stats_func(directory, ci_phones, mdl, feature_string, ali_path, job_name):
@@ -685,10 +687,15 @@ def tree_stats(directory, align_directory, split_directory, ci_phones, speakers,
     tree_accs = [os.path.join(directory, '{}.treeacc'.format(x)) for x in range(len(speakers))]
     log_path = os.path.join(directory, 'log', 'sum_tree_acc.log')
     with open(log_path, 'w', encoding='utf8') as log_file:
-        subprocess.call([thirdparty_binary('sum-tree-stats'), os.path.join(directory, 'treeacc')] +
-                        tree_accs, stderr=log_file)
-    for f in tree_accs:
-        os.remove(f)
+        tmp_stats_path = os.path.join(directory, 'tempacc')
+        output_stats_path = os.path.join(directory, 'treeacc')
+        for af in tree_accs:
+            if not os.path.exists(output_stats_path):
+                os.rename(af, output_stats_path)
+                continue
+            subprocess.call([thirdparty_binary('sum-tree-stats'), tmp_stats_path, output_stats_path, af], stderr=log_file)
+            os.remove(af)
+            os.rename(tmp_stats_path, output_stats_path)
 
 
 def convert_alignments_func(directory, align_directory, job_name):

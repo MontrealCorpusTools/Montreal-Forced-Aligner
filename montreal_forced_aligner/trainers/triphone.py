@@ -52,12 +52,20 @@ class TriphoneTrainer(BaseTrainer):
 
     def _setup_tree(self, align_directory):
         dirty_path = os.path.join(self.train_directory, 'dirty')
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         try:
             context_opts = []
             ci_phones = self.dictionary.silence_csl
 
             tree_stats(self.train_directory, align_directory,
-                       self.data_directory, ci_phones, self.corpus.speakers, self.corpus.num_jobs, self)
+                       self.data_directory, ci_phones, speakers, self.corpus.num_jobs, self)
             log_path = os.path.join(self.log_directory, 'questions.log')
             tree_path = os.path.join(self.train_directory, 'tree')
             treeacc_path = os.path.join(self.train_directory, 'treeacc')
@@ -107,11 +115,11 @@ class TriphoneTrainer(BaseTrainer):
             parse_logs(self.log_directory)
 
             compile_train_graphs(self.train_directory, self.dictionary.output_directory,
-                                 self.data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+                                 self.data_directory, speakers, self.corpus.num_jobs, self)
             os.rename(occs_path, os.path.join(self.train_directory, '1.occs'))
             os.rename(mdl_path, os.path.join(self.train_directory, '1.mdl'))
 
-            convert_alignments(self.train_directory, align_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+            convert_alignments(self.train_directory, align_directory, speakers, self.corpus.num_jobs, self)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass

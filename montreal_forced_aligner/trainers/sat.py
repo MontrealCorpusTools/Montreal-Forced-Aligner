@@ -66,6 +66,14 @@ class SatTrainer(TriphoneTrainer):
         else:
             iters = range(1, self.num_iterations)
         sil_phones = self.dictionary.silence_csl
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         try:
             for i in iters:
                 model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
@@ -76,18 +84,18 @@ class SatTrainer(TriphoneTrainer):
                 if i in self.realignment_iterations:
                     align(i, self.train_directory, self.data_directory,
                           self.dictionary.optional_silence_csl,
-                          self.corpus.speakers, self.corpus.num_jobs, self)
+                          speakers, self.corpus.num_jobs, self)
                     if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.speakers, self.corpus.num_jobs)
+                        compute_alignment_improvement(i, self, self.train_directory, speakers, self.corpus.num_jobs)
                 if i in self.fmllr_iterations:
                     calc_fmllr(self.train_directory, self.data_directory, sil_phones,
-                               self.corpus.speakers, self, initial=False, iteration=i)
+                               speakers, self, initial=False, iteration=i)
 
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+                acc_stats(i, self.train_directory, self.data_directory, speakers, self.corpus.num_jobs, self)
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(len(self.corpus.speakers))]
+                                 for x in range(len(speakers))]
                     est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                                  '--write-occs=' + occs_path,
                                                  '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
@@ -103,7 +111,7 @@ class SatTrainer(TriphoneTrainer):
                 if not self.debug:
                     for f in acc_files:
                         os.remove(f)
-                self.parse_log_directory(self.log_directory, i, self.corpus.speakers, call_back)
+                self.parse_log_directory(self.log_directory, i, speakers, call_back)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
             shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
@@ -150,6 +158,14 @@ class SatTrainer(TriphoneTrainer):
                 align_data_directory = self.corpus.split_directory()
             else:
                 align_data_directory = self.corpus.subset_directory(subset, self.feature_config)
+            subset_speaker_path = os.path.join(align_data_directory, 'included_speakers.txt')
+            if os.path.exists(subset_speaker_path):
+                speakers = []
+                with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                    for line in f:
+                        speakers.append(line.strip())
+            else:
+                speakers = self.corpus.speakers
             try:
                 log_dir = os.path.join(self.align_directory, 'log')
                 os.makedirs(log_dir, exist_ok=True)
@@ -163,21 +179,21 @@ class SatTrainer(TriphoneTrainer):
                 shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
                                 os.path.join(self.align_directory, 'final.occs'))
                 compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                     align_data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+                                     align_data_directory, speakers, self.corpus.num_jobs, self)
                 if align_data_directory == self.data_directory and os.path.exists(os.path.join(self.train_directory, 'trans.0')):
                     for i in range(self.corpus.num_jobs):
                         shutil.copy(os.path.join(self.train_directory, 'trans.{}'.format(i)),
                                     os.path.join(self.align_directory, 'trans.{}'.format(i)))
                 align('final', self.align_directory, align_data_directory,
                       self.dictionary.optional_silence_csl,
-                      self.corpus.speakers, self.corpus.num_jobs, self, self.align_directory)
+                      speakers, self.corpus.num_jobs, self, self.align_directory)
 
                 if not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                     calc_fmllr(self.align_directory, align_data_directory,
-                          self.dictionary.optional_silence_csl, self.corpus.speakers, self, initial=True, iteration='final')
+                          self.dictionary.optional_silence_csl, speakers, self, initial=True, iteration='final')
                     align('final', self.align_directory, align_data_directory,
                           self.dictionary.optional_silence_csl,
-                          self.corpus.speakers, self.corpus.num_jobs, self, self.align_directory)
+                          speakers, self.corpus.num_jobs, self, self.align_directory)
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
             except Exception as e:
                 with open(dirty_path, 'w'):
@@ -210,11 +226,19 @@ class SatTrainer(TriphoneTrainer):
         align_directory = previous_trainer.align_directory
         context_opts = []
         ci_phones = self.dictionary.silence_csl
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         try:
             if os.path.exists(os.path.join(align_directory, 'lda.mat')):
                 shutil.copyfile(os.path.join(align_directory, 'lda.mat'), os.path.join(self.train_directory, 'lda.mat'))
             tree_stats(self.train_directory, align_directory,
-                       self.data_directory, ci_phones, self.corpus.speakers, self.corpus.num_jobs, self)
+                       self.data_directory, ci_phones, speakers, self.corpus.num_jobs, self)
             log_path = os.path.join(self.log_directory, 'questions.log')
             tree_path = os.path.join(self.train_directory, 'tree')
             treeacc_path = os.path.join(self.train_directory, 'treeacc')
@@ -263,11 +287,11 @@ class SatTrainer(TriphoneTrainer):
             os.remove(treeacc_path)
 
             compile_train_graphs(self.train_directory, self.dictionary.output_directory,
-                                 self.data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+                                 self.data_directory, speakers, self.corpus.num_jobs, self)
             os.rename(occs_path, os.path.join(self.train_directory, '1.occs'))
             os.rename(mdl_path, os.path.join(self.train_directory, '1.mdl'))
 
-            convert_alignments(self.train_directory, align_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+            convert_alignments(self.train_directory, align_directory, speakers, self.corpus.num_jobs, self)
 
             if os.path.exists(os.path.join(align_directory, 'trans.0')):
                 for i in range(self.corpus.num_jobs):
@@ -276,7 +300,7 @@ class SatTrainer(TriphoneTrainer):
             else:
 
                 calc_fmllr(self.train_directory, self.data_directory,
-                           self.dictionary.silence_csl, self.corpus.speakers, self, initial=True)
+                           self.dictionary.silence_csl, speakers, self, initial=True)
             parse_logs(self.log_directory)
         except Exception as e:
             with open(dirty_path, 'w'):

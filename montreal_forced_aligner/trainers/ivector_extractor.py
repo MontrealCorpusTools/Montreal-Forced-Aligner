@@ -103,8 +103,16 @@ class IvectorExtractorTrainer(BaseTrainer):
         feature_string = self.feature_config.construct_feature_proc_string(self.corpus.output_directory,
                                                                            self.train_directory,
                                                                            job_name=None, cmvn=self.apply_cmn)
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         with open(all_feats_path, 'w') as outf:
-            for i in range(len(self.corpus.speakers)):
+            for i in range(len(speakers)):
                 with open(os.path.join(self.data_directory,
                                        feat_name + '.{}.scp'.format(i))) as inf:
                     for line in inf:
@@ -122,7 +130,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             gmm_init_proc.communicate()
 
         # Store Gaussian selection indices on disk
-        gmm_gselect('0', self, self.corpus.speakers, self.corpus.num_jobs)
+        gmm_gselect('0', self, speakers, self.corpus.num_jobs)
         final_dubm_path = os.path.join(self.train_directory, 'final.dubm')
 
         if not os.path.exists(final_dubm_path):
@@ -133,7 +141,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                 iters = range(0, self.ubm_num_iterations)
             for i in iters:
                 # Accumulate stats
-                acc_global_stats(self, self.corpus.speakers, self.corpus.num_jobs, i)
+                acc_global_stats(self, speakers, self.corpus.num_jobs, i)
 
                 # Don't remove low-count Gaussians till the last tier,
                 # or gselect info won't be valid anymore
@@ -145,7 +153,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                 log_path = os.path.join(self.train_directory, 'log', 'update.{}.log'.format(i))
                 with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(len(self.corpus.speakers))]
+                                 for x in range(len(speakers))]
                     gmm_global_est_proc = subprocess.Popen([thirdparty_binary('gmm-global-est'),
                                                             opt,
                                                             '--min-gaussian-weight=' + str(self.ubm_min_gaussian_weight),
@@ -192,6 +200,14 @@ class IvectorExtractorTrainer(BaseTrainer):
         log_path = os.path.join(log_directory, 'init.log')
         diag_ubm_path = os.path.join(self.train_directory, 'final.dubm')
         full_ubm_path = os.path.join(self.train_directory, 'final.ubm')
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         with open(log_path, 'w') as log_file:
             subprocess.call([thirdparty_binary('gmm-global-to-fgmm'),
                              diag_ubm_path,
@@ -205,7 +221,7 @@ class IvectorExtractorTrainer(BaseTrainer):
                             stderr=log_file)
 
         # Do Gaussian selection and posterior extraction
-        gauss_to_post(self, self.corpus.speakers, self.corpus.num_jobs)
+        gauss_to_post(self, speakers, self.corpus.num_jobs)
         parse_logs(log_directory)
         self.logger.debug('Initialization ivectors took {} seconds'.format(time.time() - begin))
 
@@ -228,12 +244,20 @@ class IvectorExtractorTrainer(BaseTrainer):
             iters = tqdm(range(0, self.num_iterations))
         else:
             iters = range(0, self.num_iterations)
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         try:
             log_dir = os.path.join(self.train_directory, 'log')
             if not os.path.exists(os.path.join(self.train_directory, 'final.ie')):
                 for i in iters:
                     # Accumulate stats and sum
-                    acc_ivector_stats(self, self.corpus.speakers, self.corpus.num_jobs, i)
+                    acc_ivector_stats(self, speakers, self.corpus.num_jobs, i)
 
                     # Est extractor
                     log_path = os.path.join(log_dir, 'update.{}.log'.format(i))
@@ -250,11 +274,10 @@ class IvectorExtractorTrainer(BaseTrainer):
                 # Rename to final
                 shutil.copy(os.path.join(self.train_directory, '{}.ie'.format(self.num_iterations)),
                             os.path.join(self.train_directory, 'final.ie'))
-            extract_ivectors(self.train_directory, self.corpus.split_directory(), self, self.corpus.speakers, self.corpus.num_jobs)
+            extract_ivectors(self.train_directory, self.corpus.split_directory(), self, speakers, self.corpus.num_jobs)
             x = []
             y = []
-            speakers = sorted(self.corpus.speak_utt_mapping.keys())
-            for i in range(len(self.corpus.speakers)):
+            for i in range(len(speakers)):
                 ivec = load_scp(os.path.join(self.train_directory, 'ivectors.{}'.format(i)))
                 for utt, ivector in ivec.items():
                     ivector = [float(x) for x in ivector]

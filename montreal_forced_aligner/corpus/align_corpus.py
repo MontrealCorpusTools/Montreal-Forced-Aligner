@@ -374,12 +374,6 @@ class AlignableCorpus(BaseCorpus):
 
         if len(self.speak_utt_mapping) < self.num_jobs:
             self.num_jobs = len(self.speak_utt_mapping)
-        if self.num_jobs < len(self.sample_rates.keys()):
-            self.num_jobs = len(self.sample_rates.keys())
-            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
-                  'If you would like to use fewer parallel jobs, ' \
-                  'please resample all wav files to the same sample rate.'.format(self.num_jobs)
-            self.logger.warning(msg)
 
     def save_text_file(self, file_name):
         if self.segments:
@@ -617,6 +611,7 @@ class AlignableCorpus(BaseCorpus):
         split_directory = self.split_directory()
         subset_directory = os.path.join(self.output_directory, 'subset_{}'.format(subset))
         subset_utt_path = os.path.join(subset_directory, 'included_utts.txt')
+        subset_speaker_path = os.path.join(subset_directory, 'included_speakers.txt')
         if os.path.exists(subset_utt_path):
             subset_utts = []
             with open(subset_utt_path, 'r', encoding='utf8') as f:
@@ -638,7 +633,14 @@ class AlignableCorpus(BaseCorpus):
             with open(subset_utt_path, 'w', encoding='utf8') as f:
                 for u in subset_utts:
                     f.write('{}\n'.format(u))
-        for i, s in enumerate(self.speakers):
+        subset_speakers = set()
+        for u in subset_utts:
+            subset_speakers.add(self.utt_speak_mapping[u])
+        subset_speakers = sorted(subset_speakers)
+        with open(subset_speaker_path, 'w') as f:
+            for s in subset_speakers:
+                f.write(s + '\n')
+        for i, s in enumerate(subset_speakers):
             for fn in ['text.{}', 'text.{}.int', 'utt2spk.{}']:
                 sub_path = os.path.join(subset_directory, fn.format(i))
                 with open(os.path.join(split_directory, fn.format(i)), 'r', encoding='utf8') as inf, \
@@ -648,7 +650,6 @@ class AlignableCorpus(BaseCorpus):
                         if s[0] not in subset_utts:
                             continue
                         outf.write(line)
-            subset_speakers = []
             sub_path = os.path.join(subset_directory, 'spk2utt.{}'.format(i))
             with open(os.path.join(split_directory, 'spk2utt.{}'.format(i)), 'r', encoding='utf8') as inf, \
                     open(sub_path, 'w', encoding='utf8') as outf:
@@ -659,7 +660,6 @@ class AlignableCorpus(BaseCorpus):
                     if not filtered_utts:
                         continue
                     outf.write('{} {}\n'.format(speaker, ' '.join(filtered_utts)))
-                    subset_speakers.append(speaker)
             sub_path = os.path.join(subset_directory, 'cmvn.{}.scp'.format(i))
             with open(os.path.join(split_directory, 'cmvn.{}.scp'.format(i)), 'r', encoding='utf8') as inf, \
                     open(sub_path, 'w', encoding='utf8') as outf:

@@ -9,7 +9,7 @@ from montreal_forced_aligner.corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import PretrainedAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train_ivector
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_dict_languages, get_dictionary_path
 from montreal_forced_aligner.models import AcousticModel
@@ -38,6 +38,10 @@ def train_ivector(args):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
     logger = setup_logger(command, data_directory)
+    logger.debug('TRAIN CONFIG:')
+    log_config(logger, train_config)
+    logger.debug('ALIGN CONFIG:')
+    log_config(logger, align_config)
 
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:

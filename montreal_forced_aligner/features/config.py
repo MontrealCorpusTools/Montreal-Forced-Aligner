@@ -5,6 +5,7 @@ from ..exceptions import ConfigError
 from .processing import mfcc, compute_vad
 
 from ..helper import thirdparty_binary, load_scp, save_speaker_groups
+from ..config.base_config import BaseConfig
 
 
 def make_safe(value):
@@ -13,7 +14,7 @@ def make_safe(value):
     return str(value)
 
 
-class FeatureConfig(object):
+class FeatureConfig(BaseConfig):
     """
     Class to store configuration information about MFCC generation
 

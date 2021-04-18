@@ -209,6 +209,15 @@ class BaseTrainer(object):
                 align_data_directory = self.corpus.split_directory()
             else:
                 align_data_directory = self.corpus.subset_directory(subset, self.feature_config)
+
+            subset_speaker_path = os.path.join(align_data_directory, 'included_speakers.txt')
+            if os.path.exists(subset_speaker_path):
+                speakers = []
+                with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                    for line in f:
+                        speakers.append(line.strip())
+            else:
+                speakers = self.corpus.speakers
             try:
                 log_dir = os.path.join(self.align_directory, 'log')
                 os.makedirs(log_dir, exist_ok=True)
@@ -222,10 +231,10 @@ class BaseTrainer(object):
                 shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
                                 os.path.join(self.align_directory, 'final.occs'))
                 compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                     align_data_directory, self.corpus.speakers, self.corpus.num_jobs, self)
+                                     align_data_directory, speakers, self.corpus.num_jobs, self)
                 align('final', self.align_directory, align_data_directory,
                       self.dictionary.optional_silence_csl,
-                      self.corpus.speakers, self.corpus.num_jobs, self, self.align_directory)
+                      speakers, self.corpus.num_jobs, self, self.align_directory)
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
             except Exception as e:
                 with open(dirty_path, 'w'):
@@ -254,6 +263,15 @@ class BaseTrainer(object):
             iters = tqdm(range(1, self.num_iterations))
         else:
             iters = range(1, self.num_iterations)
+
+        subset_speaker_path = os.path.join(self.data_directory, 'included_speakers.txt')
+        if os.path.exists(subset_speaker_path):
+            speakers = []
+            with open(subset_speaker_path, 'r', encoding='utf8') as f:
+                for line in f:
+                    speakers.append(line.strip())
+        else:
+            speakers = self.corpus.speakers
         try:
             for i in iters:
                 model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
@@ -264,31 +282,40 @@ class BaseTrainer(object):
                 if i in self.realignment_iterations:
                     align(i, self.train_directory, self.data_directory,
                           self.dictionary.optional_silence_csl,
-                          self.corpus.speakers, self.corpus.num_jobs, self)
+                          speakers, self.corpus.num_jobs, self)
                     if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.speakers,
+                        compute_alignment_improvement(i, self, self.train_directory, speakers,
                                                       self.corpus.num_jobs)
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.speakers, self.corpus.num_jobs,
+                acc_stats(i, self.train_directory, self.data_directory, speakers, self.corpus.num_jobs,
                           self)
                 log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
-                with open(log_path, 'w') as logf:
+                with open(log_path, 'w') as log_file:
                     acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(len(self.corpus.speakers))]
+                                 for x in range(len(speakers))]
+                    tmp_stats_path = os.path.join(self.train_directory, 'temp.acc')
+                    output_stats_path = os.path.join(self.train_directory, '{}.acc'.format(i))
+                    for af in acc_files:
+                        if not os.path.exists(output_stats_path):
+                            os.rename(af, output_stats_path)
+                            continue
+                        sum_proc = subprocess.Popen([thirdparty_binary('gmm-sum-accs'),
+                                                     tmp_stats_path,
+                                                     output_stats_path, af],
+                                                stderr=log_file)
+                        sum_proc.communicate()
+                        os.remove(af)
+                        os.rename(tmp_stats_path, output_stats_path)
                     est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
                                                  '--write-occs=' + occs_path,
                                                  '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
                                                  model_path,
-                                                 "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                                                   ' '.join(map(make_path_safe, acc_files))),
+                                                 output_stats_path,
                                                  next_model_path],
-                                                stderr=logf)
+                                                stderr=log_file)
                     est_proc.communicate()
-                if not self.debug:
-                    for f in acc_files:
-                        os.remove(f)
                 if not os.path.exists(next_model_path):
                     raise (Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
-                self.parse_log_directory(self.log_directory, i, self.corpus.speakers, call_back)
+                self.parse_log_directory(self.log_directory, i, speakers, call_back)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
             shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
@@ -304,6 +331,10 @@ class BaseTrainer(object):
                         pass
                     try:
                         os.remove(os.path.join(self.train_directory, '{}.occs'.format(i)))
+                    except FileNotFoundError:
+                        pass
+                    try:
+                        os.remove(os.path.join(self.train_directory, '{}.acc'.format(i)))
                     except FileNotFoundError:
                         pass
         except Exception as e:
