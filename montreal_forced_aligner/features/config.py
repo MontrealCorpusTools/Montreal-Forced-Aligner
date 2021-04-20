@@ -87,9 +87,7 @@ class FeatureConfig(BaseConfig):
                 }
 
     def mfcc_options(self):
-        """
-        Return dictionary of parameters to use in computing MFCC features.
-        """
+        """Return dictionary of parameters to use in computing MFCC features."""
         return {'use-energy': self.use_energy, 'frame-shift': self.frame_shift, 'low-freq': self.low_frequency,
                 'high-freq': self.high_frequency, 'sample-frequency': self.sample_frequency,
                 'allow-downsample': self.allow_downsample, 'allow-upsample': self.allow_upsample,

@@ -115,7 +115,7 @@ class CorpusValidator(object):
     corpus_analysis_template = '''
     =========================================Corpus=========================================
     {} sound files
-    {} sound files .lab transcription files
+    {} sound files with .lab transcription files
     {} sound files with TextGrids transcription files
     {} additional sound files ignored (see below)
     {} speakers
