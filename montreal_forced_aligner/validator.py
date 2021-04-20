@@ -149,10 +149,6 @@ class CorpusValidator(object):
     UNREADABLE TEXT FILES
     --------------------
     {}
-    
-    UNSUPPORTED SAMPLE RATES
-    --------------------
-    {}
     '''
 
     alignment_analysis_template = '''
@@ -210,8 +206,7 @@ class CorpusValidator(object):
                                                               self.analyze_files_with_no_transcription(),
                                                               self.analyze_transcriptions_with_no_wavs(),
                                                               self.analyze_textgrid_read_errors(),
-                                                              self.analyze_unreadable_text_files(),
-                                                              self.analyze_unsupported_sample_rates()
+                                                              self.analyze_unreadable_text_files()
                                                               ))
 
     def analyze_oovs(self):
@@ -338,23 +333,6 @@ class CorpusValidator(object):
                       'Please see {} for a list.'.format(len(self.corpus.decode_error_files), path)
         else:
             message = 'There were no issues reading text files.'
-        return message
-
-    def analyze_unsupported_sample_rates(self):
-        output_dir = self.corpus.output_directory
-        if self.corpus.unsupported_sample_rate:
-            path = os.path.join(output_dir, 'unsupported_sample_rates.csv')
-            with open(path, 'w') as f:
-                for file_path in self.corpus.unsupported_sample_rate:
-                    f.write('{}\n'.format(file_path))
-            message = 'There were {} sound files with sample rates <16000. ' \
-                      'Feature generation targets from 20 Hz to 7800 Hz, ' \
-                      'so lower sample rates may produce malformed features. ' \
-                      'These feature might still work, particularly when not using ' \
-                      'an existing acoustic model, but be aware of potential issues.' \
-                      'Please see {} for a list.'.format(len(self.corpus.unsupported_sample_rate), path)
-        else:
-            message = 'There were no sound files with unsupported sample rates.'
         return message
 
     def analyze_unaligned_utterances(self):

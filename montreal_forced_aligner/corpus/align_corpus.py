@@ -219,6 +219,7 @@ class AlignableCorpus(BaseCorpus):
                 for w in words:
                     new_w = re.split(r"[-']", w)
                     self.word_counts.update(new_w + [w])
+                self.wav_files.append(file_name)
                 self.text_mapping[utt_name] = ' '.join(words)
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
