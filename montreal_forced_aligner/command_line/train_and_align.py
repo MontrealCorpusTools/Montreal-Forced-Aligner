@@ -10,7 +10,7 @@ from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train
 from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.helper import setup_logger, log_config
 
 from montreal_forced_aligner.exceptions import ArgumentError
 
@@ -38,6 +38,10 @@ def align_corpus(args, unknown_args=None):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
     logger = setup_logger(command, data_directory)
+    logger.debug('TRAIN CONFIG:')
+    log_config(logger, train_config)
+    logger.debug('ALIGN CONFIG:')
+    log_config(logger, align_config)
     if args.debug:
         logger.warning('Running in DEBUG mode, may have impact on performance and disk usage.')
     if os.path.exists(conf_path):

@@ -4,9 +4,9 @@ import time
 import re
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
-from ..helper import load_text, output_mapping, save_groups, filter_scp, load_scp
+from ..helper import output_mapping, save_groups, filter_scp, load_scp
 
-from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
+from ..exceptions import CorpusError, WavReadError,  \
     BitDepthError, TextParseError, TextGridParseError
 
 from .base import BaseCorpus, find_exts
@@ -65,11 +65,14 @@ class AlignableCorpus(BaseCorpus):
 
         self.loaded_from_temp = self._load_from_temp()
         if not self.loaded_from_temp:
-            print('loading from source')
             if self.use_mp:
+                self.logger.debug('Loading from source with multiprocessing')
                 self._load_from_source_mp()
             else:
+                self.logger.debug('Loading from source without multiprocessing')
                 self._load_from_source()
+        else:
+            self.logger.debug('Successfully loaded from temporary files')
         self.check_warnings()
         self.find_best_groupings()
 
@@ -129,7 +132,6 @@ class AlignableCorpus(BaseCorpus):
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
-        self.sample_rates = {int(k): v if isinstance(v, list) else [v] for k,v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.utt_text_file_mapping = load_scp(text_file_path)
@@ -189,7 +191,7 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.temp_directory))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters))
         job_queue.join()
         stopped.stop()
         for p in procs:
@@ -204,7 +206,6 @@ class AlignableCorpus(BaseCorpus):
                 utt_name = info['utt_name']
                 speaker_name = info['speaker_name']
                 wav_info = info['wav_info']
-                sr = wav_info['sample_rate']
                 if utt_name in self.utt_wav_mapping:
                     ind = 0
                     fixed_utt_name = utt_name
@@ -218,22 +219,19 @@ class AlignableCorpus(BaseCorpus):
                 for w in words:
                     new_w = re.split(r"[-']", w)
                     self.word_counts.update(new_w + [w])
+                self.wav_files.append(file_name)
                 self.text_mapping[utt_name] = ' '.join(words)
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
-                self.sample_rates[sr].add(speaker_name)
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
                 self.lab_count += 1
             else:
                 wav_info = info['wav_info']
-                sr = wav_info['sample_rate']
                 file_name = info['recording_name']
                 self.wav_files.append(file_name)
                 self.speaker_ordering[file_name] = info['speaker_ordering']
-                for s in info['speaker_ordering']:
-                    self.sample_rates[sr].add(s)
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 self.file_utt_mapping.update(info['file_utt_mapping'])
@@ -255,7 +253,7 @@ class AlignableCorpus(BaseCorpus):
                     self.file_directory_mapping[fn] = info['relative_path']
                 self.tg_count += 1
             self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
-        for k in ['wav_read_errors', 'unsupported_sample_rate', 'unsupported_bit_depths',
+        for k in ['wav_read_errors', 'unsupported_bit_depths',
                   'decode_error_files', 'textgrid_read_errors']:
             if hasattr(self, k):
                 if k in return_dict:
@@ -280,7 +278,6 @@ class AlignableCorpus(BaseCorpus):
                         utt_name = info['utt_name']
                         speaker_name = info['speaker_name']
                         wav_info = info['wav_info']
-                        sr = wav_info['sample_rate']
                         if utt_name in self.utt_wav_mapping:
                             ind = 0
                             fixed_utt_name = utt_name
@@ -298,14 +295,11 @@ class AlignableCorpus(BaseCorpus):
                         self.utt_text_file_mapping[utt_name] = lab_path
                         self.speak_utt_mapping[speaker_name].append(utt_name)
                         self.utt_wav_mapping[utt_name] = wav_path
-                        self.sample_rates[sr].add(speaker_name)
                         self.utt_speak_mapping[utt_name] = speaker_name
                         self.file_directory_mapping[utt_name] = relative_path
                         self.lab_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except SampleRateError:
-                        self.unsupported_sample_rate.append(wav_path)
                     except BitDepthError:
                         self.unsupported_bit_depths.append(wav_path)
                     except TextParseError:
@@ -316,13 +310,10 @@ class AlignableCorpus(BaseCorpus):
                     tg_path = os.path.join(root, tg_name)
                     try:
                         info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path,
-                                                   self.speaker_characters, self.temp_directory)
+                                                   self.speaker_characters)
                         wav_info = info['wav_info']
-                        sr = wav_info['sample_rate']
                         self.wav_files.append(file_name)
                         self.speaker_ordering[file_name] = info['speaker_ordering']
-                        for s in info['speaker_ordering']:
-                            self.sample_rates[sr].add(s)
                         self.segments.update(info['segments'])
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
@@ -343,8 +334,6 @@ class AlignableCorpus(BaseCorpus):
                         self.tg_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except SampleRateError:
-                        self.unsupported_sample_rate.append(wav_path)
                     except BitDepthError:
                         self.unsupported_bit_depths.append(wav_path)
                     except TextGridParseError as e:
@@ -358,30 +347,7 @@ class AlignableCorpus(BaseCorpus):
 
     def check_warnings(self):
         self.issues_check = self.ignored_utterances or self.no_transcription_files or \
-                            self.textgrid_read_errors or self.unsupported_sample_rate or self.decode_error_files
-
-        bad_speakers = []
-        for speaker in self.speak_utt_mapping.keys():
-            count = 0
-            for k, v in self.sample_rates.items():
-                if speaker in v:
-                    count += 1
-            if count > 1:
-                bad_speakers.append(speaker)
-        if bad_speakers:
-            msg = 'The following speakers had multiple speaking rates: {}. ' \
-                  'Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))
-            self.logger.error(msg)
-            raise (SampleRateMismatchError(msg))
-
-        if len(self.speak_utt_mapping) < self.num_jobs:
-            self.num_jobs = len(self.speak_utt_mapping)
-        if self.num_jobs < len(self.sample_rates.keys()):
-            self.num_jobs = len(self.sample_rates.keys())
-            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
-                  'If you would like to use fewer parallel jobs, ' \
-                  'please resample all wav files to the same sample rate.'.format(self.num_jobs)
-            self.logger.warning(msg)
+                            self.textgrid_read_errors or self.decode_error_files
 
     def save_text_file(self, file_name):
         if self.segments:

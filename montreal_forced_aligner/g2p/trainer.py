@@ -542,7 +542,8 @@ class PyniniTrainer(object):
         model.add_meta_file(self.dictionary, 'pynini')
         model.add_fst_model(self.temp_directory)
         model.add_sym_path(self.temp_directory)
-        os.makedirs(directory, exist_ok=True)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(self.model_path)
         model.dump(basename)
         model.clean_up()

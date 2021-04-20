@@ -137,6 +137,10 @@ class BaseCorpus(object):
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
 
+    @property
+    def speakers(self):
+        return sorted(self.speak_utt_mapping.keys())
+
     def add_utterance(self, utterance, speaker, file, text, wav_file=None, seg=None):
         if seg is not None:
             self.segments[utterance] = seg
@@ -171,35 +175,15 @@ class BaseCorpus(object):
             del self.utt_wav_mapping[utterance]
 
     def find_best_groupings(self):
-        num_sample_rates = len(self.sample_rates.keys())
-        jobs_per_sample_rate = {x: 1 for x in self.sample_rates.keys()}
-        remaining_jobs = self.num_jobs - num_sample_rates
-        while remaining_jobs > 0:
-            min_num = min(jobs_per_sample_rate.values())
-            addable = sorted([k for k, v in jobs_per_sample_rate.items() if v == min_num],
-                             key=lambda x: -1 * len(self.sample_rates[x]))
-            jobs_per_sample_rate[addable[0]] += 1
-            remaining_jobs -= 1
-        self.speaker_groups = []
-        self.frequency_configs = []
-        job_num = 0
-        for k, v in jobs_per_sample_rate.items():
-            speakers = sorted(self.sample_rates[k])
-
-            groups = [[] for _ in range(v)]
-
-            configs = [(job_num + x, {'sample-frequency': k, 'low-freq': 20, 'high-freq': 7800}) for x in range(v)]
-            ind = 0
-            while speakers:
-                s = speakers.pop(0)
-                groups[ind].append(s)
-                ind += 1
-                if ind >= v:
-                    ind = 0
-
-            job_num += v
-            self.speaker_groups.extend(groups)
-            self.frequency_configs.extend(configs)
+        if len(self.speakers) < self.num_jobs:
+            self.num_jobs = len(self.speakers)
+        self.speaker_groups = [[] for _ in range(self.num_jobs)]
+        job_ind = 0
+        for s in self.speakers:
+            self.speaker_groups[job_ind].append(s)
+            job_ind += 1
+            if job_ind == self.num_jobs:
+                job_ind = 0
         self.groups = []
         for x in self.speaker_groups:
             g = []

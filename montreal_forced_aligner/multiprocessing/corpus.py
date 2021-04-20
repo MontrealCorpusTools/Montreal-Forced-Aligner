@@ -21,15 +21,12 @@ def parse_transcription(text):
     return words
 
 
-def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, temp_directory=None):
+def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
     root = os.path.dirname(wav_path)
     try:
         wav_info = get_wav_info(wav_path)
-        sr = wav_info['sample_rate']
     except Exception:
         raise WavReadError(wav_path)
-    if sr < 16000:
-        raise SampleRateError(wav_path)
     bit_depth = wav_info['bit_depth']
     if bit_depth != 16:
         raise BitDepthError(wav_path)
@@ -47,15 +44,12 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
             'wav_info': wav_info, 'relative_path': relative_path}
 
 
-def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, temp_directory=None):
+def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
     root = os.path.dirname(wav_path)
     try:
         wav_info = get_wav_info(wav_path)
-        sr = wav_info['sample_rate']
     except Exception:
         raise WavReadError(wav_path)
-    if sr < 16000:
-        raise SampleRateError(wav_path)
     bit_depth = wav_info['bit_depth']
     if bit_depth != 16:
         raise BitDepthError(wav_path)
@@ -82,15 +76,12 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
             'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
 
-def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, temp_directory):
+def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters):
     file_name = recording_name
     try:
         wav_info = get_wav_info(wav_path)
-        sr = wav_info['sample_rate']
     except Exception:
         raise WavReadError(wav_path)
-    if sr < 16000:
-        raise SampleRateError(wav_path)
     bit_depth = wav_info['bit_depth']
     wav_max_time = wav_info['duration']
     if bit_depth != 16:

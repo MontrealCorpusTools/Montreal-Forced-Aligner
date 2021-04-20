@@ -4,7 +4,7 @@ import numpy
 from typing import Any, List, Tuple
 import logging
 import sys
-
+import yaml
 from .exceptions import ThirdpartyError, KaldiProcessingError
 
 Labels = List[Any]
@@ -191,6 +191,11 @@ def setup_logger(identifier, output_directory):
     logger.addHandler(handler)
 
     return logger
+
+
+def log_config(logger, config):
+    stream = yaml.dump(config)
+    logger.debug(stream)
 
 
 def parse_logs(log_directory):

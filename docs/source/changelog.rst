@@ -6,6 +6,20 @@
 Changelog
 =========
 
+2.0.0a12
+--------
+
+- Updated how sample rates are handled. MFA now generates features between 80 Hz and 7800 Hz and allows downsampling and
+  upsampling, so there will be no more errors or warnings about unsupported sample rates or speakers with different sample
+  rates
+- Fixed a bug where some options for generating MFCCs weren't properly getting picked up (e.g., snip-edges)
+- (EXPERIMENTAL) Added better support for varying frame shift. In :code:`mfa align`, you can now add a flag of :code:`--frame_shift 1` to align
+  with millisecond shifts between frames.  Please note this is more on the experimental side, as it increases computational
+  time significantly and I don't know fully the correct options to use for :code:`self_loop_scale`, :code:`transition_scale`,
+  and :code:`acoustic_scale` to generate good alignments.
+- Fixed a bug in G2P training with relative paths for output model
+- Cleaned up validator output
+
 2.0.0a11
 --------
 

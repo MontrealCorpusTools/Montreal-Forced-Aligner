@@ -5,7 +5,7 @@ import shutil
 import time
 
 from ..multiprocessing import (align, acc_stats, calc_lda_mllt, lda_acc_stats, compute_alignment_improvement)
-from ..helper import thirdparty_binary, make_path_safe, filter_scp, log_kaldi_errors, parse_logs
+from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors
 from ..exceptions import KaldiProcessingError
 from .triphone import TriphoneTrainer
 
@@ -77,13 +77,6 @@ class LdaTrainer(TriphoneTrainer):
                 with open(subset_utt_path, 'r') as f:
                     for line in f:
                         utt_list.append(line.strip())
-                #for j in range(self.corpus.num_jobs):
-                #    base_path = os.path.join(corpus.split_directory(), self.feature_config.feature_id + '.{}.scp'.format(j))
-                #    subset_scp = os.path.join(self.data_directory, self.feature_config.feature_id + '.{}.scp'.format(j))
-                #    filtered = filter_scp(utt_list, base_path)
-                #    with open(subset_scp, 'w') as f:
-                #        for line in filtered:
-                #            f.write(line.strip() + '\n')
         except Exception as e:
             with open(dirty_path, 'w') as _:
                 pass

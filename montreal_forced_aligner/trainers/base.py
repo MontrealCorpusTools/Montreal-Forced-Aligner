@@ -62,13 +62,13 @@ class BaseTrainer(object):
         self.architecture = 'gmm-hmm'
         self.feature_config = FeatureConfig()
         self.feature_config.update(default_feature_config.params())
-        self.initial_gaussians = None # Gets set later
+        self.initial_gaussians = None  # Gets set later
         self.temp_directory = None
         self.identifier = None
         self.corpus = None
         self.data_directory = None
         self.dictionary = None
-        self.debug =False
+        self.debug = False
         self.use_mp = True
 
     def compute_calculated_properties(self):
@@ -113,7 +113,7 @@ class BaseTrainer(object):
     @property
     def align_options(self):
         return {'beam': self.beam, 'retry_beam': self.retry_beam, 'transition_scale': self.transition_scale,
-                'acoustic_scale':self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
+                'acoustic_scale': self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
 
     def update(self, data):
         for k, v in data.items():
@@ -171,11 +171,6 @@ class BaseTrainer(object):
         if call_back is None:
             return
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
-        too_little_data_regex = re.compile(
-            r'Gaussian has too little data but not removing it because it is the last Gaussian')
-        skipped_transition_regex = re.compile(r'(\d+) out of (\d+) transition-states skipped due to insufficient data')
-
-        log_like_regex = re.compile(r'Overall avg like per frame = ([-0-9.]+|nan) over (\d+) frames')
         error_files = []
         for i in range(num_jobs):
             path = os.path.join(directory, 'align.{}.{}.log'.format(iteration - 1, i))
@@ -183,21 +178,7 @@ class BaseTrainer(object):
                 continue
             with open(path, 'r') as f:
                 error_files.extend(error_regex.findall(f.read()))
-        update_path = os.path.join(directory, 'update.{}.log'.format(iteration))
-        #if os.path.exists(update_path):
-        #    with open(update_path, 'r') as f:
-        #        data = f.read()
-        #        m = log_like_regex.search(data)
-        #        if m is not None:
-        #            log_like, tot_frames = m.groups()
-        #            if log_like == 'nan':
-        #                raise (NoSuccessfulAlignments('Could not align any files.  Too little data?'))
-        #            log_like = float(log_like)
-        #        skipped_transitions = skipped_transition_regex.search(data)
-        #        skipped_transition = skipped_transitions.groups()
-        #        num_too_little_data = len(too_little_data_regex.findall(data))
-        #        call_back('missing data gaussians', num_too_little_data)
-        return error_files  # , log_like, num_too_little_data
+        return error_files
 
     def get_unaligned_utterances(self):
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
@@ -304,7 +285,7 @@ class BaseTrainer(object):
                     for f in acc_files:
                         os.remove(f)
                 if not os.path.exists(next_model_path):
-                    raise(Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
+                    raise (Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
                 self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
                 if i < self.final_gaussian_iteration:
                     num_gauss += self.gaussian_increment
@@ -350,7 +331,7 @@ class BaseTrainer(object):
         begin = time.time()
         try:
             convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
-                                 self.dictionary, self.corpus, self.corpus.num_jobs, self)
+                                     self.dictionary, self.corpus, self.corpus.num_jobs, self)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)

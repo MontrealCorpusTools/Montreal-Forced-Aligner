@@ -72,7 +72,7 @@ def mfcc(mfcc_directory, num_jobs, feature_config):
     log_directory = os.path.join(mfcc_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
 
-    jobs = [(mfcc_directory, x, feature_config.mfcc_options(x))
+    jobs = [(mfcc_directory, x, feature_config.mfcc_options())
             for x in range(num_jobs)]
     if feature_config.use_mp:
         run_mp(mfcc_func, jobs, log_directory)

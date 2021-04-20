@@ -9,7 +9,7 @@ from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.transcriber import Transcriber
 from montreal_forced_aligner.models import AcousticModel, LanguageModel, FORMAT
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.config import TEMP_DIR, transcribe_yaml_to_config, load_basic_transcribe, save_config
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_lm_languages, get_pretrained_language_model_path, \
@@ -37,6 +37,8 @@ def transcribe_corpus(args):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
     logger = setup_logger(command, data_directory)
+    logger.debug('TRANSCRIBE CONFIG:')
+    log_config(logger, transcribe_config)
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     os.makedirs(data_directory, exist_ok=True)

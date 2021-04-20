@@ -115,7 +115,7 @@ class CorpusValidator(object):
     corpus_analysis_template = '''
     =========================================Corpus=========================================
     {} sound files
-    {} sound files .lab transcription files
+    {} sound files with .lab transcription files
     {} sound files with TextGrids transcription files
     {} additional sound files ignored (see below)
     {} speakers
@@ -147,10 +147,6 @@ class CorpusValidator(object):
     {}
     
     UNREADABLE TEXT FILES
-    --------------------
-    {}
-    
-    UNSUPPORTED SAMPLE RATES
     --------------------
     {}
     '''
@@ -210,8 +206,7 @@ class CorpusValidator(object):
                                                               self.analyze_files_with_no_transcription(),
                                                               self.analyze_transcriptions_with_no_wavs(),
                                                               self.analyze_textgrid_read_errors(),
-                                                              self.analyze_unreadable_text_files(),
-                                                              self.analyze_unsupported_sample_rates()
+                                                              self.analyze_unreadable_text_files()
                                                               ))
 
     def analyze_oovs(self):
@@ -227,8 +222,8 @@ class CorpusValidator(object):
                     f.write('{} {}\n'.format(k, ', '.join(oovs)))
             self.dictionary.save_oovs_found(output_dir)
             total_instances = sum(len(x) for x in utterance_oovs.values())
-            message = 'There were {} word types not found in the dictionary with a total of {} instances. ' \
-                      'Please see {} for a full list of the word types and {} for a by-utterance breakdown of ' \
+            message = 'There were {} word types not found in the dictionary with a total of {} instances.\n' \
+                      'Please see \n\n{}\n\n for a full list of the word types and \n\n{}\n\n for a by-utterance breakdown of ' \
                       'missing words.'.format(len(oov_types), total_instances, oov_path, utterance_oov_path)
         else:
             message = 'There were no missing words from the dictionary. If you plan on using the a model trained ' \
@@ -256,12 +251,12 @@ class CorpusValidator(object):
                 for p in unsupported_bit_depths:
                     f.write('{}\n'.format(p))
 
-            message += 'There were {} sound files that had unsupported (!=16) bit depths. ' \
+            message += ' There were {} sound files that had unsupported (!=16) bit depths. ' \
                        'Kaldi only supports 16-bit wav files, ' \
                        'please use sox, praat, or ffmpeg to convert your files. ' \
                        'Please see {} for a full list.'.format(len(unsupported_bit_depths), path)
         else:
-            message += 'There were no sound files that had unsupported bit depths.'
+            message += ' There were no sound files that had unsupported bit depths.'
 
         return message
 
@@ -338,23 +333,6 @@ class CorpusValidator(object):
                       'Please see {} for a list.'.format(len(self.corpus.decode_error_files), path)
         else:
             message = 'There were no issues reading text files.'
-        return message
-
-    def analyze_unsupported_sample_rates(self):
-        output_dir = self.corpus.output_directory
-        if self.corpus.unsupported_sample_rate:
-            path = os.path.join(output_dir, 'unsupported_sample_rates.csv')
-            with open(path, 'w') as f:
-                for file_path in self.corpus.unsupported_sample_rate:
-                    f.write('{}\n'.format(file_path))
-            message = 'There were {} sound files with sample rates <16000. ' \
-                      'Feature generation targets from 20 Hz to 7800 Hz, ' \
-                      'so lower sample rates may produce malformed features. ' \
-                      'These feature might still work, particularly when not using ' \
-                      'an existing acoustic model, but be aware of potential issues.' \
-                      'Please see {} for a list.'.format(len(self.corpus.unsupported_sample_rate), path)
-        else:
-            message = 'There were no sound files with unsupported sample rates.'
         return message
 
     def analyze_unaligned_utterances(self):
