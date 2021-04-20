@@ -67,13 +67,17 @@ class FeatureConfig(BaseConfig):
         self.splice_left_context = 3
         self.splice_right_context = 3
         self.use_mp = True
-        self.job_specific_configuration = {}
 
     def params(self):
         return {'type': self.type,
                 'use_energy': self.use_energy,
                 'frame_shift': self.frame_shift,
                 'snip_edges': self.snip_edges,
+                'low_frequency': self.low_frequency,
+                'high_frequency': self.high_frequency,
+                'sample_frequency': self.sample_frequency,
+                'allow_downsample': self.allow_downsample,
+                'allow_upsample': self.allow_upsample,
                 'pitch': self.pitch,
                 'deltas': self.deltas,
                 'lda': self.lda,
@@ -83,6 +87,9 @@ class FeatureConfig(BaseConfig):
                 }
 
     def mfcc_options(self):
+        """
+        Return dictionary of parameters to use in computing MFCC features.
+        """
         return {'use-energy': self.use_energy, 'frame-shift': self.frame_shift, 'low-freq': self.low_frequency,
                 'high-freq': self.high_frequency, 'sample-frequency': self.sample_frequency,
                 'allow-downsample': self.allow_downsample, 'allow-upsample': self.allow_upsample,
@@ -95,9 +102,6 @@ class FeatureConfig(BaseConfig):
     @property
     def splice_options(self):
         return {'splice_left_context': self.splice_left_context, 'splice_right_context': self.splice_right_context}
-
-    def add_job_specific_config(self, job_name, config):
-        self.job_specific_configuration[job_name] = config
 
     def update(self, data):
         for k, v in data.items():

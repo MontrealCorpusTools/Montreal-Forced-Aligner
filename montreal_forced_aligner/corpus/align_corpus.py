@@ -4,9 +4,9 @@ import time
 import re
 from collections import Counter
 from textgrid import TextGrid, IntervalTier
-from ..helper import load_text, output_mapping, save_groups, filter_scp, load_scp
+from ..helper import output_mapping, save_groups, filter_scp, load_scp
 
-from ..exceptions import SampleRateError, CorpusError, WavReadError, SampleRateMismatchError, \
+from ..exceptions import CorpusError, WavReadError,  \
     BitDepthError, TextParseError, TextGridParseError
 
 from .base import BaseCorpus, find_exts

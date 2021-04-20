@@ -7,7 +7,7 @@ from textgrid import TextGrid, IntervalTier
 from .base import BaseCorpus, get_wav_info, find_exts
 from ..helper import load_scp
 
-from ..exceptions import SampleRateError, CorpusError
+from ..exceptions import CorpusError
 from ..multiprocessing import segment_vad
 import multiprocessing as mp
 from queue import Empty
