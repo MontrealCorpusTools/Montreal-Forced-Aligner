@@ -631,7 +631,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
                 phone_ctm[k] = v
             else:
                 phone_ctm[k].update(v)
-    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary)
+    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
 
 
 def tree_stats_func(directory, ci_phones, mdl, feature_string, ali_path, job_name):
@@ -807,7 +807,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     initial : bool, optional
         Whether this is the first computation of speaker-adaptation,
         defaults to False
-    iteration : int
+    iteration : int or str
         Specifies the current iteration, defaults to None
 
     """
@@ -824,10 +824,10 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     jobs = [(directory, split_directory, sil_phones, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x),
                      config, initial, model_name) for x in range(num_jobs)]
-    # if config.use_mp:
-    #    run_mp(calc_fmllr_func, jobs)
-    # else:
-    run_non_mp(calc_fmllr_func, jobs, log_directory)
+    if config.use_mp:
+        run_mp(calc_fmllr_func, jobs, log_directory)
+    else:
+        run_non_mp(calc_fmllr_func, jobs, log_directory)
 
 
 def lda_acc_stats_func(directory, feature_string, align_directory, config, ci_phones, i):

@@ -2,8 +2,8 @@ import os
 import shutil
 import subprocess
 from ..exceptions import ConfigError
-from .processing import mfcc, add_deltas, apply_cmvn, apply_lda, compute_vad, select_voiced, \
-    compute_ivector_features, generate_spliced_features
+from .processing import mfcc, compute_vad
+from ..config import BaseConfig
 
 from ..helper import thirdparty_binary, load_scp, save_groups
 
@@ -14,7 +14,7 @@ def make_safe(value):
     return str(value)
 
 
-class FeatureConfig(object):
+class FeatureConfig(BaseConfig):
     """
     Class to store configuration information about MFCC generation
 
@@ -57,8 +57,13 @@ class FeatureConfig(object):
         self.fmllr = False
         self.use_energy = False
         self.frame_shift = 10
-        self.snip_edges = False
+        self.snip_edges = True
         self.pitch = False
+        self.low_frequency = 20
+        self.high_frequency = 7800
+        self.sample_frequency = 16000
+        self.allow_downsample = True
+        self.allow_upsample = True
         self.splice_left_context = 3
         self.splice_right_context = 3
         self.use_mp = True
@@ -77,6 +82,12 @@ class FeatureConfig(object):
                 'splice_right_context': self.splice_right_context,
                 }
 
+    def mfcc_options(self):
+        return {'use-energy': self.use_energy, 'frame-shift': self.frame_shift, 'low-freq': self.low_frequency,
+                'high-freq': self.high_frequency, 'sample-frequency': self.sample_frequency,
+                'allow-downsample': self.allow_downsample, 'allow-upsample': self.allow_upsample,
+                'snip-edges': self.snip_edges}
+
     def set_features_to_use_lda(self):
         self.lda = True
         self.deltas = False
@@ -88,11 +99,6 @@ class FeatureConfig(object):
     def add_job_specific_config(self, job_name, config):
         self.job_specific_configuration[job_name] = config
 
-    def mfcc_options(self, job_name):
-        options = {'use_energy': self.use_energy, 'frame_shift': self.frame_shift}
-        options.update(self.job_specific_configuration[job_name])
-        return options
-
     def update(self, data):
         for k, v in data.items():
             if not hasattr(self, k):
@@ -100,25 +106,6 @@ class FeatureConfig(object):
             setattr(self, k, v)
         if self.lda:
             self.deltas = False
-
-    def write(self, output_directory, job, extra_params=None):
-        """
-        Write configuration dictionary to a file for use in Kaldi binaries
-        """
-        f = '{}.{}.conf'.format(self.type, job)
-        path = os.path.join(output_directory, 'config')
-        os.makedirs(path, exist_ok=True)
-        path = os.path.join(path, f)
-        with open(path, 'w', encoding='utf8') as f:
-            f.write('--{}={}\n'.format('allow-downsample', 'true'))
-            f.write('--{}={}\n'.format('sample-frequency', '16000'))
-            f.write('--{}={}\n'.format('use-energy', make_safe(self.use_energy)))
-            f.write('--{}={}\n'.format('frame-shift', make_safe(self.frame_shift)))
-            f.write('--{}={}\n'.format('snip-edges', make_safe(self.snip_edges)))
-            if extra_params is not None:
-                for k, v in extra_params.items():
-                    f.write('--{}={}\n'.format(k, make_safe(v)))
-        return path
 
     def calc_cmvn(self, corpus):
         split_dir = corpus.split_directory()

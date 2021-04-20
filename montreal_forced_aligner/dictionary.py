@@ -181,13 +181,13 @@ class Dictionary(object):
         self.pronunciation_probabilities, self.silence_probabilities = check_format(input_path)
         progress = 'Parsing dictionary'
         if self.pronunciation_probabilities:
-            progress += ' with pronunciation probabilties'
+            progress += ' with pronunciation probabilities'
         else:
-            progress += ' without pronunciation probabilties'
+            progress += ' without pronunciation probabilities'
         if self.silence_probabilities:
-            progress += ' with silence probabilties'
+            progress += ' with silence probabilities'
         else:
-            progress += ' without silence probabilties'
+            progress += ' without silence probabilities'
         self.logger.info(progress)
         with open(input_path, 'r', encoding='utf8') as inf:
             for i, line in enumerate(inf):

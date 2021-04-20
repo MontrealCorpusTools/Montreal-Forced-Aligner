@@ -55,9 +55,9 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
     return file_dict
 
 
-def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, frameshift=0.01):
+def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, frame_shift=0.01):
     textgrid_write_errors = {}
-    frameshift = Decimal(str(frameshift))
+    frameshift = Decimal(str(frame_shift))
     if not os.path.exists(out_directory):
         os.makedirs(out_directory, exist_ok=True)
     if not corpus.segments:

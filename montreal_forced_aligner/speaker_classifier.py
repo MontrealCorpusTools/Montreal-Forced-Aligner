@@ -1,11 +1,10 @@
 import os
 import shutil
-import subprocess
 from joblib import load
 import numpy as np
 import time
 from .config import TEMP_DIR
-from .helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs
+from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
 
 from .multiprocessing import extract_ivectors, classify_speakers

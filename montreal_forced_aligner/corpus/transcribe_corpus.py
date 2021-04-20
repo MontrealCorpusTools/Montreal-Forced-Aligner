@@ -27,10 +27,13 @@ class TranscribeCorpus(BaseCorpus):
         loaded = self._load_from_temp()
         if not loaded:
             if self.use_mp:
+                self.logger.debug('Loading from source with multiprocessing')
                 self._load_from_source_mp()
             else:
+                self.logger.debug('Loading from source without multiprocessing')
                 self._load_from_source()
-        self.check_warnings()
+        else:
+            self.logger.debug('Successfully loaded from temporary files')
         self.find_best_groupings()
 
     def _load_from_temp(self):
@@ -63,7 +66,6 @@ class TranscribeCorpus(BaseCorpus):
         self.cmvn_mapping = load_scp(cmvn_path)
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
-        self.sample_rates = {int(k): v for k, v in load_scp(sr_path).items()}
         self.utt_wav_mapping = load_scp(wav_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
@@ -109,8 +111,7 @@ class TranscribeCorpus(BaseCorpus):
                     transcription_path = os.path.join(root, tg_name)
                 else:
                     transcription_path = None
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
-                               self.temp_directory))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters))
         job_queue.join()
 
         for p in procs:
@@ -125,7 +126,6 @@ class TranscribeCorpus(BaseCorpus):
                 utt_name = info['utt_name']
                 speaker_name = info['speaker_name']
                 wav_info = info['wav_info']
-                sr = wav_info['sample_rate']
                 if utt_name in self.utt_wav_mapping:
                     ind = 0
                     fixed_utt_name = utt_name
@@ -136,17 +136,13 @@ class TranscribeCorpus(BaseCorpus):
                 file_name = utt_name
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
-                self.sample_rates[sr].add(speaker_name)
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
             else:
                 wav_info = info['wav_info']
-                sr = wav_info['sample_rate']
                 file_name = info['recording_name']
                 self.wav_files.append(file_name)
                 self.speaker_ordering[file_name] = info['speaker_ordering']
-                for s in info['speaker_ordering']:
-                    self.sample_rates[sr].add(s)
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
                 for utt, words in info['text_mapping'].items():
@@ -162,7 +158,7 @@ class TranscribeCorpus(BaseCorpus):
 
             self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
 
-        for k in ['wav_read_errors', 'unsupported_sample_rate', 'unsupported_bit_depths',
+        for k in ['wav_read_errors', 'unsupported_bit_depths',
                   'decode_error_files', 'textgrid_read_errors']:
             if hasattr(self, k):
                 if k in return_dict:
@@ -180,7 +176,6 @@ class TranscribeCorpus(BaseCorpus):
                 wav_path = os.path.join(root, f)
                 try:
                     wav_info = get_wav_info(wav_path)
-                    sr = wav_info['sample_rate']
                 except Exception:
                     self.wav_read_errors.append(wav_path)
                     continue
@@ -189,8 +184,6 @@ class TranscribeCorpus(BaseCorpus):
                 if bit_depth != 16:
                     self.unsupported_bit_depths.append(wav_path)
                     continue
-                if sr < 16000:
-                    self.unsupported_sample_rate.append(wav_path)
                 if self.speaker_directories:
                     speaker_name = os.path.basename(root)
                 else:
@@ -212,7 +205,6 @@ class TranscribeCorpus(BaseCorpus):
                 utt_name = utt_name.strip().replace(' ', '_')
                 self.utt_wav_mapping[utt_name] = wav_path
                 self.speak_utt_mapping[speaker_name].append(utt_name)
-                self.sample_rates[sr].add(speaker_name)
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
@@ -248,7 +240,6 @@ class TranscribeCorpus(BaseCorpus):
                         if self.speaker_directories:
                             speaker_name = ti.name.strip().replace(' ', '_')
                             self.speaker_ordering[file_name].append(speaker_name)
-                        self.sample_rates[sr].add(speaker_name)
                         for interval in ti:
                             text = interval.mark.lower().strip()
                             if not text:
@@ -278,30 +269,6 @@ class TranscribeCorpus(BaseCorpus):
                             self.text_mapping[utt_name] = text
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
-
-    def check_warnings(self):
-        bad_speakers = []
-        for speaker in self.speak_utt_mapping.keys():
-            count = 0
-            for k, v in self.sample_rates.items():
-                if speaker in v:
-                    count += 1
-            if count > 1:
-                bad_speakers.append(speaker)
-        if bad_speakers:
-            msg = 'The following speakers had multiple speaking rates: {}. ' \
-                  'Please make sure that each speaker has a consistent sampling rate.'.format(', '.join(bad_speakers))
-            self.logger.error(msg)
-            raise (SampleRateError(msg))
-
-        if len(self.speak_utt_mapping) < self.num_jobs:
-            self.num_jobs = len(self.speak_utt_mapping)
-        if self.num_jobs < len(self.sample_rates.keys()):
-            self.num_jobs = len(self.sample_rates.keys())
-            msg = 'The number of jobs was set to {}, due to the different sample rates in the dataset. ' \
-                  'If you would like to use fewer parallel jobs, ' \
-                  'please resample all wav files to the same sample rate.'.format(self.num_jobs)
-            self.logger.warning(msg)
 
     def initialize_corpus(self, dictionary=None):
         if not self.utt_wav_mapping:

@@ -41,6 +41,7 @@ class AlignConfig(BaseConfig):
 
     def update_from_args(self, args):
         super(AlignConfig, self).update_from_args(args)
+        self.feature_config.update_from_args(args)
         if self.retry_beam <= self.beam:
             self.retry_beam = self.beam * 4
 

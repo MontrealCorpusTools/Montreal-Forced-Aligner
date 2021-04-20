@@ -214,11 +214,9 @@ class IvectorExtractorTrainer(BaseTrainer):
     def align(self, subset, call_back=None):
         self.save(os.path.join(self.align_directory, 'ivector_extractor.zip'))
 
-        # extract_ivectors(self, self.corpus.num_jobs)
-
     def train(self, call_back=None):
         from sklearn.naive_bayes import GaussianNB
-        from joblib import dump, load
+        from joblib import dump
         import numpy as np
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
