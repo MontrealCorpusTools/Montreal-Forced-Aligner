@@ -73,6 +73,7 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     if not utt_name.startswith(speaker_name):
         utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
 
+    utt_name = utt_name.replace('_', '-')
     return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
             'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
 
@@ -131,6 +132,7 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             end = min(end, wav_max_time)
             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+            utt_name = utt_name.replace('_', '-')
             utt_wav_mapping[file_name] = wav_path
             if n_channels == 1:
                 segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end, 'channel': 0}

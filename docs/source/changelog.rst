@@ -6,7 +6,13 @@
 Changelog
 =========
 
-2.0.0a12
+2.0.0a14
+--------
+
+- Fixed a bug in running fMMLR for speaker adaptation where utterances were not properly sorted (MFA now uses dashes to
+  separate elements in utterance names rather than underscores)
+
+2.0.0a13
 --------
 
 - Updated how sample rates are handled. MFA now generates features between 80 Hz and 7800 Hz and allows downsampling and

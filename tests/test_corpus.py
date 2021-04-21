@@ -172,5 +172,5 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
     d.write()
     c = AlignableCorpus(weird_words_dir, output_directory, use_mp=False)
     c.initialize_corpus(d)
-    print(c.utterance_oovs['weird_words'])
-    assert c.utterance_oovs['weird_words'] == ['ajfish', 'asds-asda', 'sdasd']
+    print(c.utterance_oovs['weird-words'])
+    assert c.utterance_oovs['weird-words'] == ['ajfish', 'asds-asda', 'sdasd']

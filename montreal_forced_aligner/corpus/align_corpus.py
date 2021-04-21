@@ -211,7 +211,7 @@ class AlignableCorpus(BaseCorpus):
                     fixed_utt_name = utt_name
                     while fixed_utt_name not in self.utt_wav_mapping:
                         ind += 1
-                        fixed_utt_name = utt_name + '_{}'.format(ind)
+                        fixed_utt_name = utt_name + '-{}'.format(ind)
                     utt_name = fixed_utt_name
                 file_name = utt_name
                 words = info['words']
@@ -283,7 +283,7 @@ class AlignableCorpus(BaseCorpus):
                             fixed_utt_name = utt_name
                             while fixed_utt_name not in self.utt_wav_mapping:
                                 ind += 1
-                                fixed_utt_name = utt_name + '_{}'.format(ind)
+                                fixed_utt_name = utt_name + '-{}'.format(ind)
                             utt_name = fixed_utt_name
 
                         words = info['words']
@@ -372,42 +372,6 @@ class AlignableCorpus(BaseCorpus):
             lab_path = self.utt_text_file_mapping[file_name]
             with open(lab_path, 'w', encoding='utf8') as f:
                 f.write(self.text_mapping[file_name])
-
-
-    def update_utterance_text(self, utterance, new_text):
-        new_text = new_text.lower().strip()
-        self.text_mapping[utterance] = new_text
-        text_file_path = self.utt_text_file_mapping[utterance]
-        if text_file_path.lower().endswith('.textgrid'):
-            tg = TextGrid()
-            found = False
-            tg.read(text_file_path)
-
-            speaker_name = utterance.split('_', maxsplit=1)
-            wave_name, begin, end = self.segments[utterance].split(' ')
-            begin = float(begin)
-            end = float(end)
-            if len(tg.tiers) == 1:
-                for interval in tg.tiers[0]:
-                    if abs(interval.minTime - begin) < 0.01 and abs(interval.maxTime - end) < 0.01:
-                        interval.mark = new_text
-                        found = True
-                        break
-            else:
-                for tier in tg.tiers:
-                    if tier.name == speaker_name:
-                        for interval in tg.tiers[0]:
-                            if abs(interval.minTime - begin) < 0.01 and abs(interval.maxTime - end) < 0.01:
-                                interval.mark = new_text
-                                found = True
-                                break
-            if found:
-                tg.write(text_file_path)
-            else:
-                self.logger.warning('Unable to find utterance {} match in {}'.format(utterance, text_file_path))
-        else:
-            with open(text_file_path, 'w', encoding='utf8') as f:
-                f.write(new_text)
 
     @property
     def word_set(self):
