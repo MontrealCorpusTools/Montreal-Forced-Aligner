@@ -174,3 +174,9 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
     c.initialize_corpus(d)
     print(c.utterance_oovs['weird-words'])
     assert c.utterance_oovs['weird-words'] == ['ajfish', 'asds-asda', 'sdasd']
+
+    d.set_word_set(c.word_set)
+    for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
+        t = d.to_int(w)
+    print(d.oovs_found)
+    assert "'m" not in d.oovs_found

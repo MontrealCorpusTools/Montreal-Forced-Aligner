@@ -50,6 +50,12 @@ Extra options:
    Run a validation on the dictionary with 90% of the data as training and 10% as test.  It will output the percentage
    accuracy of pronunciations generated.
 
+.. option:: -c
+               --clean
+
+  Forces removal of temporary files under ``~/Documents/MFA`` or the specified temporary directory
+  prior to training the model.
+
 .. note::
 
    See :ref:`g2p_model_training_example` for an example of how to train a G2P model with a premade toy example.

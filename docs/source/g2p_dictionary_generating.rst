@@ -57,6 +57,12 @@ Extra options:
   Number of jobs to use; defaults to 3, set higher if you have more
   processors available and would like to generate pronunciations faster
 
+.. option:: -c
+               --clean
+
+  Forces removal of temporary files under ``~/Documents/MFA`` or the specified temporary directory
+  prior to generating the dictionary.
+
 .. option:: -n NUMBER
                --num_pronunciations NUMBER
 

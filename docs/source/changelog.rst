@@ -6,6 +6,13 @@
 Changelog
 =========
 
+2.0.0a15
+--------
+
+- Fixed a bug with dictionary parsing that misparsed clitics as <unk> words
+- Added a :code:`--clean` flag for :code:`mfa g2p` and :code:`mfa train_g2p` to remove temporary files from
+  previous runs
+
 2.0.0a14
 --------
 

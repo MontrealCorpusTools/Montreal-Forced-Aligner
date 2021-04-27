@@ -232,6 +232,8 @@ class Dictionary(object):
                         is_clitic = True
                 if is_clitic:
                     self.clitic_set.add(word)
+        if self.word_set is not None:
+            self.word_set = self.word_set | self.clitic_set
         if not self.graphemes:
             raise DictionaryFileError('No words were found in the dictionary path {}'.format(input_path))
         self.word_pattern = compile_graphemes(self.graphemes)
@@ -242,7 +244,7 @@ class Dictionary(object):
         word_set = {sanitize(x) for x in word_set}
         word_set.add(self.sil_code)
         word_set.add(self.oov_code)
-        self.word_set = word_set
+        self.word_set = word_set | self.clitic_set
         self.generate_mappings()
 
     @property

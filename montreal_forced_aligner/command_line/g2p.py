@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+import shutil
 
 from textgrid import TextGrid, IntervalTier
 
@@ -24,6 +25,9 @@ def generate_dictionary(args):
         temp_dir = os.path.join(temp_dir, 'G2P')
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
+    if args.clean:
+        shutil.rmtree(os.path.join(temp_dir, 'G2P'), ignore_errors=True)
+        shutil.rmtree(os.path.join(temp_dir, 'models', 'G2P'), ignore_errors=True)
     if os.path.isdir(args.input_path):
         input_dir = os.path.expanduser(args.input_path)
         corpus_name = os.path.basename(args.input_path)
@@ -44,7 +48,7 @@ def generate_dictionary(args):
             word_set = [x for x in word_set if not check_bracketed(x)]
 
     if args.g2p_model_path is not None:
-        model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models'))
+        model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models', 'G2P'))
         model.validate(word_set)
         gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs,
                         num_pronunciations=args.num_pronunciations)

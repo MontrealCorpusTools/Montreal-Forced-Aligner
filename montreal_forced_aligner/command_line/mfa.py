@@ -135,6 +135,7 @@ g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                         help='Number of cores to use while generating pronunciations')
 g2p_parser.add_argument('-n', '--num_pronunciations', type=int, default=1,
                         help='Number of candidate pronunciations to output')
+g2p_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 train_g2p_parser = subparsers.add_parser('train_g2p')
@@ -151,6 +152,7 @@ train_g2p_parser.add_argument("--order", type=int, default=7,
 train_g2p_parser.add_argument('-v', "--validate", action='store_true',
                               help="Perform an analysis of accuracy training on "
                                    "most of the data and validating on an unseen subset")
+train_g2p_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 train_g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
 download_parser = subparsers.add_parser('download')
