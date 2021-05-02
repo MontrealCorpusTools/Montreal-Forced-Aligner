@@ -5,8 +5,8 @@
 Sound files
 ***********
 
-Currently, the only supported format for sound files is ``.wav``.  Sound files
-must adhere to the following conditions:
+The default format for sound files in Kaldi is ``.wav``.  However, if you have :code:`sox` available on your machine,
+MFA will use it to convert ``.flac``, ``.ogg`` and ``.aiff`` files to WAV for Kaldi to process.
 
 .. note::
 
@@ -16,25 +16,20 @@ must adhere to the following conditions:
 Sampling rate
 =============
 
-Sound files can be aligned regardless of their sampling rate so long as
-it is more than 16 kHz. Sound files to be aligned do not have to be all
-a single sampling rate, but each speaker must have a consistent sampling
-rate across their files.
+Feature generation for MFA uses a consistent frequency range (20-7800 Hz).  Files that are higher or lower sampling rate
+than 16 kHz will be up- or down-sampled by default to 16 kHz during the feature generation procedure, which may produce artifacts for
+upsampled files.  You can modify this sample rate as part of configuring features (see :ref:`feature_config` for more details).
 
 .. note::
 
-   Sound files with sampling rate lower 16 kHz will currently be ignored by the aligner. The features that the aligner
-   extracts are MFCCs derived from spectra from 0 to 7.8 kHz, so sound files must have Nyquist frequencies higher than 7.8 kHz.
-   There is no significant difference between the features derived from a sound file sampled at 16 kHz and one sampled at 44.1 kHz.
    The validation utility (:ref:`validating_data`) will note any ignored files, and the list of such files will be available in
    a log file.
 
 Bit depth
 =========
 
-Kaldi can only process 16-bit wave files.  Higher bit depths (24 and 32 bit) are getting more common for recording.
-MFA validation should raise an issue that files have bit depths other than 16-bit, but we leave it to you to do the conversion
-via some utility like ``sox``, ``praat``, or ``ffmpeg``.
+Kaldi can only process 16-bit WAV files.  Higher bit depths (24 and 32 bit) are getting more common for recording, so
+MFA will automatically convert higher bit depths if you have :code:`sox` available on your machine.
 
 Duration
 ========

@@ -5,6 +5,34 @@ from ..features.config import FeatureConfig
 
 
 class AlignConfig(BaseConfig):
+    """
+    Configuration object for alignment
+
+    Attributes
+    ----------
+    transition_scale : float
+        Transition scale, defaults to 1.0
+    acoustic_scale : float
+        Acoustic scale, defaults to 0.1
+    self_loop_scale : float
+        Self-loop scale, defaults to 0.1
+    disable_sat : bool
+        Flag for disabling speaker adaptation, defaults to False
+    feature_config : :class:`~montreal_forced_aligner.features.config.FeatureConfig`
+        Configuration object for feature generation
+    boost_silence : float
+        Factor to boost silence probabilities, 1.0 is no boost or reduction
+    beam : int
+        Size of the beam to use in decoding, defaults to 10
+    retry_beam : int
+        Size of the beam to use in decoding if it fails with the initial beam width, defaults to 40
+    data_directory : str
+        Path to save feature files
+    fmllr_update_type : str
+        Type of update for fMLLR, defaults to full
+    use_mp : bool
+        Flag for whether to use multiprocessing in feature generation
+    """
     def __init__(self, feature_config):
         self.transition_scale = 1.0
         self.acoustic_scale = 0.1

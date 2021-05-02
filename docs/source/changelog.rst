@@ -12,6 +12,9 @@ Changelog
 - Fixed a bug with dictionary parsing that misparsed clitics as <unk> words
 - Added a :code:`--clean` flag for :code:`mfa g2p` and :code:`mfa train_g2p` to remove temporary files from
   previous runs
+- Added support for using :code:`sox` in feature generation, allowing for use of audio files other than WAV
+- Switched library for TextGrid parsing from :code:`textgrid` to :code:`praatio`, allowing support for TextGrid files in
+  the short format.
 
 2.0.0a14
 --------

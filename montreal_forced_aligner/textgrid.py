@@ -1,7 +1,6 @@
 import os
 import sys
 import traceback
-from decimal import Decimal
 from praatio import tgio
 
 
@@ -18,16 +17,15 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                 continue
             line = line.split(' ')
             utt = line[0]
-            begin = Decimal(line[2])
-            duration = Decimal(line[3])
-            end = begin + duration
+            begin = round(float(line[2]), 4)
+            duration = float(line[3])
+            end = round(begin + duration, 4)
             label = line[4]
             speaker = corpus.utt_speak_mapping[utt]
             if utt in corpus.segments:
                 seg = corpus.segments[utt]
                 filename = seg['file_name']
                 utt_begin = seg['begin']
-                utt_begin = Decimal(utt_begin)
                 begin += utt_begin
                 end += utt_begin
             else:
@@ -57,12 +55,11 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
 
 def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, frame_shift=0.01):
     textgrid_write_errors = {}
-    frameshift = Decimal(str(frame_shift))
     if not os.path.exists(out_directory):
         os.makedirs(out_directory, exist_ok=True)
     if not corpus.segments:
         for i, (k, v) in enumerate(sorted(word_ctm.items())):
-            max_time = Decimal(str(corpus.get_wav_duration(k)))
+            max_time = round(corpus.get_wav_duration(k), 4)
             speaker = list(v.keys())[0]
             v = list(v.values())[0]
             try:
@@ -73,7 +70,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 words = []
                 phones = []
                 for interval in v:
-                    if max_time - interval[1] < frameshift:  # Fix rounding issues
+                    if max_time - interval[1] < frame_shift:  # Fix rounding issues
                         interval[1] = max_time
                     words.append(interval)
                 for j, interval in enumerate(phone_ctm[k][speaker]):
@@ -115,7 +112,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     words = []
                     phones = []
                     for interval in word_ctm[filename][speaker]:
-                        if max_time - interval[1] < frameshift:  # Fix rounding issues
+                        if max_time - interval[1] < frame_shift:  # Fix rounding issues
                             interval[1] = max_time
                         words.append(interval)
                     for p in phone_ctm[filename][speaker]:

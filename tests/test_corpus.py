@@ -221,3 +221,14 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
         _ = d.to_int(w)
     print(d.oovs_found)
     assert "'m" not in d.oovs_found
+
+
+def test_punctuated(punctuated_dir, temp_dir, sick_dict_path):
+    output_directory = os.path.join(temp_dir, 'weird_words')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    d = Dictionary(sick_dict_path, output_directory)
+    d.write()
+    c = AlignableCorpus(punctuated_dir, output_directory, use_mp=False)
+    c.initialize_corpus(d)
+    print(c.text_mapping['punctuated'])
+    assert c.text_mapping['punctuated'] == 'oh yes they they you know they love her and so i mean'

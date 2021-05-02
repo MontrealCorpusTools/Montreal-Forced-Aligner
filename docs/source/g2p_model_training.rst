@@ -15,9 +15,6 @@ phonetic transcription. The model is generated using the `Pynini`_ package, whic
 files. The implementation is based on that in the `Sigmorphon 2020 G2P task baseline`_.
 The G2P model output will be a .zip file like the acoustic model generated from alignment.
 
-Use
-===
-
 To train a model from a pronunciation dictionary, the following command is used:
 
 .. code-block:: bash

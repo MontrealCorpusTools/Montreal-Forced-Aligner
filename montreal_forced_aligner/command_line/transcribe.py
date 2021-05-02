@@ -87,12 +87,13 @@ def transcribe_corpus(args):
         if args.evaluate:
             corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                      speaker_characters=args.speaker_characters,
+                                     sample_rate=transcribe_config.feature_config.sample_frequency,
                                      num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         else:
             corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                                       speaker_characters=args.speaker_characters,
+                                      sample_rate=transcribe_config.feature_config.sample_frequency,
                                       num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
-        print(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=data_directory)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         dictionary = Dictionary(args.dictionary_path, data_directory)

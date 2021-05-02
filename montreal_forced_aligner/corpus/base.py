@@ -10,10 +10,10 @@ from ..exceptions import SampleRateError, CorpusError
 from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, filter_scp
 
 
-supported_audio_extensions = ['.flac']
+supported_audio_extensions = ['.flac', '.ogg', '.aiff']
 
 
-def get_wav_info(file_path):
+def get_wav_info(file_path, sample_rate=16000):
     with soundfile.SoundFile(file_path, 'r') as inf:
         subtype = inf.subtype
         bit_depth = int(subtype.split('_')[-1])
@@ -30,7 +30,7 @@ def get_wav_info(file_path):
     if not subtype.startswith('PCM'):
         use_sox = True
     if use_sox:
-        return_dict['sox_string'] = 'sox {} -t wav -b 16 -r 16000 - |'.format(file_path)
+        return_dict['sox_string'] = 'sox {} -t wav -b 16 -r {} - |'.format(file_path, sample_rate)
     return return_dict
 
 
@@ -89,7 +89,7 @@ class BaseCorpus(object):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
         self.debug = debug
         self.use_mp = use_mp
         log_dir = os.path.join(output_directory, 'logging')
@@ -147,6 +147,7 @@ class BaseCorpus(object):
         self.utt_file_mapping = {}
         self.ignored_utterances = []
         self.utterance_lengths = {}
+        self.sample_rate = sample_rate
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -238,7 +239,6 @@ class BaseCorpus(object):
 
     @property
     def grouped_wav(self):
-        print(self.sox_strings)
         output = []
         for g in self.groups:
             done = set()
@@ -268,7 +268,6 @@ class BaseCorpus(object):
                         output_g.append([r, p])
                         done.add(r)
             output.append(output_g)
-        print(output)
         return output
 
     def parse_features_logs(self):
@@ -282,10 +281,12 @@ class BaseCorpus(object):
 
     def speaker_utterance_info(self):
         num_speakers = len(self.speak_utt_mapping.keys())
+        if not num_speakers:
+            raise CorpusError('There were no sound files found of the appropriate format. Please double check the corpus path '
+                              'and/or run the validation utility (mfa validate).')
         average_utterances = sum(len(x) for x in self.speak_utt_mapping.values()) / num_speakers
         msg = 'Number of speakers in corpus: {}, average number of utterances per speaker: {}'.format(num_speakers,
                                                                                                       average_utterances)
-        self.logger.info(msg)
         return msg
 
     @property
@@ -301,9 +302,9 @@ class BaseCorpus(object):
                         pass
                 output.append(output_g)
         except KeyError:
-            raise (CorpusError(
+            raise CorpusError(
                 'Something went wrong while setting up the corpus. Please delete the {} folder and try again.'.format(
-                    self.output_directory)))
+                    self.output_directory))
         return output
 
     @property

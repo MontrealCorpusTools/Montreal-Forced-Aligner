@@ -14,9 +14,6 @@ We have trained several G2P models that are available for download (:ref:`pretra
    these models, please use the the 1.0.1 or 1.1 g2p utilities or retrain a new G2P model following
    :ref:`g2p_model_training`.
 
-Use
-===
-
 To construct a pronunciation dictionary from your .lab or .TextGrid files, simply input:
 
 .. code-block:: bash

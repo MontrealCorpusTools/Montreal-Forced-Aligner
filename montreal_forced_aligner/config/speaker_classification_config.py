@@ -1,6 +1,6 @@
 import yaml
 import os
-from .base_config import BaseConfig, ConfigError
+from .base_config import BaseConfig
 
 
 class SpeakerClassificationConfig(BaseConfig):

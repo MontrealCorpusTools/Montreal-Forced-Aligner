@@ -39,6 +39,16 @@ what it requires.
    "type", "mfcc", "Currently only MFCCs are supported"
    "use_energy", "False", "Use energy in place of first MFCC"
    "frame_shift", 10, "In milliseconds, determines time resolution"
+   "snip_edges", True, "Should provide better time resolution in alignment"
+   "pitch", False, "Currently not implemented"
+   "low_frequency", 20, "Frequency cut off for feature generation"
+   "high_frequency", 7800, "Frequency cut off for feature generation"
+   "sample_frequency", 16000, "Sample rate to up- or down-sample to"
+   "allow_downsample", True, "Flag for allowing down-sampling"
+   "allow_upsample", True, "Flag for allowing up-sampling"
+   "splice_left_context", 3, "Frame width for generating LDA transforms"
+   "splice_right_context", 3, "Frame width for generating LDA transforms"
+   "use_mp", True, "Flag for whether to use multiprocessing feature generation"
 
 .. _training_config:
 

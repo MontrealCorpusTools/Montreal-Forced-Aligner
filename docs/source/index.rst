@@ -14,6 +14,7 @@ Contents:
    introduction.rst
    news.rst
    installation.rst
+   tutorials.rst
    commands.rst
    data_prep.rst
    data_validation.rst

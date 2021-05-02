@@ -3,7 +3,7 @@ from decimal import Decimal
 import subprocess
 
 from .helper import thirdparty_binary, load_scp, edit_distance, log_kaldi_errors
-from .exceptions import KaldiProcessingError
+from .exceptions import KaldiProcessingError, CorpusError
 from .multiprocessing import run_mp, run_non_mp
 
 from .trainers import MonophoneTrainer
@@ -179,7 +179,11 @@ class CorpusValidator(object):
         self.dictionary.write()
         if self.test_transcriptions:
             self.dictionary.write(disambig=True)
-        self.corpus.initialize_corpus(self.dictionary)
+        try:
+            self.corpus.initialize_corpus(self.dictionary)
+        except CorpusError:
+            self.logger.warning('There was an error when initializing the corpus, likely due to missing sound files. Ignoring acoustic generation...')
+            self.ignore_acoustics = True
         if self.ignore_acoustics:
             print('Skipping acoustic feature generation')
         else:
@@ -222,8 +226,8 @@ class CorpusValidator(object):
                     f.write('{} {}\n'.format(k, ', '.join(oovs)))
             self.dictionary.save_oovs_found(output_dir)
             total_instances = sum(len(x) for x in utterance_oovs.values())
-            message = 'There were {} word types not found in the dictionary with a total of {} instances.\n' \
-                      'Please see \n\n{}\n\n for a full list of the word types and \n\n{}\n\n for a by-utterance breakdown of ' \
+            message = 'There were {} word types not found in the dictionary with a total of {} instances.\n\n' \
+                      '    Please see \n\n        {}\n\n    for a full list of the word types and \n\n        {}\n\n    for a by-utterance breakdown of ' \
                       'missing words.'.format(len(oov_types), total_instances, oov_path, utterance_oov_path)
         else:
             message = 'There were no missing words from the dictionary. If you plan on using the a model trained ' \

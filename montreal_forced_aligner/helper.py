@@ -208,6 +208,10 @@ def parse_logs(log_directory):
                 if 'error while loading shared libraries: libopenblas.so.0' in line:
                     raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
                                           'Try installing openblas via system package manager?')
+                if 'sox FAIL formats' in line:
+                    f = line.split(' ')[-1]
+                    raise ThirdpartyError('Your version of sox does not support the file format in your corpus. '
+                                          'Try installing another version of sox with support for {}.'.format(f))
                 if line.startswith('ERROR') or line.startswith('ASSERTION_FAILED'):
                     error_logs.append(log_path)
                     break

@@ -68,9 +68,10 @@ def classify_speakers(args):
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     try:
-        corpus = TranscribeCorpus(args.corpus_directory, data_directory,
-                        num_jobs=args.num_jobs, logger=logger, use_mp=classification_config.use_mp)
         ivector_extractor = IvectorExtractor(args.ivector_extractor_path, root_directory=data_directory)
+        corpus = TranscribeCorpus(args.corpus_directory, data_directory,
+                                  sample_rate=ivector_extractor.feature_config.sample_frequency,
+                        num_jobs=args.num_jobs, logger=logger, use_mp=classification_config.use_mp)
 
         begin = time.time()
         a = SpeakerClassifier(corpus, ivector_extractor, classification_config,

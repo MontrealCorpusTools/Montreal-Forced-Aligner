@@ -20,10 +20,10 @@ from ..multiprocessing.corpus import CorpusProcessWorker
 class TranscribeCorpus(BaseCorpus):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
         super(TranscribeCorpus, self).__init__(directory, output_directory,
                                                speaker_characters,
-                                               num_jobs, debug, logger, use_mp)
+                                               num_jobs, sample_rate, debug, logger, use_mp)
         self.vad_segments = {}
 
         loaded = self._load_from_temp()
@@ -58,6 +58,9 @@ class TranscribeCorpus(BaseCorpus):
         wav_path = os.path.join(self.output_directory, 'wav.scp')
         if not os.path.exists(wav_path):
             return False
+        sox_strings_path = os.path.join(self.output_directory, 'sox_strings.scp')
+        if not os.path.exists(sox_strings_path):
+            return False
         file_directory_path = os.path.join(self.output_directory, 'file_directory.scp')
         if not os.path.exists(file_directory_path):
             return False
@@ -69,6 +72,7 @@ class TranscribeCorpus(BaseCorpus):
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
         self.utt_wav_mapping = load_scp(wav_path)
+        self.sox_strings = load_scp(sox_strings_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
         segments_path = os.path.join(self.output_directory, 'segments.scp')
@@ -113,7 +117,7 @@ class TranscribeCorpus(BaseCorpus):
                     transcription_path = os.path.join(root, tg_name)
                 else:
                     transcription_path = None
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
         job_queue.join()
 
         for p in procs:
@@ -177,7 +181,7 @@ class TranscribeCorpus(BaseCorpus):
             for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 try:
-                    wav_info = get_wav_info(wav_path)
+                    wav_info = get_wav_info(wav_path, self.sample_rate)
                 except Exception:
                     self.wav_read_errors.append(wav_path)
                     continue

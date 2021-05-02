@@ -21,12 +21,9 @@ def parse_transcription(text):
     return words
 
 
-def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
+def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000):
     root = os.path.dirname(wav_path)
-    try:
-        wav_info = get_wav_info(wav_path)
-    except Exception:
-        raise WavReadError(wav_path)
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     if not speaker_characters:
         speaker_name = os.path.basename(root)
     elif isinstance(speaker_characters, int):
@@ -41,9 +38,9 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
             'wav_info': wav_info, 'relative_path': relative_path}
 
 
-def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
+def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000):
     root = os.path.dirname(wav_path)
-    wav_info = get_wav_info(wav_path)
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     try:
         text = load_text(lab_path)
     except UnicodeDecodeError:
@@ -72,9 +69,9 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     return return_dict
 
 
-def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters):
+def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, sample_rate=16000):
     file_name = recording_name
-    wav_info = get_wav_info(wav_path)
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     wav_max_time = wav_info['duration']
     try:
         tg = tgio.openTextgrid(textgrid_path)

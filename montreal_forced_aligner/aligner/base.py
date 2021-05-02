@@ -65,6 +65,7 @@ class BaseAligner(object):
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+            raise
 
     @property
     def meta(self):

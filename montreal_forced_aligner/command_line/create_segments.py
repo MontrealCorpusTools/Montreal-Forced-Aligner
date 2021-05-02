@@ -64,6 +64,7 @@ def create_segments(args, unknown_args=None):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = TranscribeCorpus(args.corpus_directory, data_directory,
+                                  sample_rate=segmentation_config.feature_config.sample_frequency,
                         num_jobs=args.num_jobs, logger=logger, use_mp=segmentation_config.use_mp)
 
         begin = time.time()
