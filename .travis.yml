@@ -33,6 +33,7 @@ install:
   - pip install -r requirements.txt
   - pip install -q coveralls coverage pytest setuptools
   - which python
+  - which sox
   - conda list
   - python -m montreal_forced_aligner.command_line.thirdparty download
   - ls $HOME/Documents/MFA/thirdparty/bin -al
@@ -56,8 +57,8 @@ after_success:
 after_failure:
   - ls tests/data/generated/sickcorpus/corpus_data/split2/log
   - cat tests/data/generated/sickcorpus/corpus_data/split2/log/make_mfcc.0.log
-    - ls tests/data/generated/temp/flac/corpus_data/split1/log
-    - cat tests/data/generated/temp/flac/corpus_data/split1/log/make_mfcc.0.log
+  - ls tests/data/generated/temp/flac/corpus_data/split1/log
+  - cat tests/data/generated/temp/flac/corpus_data/split1/log/make_mfcc.0.log
 
 cache:
   directories:
