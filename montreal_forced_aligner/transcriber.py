@@ -226,8 +226,8 @@ class Transcriber(object):
             input_directory = self.transcribe_directory
             if self.transcribe_config.fmllr:
                 input_directory = os.path.join(input_directory, 'fmllr')
-        for i in range(self.corpus.num_jobs):
-            with open(os.path.join(input_directory, 'tra.{}'.format(i)), 'r', encoding='utf8') as f:
+        for j in range(self.corpus.num_jobs):
+            with open(os.path.join(input_directory, 'tra.{}'.format(j)), 'r', encoding='utf8') as f:
                 for line in f:
                     t = line.strip().split(' ')
                     utt = t[0]

@@ -33,6 +33,7 @@ class AlignConfig(BaseConfig):
     use_mp : bool
         Flag for whether to use multiprocessing in feature generation
     """
+
     def __init__(self, feature_config):
         self.transition_scale = 1.0
         self.acoustic_scale = 0.1
