@@ -77,13 +77,54 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
     assert d.get_feat_dim(default_feature_config) == 39
 
 
+def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'stereo_tg')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(stereo_corpus_short_tg_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_tg_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac_tg_transcribe(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = TranscribeCorpus(flac_tg_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
 def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, '24bit')
 
     c = TranscribeCorpus(transcribe_corpus_24bit_dir, temp, use_mp=False)
-    assert len(c.unsupported_bit_depths) == 1
-    with pytest.raises(CorpusError):
-        c.initialize_corpus()
+    assert len(c.unsupported_bit_depths) == 0
+    c.initialize_corpus()
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
 
 
 def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, default_feature_config):
@@ -177,6 +218,17 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
 
     d.set_word_set(c.word_set)
     for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
-        t = d.to_int(w)
+        _ = d.to_int(w)
     print(d.oovs_found)
     assert "'m" not in d.oovs_found
+
+
+def test_punctuated(punctuated_dir, temp_dir, sick_dict_path):
+    output_directory = os.path.join(temp_dir, 'weird_words')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    d = Dictionary(sick_dict_path, output_directory)
+    d.write()
+    c = AlignableCorpus(punctuated_dir, output_directory, use_mp=False)
+    c.initialize_corpus(d)
+    print(c.text_mapping['punctuated'])
+    assert c.text_mapping['punctuated'] == 'oh yes they they you know they love her and so i mean'

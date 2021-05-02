@@ -1,11 +1,7 @@
 import os
-import shutil
-import subprocess
 from ..exceptions import ConfigError
-from .processing import mfcc, compute_vad
+from .processing import mfcc, compute_vad, calc_cmvn
 from ..config import BaseConfig
-
-from ..helper import thirdparty_binary, load_scp, save_groups
 
 
 def make_safe(value):
@@ -109,26 +105,6 @@ class FeatureConfig(BaseConfig):
         if self.lda:
             self.deltas = False
 
-    def calc_cmvn(self, corpus):
-        split_dir = corpus.split_directory()
-        spk2utt = os.path.join(corpus.output_directory, 'spk2utt')
-        feats = os.path.join(corpus.output_directory, 'feats.scp')
-        cmvn_directory = os.path.join(corpus.features_directory, 'cmvn')
-        os.makedirs(cmvn_directory, exist_ok=True)
-        cmvn_ark = os.path.join(cmvn_directory, 'cmvn.ark')
-        cmvn_scp = os.path.join(cmvn_directory, 'cmvn.scp')
-        log_path = os.path.join(cmvn_directory, 'cmvn.log')
-        with open(log_path, 'w') as logf:
-            subprocess.call([thirdparty_binary('compute-cmvn-stats'),
-                             '--spk2utt=ark:' + spk2utt,
-                             'scp:' + feats, 'ark,scp:{},{}'.format(cmvn_ark, cmvn_scp)],
-                            stderr=logf)
-        shutil.copy(cmvn_scp, os.path.join(corpus.output_directory, 'cmvn.scp'))
-        corpus.cmvn_mapping = load_scp(cmvn_scp)
-        pattern = 'cmvn.{}.scp'
-        save_groups(corpus.grouped_cmvn, split_dir, pattern)
-        #apply_cmvn(split_dir, corpus.num_jobs, self)
-
     def compute_vad(self, corpus, logger=None, vad_config=None):
         if logger is None:
             log_func = print
@@ -159,8 +135,6 @@ class FeatureConfig(BaseConfig):
         else:
             log_func = logger.info
         split_directory = corpus.split_directory()
-        for job_name, config in enumerate(corpus.frequency_configs):
-            self.add_job_specific_config(job_name, config[1])
         feat_id = 'feats'
         if not os.path.exists(os.path.join(split_directory, feat_id + '.0.scp')):
             log_func('Generating base features ({})...'.format(self.type))
@@ -169,7 +143,7 @@ class FeatureConfig(BaseConfig):
             corpus.combine_feats()
             if compute_cmvn:
                 log_func('Calculating CMVN...')
-                self.calc_cmvn(corpus)
+                calc_cmvn(corpus)
 
     def construct_feature_proc_string(self, data_directory, model_directory, job_name, splice=False, voiced=False, cmvn=True):
         if self.directory is None:

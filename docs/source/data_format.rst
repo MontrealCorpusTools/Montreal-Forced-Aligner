@@ -9,9 +9,9 @@ Data formats
 Prosodylab-aligner format
 =========================
 
-Every .wav sound file you are aligning must have a corresponding .lab
-file containing the text transcription of that .wav file.  The .wav and
-.lab files must have the same name. For example, if you have ``givrep_1027_2_1.wav``,
+Every audio file you are aligning must have a corresponding .lab
+file containing the text transcription of that audio file.  The audio and
+transcription files must have the same name. For example, if you have ``givrep_1027_2_1.wav``,
 its transcription should be in ``givrep_1027_2_1.lab`` (which is just a
 text file with the .lab extension).
 

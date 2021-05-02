@@ -80,7 +80,8 @@ def align_corpus(args, unknown_args=None):
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
-                                 num_jobs=args.num_jobs, logger=logger, use_mp=align_config.use_mp)
+                                 num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
+                                 logger=logger, use_mp=align_config.use_mp)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')

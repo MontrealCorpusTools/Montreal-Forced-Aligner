@@ -77,11 +77,13 @@ def train_dictionary(args):
     os.makedirs(data_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
-                        speaker_characters=args.speaker_characters,
-                        num_jobs=args.num_jobs, use_mp=align_config.use_mp, logger=logger)
+                                 speaker_characters=args.speaker_characters,
+                                 num_jobs=args.num_jobs,
+                                 sample_rate=align_config.feature_config.sample_frequency,
+                                 use_mp=align_config.use_mp, logger=logger)
         if corpus.issues_check:
             logger.warning('WARNING: Some issues parsing the corpus were detected. '
-                  'Please run the validator to get more information.')
+                           'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path)
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)

@@ -3,14 +3,14 @@ from queue import Empty
 import traceback
 import sys
 import os
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 
 from ..helper import load_text
 
 from ..dictionary import sanitize
 
 from ..exceptions import SampleRateError, WavReadError, \
-    BitDepthError, TextParseError, TextGridParseError
+    TextParseError, TextGridParseError
 
 from ..corpus.base import get_wav_info
 
@@ -21,15 +21,9 @@ def parse_transcription(text):
     return words
 
 
-def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
+def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000):
     root = os.path.dirname(wav_path)
-    try:
-        wav_info = get_wav_info(wav_path)
-    except Exception:
-        raise WavReadError(wav_path)
-    bit_depth = wav_info['bit_depth']
-    if bit_depth != 16:
-        raise BitDepthError(wav_path)
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     if not speaker_characters:
         speaker_name = os.path.basename(root)
     elif isinstance(speaker_characters, int):
@@ -44,15 +38,9 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
             'wav_info': wav_info, 'relative_path': relative_path}
 
 
-def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
+def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000):
     root = os.path.dirname(wav_path)
-    try:
-        wav_info = get_wav_info(wav_path)
-    except Exception:
-        raise WavReadError(wav_path)
-    bit_depth = wav_info['bit_depth']
-    if bit_depth != 16:
-        raise BitDepthError(wav_path)
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     try:
         text = load_text(lab_path)
     except UnicodeDecodeError:
@@ -74,27 +62,25 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
         utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
 
     utt_name = utt_name.replace('_', '-')
-    return {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
-            'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
+    return_dict = {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
+                   'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
+    if 'sox_string' in wav_info:
+        return_dict['sox_string'] = wav_info['sox_string']
+    return return_dict
 
-def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters):
+
+def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, sample_rate=16000):
     file_name = recording_name
-    try:
-        wav_info = get_wav_info(wav_path)
-    except Exception:
-        raise WavReadError(wav_path)
-    bit_depth = wav_info['bit_depth']
+    wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     wav_max_time = wav_info['duration']
-    if bit_depth != 16:
-        raise BitDepthError(wav_path)
-    tg = TextGrid()
     try:
-        tg.read(textgrid_path)
+        tg = tgio.openTextgrid(textgrid_path)
     except Exception as e:
         exc_type, exc_value, exc_traceback = sys.exc_info()
-        raise TextGridParseError(textgrid_path, '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+        raise TextGridParseError(textgrid_path,
+                                 '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
     n_channels = wav_info['num_channels']
-    num_tiers = len(tg.tiers)
+    num_tiers = len(tg.tierNameList)
     if n_channels > 2:
         raise (Exception('More than two channels'))
     speaker_ordering = []
@@ -114,21 +100,23 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
     utt_speak_mapping = {}
     speak_utt_mapping = {}
     utt_file_mapping = {}
+    sox_string_mappings = {}
     file_utt_mapping = {file_name: []}
-    for i, ti in enumerate(tg.tiers):
-        if ti.name.lower() == 'notes':
+    for i, tier_name in enumerate(tg.tierNameList):
+        ti = tg.tierDict[tier_name]
+        if tier_name.lower() == 'notes':
             continue
-        if not isinstance(ti, IntervalTier):
+        if not isinstance(ti, tgio.IntervalTier):
             continue
         if not speaker_characters:
-            speaker_name = ti.name.strip().replace(' ', '_')
+            speaker_name = tier_name.strip().replace(' ', '_')
             speaker_ordering.append(speaker_name)
-        for interval in ti:
-            text = interval.mark.lower().strip()
+        for begin, end, text in ti.entryList:
+            text = text.lower().strip()
             words = parse_transcription(text)
             if not words:
                 continue
-            begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
+            begin, end = round(begin, 4), round(end, 4)
             end = min(end, wav_max_time)
             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
@@ -150,13 +138,17 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
                 speak_utt_mapping[speaker_name] = []
             speak_utt_mapping[speaker_name].append(utt_name)
     file_names = [file_name]
-    return {'text_file': textgrid_path, 'wav_path':wav_path, 'wav_info': wav_info, 'segments': segments,
-            'utt_wav_mapping': utt_wav_mapping, 'text_mapping': text_mapping,
-            'utt_text_file_mapping': utt_text_file_mapping, 'utt_speak_mapping': utt_speak_mapping,
-            'speak_utt_mapping': speak_utt_mapping, 'speaker_ordering': speaker_ordering,
-            'file_names': file_names, 'relative_path': relative_path, 'recording_name': recording_name,
-            'file_utt_mapping': file_utt_mapping, 'utt_file_mapping': utt_file_mapping
-            }
+    return_dict = {'text_file': textgrid_path, 'wav_path': wav_path, 'wav_info': wav_info, 'segments': segments,
+                   'utt_wav_mapping': utt_wav_mapping, 'text_mapping': text_mapping,
+                   'utt_text_file_mapping': utt_text_file_mapping, 'utt_speak_mapping': utt_speak_mapping,
+                   'speak_utt_mapping': speak_utt_mapping, 'speaker_ordering': speaker_ordering,
+                   'file_names': file_names, 'relative_path': relative_path, 'recording_name': recording_name,
+                   'file_utt_mapping': file_utt_mapping, 'utt_file_mapping': utt_file_mapping
+                   }
+    if 'sox_string' in wav_info:
+        sox_string_mappings[file_name] = wav_info['sox_string']
+        return_dict['sox_string'] = sox_string_mappings
+    return return_dict
 
 
 class CorpusProcessWorker(mp.Process):
@@ -198,10 +190,6 @@ class CorpusProcessWorker(mp.Process):
                 if 'unsupported_sample_rate' not in self.return_dict:
                     self.return_dict['unsupported_sample_rate'] = []
                 self.return_dict['unsupported_sample_rate'].append(wav_path)
-            except BitDepthError:
-                if 'unsupported_bit_depths' not in self.return_dict:
-                    self.return_dict['unsupported_bit_depths'] = []
-                self.return_dict['unsupported_bit_depths'].append(wav_path)
             except TextParseError:
                 if 'decode_error_files' not in self.return_dict:
                     self.return_dict['decode_error_files'] = []

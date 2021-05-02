@@ -18,6 +18,10 @@ All platforms
    only Linux and MacOS. To use G2P functionality on Windows, please set up the "Windows Subsystem
    For Linux" and use the Bash console to continue the instructions.
 
+   Also note that Kaldi binaries were built on fairly recent distributions (18.04 Ubuntu, 10.15 MacOSX Catalina).
+   These binaries may not work on your specific distribution, particularly if is it older.  See :ref:`collect_binaries` for
+   how to build and collect binaries on your machine for use with MFA.
+
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
 2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst pynini ngram baumwelch`
 
@@ -26,6 +30,8 @@ All platforms
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 4. Run :code:`pip install montreal-forced-aligner`
 5. Install third-party binaries via :code:`mfa thirdparty download` (see also :ref:`collect_binaries` to collect locally built binaries)
+6. If you'd like to use :code:`sox` to align non-WAV files, install a system version (The conda package from :code:`conda install -c conda-forge sox` is
+   missing a lot of codecs).
 
 To upgrade to the latest version of MFA:
 

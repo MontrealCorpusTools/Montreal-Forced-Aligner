@@ -117,6 +117,7 @@ validate_parser.add_argument('--ignore_acoustics',
                              action='store_true')
 validate_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                              help='Number of cores to use while aligning')
+validate_parser.add_argument('-d', '--debug', help="Debug the aligner", action='store_true')
 validate_parser.add_argument('--disable_mp', help="Disable any multiprocessing during validation", action='store_true')
 
 g2p_model_help_message = '''Full path to the archive containing pre-trained model or language ({})
@@ -304,6 +305,8 @@ thirdparty_parser.add_argument('local_directory',
 def main():
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
+    if not getattr(args, 'debug', False):
+        sys.tracebacklimit = 0
     fix_path()
     if args.subcommand in ['align', 'train', 'train_ivector']:
         from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries

@@ -2,12 +2,14 @@ import os
 import random
 import time
 import re
+import itertools
+
+from praatio import tgio
 from collections import Counter
-from textgrid import TextGrid, IntervalTier
 from ..helper import output_mapping, save_groups, filter_scp, load_scp
 
 from ..exceptions import CorpusError, WavReadError,  \
-    BitDepthError, TextParseError, TextGridParseError
+    TextParseError, TextGridParseError
 
 from .base import BaseCorpus, find_exts
 import multiprocessing as mp
@@ -50,10 +52,10 @@ class AlignableCorpus(BaseCorpus):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
-                                              num_jobs, debug, logger, use_mp)
+                                              num_jobs, sample_rate, debug, logger, use_mp)
         self.utt_text_file_mapping = {}
         self.word_counts = Counter()
         self.utterance_oovs = {}
@@ -105,6 +107,9 @@ class AlignableCorpus(BaseCorpus):
         wav_path = os.path.join(self.output_directory, 'wav.scp')
         if not os.path.exists(wav_path):
             return False
+        sox_strings_path = os.path.join(self.output_directory, 'sox_strings.scp')
+        if not os.path.exists(sox_strings_path):
+            return False
         text_file_path = os.path.join(self.output_directory, 'text_file.scp')
         if not os.path.exists(text_file_path):
             return False
@@ -133,6 +138,7 @@ class AlignableCorpus(BaseCorpus):
                 self.word_counts.update(new_w + [w])
             self.text_mapping[utt] = ' '.join(text)
         self.utt_wav_mapping = load_scp(wav_path)
+        self.sox_strings = load_scp(sox_strings_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.utt_text_file_mapping = load_scp(text_file_path)
         for p in self.utt_text_file_mapping.values():
@@ -177,9 +183,9 @@ class AlignableCorpus(BaseCorpus):
             p.start()
 
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in wav_files.items():
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 if file_name in lab_files:
                     lab_name = lab_files[file_name]
@@ -191,7 +197,7 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
         job_queue.join()
         stopped.stop()
         for p in procs:
@@ -224,6 +230,8 @@ class AlignableCorpus(BaseCorpus):
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
+                if 'sox_string' in info:
+                    self.sox_strings[utt_name] = info['sox_string']
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
                 self.lab_count += 1
@@ -234,6 +242,8 @@ class AlignableCorpus(BaseCorpus):
                 self.speaker_ordering[file_name] = info['speaker_ordering']
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                if 'sox_strings' in info:
+                    self.sox_strings.update(info['sox_strings'])
                 self.file_utt_mapping.update(info['file_utt_mapping'])
                 self.utt_file_mapping.update(info['utt_file_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
@@ -266,15 +276,17 @@ class AlignableCorpus(BaseCorpus):
     def _load_from_source(self):
         begin_time = time.time()
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in wav_files.items():
+
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 if file_name in lab_files:
                     lab_name = lab_files[file_name]
                     lab_path = os.path.join(root, lab_name)
                     try:
-                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path, speaker_characters=self.speaker_characters)
+                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path,
+                                              self.speaker_characters, self.sample_rate)
                         utt_name = info['utt_name']
                         speaker_name = info['speaker_name']
                         wav_info = info['wav_info']
@@ -295,13 +307,16 @@ class AlignableCorpus(BaseCorpus):
                         self.utt_text_file_mapping[utt_name] = lab_path
                         self.speak_utt_mapping[speaker_name].append(utt_name)
                         self.utt_wav_mapping[utt_name] = wav_path
+                        if 'sox_string' in info:
+                            self.sox_strings[utt_name] = info['sox_string']
                         self.utt_speak_mapping[utt_name] = speaker_name
                         self.file_directory_mapping[utt_name] = relative_path
+                        self.wav_info[file_name] = [wav_info['num_channels'],
+                                                    wav_info['sample_rate'],
+                                                    wav_info['duration']]
                         self.lab_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except BitDepthError:
-                        self.unsupported_bit_depths.append(wav_path)
                     except TextParseError:
                         self.decode_error_files.append(lab_path)
 
@@ -310,12 +325,14 @@ class AlignableCorpus(BaseCorpus):
                     tg_path = os.path.join(root, tg_name)
                     try:
                         info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path,
-                                                   self.speaker_characters)
+                                                   self.speaker_characters, self.sample_rate)
                         wav_info = info['wav_info']
                         self.wav_files.append(file_name)
                         self.speaker_ordering[file_name] = info['speaker_ordering']
                         self.segments.update(info['segments'])
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                        if 'sox_strings' in info:
+                            self.sox_strings.update(info['sox_strings'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
                         for utt, words in info['text_mapping'].items():
                             words = words.split()
@@ -331,18 +348,18 @@ class AlignableCorpus(BaseCorpus):
                                 self.speak_utt_mapping[speak].extend(utts)
                         for fn in info['file_names']:
                             self.file_directory_mapping[fn] = relative_path
+                        self.wav_info[file_name] = [wav_info['num_channels'],
+                                                    wav_info['sample_rate'],
+                                                    wav_info['duration']]
                         self.tg_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except BitDepthError:
-                        self.unsupported_bit_depths.append(wav_path)
                     except TextGridParseError as e:
                         self.textgrid_read_errors[tg_path] = e.error
 
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
-                self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
         self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time()-begin_time))
 
     def check_warnings(self):
@@ -352,9 +369,10 @@ class AlignableCorpus(BaseCorpus):
     def save_text_file(self, file_name):
         if self.segments:
             text_file_path = self.utt_text_file_mapping[file_name]
-            tg = TextGrid()
-            tg.read(text_file_path)
+            tg = tgio.Textgrid()
             tiers = {}
+
+            duration = self.get_wav_duration(file_name)
 
             for utt in self.file_utt_mapping[file_name]:
                 seg = self.segments[utt]
@@ -364,10 +382,12 @@ class AlignableCorpus(BaseCorpus):
                 text =  self.text_mapping[utt]
                 speaker = self.utt_speak_mapping[utt]
                 if speaker not in tiers:
-                    tiers[speaker] = IntervalTier(name=speaker, maxTime=tg.maxTime)
-                tiers[speaker].add(begin, end, text)
-            tg.tiers = tiers.values()
-            tg.write(text_file_path)
+                    tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=duration)
+                tiers[speaker].entryList.append(begin, end, text)
+
+            for v in tiers.values():
+                tg.addTier(v)
+            tg.save(text_file_path, useShortForm=False)
         else:
             lab_path = self.utt_text_file_mapping[file_name]
             with open(lab_path, 'w', encoding='utf8') as f:

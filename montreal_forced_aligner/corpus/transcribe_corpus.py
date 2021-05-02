@@ -2,7 +2,9 @@ import os
 import sys
 import traceback
 import time
-from textgrid import TextGrid, IntervalTier
+import itertools
+
+from praatio import tgio
 
 from .base import BaseCorpus, get_wav_info, find_exts
 from ..helper import load_scp
@@ -18,10 +20,10 @@ from ..multiprocessing.corpus import CorpusProcessWorker
 class TranscribeCorpus(BaseCorpus):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
         super(TranscribeCorpus, self).__init__(directory, output_directory,
                                                speaker_characters,
-                                               num_jobs, debug, logger, use_mp)
+                                               num_jobs, sample_rate, debug, logger, use_mp)
         self.vad_segments = {}
 
         loaded = self._load_from_temp()
@@ -56,6 +58,9 @@ class TranscribeCorpus(BaseCorpus):
         wav_path = os.path.join(self.output_directory, 'wav.scp')
         if not os.path.exists(wav_path):
             return False
+        sox_strings_path = os.path.join(self.output_directory, 'sox_strings.scp')
+        if not os.path.exists(sox_strings_path):
+            return False
         file_directory_path = os.path.join(self.output_directory, 'file_directory.scp')
         if not os.path.exists(file_directory_path):
             return False
@@ -67,6 +72,7 @@ class TranscribeCorpus(BaseCorpus):
         self.utt_speak_mapping = load_scp(utt2spk_path)
         self.speak_utt_mapping = load_scp(spk2utt_path)
         self.utt_wav_mapping = load_scp(wav_path)
+        self.sox_strings = load_scp(sox_strings_path)
         self.wav_info = load_scp(wav_info_path, float)
         self.file_directory_mapping = load_scp(file_directory_path)
         segments_path = os.path.join(self.output_directory, 'segments.scp')
@@ -101,9 +107,9 @@ class TranscribeCorpus(BaseCorpus):
             p.start()
 
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in wav_files.items():
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
 
                 if file_name in textgrid_files:
@@ -111,7 +117,7 @@ class TranscribeCorpus(BaseCorpus):
                     transcription_path = os.path.join(root, tg_name)
                 else:
                     transcription_path = None
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
         job_queue.join()
 
         for p in procs:
@@ -171,19 +177,15 @@ class TranscribeCorpus(BaseCorpus):
 
     def _load_from_source(self):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
-            for file_name, f in wav_files.items():
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 try:
-                    wav_info = get_wav_info(wav_path)
+                    wav_info = get_wav_info(wav_path, self.sample_rate)
                 except Exception:
                     self.wav_read_errors.append(wav_path)
                     continue
-                bit_depth = wav_info['bit_depth']
                 wav_max_time = wav_info['duration']
-                if bit_depth != 16:
-                    self.unsupported_bit_depths.append(wav_path)
-                    continue
                 if self.speaker_directories:
                     speaker_name = os.path.basename(root)
                 else:
@@ -206,20 +208,22 @@ class TranscribeCorpus(BaseCorpus):
                 self.utt_wav_mapping[utt_name] = wav_path
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_speak_mapping[utt_name] = speaker_name
+                if 'sox_string' in wav_info:
+                    self.sox_strings[utt_name] = wav_info['sox_string']
                 self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
                 if file_name in textgrid_files:
                     tg_name = textgrid_files[file_name]
                     tg_path = os.path.join(root, tg_name)
-                    tg = TextGrid()
                     try:
-                        tg.read(tg_path)
+                        tg = tgio.openTextgrid(tg_path)
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
                         self.textgrid_read_errors[tg_path] = '\n'.join(
                             traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        continue
                     n_channels = wav_info['num_channels']
-                    num_tiers = len(tg.tiers)
+                    num_tiers = len(tg.tierNameList)
                     if n_channels > 2:
                         raise (Exception('More than two channels'))
                     self.speaker_ordering[file_name] = []
@@ -232,20 +236,21 @@ class TranscribeCorpus(BaseCorpus):
                             speaker_name = f
                         speaker_name = speaker_name.strip().replace(' ', '_')
                         self.speaker_ordering[file_name].append(speaker_name)
-                    for i, ti in enumerate(tg.tiers):
-                        if ti.name.lower() == 'notes':
+                    for i, tier_name in enumerate(tg.tierNameList):
+                        ti = tg.tierDict[tier_name]
+                        if tier_name.lower() == 'notes':
                             continue
-                        if not isinstance(ti, IntervalTier):
+                        if not isinstance(ti, tgio.IntervalTier):
                             continue
                         if self.speaker_directories:
-                            speaker_name = ti.name.strip().replace(' ', '_')
+                            speaker_name = tier_name.strip().replace(' ', '_')
                             self.speaker_ordering[file_name].append(speaker_name)
-                        for interval in ti:
-                            text = interval.mark.lower().strip()
+                        for begin, end, text in ti.entryList:
+                            text = text.lower().strip()
                             if not text:
                                 continue
 
-                            begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
+                            begin, end = round(begin, 4), round(end, 4)
                             end = min(end, wav_max_time)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')

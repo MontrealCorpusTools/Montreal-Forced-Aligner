@@ -2,7 +2,7 @@ import subprocess
 import os
 import shutil
 import multiprocessing as mp
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 from .config import TEMP_DIR
 from .helper import thirdparty_binary
 from .multiprocessing import transcribe, transcribe_fmllr
@@ -43,7 +43,7 @@ class Transcriber(object):
 
     def get_tree_info(self):
         tree_proc = subprocess.Popen([thirdparty_binary('tree-info'),
-                            os.path.join(self.transcribe_directory, 'tree')], text=True,
+                                      os.path.join(self.transcribe_directory, 'tree')], text=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, _ = tree_proc.communicate()
         context_width = 1
@@ -89,8 +89,9 @@ class Transcriber(object):
             if not os.path.exists(g_path):
                 print('Generating G.fst...')
                 arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                 '--read-symbol-table=' + words_path,
-                                 self.language_model.arpa_path, g_path], stderr=log_file, stdout=log_file)
+                                                 '--read-symbol-table=' + words_path,
+                                                 self.language_model.arpa_path, g_path], stderr=log_file,
+                                                stdout=log_file)
                 arpafst_proc.communicate()
                 print('Done!')
             if not os.path.exists(lg_path):
@@ -148,7 +149,8 @@ class Transcriber(object):
                                                      '--use-log=true', temp_compose_path],
                                                     stdout=subprocess.PIPE, stderr=log_file)
                 rmsymbols_proc = subprocess.Popen([thirdparty_binary('fstrmsymbols'), ha_out_disambig],
-                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
+                                                  stderr=log_file)
                 rmeps_proc = subprocess.Popen([thirdparty_binary('fstrmepslocal')],
                                               stdin=rmsymbols_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
                 minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'), '-', hclga_path],
@@ -224,8 +226,8 @@ class Transcriber(object):
             input_directory = self.transcribe_directory
             if self.transcribe_config.fmllr:
                 input_directory = os.path.join(input_directory, 'fmllr')
-        for i in range(self.corpus.num_jobs):
-            with open(os.path.join(input_directory, 'tra.{}'.format(i)), 'r', encoding='utf8') as f:
+        for j in range(self.corpus.num_jobs):
+            with open(os.path.join(input_directory, 'tra.{}'.format(j)), 'r', encoding='utf8') as f:
                 for line in f:
                     t = line.strip().split(' ')
                     utt = t[0]
@@ -262,9 +264,10 @@ class Transcriber(object):
                     speaker_directory = output_directory
                 tiers = {}
                 for speaker in self.corpus.speaker_ordering[filename]:
-                    tiers[speaker] = IntervalTier(name=speaker, maxTime=maxtime)
+                    tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=maxtime)
 
-                tg = TextGrid(maxTime=maxtime)
+                tg = tgio.Textgrid()
+                tg.maxTimestamp = maxtime
                 for utt_name, text in transcripts.items():
                     utt_filename, begin, end = self.corpus.segments[utt_name].split(' ')
                     if utt_filename != filename:
@@ -272,7 +275,7 @@ class Transcriber(object):
                     speaker = self.corpus.utt_speak_mapping[utt_name]
                     begin = float(begin)
                     end = float(end)
-                    tiers[speaker].add(begin, end, text)
+                    tiers[speaker].append((begin, end, text))
                 for t in tiers.values():
-                    tg.append(t)
-                tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
+                    tg.addTier(t)
+                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)

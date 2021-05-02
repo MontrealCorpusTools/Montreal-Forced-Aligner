@@ -70,13 +70,6 @@ class SampleRateError(CorpusReadError):
     pass
 
 
-class BitDepthError(CorpusReadError):
-    """
-    Class for errors in different sample rates
-    """
-    pass
-
-
 class TextParseError(CorpusReadError):
     """
     Class for errors in different sample rates

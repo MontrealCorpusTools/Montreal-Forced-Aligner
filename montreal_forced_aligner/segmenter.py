@@ -1,5 +1,7 @@
 import os
 import shutil
+from decimal import Decimal
+from praatio import tgio
 from .config import TEMP_DIR
 from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -25,6 +27,7 @@ class Segmenter(object):
     verbose : bool
         Flag for running in verbose mode, defaults to false
     """
+
     def __init__(self, corpus, segmentation_config,
                  temp_directory=None, call_back=None, debug=False, verbose=False, logger=None):
         self.corpus = corpus
@@ -103,9 +106,6 @@ class Segmenter(object):
             pass
 
     def export_segments(self, output_directory):
-        from decimal import Decimal
-        from textgrid import TextGrid, IntervalTier
-
         file_dict = {}
         for utt, segment in self.corpus.vad_segments.items():
             filename, utt_begin, utt_end = segment
@@ -125,13 +125,15 @@ class Segmenter(object):
                 speaker_directory = output_directory
             os.makedirs(speaker_directory, exist_ok=True)
             max_time = self.corpus.get_wav_duration(filename)
-            tg = TextGrid(maxTime=max_time)
+            tg = tgio.Textgrid()
+            tg.minTimestamp = 0
+            tg.maxTimestamp = max_time
             for speaker in sorted(speaker_dict.keys()):
                 words = speaker_dict[speaker]
-                tier = IntervalTier(name=speaker, maxTime=max_time)
+                tier = tgio.IntervalTier(speaker, [], minT=0, maxT=max_time)
                 for w in words:
                     if w[1] > max_time:
                         w[1] = max_time
-                    tier.add(*w)
-                tg.append(tier)
-            tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
+                    tier.entryList.append(w)
+                tg.addTier(tier)
+            tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)

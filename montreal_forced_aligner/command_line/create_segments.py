@@ -64,6 +64,7 @@ def create_segments(args, unknown_args=None):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = TranscribeCorpus(args.corpus_directory, data_directory,
+                                  sample_rate=segmentation_config.feature_config.sample_frequency,
                         num_jobs=args.num_jobs, logger=logger, use_mp=segmentation_config.use_mp)
 
         begin = time.time()
@@ -116,7 +117,7 @@ if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import create_segments_parser, fix_path, unfix_path
 
-    create_segments_args, unknown = create_segments_parser.parse_known_args()
+    create_segments_args, unknown_args = create_segments_parser.parse_known_args()
     fix_path()
-    run_create_segments(create_segments_args, unknown)
+    run_create_segments(create_segments_args, unknown_args)
     unfix_path()

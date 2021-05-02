@@ -78,7 +78,7 @@ def align_corpus(args, unknown_args=None):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                                 num_jobs=getattr(args, 'num_jobs', 3),
+                                 num_jobs=getattr(args, 'num_jobs', 3), sample_rate=align_config.feature_config.sample_frequency,
                                  debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
