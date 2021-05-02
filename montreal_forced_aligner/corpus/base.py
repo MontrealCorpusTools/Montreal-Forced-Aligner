@@ -3,28 +3,31 @@ import logging
 import soundfile
 import re
 import subprocess
+import shutil
 from collections import defaultdict
 
 from ..exceptions import SampleRateError, CorpusError
 from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, filter_scp
 
 
+supported_audio_extensions = ['.flac']
+
 def get_wav_info(file_path):
     with soundfile.SoundFile(file_path, 'r') as inf:
         n_channels = inf.channels
         subtype = inf.subtype
-        if not subtype.startswith('PCM'):
-            raise SampleRateError('The file {} is not a PCM file.'.format(file_path))
-        bit_depth = int(subtype.replace('PCM_', ''))
+        bit_depth = int(subtype.split('_')[-1])
         frames = inf.frames
         sr = inf.samplerate
         duration = frames / sr
+        format = inf.format
     return {'num_channels': n_channels, 'type': subtype, 'bit_depth': bit_depth,
-            'sample_rate': sr, 'duration': duration}
+            'sample_rate': sr, 'duration': duration, 'format': format}
 
 
 def find_exts(files):
     wav_files = {}
+    other_audio_files = {}
     lab_files = {}
     textgrid_files = {}
     for full_filename in files:
@@ -38,7 +41,9 @@ def find_exts(files):
             lab_files[filename] = full_filename
         elif fext == '.textgrid':
             textgrid_files[filename] = full_filename
-    return wav_files, lab_files, textgrid_files
+        elif fext in supported_audio_extensions and shutil.which('sox') is not None:
+            other_audio_files[filename] = full_filename
+    return wav_files, lab_files, textgrid_files, other_audio_files
 
 
 class BaseCorpus(object):
@@ -115,6 +120,7 @@ class BaseCorpus(object):
         self.text_mapping = {}
         self.wav_files = []
         self.wav_info = {}
+        self.sox_strings = {}
         self.unsupported_bit_depths = []
         self.wav_read_errors = []
         self.speak_utt_mapping = defaultdict(list)
@@ -127,7 +133,6 @@ class BaseCorpus(object):
         self.speaker_ordering = {}
         self.groups = []
         self.speaker_groups = []
-        self.frequency_configs = []
         self.segments = {}
         self.file_utt_mapping = {}
         self.utt_file_mapping = {}
@@ -224,6 +229,7 @@ class BaseCorpus(object):
 
     @property
     def grouped_wav(self):
+        print(self.sox_strings)
         output = []
         for g in self.groups:
             done = set()
@@ -233,7 +239,11 @@ class BaseCorpus(object):
                     continue
                 if not self.segments:
                     try:
-                        output_g.append([u, self.utt_wav_mapping[u]])
+                        if u in self.sox_strings:
+                            p = self.sox_strings[u]
+                        else:
+                            p = self.utt_wav_mapping[u]
+                        output_g.append([u, p])
                     except KeyError:
                         pass
                 else:
@@ -242,9 +252,14 @@ class BaseCorpus(object):
                     except KeyError:
                         continue
                     if r not in done:
-                        output_g.append([r, self.utt_wav_mapping[r]])
+                        if r in self.sox_strings:
+                            p = self.sox_strings[r]
+                        else:
+                            p = self.utt_wav_mapping[r]
+                        output_g.append([r, p])
                         done.add(r)
             output.append(output_g)
+        print(output)
         return output
 
     def parse_features_logs(self):
@@ -361,6 +376,10 @@ class BaseCorpus(object):
     def _write_wavscp(self):
         path = os.path.join(self.output_directory, 'wav.scp')
         output_mapping(self.utt_wav_mapping, path)
+
+    def _write_sox_strings(self):
+        path = os.path.join(self.output_directory, 'sox_strings.scp')
+        output_mapping(self.sox_strings, path)
 
     def _write_speaker_sr(self):
         path = os.path.join(self.output_directory, 'sr.scp')
@@ -500,6 +519,7 @@ class BaseCorpus(object):
         self._write_utt_file()
         self._write_segments()
         self._write_wavscp()
+        self._write_sox_strings()
         self._write_speaker_sr()
         self._write_wav_info()
         self._write_file_directory()

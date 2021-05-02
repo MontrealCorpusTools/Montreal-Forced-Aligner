@@ -19,9 +19,9 @@ All platforms
    For Linux" and use the Bash console to continue the instructions.
 
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
-2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst pynini ngram baumwelch`
+2. Create new environment via :code:`conda create -n aligner -c conda-forge openblas python=3.8 openfst pynini ngram baumwelch sox`
 
-   a. On Windows to use the aligner natively without G2P functionality, use the command :code:`conda create -n aligner -c conda-forge openblas python=3.8`
+   a. On Windows to use the aligner natively without G2P functionality, use the command :code:`conda create -n aligner -c conda-forge openblas python=3.8 sox`
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 4. Run :code:`pip install montreal-forced-aligner`
@@ -35,7 +35,7 @@ To upgrade to the latest version of MFA:
 .. note::
 
    MFA 2.0.0a5 and earlier used Pynini version 2.1.0.  As of 2.0.0a6, versions have been upgraded to the latest version
-   of Pynini, but there were some breaking changes, so please be sure to upgrade via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch`
+   of Pynini, but there were some breaking changes, so please be sure to upgrade via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch sox`
    if you installed a previous 2.0 alpha version to ensure correct performance.
 
 .. _collect_binaries:

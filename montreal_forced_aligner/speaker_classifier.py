@@ -3,6 +3,8 @@ import shutil
 from joblib import load
 import numpy as np
 import time
+from decimal import Decimal
+from praatio import tgio
 from .config import TEMP_DIR
 from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -231,8 +233,6 @@ class SpeakerClassifier(object):
             self.cluster_utterances()
         else:
             self.get_classification_stats()
-        from decimal import Decimal
-        from textgrid import TextGrid, IntervalTier
         spk2utt_path = os.path.join(self.classify_directory, 'spk2utt')
         utt2spk_path = os.path.join(self.classify_directory, 'utt2spk')
         if self.corpus.segments:
@@ -256,16 +256,18 @@ class SpeakerClassifier(object):
                 except KeyError:
                     speaker_directory = output_directory
                 max_time = self.corpus.get_wav_duration(filename)
-                tg = TextGrid(maxTime=max_time)
+                tg = tgio.Textgrid()
+                tg.minTimestamp = 0
+                tg.maxTimestamp = max_time
                 for speaker in sorted(speaker_dict.keys()):
                     words = speaker_dict[speaker]
-                    tier = IntervalTier(name=speaker, maxTime=max_time)
+                    tier = tgio.IntervalTier(speaker, [], minT=0, maxT=max_time)
                     for w in words:
                         if w[1] > max_time:
                             w[1] = max_time
-                        tier.add(*w)
-                    tg.append(tier)
-                tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
+                        tier.entryList.append(w)
+                    tg.addTier(tier)
+                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
 
         else:
             spk2utt = load_scp(spk2utt_path)

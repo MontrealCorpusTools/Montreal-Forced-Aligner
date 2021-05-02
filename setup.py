@@ -73,7 +73,7 @@ if __name__ == '__main__':
                     'montreal_forced_aligner.thirdparty',
                     'montreal_forced_aligner.trainers'],
           install_requires=[
-              'textgrid',
+              'praatio',
               'numpy',
               'tqdm',
               'pyyaml',

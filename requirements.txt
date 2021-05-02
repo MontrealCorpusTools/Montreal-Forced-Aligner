@@ -1,4 +1,4 @@
-textgrid
+praatio
 numpy
 tqdm
 pyyaml

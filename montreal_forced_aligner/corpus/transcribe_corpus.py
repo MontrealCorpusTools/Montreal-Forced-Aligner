@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 import time
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 
 from .base import BaseCorpus, get_wav_info, find_exts
 from ..helper import load_scp
@@ -101,7 +101,7 @@ class TranscribeCorpus(BaseCorpus):
             p.start()
 
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
             for file_name, f in wav_files.items():
                 wav_path = os.path.join(root, f)
@@ -171,7 +171,7 @@ class TranscribeCorpus(BaseCorpus):
 
     def _load_from_source(self):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files = find_exts(files)
+            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             for file_name, f in wav_files.items():
                 wav_path = os.path.join(root, f)
                 try:
@@ -211,15 +211,14 @@ class TranscribeCorpus(BaseCorpus):
                 if file_name in textgrid_files:
                     tg_name = textgrid_files[file_name]
                     tg_path = os.path.join(root, tg_name)
-                    tg = TextGrid()
                     try:
-                        tg.read(tg_path)
+                        tg = tgio.openTextgrid(tg_path)
                     except Exception as e:
                         exc_type, exc_value, exc_traceback = sys.exc_info()
                         self.textgrid_read_errors[tg_path] = '\n'.join(
                             traceback.format_exception(exc_type, exc_value, exc_traceback))
                     n_channels = wav_info['num_channels']
-                    num_tiers = len(tg.tiers)
+                    num_tiers = len(tg.tierNameList)
                     if n_channels > 2:
                         raise (Exception('More than two channels'))
                     self.speaker_ordering[file_name] = []
@@ -232,20 +231,21 @@ class TranscribeCorpus(BaseCorpus):
                             speaker_name = f
                         speaker_name = speaker_name.strip().replace(' ', '_')
                         self.speaker_ordering[file_name].append(speaker_name)
-                    for i, ti in enumerate(tg.tiers):
-                        if ti.name.lower() == 'notes':
+                    for i, tier_name in enumerate(tg.tierNameList):
+                        ti = tg.tierDict[tier_name]
+                        if tier_name.lower() == 'notes':
                             continue
-                        if not isinstance(ti, IntervalTier):
+                        if not isinstance(ti, tgio.IntervalTier):
                             continue
                         if self.speaker_directories:
-                            speaker_name = ti.name.strip().replace(' ', '_')
+                            speaker_name = tier_name.strip().replace(' ', '_')
                             self.speaker_ordering[file_name].append(speaker_name)
-                        for interval in ti:
-                            text = interval.mark.lower().strip()
+                        for begin, end, text in ti.entryList:
+                            text = text.lower().strip()
                             if not text:
                                 continue
 
-                            begin, end = round(interval.minTime, 4), round(interval.maxTime, 4)
+                            begin, end = round(begin, 4), round(end, 4)
                             end = min(end, wav_max_time)
                             utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
                             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')

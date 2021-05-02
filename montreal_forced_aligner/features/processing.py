@@ -1,7 +1,8 @@
 import subprocess
 import os
+import shutil
 
-from ..helper import thirdparty_binary, make_safe
+from ..helper import thirdparty_binary, make_safe, save_groups, load_scp
 
 from ..multiprocessing import run_mp, run_non_mp
 
@@ -92,6 +93,26 @@ def compute_vad_func(directory, vad_config, job_name):
                                     stderr=log_file
                                     )
         vad_proc.communicate()
+
+
+def calc_cmvn(corpus):
+    split_dir = corpus.split_directory()
+    spk2utt = os.path.join(corpus.output_directory, 'spk2utt')
+    feats = os.path.join(corpus.output_directory, 'feats.scp')
+    cmvn_directory = os.path.join(corpus.features_directory, 'cmvn')
+    os.makedirs(cmvn_directory, exist_ok=True)
+    cmvn_ark = os.path.join(cmvn_directory, 'cmvn.ark')
+    cmvn_scp = os.path.join(cmvn_directory, 'cmvn.scp')
+    log_path = os.path.join(cmvn_directory, 'cmvn.log')
+    with open(log_path, 'w') as logf:
+        subprocess.call([thirdparty_binary('compute-cmvn-stats'),
+                         '--spk2utt=ark:' + spk2utt,
+                         'scp:' + feats, 'ark,scp:{},{}'.format(cmvn_ark, cmvn_scp)],
+                        stderr=logf)
+    shutil.copy(cmvn_scp, os.path.join(corpus.output_directory, 'cmvn.scp'))
+    corpus.cmvn_mapping = load_scp(cmvn_scp)
+    pattern = 'cmvn.{}.scp'
+    save_groups(corpus.grouped_cmvn, split_dir, pattern)
 
 
 def compute_vad(directory, num_jobs, use_mp, vad_config=None):

@@ -2,7 +2,7 @@ import subprocess
 import os
 import shutil
 import multiprocessing as mp
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 from .config import TEMP_DIR
 from .helper import thirdparty_binary
 from .multiprocessing import transcribe, transcribe_fmllr
@@ -262,9 +262,10 @@ class Transcriber(object):
                     speaker_directory = output_directory
                 tiers = {}
                 for speaker in self.corpus.speaker_ordering[filename]:
-                    tiers[speaker] = IntervalTier(name=speaker, maxTime=maxtime)
+                    tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=maxtime)
 
-                tg = TextGrid(maxTime=maxtime)
+                tg = tgio.Textgrid()
+                tg.maxTimestamp = maxtime
                 for utt_name, text in transcripts.items():
                     utt_filename, begin, end = self.corpus.segments[utt_name].split(' ')
                     if utt_filename != filename:
@@ -272,7 +273,7 @@ class Transcriber(object):
                     speaker = self.corpus.utt_speak_mapping[utt_name]
                     begin = float(begin)
                     end = float(end)
-                    tiers[speaker].add(begin, end, text)
+                    tiers[speaker].append((begin, end, text))
                 for t in tiers.values():
-                    tg.append(t)
-                tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
+                    tg.addTier(t)
+                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)

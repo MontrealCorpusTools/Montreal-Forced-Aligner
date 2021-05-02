@@ -3,7 +3,7 @@ import sys
 import traceback
 import shutil
 
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 
 from montreal_forced_aligner.multiprocessing.corpus import parse_transcription
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -75,21 +75,21 @@ def get_word_set(corpus, include_bracketed=False):
             words = parse_transcription(text)
             word_set.update(words)
         else:
-            tg = TextGrid()
             try:
-                tg.read(file_path)
+                tg = tgio.openTextgrid(textgrid_path)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_read_errors[file_path] = '\n'.join(
                     traceback.format_exception(exc_type, exc_value, exc_traceback))
                 continue
-            for i, ti in enumerate(tg.tiers):
+            for i, tier_name in enumerate(tg.tierNameList):
+                ti = tg.tierDict[tier_name]
                 if ti.name.lower() == 'notes':
                     continue
-                if not isinstance(ti, IntervalTier):
+                if not isinstance(ti, tgio.IntervalTier):
                     continue
-                for interval in ti:
-                    text = interval.mark.lower().strip()
+                for begin, end, text in ti.entryList:
+                    text = text.lower().strip()
                     words = parse_transcription(text)
                     if not words:
                         continue

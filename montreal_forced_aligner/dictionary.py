@@ -620,13 +620,13 @@ class Dictionary(object):
                         if len(phones) == 1:
                             phones[0] += '_S'
                         else:
-                            for i in range(len(phones)):
-                                if i == 0:
-                                    phones[i] += '_B'
-                                elif i == len(phones) - 1:
-                                    phones[i] += '_E'
+                            for j in range(len(phones)):
+                                if j == 0:
+                                    phones[j] += '_B'
+                                elif j== len(phones) - 1:
+                                    phones[j] += '_E'
                                 else:
-                                    phones[i] += '_I'
+                                    phones[j] += '_I'
                     p = ' '.join(str(self.phone_mapping[x]) for x in phones)
                     f.write('{i} {i} {p}\n'.format(i=i, p=p))
 

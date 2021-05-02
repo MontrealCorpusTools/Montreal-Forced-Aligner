@@ -77,6 +77,36 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
     assert d.get_feat_dim(default_feature_config) == 39
 
 
+def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'stereo_tg')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(stereo_corpus_short_tg_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_tg_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
 def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, '24bit')
 
@@ -177,6 +207,6 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
 
     d.set_word_set(c.word_set)
     for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
-        t = d.to_int(w)
+        _ = d.to_int(w)
     print(d.oovs_found)
     assert "'m" not in d.oovs_found

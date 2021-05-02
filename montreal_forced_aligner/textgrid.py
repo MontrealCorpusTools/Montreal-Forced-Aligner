@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 from decimal import Decimal
-from textgrid import TextGrid, IntervalTier
+from praatio import tgio
 
 
 def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
@@ -62,24 +62,28 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
         os.makedirs(out_directory, exist_ok=True)
     if not corpus.segments:
         for i, (k, v) in enumerate(sorted(word_ctm.items())):
-            maxtime = Decimal(str(corpus.get_wav_duration(k)))
+            max_time = Decimal(str(corpus.get_wav_duration(k)))
             speaker = list(v.keys())[0]
             v = list(v.values())[0]
             try:
-                tg = TextGrid(maxTime=maxtime)
-                wordtier = IntervalTier(name='words', maxTime=maxtime)
-                phonetier = IntervalTier(name='phones', maxTime=maxtime)
-                phonetier_len = len(phone_ctm[k][speaker])
+                tg = tgio.Textgrid()
+                tg.minTimestamp = 0
+                tg.maxTimestamp = max_time
+                phone_tier_len = len(phone_ctm[k][speaker])
+                words = []
+                phones = []
                 for interval in v:
-                    if maxtime - interval[1] < frameshift:  # Fix rounding issues
-                        interval[1] = maxtime
-                    wordtier.add(*interval)
+                    if max_time - interval[1] < frameshift:  # Fix rounding issues
+                        interval[1] = max_time
+                    words.append(interval)
                 for j, interval in enumerate(phone_ctm[k][speaker]):
-                    if j == phonetier_len - 1:  # sync last phone boundary to end of audio file
-                        interval[1] = maxtime
-                    phonetier.add(*interval)
-                tg.append(wordtier)
-                tg.append(phonetier)
+                    if j == phone_tier_len - 1:  # sync last phone boundary to end of audio file
+                        interval[1] = max_time
+                    phones.append(interval)
+                word_tier = tgio.IntervalTier('words', words, minT=0, maxT=max_time)
+                phone_tier = tgio.IntervalTier('phones', phones, minT=0, maxT=max_time)
+                tg.addTier(word_tier)
+                tg.addTier(phone_tier)
                 relative = corpus.file_directory_mapping[k]
                 if relative:
                     speaker_directory = os.path.join(out_directory, relative)
@@ -88,15 +92,15 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 os.makedirs(speaker_directory, exist_ok=True)
                 if k.startswith(speaker) and speaker in k.split('_')[1:]:  # deal with prosodylab speaker prefixing
                     k = '_'.join(k.split('_')[1:])
-                outpath = os.path.join(speaker_directory, k + '.TextGrid')
-                tg.write(outpath)
+                out_path = os.path.join(speaker_directory, k + '.TextGrid')
+                tg.save(out_path, useShortForm=False)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_write_errors[k] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     else:
         silences = {dictionary.optional_silence, dictionary.nonoptional_silence}
         for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
-            maxtime = corpus.get_wav_duration(filename)
+            max_time = corpus.get_wav_duration(filename)
             try:
                 print(filename)
                 print(corpus.file_directory_mapping)
@@ -104,28 +108,33 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
                 except KeyError:
                     speaker_directory = out_directory
-                tg = TextGrid(maxTime=maxtime)
+                tg = tgio.Textgrid()
+                tg.minTimestamp = 0
+                tg.maxTimestamp = max_time
                 for speaker in corpus.speaker_ordering[filename]:
-                    words = speaker_dict[speaker]
                     word_tier_name = '{} - words'.format(speaker)
                     phone_tier_name = '{} - phones'.format(speaker)
-                    word_tier = IntervalTier(name=word_tier_name, maxTime=maxtime)
-                    phone_tier = IntervalTier(name=phone_tier_name, maxTime=maxtime)
-                    for w in words:
-                        word_tier.add(*w)
+                    words = []
+                    phones = []
+                    for interval in word_ctm[filename][speaker]:
+                        if max_time - interval[1] < frameshift:  # Fix rounding issues
+                            interval[1] = max_time
+                        words.append(interval)
                     for p in phone_ctm[filename][speaker]:
-                        if len(phone_tier) > 0 and phone_tier[-1].mark in silences and p[2] in silences:
-                            phone_tier[-1].maxTime = p[1]
+                        if len(phones) > 0 and phones[-1][-1] in silences and p[2] in silences:
+                            phones[-1][1] = p[1]
                         else:
-                            if len(phone_tier) > 0 and p[2] in silences and p[0] < phone_tier[-1].maxTime:
-                                p = phone_tier[-1].maxTime, p[1], p[2]
-                            elif len(phone_tier) > 0 and p[2] not in silences and p[0] < phone_tier[-1].maxTime and \
-                                    phone_tier[-1].mark in silences:
-                                phone_tier[-1].maxTime = p[0]
-                            phone_tier.add(*p)
-                    tg.append(word_tier)
-                    tg.append(phone_tier)
-                tg.write(os.path.join(speaker_directory, filename + '.TextGrid'))
+                            if len(phones) > 0 and p[2] in silences and p[0] < phones[-1][1]:
+                                p = phones[-1][1], p[1], p[2]
+                            elif len(phones) > 0 and p[2] not in silences and p[0] < phones[-1][1] and \
+                                    phones[-1][2] in silences:
+                                phones[-1][1] = p[0]
+                            phones.append(p)
+                    word_tier = tgio.IntervalTier(word_tier_name, words, minT=0, maxT=max_time)
+                    phone_tier = tgio.IntervalTier(phone_tier_name, phones, minT=0, maxT=max_time)
+                    tg.addTier(word_tier)
+                    tg.addTier(phone_tier)
+                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_write_errors[filename] = '\n'.join(

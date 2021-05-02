@@ -245,6 +245,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
     log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
     score_path = os.path.join(output_directory, 'ali.{}.scores'.format(job_name))
+    loglike_path = os.path.join(output_directory, 'ali.{}.loglikes'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
         align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled'),
                                        '--transition-scale={}'.format(config['transition_scale']),
@@ -253,6 +254,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                                        '--beam={}'.format(config['beam']),
                                        '--retry-beam={}'.format(config['retry_beam']),
                                        '--careful=false',
+                                       '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
                                        mdl,
                                        "ark:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
                                        "ark,t:" + score_path],

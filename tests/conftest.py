@@ -182,6 +182,36 @@ def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
 
 
 @pytest.fixture(scope='session')
+def stereo_corpus_short_tg_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = os.path.join(corpus_root_dir, 'stereo_short_tg')
+    os.makedirs(path, exist_ok=True)
+    name = 'michaelandsickmichael'
+    shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(path, name + '.wav'))
+    shutil.copyfile(os.path.join(textgrid_dir, name + '_short_tg.TextGrid'), os.path.join(path, name + '.TextGrid'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def flac_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'flac_corpus')
+    os.makedirs(path, exist_ok=True)
+    name = '61-70968-0000'
+    shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(path, name + '.flac'))
+    shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(path, name + '.lab'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def flac_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = os.path.join(corpus_root_dir, 'flac_tg_corpus')
+    os.makedirs(path, exist_ok=True)
+    name = '61-70968-0000'
+    shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(path, name + '.flac'))
+    shutil.copyfile(os.path.join(textgrid_dir, name + '.TextGrid'), os.path.join(path, name + '.TextGrid'))
+    return path
+
+
+@pytest.fixture(scope='session')
 def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, 'short_segments')
     os.makedirs(path, exist_ok=True)
