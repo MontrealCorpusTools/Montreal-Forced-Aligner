@@ -76,7 +76,7 @@ def get_word_set(corpus, include_bracketed=False):
             word_set.update(words)
         else:
             try:
-                tg = tgio.openTextgrid(textgrid_path)
+                tg = tgio.openTextgrid(file_path)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_read_errors[file_path] = '\n'.join(
@@ -88,7 +88,7 @@ def get_word_set(corpus, include_bracketed=False):
                     continue
                 if not isinstance(ti, tgio.IntervalTier):
                     continue
-                for begin, end, text in ti.entryList:
+                for _, _, text in ti.entryList:
                     text = text.lower().strip()
                     words = parse_transcription(text)
                     if not words:

@@ -43,7 +43,7 @@ class Transcriber(object):
 
     def get_tree_info(self):
         tree_proc = subprocess.Popen([thirdparty_binary('tree-info'),
-                            os.path.join(self.transcribe_directory, 'tree')], text=True,
+                                      os.path.join(self.transcribe_directory, 'tree')], text=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, _ = tree_proc.communicate()
         context_width = 1
@@ -89,8 +89,9 @@ class Transcriber(object):
             if not os.path.exists(g_path):
                 print('Generating G.fst...')
                 arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                 '--read-symbol-table=' + words_path,
-                                 self.language_model.arpa_path, g_path], stderr=log_file, stdout=log_file)
+                                                 '--read-symbol-table=' + words_path,
+                                                 self.language_model.arpa_path, g_path], stderr=log_file,
+                                                stdout=log_file)
                 arpafst_proc.communicate()
                 print('Done!')
             if not os.path.exists(lg_path):
@@ -148,7 +149,8 @@ class Transcriber(object):
                                                      '--use-log=true', temp_compose_path],
                                                     stdout=subprocess.PIPE, stderr=log_file)
                 rmsymbols_proc = subprocess.Popen([thirdparty_binary('fstrmsymbols'), ha_out_disambig],
-                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
+                                                  stderr=log_file)
                 rmeps_proc = subprocess.Popen([thirdparty_binary('fstrmepslocal')],
                                               stdin=rmsymbols_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
                 minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'), '-', hclga_path],

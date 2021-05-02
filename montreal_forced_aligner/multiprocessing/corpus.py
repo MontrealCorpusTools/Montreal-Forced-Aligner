@@ -10,7 +10,7 @@ from ..helper import load_text
 from ..dictionary import sanitize
 
 from ..exceptions import SampleRateError, WavReadError, \
-    BitDepthError, TextParseError, TextGridParseError
+    TextParseError, TextGridParseError
 
 from ..corpus.base import get_wav_info
 
@@ -27,9 +27,6 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
         wav_info = get_wav_info(wav_path)
     except Exception:
         raise WavReadError(wav_path)
-    bit_depth = wav_info['bit_depth']
-    if bit_depth != 16:
-        raise BitDepthError(wav_path)
     if not speaker_characters:
         speaker_name = os.path.basename(root)
     elif isinstance(speaker_characters, int):
@@ -47,14 +44,6 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
 def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters):
     root = os.path.dirname(wav_path)
     wav_info = get_wav_info(wav_path)
-    bit_depth = wav_info['bit_depth']
-    use_sox = False
-    if bit_depth != 16:
-        use_sox = True
-    if wav_info['format'] != 'WAV':
-        use_sox = True
-    if not wav_info['type'].startswith('PCM'):
-        use_sox = True
     try:
         text = load_text(lab_path)
     except UnicodeDecodeError:
@@ -78,24 +67,15 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     utt_name = utt_name.replace('_', '-')
     return_dict = {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
                    'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
-    if use_sox:
-        sox_string = 'sox {} -t wav -b 16 -r 16000 - |'.format(wav_path)
-        return_dict['sox_string'] = sox_string
+    if 'sox_string' in wav_info:
+        return_dict['sox_string'] = wav_info['sox_string']
     return return_dict
 
 
 def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters):
     file_name = recording_name
     wav_info = get_wav_info(wav_path)
-    use_sox = False
-    bit_depth = wav_info['bit_depth']
     wav_max_time = wav_info['duration']
-    if bit_depth != 16:
-        use_sox = True
-    if wav_info['format'] != 'WAV':
-        use_sox = True
-    if not wav_info['type'].startswith('PCM'):
-        use_sox = True
     try:
         tg = tgio.openTextgrid(textgrid_path)
     except Exception as e:
@@ -168,9 +148,9 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
                    'file_names': file_names, 'relative_path': relative_path, 'recording_name': recording_name,
                    'file_utt_mapping': file_utt_mapping, 'utt_file_mapping': utt_file_mapping
                    }
-    if use_sox:
-        sox_string_mappings[file_name] = 'sox {} -t wav -b 16 -r 16000 |'.format(wav_path)
-        return_dict['sox_strings'] = sox_string_mappings
+    if 'sox_string' in wav_info:
+        sox_string_mappings[file_name] = wav_info['sox_string']
+        return_dict['sox_string'] = sox_string_mappings
     return return_dict
 
 
@@ -213,10 +193,6 @@ class CorpusProcessWorker(mp.Process):
                 if 'unsupported_sample_rate' not in self.return_dict:
                     self.return_dict['unsupported_sample_rate'] = []
                 self.return_dict['unsupported_sample_rate'].append(wav_path)
-            except BitDepthError:
-                if 'unsupported_bit_depths' not in self.return_dict:
-                    self.return_dict['unsupported_bit_depths'] = []
-                self.return_dict['unsupported_bit_depths'].append(wav_path)
             except TextParseError:
                 if 'decode_error_files' not in self.return_dict:
                     self.return_dict['decode_error_files'] = []

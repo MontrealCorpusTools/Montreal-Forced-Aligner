@@ -99,11 +99,9 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                 textgrid_write_errors[k] = '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
     else:
         silences = {dictionary.optional_silence, dictionary.nonoptional_silence}
-        for i, (filename, speaker_dict) in enumerate(sorted(word_ctm.items())):
+        for i, filename in enumerate(sorted(word_ctm.keys())):
             max_time = corpus.get_wav_duration(filename)
             try:
-                print(filename)
-                print(corpus.file_directory_mapping)
                 try:
                     speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
                 except KeyError:

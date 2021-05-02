@@ -9,7 +9,7 @@ from collections import Counter
 from ..helper import output_mapping, save_groups, filter_scp, load_scp
 
 from ..exceptions import CorpusError, WavReadError,  \
-    BitDepthError, TextParseError, TextGridParseError
+    TextParseError, TextGridParseError
 
 from .base import BaseCorpus, find_exts
 import multiprocessing as mp
@@ -185,7 +185,7 @@ class AlignableCorpus(BaseCorpus):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in wav_files.items():
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 if file_name in lab_files:
                     lab_name = lab_files[file_name]
@@ -230,6 +230,8 @@ class AlignableCorpus(BaseCorpus):
                 self.utt_text_file_mapping[utt_name] = info['text_file']
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_wav_mapping[utt_name] = info['wav_path']
+                if 'sox_string' in info:
+                    self.sox_strings[utt_name] = info['sox_string']
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
                 self.lab_count += 1
@@ -240,6 +242,8 @@ class AlignableCorpus(BaseCorpus):
                 self.speaker_ordering[file_name] = info['speaker_ordering']
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
+                if 'sox_strings' in info:
+                    self.sox_strings.update(info['sox_strings'])
                 self.file_utt_mapping.update(info['file_utt_mapping'])
                 self.utt_file_mapping.update(info['utt_file_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
@@ -312,8 +316,6 @@ class AlignableCorpus(BaseCorpus):
                         self.lab_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except BitDepthError:
-                        self.unsupported_bit_depths.append(wav_path)
                     except TextParseError:
                         self.decode_error_files.append(lab_path)
 
@@ -351,8 +353,6 @@ class AlignableCorpus(BaseCorpus):
                         self.tg_count += 1
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
-                    except BitDepthError:
-                        self.unsupported_bit_depths.append(wav_path)
                     except TextGridParseError as e:
                         self.textgrid_read_errors[tg_path] = e.error
 
@@ -384,7 +384,7 @@ class AlignableCorpus(BaseCorpus):
                     tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=duration)
                 tiers[speaker].entryList.append(begin, end, text)
 
-            for k, v in tiers.items():
+            for v in tiers.values():
                 tg.addTier(v)
             tg.save(text_file_path, useShortForm=False)
         else:

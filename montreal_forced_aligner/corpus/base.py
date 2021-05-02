@@ -12,17 +12,26 @@ from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, f
 
 supported_audio_extensions = ['.flac']
 
+
 def get_wav_info(file_path):
     with soundfile.SoundFile(file_path, 'r') as inf:
-        n_channels = inf.channels
         subtype = inf.subtype
         bit_depth = int(subtype.split('_')[-1])
         frames = inf.frames
         sr = inf.samplerate
         duration = frames / sr
-        format = inf.format
-    return {'num_channels': n_channels, 'type': subtype, 'bit_depth': bit_depth,
-            'sample_rate': sr, 'duration': duration, 'format': format}
+        return_dict = {'num_channels': inf.channels, 'type': inf.subtype, 'bit_depth': bit_depth,
+                       'sample_rate': sr, 'duration': duration, 'format': inf.format}
+    use_sox = False
+    if bit_depth != 16:
+        use_sox = True
+    if return_dict['format'] != 'WAV':
+        use_sox = True
+    if not subtype.startswith('PCM'):
+        use_sox = True
+    if use_sox:
+        return_dict['sox_string'] = 'sox {} -t wav -b 16 -r 16000 - |'.format(file_path)
+    return return_dict
 
 
 def find_exts(files):

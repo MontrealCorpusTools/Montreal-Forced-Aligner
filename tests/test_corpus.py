@@ -107,13 +107,24 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_
     assert d.get_feat_dim(default_feature_config) == 39
 
 
+def test_flac_tg_transcribe(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = TranscribeCorpus(flac_tg_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
 def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, '24bit')
 
     c = TranscribeCorpus(transcribe_corpus_24bit_dir, temp, use_mp=False)
-    assert len(c.unsupported_bit_depths) == 1
-    with pytest.raises(CorpusError):
-        c.initialize_corpus()
+    assert len(c.unsupported_bit_depths) == 0
+    c.initialize_corpus()
+    default_feature_config.generate_features(c)
+    assert c.get_feat_dim(default_feature_config) == 39
 
 
 def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, default_feature_config):

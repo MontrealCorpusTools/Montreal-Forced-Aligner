@@ -27,6 +27,7 @@ class Segmenter(object):
     verbose : bool
         Flag for running in verbose mode, defaults to false
     """
+
     def __init__(self, corpus, segmentation_config,
                  temp_directory=None, call_back=None, debug=False, verbose=False, logger=None):
         self.corpus = corpus
@@ -105,7 +106,6 @@ class Segmenter(object):
             pass
 
     def export_segments(self, output_directory):
-
         file_dict = {}
         for utt, segment in self.corpus.vad_segments.items():
             filename, utt_begin, utt_end = segment

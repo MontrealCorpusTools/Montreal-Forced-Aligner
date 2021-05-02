@@ -2,6 +2,8 @@ import os
 import sys
 import traceback
 import time
+import itertools
+
 from praatio import tgio
 
 from .base import BaseCorpus, get_wav_info, find_exts
@@ -103,7 +105,7 @@ class TranscribeCorpus(BaseCorpus):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in wav_files.items():
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
 
                 if file_name in textgrid_files:
@@ -172,18 +174,14 @@ class TranscribeCorpus(BaseCorpus):
     def _load_from_source(self):
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-            for file_name, f in wav_files.items():
+            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
                 wav_path = os.path.join(root, f)
                 try:
                     wav_info = get_wav_info(wav_path)
                 except Exception:
                     self.wav_read_errors.append(wav_path)
                     continue
-                bit_depth = wav_info['bit_depth']
                 wav_max_time = wav_info['duration']
-                if bit_depth != 16:
-                    self.unsupported_bit_depths.append(wav_path)
-                    continue
                 if self.speaker_directories:
                     speaker_name = os.path.basename(root)
                 else:
@@ -206,6 +204,8 @@ class TranscribeCorpus(BaseCorpus):
                 self.utt_wav_mapping[utt_name] = wav_path
                 self.speak_utt_mapping[speaker_name].append(utt_name)
                 self.utt_speak_mapping[utt_name] = speaker_name
+                if 'sox_string' in wav_info:
+                    self.sox_strings[utt_name] = wav_info['sox_string']
                 self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
                 if file_name in textgrid_files:
@@ -217,6 +217,7 @@ class TranscribeCorpus(BaseCorpus):
                         exc_type, exc_value, exc_traceback = sys.exc_info()
                         self.textgrid_read_errors[tg_path] = '\n'.join(
                             traceback.format_exception(exc_type, exc_value, exc_traceback))
+                        continue
                     n_channels = wav_info['num_channels']
                     num_tiers = len(tg.tierNameList)
                     if n_channels > 2:

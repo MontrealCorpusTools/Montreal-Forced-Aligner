@@ -56,6 +56,8 @@ after_success:
 after_failure:
   - ls tests/data/generated/sickcorpus/corpus_data/split2/log
   - cat tests/data/generated/sickcorpus/corpus_data/split2/log/make_mfcc.0.log
+    - ls tests/data/generated/temp/flac/corpus_data/split1/log
+    - cat tests/data/generated/temp/flac/corpus_data/split1/log/make_mfcc.0.log
 
 cache:
   directories:
