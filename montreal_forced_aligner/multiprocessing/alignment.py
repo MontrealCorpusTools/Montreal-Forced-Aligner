@@ -614,26 +614,48 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     else:
         run_non_mp(ali_to_textgrid_func, jobs, log_directory)
 
-    word_ctm = {}
-    phone_ctm = {}
-    for i in range(num_jobs):
-        word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
-        phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
-        if not os.path.exists(word_ctm_path):
-            continue
-        parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
-        for k, v in parsed.items():
-            if k not in word_ctm:
-                word_ctm[k] = v
-            else:
-                word_ctm[k].update(v)
-        parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
-        for k, v in parsed.items():
-            if k not in phone_ctm:
-                phone_ctm[k] = v
-            else:
-                phone_ctm[k].update(v)
-    ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
+    if not corpus.segments: # Hack for better memory management for .lab files
+        for i in range(num_jobs):
+            word_ctm = {}
+            phone_ctm = {}
+            word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
+            phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
+            if not os.path.exists(word_ctm_path):
+                continue
+            parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
+            for k, v in parsed.items():
+                if k not in word_ctm:
+                    word_ctm[k] = v
+                else:
+                    word_ctm[k].update(v)
+            parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
+            for k, v in parsed.items():
+                if k not in phone_ctm:
+                    phone_ctm[k] = v
+                else:
+                    phone_ctm[k].update(v)
+            ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
+    else:
+        word_ctm = {}
+        phone_ctm = {}
+        for i in range(num_jobs):
+            word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
+            phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
+            if not os.path.exists(word_ctm_path):
+                continue
+            parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
+            for k, v in parsed.items():
+                if k not in word_ctm:
+                    word_ctm[k] = v
+                else:
+                    word_ctm[k].update(v)
+            parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
+            for k, v in parsed.items():
+                if k not in phone_ctm:
+                    phone_ctm[k] = v
+                else:
+                    phone_ctm[k].update(v)
+        ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
 
 
 def tree_stats_func(directory, ci_phones, mdl, feature_string, ali_path, job_name):

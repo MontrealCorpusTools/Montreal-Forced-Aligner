@@ -141,6 +141,20 @@ class AcousticModel(Archive):
             if os.path.exists(os.path.join(self.dirname, f)):
                 copyfile(os.path.join(self.dirname, f), os.path.join(destination, f))
 
+    def log_details(self, logger):
+        logger.debug('')
+        logger.debug('====ACOUSTIC MODEL INFO====')
+        logger.debug('Acoustic model root directory: ' + self.root_directory)
+        logger.debug('Acoustic model dirname: ' + self.dirname)
+        meta_path = os.path.join(self.dirname, 'meta.yaml')
+        logger.debug('Acoustic model meta path: ' + meta_path)
+        if not os.path.exists(meta_path):
+            logger.debug('META.YAML DOES NOT EXIST, this may cause issues in validating the model')
+        logger.debug('Acoustic model meta information:')
+        stream = yaml.dump(self.meta)
+        logger.debug(stream)
+        logger.debug('')
+
     def validate(self, dictionary):
         if isinstance(dictionary, G2PModel):
             missing_phones = dictionary.meta['phones'] - set(self.meta['phones'])

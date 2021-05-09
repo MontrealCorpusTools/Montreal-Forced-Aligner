@@ -88,6 +88,7 @@ def align_corpus(args, unknown_args=None):
         logger.info(corpus.speaker_utterance_info())
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
         acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
 
         begin = time.time()

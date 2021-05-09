@@ -36,6 +36,7 @@ def validate_corpus(args):
     dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
     if args.acoustic_model_path:
         acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,

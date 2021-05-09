@@ -85,8 +85,9 @@ def train_ivector(args):
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
                                  debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
-        acoustic_model = AcousticModel(args.acoustic_model_path)
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
+        acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
                               temp_directory=data_directory, logger=logger)

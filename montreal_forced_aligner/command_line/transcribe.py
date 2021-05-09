@@ -95,6 +95,7 @@ def transcribe_corpus(args):
                                       sample_rate=transcribe_config.feature_config.sample_frequency,
                                       num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=data_directory)
+        acoustic_model.log_details(logger)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         dictionary = Dictionary(args.dictionary_path, data_directory)
         acoustic_model.validate(dictionary)

@@ -98,7 +98,7 @@ def load_scp(path, data_type=str):
             line_list = line.split()
             key = line_list.pop(0)
             if len(line_list) == 1:
-                value = line_list[0]
+                value = data_type(line_list[0])
             else:
                 value = [ data_type(x) for x in line_list if x not in ['[', ']']]
             scp[key] = value
