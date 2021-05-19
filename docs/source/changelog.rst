@@ -1,10 +1,19 @@
 .. _`PR #194`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/194
 .. _`PR #235`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/235
+.. _`PR #288`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/288
 
 .. _changelog:
 
 Changelog
 =========
+
+2.0.0a16
+--------
+
+- Changed how punctuation is stripped from beginning/end of words (`PR #288`_)
+- Added more logging for alignment (validating acoustic models and generating overall log-likelihood of the alignment)
+- Changed subsetting features prior to initializing monophone trainer to prevent erroneous error detection
+- Fixed parsing of boolean arguments on command line to be passed to aligners
 
 2.0.0a15
 --------

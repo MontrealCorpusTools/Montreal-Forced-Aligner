@@ -57,7 +57,7 @@ def test_devanagari():
     for tc in test_cases:
         assert tc == sanitize(tc)
 
+
 def test_japanese():
     assert "かぎ括弧" == sanitize("「かぎ括弧」")
     assert "二重かぎ括弧" == sanitize("『二重かぎ括弧』")
-
