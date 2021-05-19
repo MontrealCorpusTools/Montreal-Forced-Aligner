@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import Dictionary, sanitize
 
 
 def ListLines(path):
@@ -50,3 +50,14 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.split_clitics('m\'appele') == ['m\'', 'appele']
     assert d.split_clitics('m\'ving-sic') == ["m'", 'ving', 'sic']
     assert d.split_clitics('flying\'purple-people-eater') == ['flying\'purple-people-eater']
+
+
+def test_devanagari():
+    test_cases = ["हैं", "हूं", "हौं"]
+    for tc in test_cases:
+        assert tc == sanitize(tc)
+
+def test_japanese():
+    assert "かぎ括弧" == sanitize("「かぎ括弧」")
+    assert "二重かぎ括弧" == sanitize("『二重かぎ括弧』")
+

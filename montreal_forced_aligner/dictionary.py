@@ -45,17 +45,10 @@ def sanitize(item):
         if item[0] == b[0] and item[-1] == b[1]:
             return item
     # Clitic markers are "-" and "'"
-    sanitized = re.sub(r"^[^-\w']+", '', item)
-    if sanitized.strip() == "":
-        return sanitized
-    punct_re = '[、。।，@<>"(),.:;¿?¡!\\\]'
-    old_len = len(sanitized)
-    sanitized = sanitized[:-1] + re.sub(punct_re.replace('-', '\-'), '', sanitized[-1])
-    while len(sanitized)!=old_len:
-        old_len = len(sanitized)
-        sanitized = sanitized[:-1] + re.sub(punct_re.replace('-', '\-'), '', sanitized[-1])
-        if sanitized.strip() == "":
-            break
+    punctuation_set = r'[、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=]'
+    sanitized = re.sub(r'^{}+'.format(punctuation_set), '', item)
+    sanitized = re.sub(r'{}+$'.format(punctuation_set), '', sanitized)
+
     return sanitized
 
 

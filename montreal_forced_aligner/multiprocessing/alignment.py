@@ -240,14 +240,16 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
         run_non_mp(mono_align_equal_func, jobs, config.log_directory)
 
 
-def align_func(directory, iteration, job_name, mdl, config, feature_string, output_directory):
+def align_func(directory, iteration, job_name, mdl, config, feature_string, output_directory, debug=False):
     fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
     log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
     score_path = os.path.join(output_directory, 'ali.{}.scores'.format(job_name))
-    loglike_path = os.path.join(output_directory, 'ali.{}.loglikes'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
-        align_proc = subprocess.Popen([thirdparty_binary('gmm-align-compiled'),
+        log_file.write('DEBUG: {}'.format(debug))
+        if debug:
+            loglike_path = os.path.join(output_directory, 'ali.{}.loglikes'.format(job_name))
+            com = [thirdparty_binary('gmm-align-compiled'),
                                        '--transition-scale={}'.format(config['transition_scale']),
                                        '--acoustic-scale={}'.format(config['acoustic_scale']),
                                        '--self-loop-scale={}'.format(config['self_loop_scale']),
@@ -257,12 +259,24 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                                        '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
                                        mdl,
                                        "ark:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
-                                       "ark,t:" + score_path],
+                                       "ark,t:" + score_path]
+        else:
+            com = [thirdparty_binary('gmm-align-compiled'),
+                                       '--transition-scale={}'.format(config['transition_scale']),
+                                       '--acoustic-scale={}'.format(config['acoustic_scale']),
+                                       '--self-loop-scale={}'.format(config['self_loop_scale']),
+                                       '--beam={}'.format(config['beam']),
+                                       '--retry-beam={}'.format(config['retry_beam']),
+                                       '--careful=false',
+                                       mdl,
+                                       "ark:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                                       "ark,t:" + score_path]
+        align_proc = subprocess.Popen(com,
                                       stderr=log_file)
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None, debug=False):
     """
     Multiprocessing function that aligns based on the current model
 

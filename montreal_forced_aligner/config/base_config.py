@@ -21,10 +21,29 @@ class BaseConfig(object):
             if not isinstance(original_value, (bool, int, float, str)):
                 continue
             try:
-                val = type(original_value)(args[i+1])
-            except (IndexError, ValueError):
+                if isinstance(original_value, bool):
+                    if args[i+1].lower() == 'true':
+                        val = True
+                    elif args[i+1].lower() == 'false':
+                        val = False
+                    elif not original_value:
+                        val = True
+                    else:
+                        continue
+                else:
+                    val = type(original_value)(args[i+1])
+            except (ValueError):
                 continue
+            except (IndexError):
+                if isinstance(original_value, bool):
+                    if not original_value:
+                        val = True
+                    else:
+                        continue
+                else:
+                    continue
             setattr(self, name, val)
+
 
 def save_config(config, path):
     with open(path, 'w', encoding='utf8') as f:

@@ -76,17 +76,21 @@ class MonophoneTrainer(BaseTrainer):
         try:
             feat_dim = corpus.get_feat_dim(self.feature_config)
             feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
-            feature_string += " subset-feats --n=10 ark:- ark:-| "
+            #feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
             log_path = os.path.join(self.log_directory, 'init.log')
+            temp_feats_path = os.path.join(self.train_directory, 'temp_feats')
             with open(log_path, 'w') as log_file:
+                subprocess.call([thirdparty_binary('subset-feats'), '--n=10',
+                                 feature_string, 'ark:'+temp_feats_path], stderr=log_file)
                 subprocess.call([thirdparty_binary('gmm-init-mono'), shared_phones_opt,
-                                 "--train-feats="+feature_string,
+                                 "--train-feats=ark:"+temp_feats_path,
                                  os.path.join(dictionary.output_directory, 'topo'),
                                  str(feat_dim),
                                  mdl_path,
                                  tree_path],
                                 stderr=log_file)
+            os.remove(temp_feats_path)
             num_gauss = self.get_num_gauss()
             self.initial_gaussians = num_gauss
             compile_train_graphs(self.train_directory, dictionary.output_directory,
