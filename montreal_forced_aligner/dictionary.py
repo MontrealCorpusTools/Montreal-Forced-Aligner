@@ -46,7 +46,16 @@ def sanitize(item):
             return item
     # Clitic markers are "-" and "'"
     sanitized = re.sub(r"^[^-\w']+", '', item)
-    sanitized = re.sub(r"[^-\w']+$", '', sanitized)
+    if sanitized.strip() == "":
+        return sanitized
+    punct_re = '[、。।，@<>"(),.:;¿?¡!\\\]'
+    old_len = len(sanitized)
+    sanitized = sanitized[:-1] + re.sub(punct_re.replace('-', '\-'), '', sanitized[-1])
+    while len(sanitized)!=old_len:
+        old_len = len(sanitized)
+        sanitized = sanitized[:-1] + re.sub(punct_re.replace('-', '\-'), '', sanitized[-1])
+        if sanitized.strip() == "":
+            break
     return sanitized
 
 
