@@ -76,6 +76,8 @@ def align_corpus(args, unknown_args=None):
                          '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
 
     os.makedirs(data_directory, exist_ok=True)
+    model_directory = os.path.join(data_directory, 'acoustic_models')
+    os.makedirs(model_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
@@ -87,7 +89,7 @@ def align_corpus(args, unknown_args=None):
                   'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
-        acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model = AcousticModel(args.acoustic_model_path,  root_directory=model_directory)
         acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
 

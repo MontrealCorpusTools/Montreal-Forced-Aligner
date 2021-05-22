@@ -75,6 +75,7 @@ def align_corpus(args, unknown_args=None):
                          '(new run: {})'.format(conf['dictionary_path'], args.dictionary_path))
 
     os.makedirs(data_directory, exist_ok=True)
+    model_directory = os.path.join(data_directory, 'acoustic_models')
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
@@ -100,7 +101,7 @@ def align_corpus(args, unknown_args=None):
         logger.debug('Training took {} seconds'.format(time.time() - begin))
         a.export_textgrids(args.output_directory)
         if args.output_model_path is not None:
-            a.save(args.output_model_path)
+            a.save(args.output_model_path, root_directory=model_directory)
         logger.info('All done!')
         logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:

@@ -338,7 +338,7 @@ class BaseTrainer(object):
             raise
         self.logger.debug('Exporting textgrids took {} seconds'.format(time.time() - begin))
 
-    def save(self, path):
+    def save(self, path, root_directory=None):
         """
         Output an acoustic model and dictionary to the specified path
 
@@ -346,10 +346,12 @@ class BaseTrainer(object):
         ----------
         path : str
             Path to save acoustic model and dictionary
+        root_directory : str or None
+            Path for root directory of temporary files
         """
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
-        acoustic_model = AcousticModel.empty(basename)
+        acoustic_model = AcousticModel.empty(basename, root_directory=root_directory)
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.train_directory)
         if directory:

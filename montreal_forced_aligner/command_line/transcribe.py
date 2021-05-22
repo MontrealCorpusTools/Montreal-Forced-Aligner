@@ -40,8 +40,9 @@ def transcribe_corpus(args):
     logger.debug('TRANSCRIBE CONFIG:')
     log_config(logger, transcribe_config)
     os.makedirs(data_directory, exist_ok=True)
+    model_directory = os.path.join(data_directory, 'acoustic_models')
     os.makedirs(args.output_directory, exist_ok=True)
-    os.makedirs(data_directory, exist_ok=True)
+    os.makedirs(model_directory, exist_ok=True)
     conf_path = os.path.join(data_directory, 'config.yml')
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
@@ -94,7 +95,7 @@ def transcribe_corpus(args):
                                       speaker_characters=args.speaker_characters,
                                       sample_rate=transcribe_config.feature_config.sample_frequency,
                                       num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
-        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=data_directory)
+        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         dictionary = Dictionary(args.dictionary_path, data_directory)

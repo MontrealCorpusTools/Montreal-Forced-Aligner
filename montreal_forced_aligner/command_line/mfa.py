@@ -150,7 +150,9 @@ train_g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
 
 train_g2p_parser.add_argument("--order", type=int, default=7,
                               help="Order of the ngram model, defaults to 7")
-train_g2p_parser.add_argument('-v', "--validate", action='store_true',
+train_g2p_parser.add_argument('-v', "--verbose", action='store_true',
+                              help="Output messages on the command line")
+train_g2p_parser.add_argument("--validate", action='store_true',
                               help="Perform an analysis of accuracy training on "
                                    "most of the data and validating on an unseen subset")
 train_g2p_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')

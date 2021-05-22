@@ -284,7 +284,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         self.logger.info('Training complete!')
         self.logger.debug('Training took {} seconds'.format(time.time() - begin))
 
-    def save(self, path):
+    def save(self, path, root_directory=None):
         """
         Output an acoustic model and dictionary to the specified path
 
@@ -292,10 +292,12 @@ class IvectorExtractorTrainer(BaseTrainer):
         ----------
         path : str
             Path to save acoustic model and dictionary
+        root_directory : str or None
+            Path for root directory of temporary files
         """
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
-        ivector_extractor = IvectorExtractor.empty(basename)
+        ivector_extractor = IvectorExtractor.empty(basename, root_directory)
         ivector_extractor.add_meta_file(self)
         ivector_extractor.add_model(self.train_directory)
         os.makedirs(directory, exist_ok=True)

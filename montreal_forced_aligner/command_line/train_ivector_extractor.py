@@ -79,6 +79,7 @@ def train_ivector(args):
                          '(new run: {})'.format(conf['acoustic_model_path'], args.acoustic_model_path))
 
     os.makedirs(data_directory, exist_ok=True)
+    model_directory = os.path.join(data_directory, 'acoustic_models')
     try:
         begin = time.time()
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
@@ -86,7 +87,7 @@ def train_ivector(args):
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
                                  debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
-        acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
         a = PretrainedAligner(corpus, dictionary, acoustic_model, align_config,
@@ -104,7 +105,7 @@ def train_ivector(args):
             trainer.init_training(identifier, data_directory, corpus, dictionary, a)
             trainer.train(call_back=print)
             logger.debug('Training took {} seconds'.format(time.time() - begin))
-            trainer.save(args.output_model_path)
+            trainer.save(args.output_model_path, root_directory=model_directory)
 
         logger.info('All done!')
         logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))

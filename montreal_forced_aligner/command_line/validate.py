@@ -29,13 +29,15 @@ def validate_corpus(args):
     shutil.rmtree(data_directory, ignore_errors=True)
 
     os.makedirs(data_directory, exist_ok=True)
+    model_directory = os.path.join(data_directory, 'acoustic_models')
+    os.makedirs(model_directory, exist_ok=True)
     logger = setup_logger(command, data_directory)
 
     corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3), logger=logger, use_mp=not args.disable_mp)
     dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
     if args.acoustic_model_path:
-        acoustic_model = AcousticModel(args.acoustic_model_path)
+        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)
 

@@ -45,7 +45,7 @@ class TrainableAligner(BaseAligner):
                     log_kaldi_errors(e.error_logs, self.logger)
             break
 
-    def save(self, path):
+    def save(self, path, root_directory=None):
         """
         Output an acoustic model and dictionary to the specified path
 
@@ -53,8 +53,10 @@ class TrainableAligner(BaseAligner):
         ----------
         path : str
             Path to save acoustic model and dictionary
+        root_directory : str or None
+            Path for root directory of temporary files
         """
-        self.training_config.values()[-1].save(path)
+        self.training_config.values()[-1].save(path, root_directory)
         self.logger.info('Saved model to {}'.format(path))
 
     @property

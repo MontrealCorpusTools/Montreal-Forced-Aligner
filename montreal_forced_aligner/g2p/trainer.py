@@ -276,6 +276,8 @@ class PairNGramAligner:
                 c_path,
             ]
             subprocess.check_call(cmd)
+            random_end = time.time()
+            logger.debug('{} randomization took {} seconds'.format(random_start.seed, random_end - start))
             # Train on randomized channel model.
 
             likelihood = INF
@@ -287,6 +289,7 @@ class PairNGramAligner:
                 c_path,
                 t_path,
             ]
+            logger.debug('{} train command: {}'.format(random_start.seed, ' '.join(cmd)))
             with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
                 # Parses STDERR to capture the likelihood.
                 for line in proc.stderr:  # type: ignore
@@ -296,6 +299,7 @@ class PairNGramAligner:
                     likelihood = float(match.group(1))
                 with open(likelihood_path, 'w') as f:
                     f.write(str(likelihood))
+            logger.debug('{} training took {} seconds'.format(random_start.seed, time.time() - random_end))
         else:
             with open(likelihood_path, 'r') as f:
                 likelihood = f.read().strip()
@@ -442,7 +446,7 @@ class PairNGramAligner:
 class PyniniTrainer(object):
     def __init__(self, dictionary, model_path, temp_directory=None, order=7, evaluate=False,
                  input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
-                 delta = 1/1024, lr = 1.0, batch_size=0,
+                 delta = 1/1024, lr = 1.0, batch_size=0, verbose=False,
                  max_iters=50, smoothing_method='kneser_ney', pruning_method='relative_entropy',
                  model_size=1000000, use_mp=False, num_pronunciations=1):
         super(PyniniTrainer, self).__init__()
@@ -450,6 +454,7 @@ class PyniniTrainer(object):
             temp_directory = TEMP_DIR
         self.temp_directory = os.path.join(temp_directory, 'G2P')
         self.use_mp = use_mp
+        self.verbose = verbose
         self.models_temp_dir = os.path.join(temp_directory, 'models', 'G2P')
 
         self.name, _ = os.path.splitext(os.path.basename(model_path))
@@ -485,6 +490,12 @@ class PyniniTrainer(object):
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+        if self.verbose:
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
         self.model_log_path = os.path.join(self.temp_directory, 'model.log')
         self.smoothing_method = smoothing_method
         self.pruning_method = pruning_method
