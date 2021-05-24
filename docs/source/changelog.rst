@@ -7,6 +7,14 @@
 Changelog
 =========
 
+2.0.0a17
+--------
+
+- Optimizes G2P model training for 0.3.6 and exposes :code:`--batch_size`, :code:`max_iterations`, and :code:`learning_rate`
+  from the command line
+- Changes where models are stored to make them specific to the alignment run rather than storing them globally in the temporary
+  directory
+
 2.0.0a16
 --------
 

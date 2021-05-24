@@ -41,11 +41,27 @@ Extra options:
 
    Defines the ngram model order, defaults to 7
 
-.. cmdoption:: -v
-               --validate
+.. cmdoption:: --batch_size NUMBER
+
+   Batch size for Baum-Welch training
+
+.. cmdoption:: --max_iterations NUMBER
+
+   Maximum iterations for Baum-Welch training
+
+.. cmdoption:: --learning_rate NUMBER
+
+   Learning rate for Baum-Welch training
+
+.. cmdoption:: --validate
 
    Run a validation on the dictionary with 90% of the data as training and 10% as test.  It will output the percentage
    accuracy of pronunciations generated.
+
+.. option:: -v
+               --verbose
+
+  Print more messages to the command line output (see also, the log files in the MFA temporary directory for the training)
 
 .. option:: -c
                --clean

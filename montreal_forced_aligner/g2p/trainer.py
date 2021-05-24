@@ -446,8 +446,8 @@ class PairNGramAligner:
 class PyniniTrainer(object):
     def __init__(self, dictionary, model_path, temp_directory=None, order=7, evaluate=False,
                  input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
-                 delta = 1/1024, lr = 1.0, batch_size=0, verbose=False,
-                 max_iters=50, smoothing_method='kneser_ney', pruning_method='relative_entropy',
+                 delta = 1/1024, lr = 1.0, batch_size=200, verbose=False,
+                 max_iters=10, smoothing_method='kneser_ney', pruning_method='relative_entropy',
                  model_size=1000000, use_mp=False, num_pronunciations=1):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:

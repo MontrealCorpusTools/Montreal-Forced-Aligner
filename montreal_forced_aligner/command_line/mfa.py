@@ -150,6 +150,12 @@ train_g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
 
 train_g2p_parser.add_argument("--order", type=int, default=7,
                               help="Order of the ngram model, defaults to 7")
+train_g2p_parser.add_argument("--batch_size", type=int, default=200,
+                              help="Batch size for Baum-Welch training")
+train_g2p_parser.add_argument("--max_iterations", type=int, default=50,
+                              help="Max number of iterations for Baum-Welch training")
+train_g2p_parser.add_argument("--learning_rate", type=float, default=1.0,
+                              help="Learning rate for Baum-Welch training")
 train_g2p_parser.add_argument('-v', "--verbose", action='store_true',
                               help="Output messages on the command line")
 train_g2p_parser.add_argument("--validate", action='store_true',

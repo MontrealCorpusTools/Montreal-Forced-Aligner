@@ -17,7 +17,8 @@ def train_g2p(args):
         shutil.rmtree(os.path.join(temp_dir, 'models', 'G2P'), ignore_errors=True)
     dictionary = Dictionary(args.dictionary_path, '')
     t = Trainer(dictionary, args.output_model_path, temp_directory=temp_dir, order=args.order, num_jobs=args.num_jobs,
-                use_mp=not args.disable_mp, verbose=args.verbose)
+                use_mp=not args.disable_mp, verbose=args.verbose, max_iters=args.max_iterations, batch_size=args.batch_size,
+                lr=args.learning_rate)
     if args.validate:
         t.validate()
     t.train()
