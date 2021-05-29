@@ -89,7 +89,10 @@ class BaseCorpus(object):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True,
+                 punctuation=None, clitic_markers=None):
+        self.punctuation = punctuation
+        self.clitic_markers = clitic_markers
         self.debug = debug
         self.use_mp = use_mp
         log_dir = os.path.join(output_directory, 'logging')

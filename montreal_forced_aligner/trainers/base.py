@@ -121,6 +121,8 @@ class BaseTrainer(object):
                 self.feature_config.use_mp = v
             if k == 'features':
                 self.feature_config.update(v)
+            elif k in ['punctuation', 'clitic_markers', 'compound_markers']:
+                continue
             elif not hasattr(self, k):
                 raise TrainerError('No field found for key {}'.format(k))
             else:

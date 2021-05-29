@@ -634,4 +634,3 @@ class PyniniTrainer(object):
         self.logger.info(f"LER:\t{ler:.2f}")
         self.logger.debug('Computation of errors for {} words took {} seconds'.format(len(validation_dictionary),
                                                                                       time.time() - begin))
-        self.clean_up()

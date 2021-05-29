@@ -15,8 +15,8 @@ from ..exceptions import SampleRateError, WavReadError, \
 from ..corpus.base import get_wav_info
 
 
-def parse_transcription(text):
-    words = [sanitize(x) for x in text.split()]
+def parse_transcription(text, punctuation=None, clitic_markers=None):
+    words = [sanitize(x, punctuation, clitic_markers) for x in text.split()]
     words = [x for x in words if x not in ['', '-', "'"]]
     return words
 
@@ -38,14 +38,15 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
             'wav_info': wav_info, 'relative_path': relative_path}
 
 
-def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000):
+def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000, punctuation=None,
+                   clitic_markers=None):
     root = os.path.dirname(wav_path)
     wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     try:
         text = load_text(lab_path)
     except UnicodeDecodeError:
         raise TextParseError(lab_path)
-    words = parse_transcription(text)
+    words = parse_transcription(text, punctuation, clitic_markers)
     if not words:
         raise TextParseError(lab_path)
     if not speaker_characters:
@@ -69,7 +70,8 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     return return_dict
 
 
-def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, sample_rate=16000):
+def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, sample_rate=16000,
+                        punctuation=None, clitic_markers=None):
     file_name = recording_name
     wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     wav_max_time = wav_info['duration']
@@ -113,7 +115,7 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
             speaker_ordering.append(speaker_name)
         for begin, end, text in ti.entryList:
             text = text.lower().strip()
-            words = parse_transcription(text)
+            words = parse_transcription(text, punctuation, clitic_markers)
             if not words:
                 continue
             begin, end = round(begin, 4), round(end, 4)

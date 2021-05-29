@@ -54,7 +54,7 @@ def align_corpus(args, unknown_args=None):
                 'type': command,
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path}
-    if  conf['dirty'] or conf['type'] != command \
+    if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
             or conf['dictionary_path'] != args.dictionary_path:
@@ -79,13 +79,17 @@ def align_corpus(args, unknown_args=None):
     os.makedirs(args.output_directory, exist_ok=True)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
-                                 num_jobs=getattr(args, 'num_jobs', 3), sample_rate=align_config.feature_config.sample_frequency,
-                                 debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
+                                 num_jobs=getattr(args, 'num_jobs', 3),
+                                 sample_rate=align_config.feature_config.sample_frequency,
+                                 debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp,
+                                 punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                            'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger,
+                                punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers,
+                                compound_markers=align_config.compound_markers)
         utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
@@ -94,7 +98,7 @@ def align_corpus(args, unknown_args=None):
             shutil.copy(oov_path, args.output_directory)
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
                              temp_directory=data_directory, logger=logger,
-                                 debug=getattr(args, 'debug', False))
+                             debug=getattr(args, 'debug', False))
         a.verbose = args.verbose
         begin = time.time()
         a.train()

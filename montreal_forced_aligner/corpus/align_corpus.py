@@ -52,10 +52,11 @@ class AlignableCorpus(BaseCorpus):
 
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
-                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True):
+                 num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True,
+                 punctuation=None, clitic_markers=None):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
-                                              num_jobs, sample_rate, debug, logger, use_mp)
+                                              num_jobs, sample_rate, debug, logger, use_mp, punctuation, clitic_markers)
         self.utt_text_file_mapping = {}
         self.word_counts = Counter()
         self.utterance_oovs = {}
@@ -197,7 +198,8 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
+                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                               self.sample_rate, self.punctuation, self.clitic_markers))
         job_queue.join()
         stopped.stop()
         for p in procs:
@@ -286,7 +288,7 @@ class AlignableCorpus(BaseCorpus):
                     lab_path = os.path.join(root, lab_name)
                     try:
                         info = parse_lab_file(file_name, wav_path, lab_path, relative_path,
-                                              self.speaker_characters, self.sample_rate)
+                                              self.speaker_characters, self.sample_rate, self.punctuation, self.clitic_markers)
                         utt_name = info['utt_name']
                         speaker_name = info['speaker_name']
                         wav_info = info['wav_info']
@@ -325,7 +327,8 @@ class AlignableCorpus(BaseCorpus):
                     tg_path = os.path.join(root, tg_name)
                     try:
                         info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path,
-                                                   self.speaker_characters, self.sample_rate)
+                                                   self.speaker_characters, self.sample_rate,
+                                                   self.punctuation, self.clitic_markers)
                         wav_info = info['wav_info']
                         self.wav_files.append(file_name)
                         self.speaker_ordering[file_name] = info['speaker_ordering']

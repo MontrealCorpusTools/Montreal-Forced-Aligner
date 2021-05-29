@@ -21,7 +21,8 @@ def train_g2p(args):
                 lr=args.learning_rate)
     if args.validate:
         t.validate()
-    t.train()
+    else:
+        t.train()
 
 
 def validate(args, download_dictionaries=None):

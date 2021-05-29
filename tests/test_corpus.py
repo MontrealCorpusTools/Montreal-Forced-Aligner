@@ -1,11 +1,9 @@
 import os
-import sys
-import pytest
 import shutil
 
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
-from montreal_forced_aligner.exceptions import CorpusError
+from montreal_forced_aligner.config.train_config import train_yaml_to_config
 
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature_config):
@@ -232,3 +230,17 @@ def test_punctuated(punctuated_dir, temp_dir, sick_dict_path):
     c.initialize_corpus(d)
     print(c.text_mapping['punctuated'])
     assert c.text_mapping['punctuated'] == 'oh yes they they you know they love her and so i mean'
+
+
+def test_alternate_punctuation(punctuated_dir, temp_dir, sick_dict_path, different_punctuation_config):
+    train_config, align_config = train_yaml_to_config(different_punctuation_config)
+    output_directory = os.path.join(temp_dir, 'weird_words')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    print(align_config.punctuation)
+    d = Dictionary(sick_dict_path, output_directory, punctuation=align_config.punctuation)
+    d.write()
+    c = AlignableCorpus(punctuated_dir, output_directory, use_mp=False, punctuation=align_config.punctuation)
+    print(c.punctuation)
+    c.initialize_corpus(d)
+    print(c.text_mapping['punctuated'])
+    assert c.text_mapping['punctuated'] == 'oh yes, they they, you know, they love her and so i mean'

@@ -85,8 +85,11 @@ def train_ivector(args):
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
-                                 debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp)
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
+                                 debug=getattr(args, 'debug', False), logger=logger, use_mp=align_config.use_mp,
+                                 punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers)
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger,
+                                punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers,
+                                compound_markers=align_config.compound_markers)
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)

@@ -509,6 +509,11 @@ def basic_train_lm_config(config_directory):
 
 
 @pytest.fixture(scope='session')
+def different_punctuation_config(config_directory):
+    return os.path.join(config_directory, 'different_punctuation_config.yaml')
+
+
+@pytest.fixture(scope='session')
 def basic_align_config(config_directory):
     return os.path.join(config_directory, 'basic_align_config.yaml')
 

@@ -1,7 +1,7 @@
 
 import os
 import yaml
-from .base_config import BaseConfig, ConfigError
+from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
 from ..features.config import FeatureConfig
 from collections import Counter
 
@@ -22,6 +22,23 @@ class TrainingConfig(BaseConfig):
                 i += str(curs[t.train_type])
                 curs[t.train_type] += 1
             self.training_identifiers.append(i)
+
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
+
+    def update(self, data):
+        for k, v in data.items():
+            if k in ['punctuation', 'clitic_markers', 'compound_markers']:
+                if not v:
+                    continue
+                if '-' in v:
+                    v = '-' + v.replace('-', '')
+                if ']' in v and r'\]' not in v:
+                    v = v.replace(']', r'\]')
+            if not hasattr(self, k):
+                raise ConfigError('No field found for key {}'.format(k))
+            setattr(self, k, v)
 
     def keys(self):
         return self.training_identifiers

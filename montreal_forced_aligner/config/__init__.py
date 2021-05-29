@@ -13,5 +13,3 @@ TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
 
 
-
-

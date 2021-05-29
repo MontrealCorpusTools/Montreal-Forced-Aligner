@@ -1,6 +1,6 @@
 import os
 import yaml
-from .base_config import BaseConfig, ConfigError
+from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
 from ..features.config import FeatureConfig
 
 
@@ -45,6 +45,9 @@ class AlignConfig(BaseConfig):
         self.retry_beam = 40
         self.data_directory = None # Gets set later
         self.fmllr_update_type = 'full'
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.use_mp = True
 
     @property
@@ -64,7 +67,14 @@ class AlignConfig(BaseConfig):
         for k, v in data.items():
             if k == 'use_mp':
                 self.feature_config.use_mp = v
-            if not hasattr(self, k):
+            elif k in ['punctuation', 'clitic_markers', 'compound_markers']:
+                if not v:
+                    continue
+                if '-' in v:
+                    v = '-' + v.replace('-', '')
+                if ']' in v and r'\]' not in v:
+                    v = v.replace(']', r'\]')
+            elif not hasattr(self, k):
                 raise ConfigError('No field found for key {}'.format(k))
             setattr(self, k, v)
 

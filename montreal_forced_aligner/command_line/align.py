@@ -83,12 +83,15 @@ def align_corpus(args, unknown_args=None):
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
-                                 logger=logger, use_mp=align_config.use_mp)
+                                 logger=logger, use_mp=align_config.use_mp, punctuation=align_config.punctuation,
+                                 clitic_markers=align_config.clitic_markers)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                   'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger)
+        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger,
+                                punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers,
+                                compound_markers=align_config.compound_markers)
         acoustic_model = AcousticModel(args.acoustic_model_path,  root_directory=model_directory)
         acoustic_model.log_details(logger)
         acoustic_model.validate(dictionary)

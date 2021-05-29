@@ -1,6 +1,11 @@
 import yaml
 from ..exceptions import ConfigError
 
+DEFAULT_PUNCTUATION = r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+='
+
+DEFAULT_CLITIC_MARKERS = "'’"
+DEFAULT_COMPOUND_MARKERS = "-"
+
 
 class BaseConfig(object):
     def update(self, data):

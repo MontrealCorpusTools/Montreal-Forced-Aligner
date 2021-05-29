@@ -5,6 +5,7 @@ import re
 import logging
 import sys
 from collections import defaultdict, Counter
+from .config.base_config import DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
 
 from .helper import thirdparty_binary
 from .exceptions import DictionaryPathError, DictionaryFileError, DictionaryError
@@ -37,30 +38,21 @@ def check_bracketed(word):
     return False
 
 
-def sanitize(item):
-    item = item.replace('’', "'")  # normalize apostrophes
+def sanitize(item, punctuation=None, clitic_markers=None):
+    if punctuation is None:
+        punctuation = DEFAULT_PUNCTUATION
+    if clitic_markers is None:
+        clitic_markers = DEFAULT_CLITIC_MARKERS
+    for c in clitic_markers:
+        item = item.replace(c, clitic_markers[0])
     if not item:
         return item
     for b in brackets:
         if item[0] == b[0] and item[-1] == b[1]:
             return item
-    # Clitic markers are "-" and "'"
-    punctuation_set = r'[、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=]'
-    sanitized = re.sub(r'^{}+'.format(punctuation_set), '', item)
-    sanitized = re.sub(r'{}+$'.format(punctuation_set), '', sanitized)
+    sanitized = re.sub(r'^[{}]+'.format(punctuation), '', item)
+    sanitized = re.sub(r'[{}]+$'.format(punctuation), '', sanitized)
 
-    return sanitized
-
-
-def sanitize_clitics(item):
-    if not item:
-        return item
-    for b in brackets:
-        if item[0] == b[0] and item[-1] == b[1]:
-            return item
-    # Clitic markers are "-" and "'"
-    sanitized = re.sub(r"^\W+", '', item)
-    sanitized = re.sub(r"\W+$", '', sanitized)
     return sanitized
 
 
@@ -138,7 +130,18 @@ class Dictionary(object):
     def __init__(self, input_path, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
-                 sil_prob=0.5, word_set=None, debug=False, logger=None):
+                 sil_prob=0.5, word_set=None, debug=False, logger=None,
+                 punctuation=None, clitic_markers=None, compound_markers=None):
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
+        if punctuation is not None:
+            self.punctuation = punctuation
+        if clitic_markers is not None:
+            self.clitic_markers = clitic_markers
+        if compound_markers is not None:
+            self.compound_markers = compound_markers
+
         if not os.path.exists(input_path):
             raise (DictionaryPathError(input_path))
         if not os.path.isfile(input_path):
@@ -173,7 +176,7 @@ class Dictionary(object):
         self.graphemes = set()
         self.all_words = defaultdict(list)
         if word_set is not None:
-            word_set = {sanitize(x) for x in word_set}
+            word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}
             word_set.add('!sil')
             word_set.add(self.oov_code)
         self.word_set = word_set
@@ -197,7 +200,7 @@ class Dictionary(object):
                 if not line:
                     continue
                 line = line.split()
-                word = sanitize(line.pop(0).lower())
+                word = sanitize(line.pop(0).lower(), self.punctuation, self.clitic_markers)
                 if not line:
                     raise DictionaryError('Line {} of {} does not have a pronunciation.'.format(i, input_path))
                 if word in ['!sil', oov_code]:
@@ -239,11 +242,29 @@ class Dictionary(object):
         if not self.graphemes:
             raise DictionaryFileError('No words were found in the dictionary path {}'.format(input_path))
         self.word_pattern = compile_graphemes(self.graphemes)
+        self.log_info()
         self.phone_mapping = {}
         self.words_mapping = {}
 
+    def log_info(self):
+        self.logger.debug('DICTIONARY INFORMATION')
+        if self.pronunciation_probabilities:
+            self.logger.debug('Has pronunciation probabilities')
+        else:
+            self.logger.debug('Has NO pronunciation probabilities')
+        if self.silence_probabilities:
+            self.logger.debug('Has silence probabilities')
+        else:
+            self.logger.debug('Has NO silence probabilities')
+
+        self.logger.debug('Grapheme set: {}'.format(', '.join(sorted(self.graphemes))))
+        self.logger.debug('Phone set: {}'.format(', '.join(sorted(self.nonsil_phones))))
+        self.logger.debug('Punctuation: {}'.format(self.punctuation))
+        self.logger.debug('Clitic markers: {}'.format(self.clitic_markers))
+        self.logger.debug('Clitic set: {}'.format(', '.join(sorted(self.clitic_set))))
+
     def set_word_set(self, word_set):
-        word_set = {sanitize(x) for x in word_set}
+        word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}
         word_set.add(self.sil_code)
         word_set.add(self.oov_code)
         self.word_set = word_set | self.clitic_set
@@ -256,12 +277,12 @@ class Dictionary(object):
     def split_clitics(self, item):
         if item in self.words:
             return [item]
-        if '-' in item:
-            s = item.split('-')
-            if "'" in item:
+        if any(x in item for x in self.compound_markers):
+            s = re.split(r'[{}]'.format(self.compound_markers), item)
+            if any(x in item for x in self.clitic_markers):
                 new_s = []
                 for seg in s:
-                    if "'" in seg:
+                    if any(x in seg for x in self.clitic_markers):
                         new_s.extend(self.split_clitics(seg))
                     else:
                         new_s.append(seg)
@@ -270,17 +291,18 @@ class Dictionary(object):
             if oov_count < len(s):  # Only returned split item if it gains us any transcribed speech
                 return s
             return [item]
-        if "'" in item and not item.endswith("'") and not item.startswith("'"):
-            initial, final = item.split("'", maxsplit=1)
-            if "'" in final:
+        if any(x in item and not item.endswith(x) and not item.startswith(x) for x in self.clitic_markers):
+            initial, final = re.split(r'[{}]'.format(self.clitic_markers), item, maxsplit=1)
+            if any(x in final for x in self.clitic_markers):
                 final = self.split_clitics(final)
             else:
                 final = [final]
-            if initial + "'" in self.clitic_set:
-                return [initial + "'"] + final
-            elif "'" + final[0] in self.clitic_set:
-                final[0] = "'" + final[0]
-                return [initial] + final
+            for clitic in self.clitic_markers:
+                if initial + clitic in self.clitic_set:
+                    return [initial + clitic] + final
+                elif clitic+ final[0] in self.clitic_set:
+                    final[0] = clitic + final[0]
+                    return [initial] + final
         return [item]
 
     def __len__(self):
@@ -401,7 +423,7 @@ class Dictionary(object):
     def _lookup(self, item):
         if item in self.words_mapping:
             return [item]
-        sanitized = sanitize(item)
+        sanitized = sanitize(item, self.punctuation, self.clitic_markers)
         if sanitized in self.words_mapping:
             return [sanitized]
         sanitized = self.split_clitics(item)
@@ -412,7 +434,7 @@ class Dictionary(object):
             return False
         if item in self.words:
             return True
-        sanitized = sanitize(item)
+        sanitized = sanitize(item, self.punctuation, self.clitic_markers)
         if sanitized in self.words:
             return True
         sanitized = self.split_clitics(item)

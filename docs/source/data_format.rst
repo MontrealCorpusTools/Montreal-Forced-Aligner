@@ -92,6 +92,11 @@ As part of parsing orthographic transcriptions, punctuation is stripped
 from the ends of words.  In addition, all words are converted to lowercase
 so that dictionary lookup is not case-sensitive.
 
+.. note::
+
+   The definition of punctuation, clitic markers, and compound markers can be set in a config file, see :ref:`configuration_alignment`
+   for more details
+
 Dictionary lookup will attempt to generate the most maximal coverage of
 novel forms if they use some overt morpheme boundary in the orthography.
 
@@ -132,11 +137,15 @@ With a pronunciation of:
 The key point to note is that the pronunciation of the clitic ``c'`` is ``S``
 and the pronunciation of the letter ``c`` in French is ``S A``.
 
-The algorithm will try to associate the apostrophe with either the element
+The algorithm will try to associate the clitic marker with either the element
 before (as for French clitics) or the element after (as for English clitics
-like the possessive marker).
+like the possessive marker).  The default clitic markers are ``'`` and ``’`` (but they are collapsed into a single
+clitic marker, ``'`` by default).
 
-Hyphens are treated the same as apostrophes. For example, ``merry-go-round`` will
+The default compound marker is a hyphen (``-``).
+Compound markers are treated similarly to clitic markers, but they are not associated with one
+particular element in the word over another.  Instead, they are used to simply split the compound word.
+For example, ``merry-go-round`` will
 become ``merry go round`` if the hyphenated form is not in the dictionary.
 If no words are found on splitting the word based on hyphens or apostrophes,
 then the word will be treated as a single unit (single unknown word).
