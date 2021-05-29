@@ -24,7 +24,7 @@ To train a model from a pronunciation dictionary, the following command is used:
 The ``dictionary_path`` should be a full path to a pronunciation dictionary to train the model from.  The
 ``output_model_path`` is the path to save the resulting G2P model.
 
-Extra options:
+Extra options (see :ref:`configuration_g2p` for full configuration details):
 
 .. option:: -t DIRECTORY
                --temp_directory DIRECTORY
@@ -37,21 +37,9 @@ Extra options:
   Number of jobs to use; defaults to 3, set higher if you have more
   processors available and would like to train the G2P model faster
 
-.. cmdoption:: --order ORDER
+.. option:: --config_path
 
-   Defines the ngram model order, defaults to 7
-
-.. cmdoption:: --batch_size NUMBER
-
-   Batch size for Baum-Welch training
-
-.. cmdoption:: --max_iterations NUMBER
-
-   Maximum iterations for Baum-Welch training
-
-.. cmdoption:: --learning_rate NUMBER
-
-   Learning rate for Baum-Welch training
+  Path to a configuration yaml for G2P model training (see :ref:`default_train_g2p_config` for an example yaml file)
 
 .. cmdoption:: --validate
 

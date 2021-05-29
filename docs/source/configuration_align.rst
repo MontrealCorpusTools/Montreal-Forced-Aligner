@@ -23,7 +23,7 @@ or longer stretches of audio).
    "acoustic_scale", 0.1, "Multiplier to scale acoustic costs"
    "self_loop_scale", 0.1, "Multiplier to scale self loop costs"
    "boost_silence", 1.0, "1.0 is the value that does not affect probabilities"
-   "punctuation", "、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=", "Characters to treat as punctuation and strip from around words"
+   "punctuation", '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=', "Characters to treat as punctuation and strip from around words"
    "clitic_markers", "'’", "Characters to treat as clitic markers, will be collapsed to the first character in the string"
    "compound_markers", "-", "Characters to treat as marker in compound words (i.e., doesn't need to be preserved like for clitics)"
 

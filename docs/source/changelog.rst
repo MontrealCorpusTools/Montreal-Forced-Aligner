@@ -7,6 +7,16 @@
 Changelog
 =========
 
+2.0.0a18
+--------
+
+- Changes G2P model training validation to not do a full round of training after the validation model is trained
+- Adds the ability to change in alignment config yamls the punctuation, clitic, and compound marker sets used in
+  sanitizing words in dictionary and corpus uses
+- Changed configuration in G2P to fit with the model used in alignment, allow for configuration yamls to be passed, as
+  well as arguments from command line
+- Fix a bug where floating point wav files could not be parsed
+
 2.0.0a17
 --------
 

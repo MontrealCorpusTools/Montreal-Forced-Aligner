@@ -178,6 +178,8 @@ def transcribe_corpus_24bit_dir(corpus_root_dir, wav_dir):
     os.makedirs(path, exist_ok=True)
     name = 'cold_corpus_24bit'
     shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(path, name + '.wav'))
+    name = 'cold_corpus_32bit_float'
+    shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(path, name + '.wav'))
     return path
 
 
@@ -501,6 +503,16 @@ def basic_train_config(config_directory):
 @pytest.fixture(scope='session')
 def transcribe_config(config_directory):
     return os.path.join(config_directory, 'transcribe.yaml')
+
+
+@pytest.fixture(scope='session')
+def g2p_config(config_directory):
+    return os.path.join(config_directory, 'g2p_config.yaml')
+
+
+@pytest.fixture(scope='session')
+def train_g2p_config(config_directory):
+    return os.path.join(config_directory, 'train_g2p_config.yaml')
 
 
 @pytest.fixture(scope='session')

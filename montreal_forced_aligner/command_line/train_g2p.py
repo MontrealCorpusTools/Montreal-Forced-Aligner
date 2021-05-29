@@ -4,10 +4,11 @@ from montreal_forced_aligner.g2p.trainer import PyniniTrainer as Trainer
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
+from montreal_forced_aligner.config.train_g2p_config import train_g2p_yaml_to_config, load_basic_train_g2p_config
 from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
 
 
-def train_g2p(args):
+def train_g2p(args, unknown_args):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -15,10 +16,15 @@ def train_g2p(args):
     if args.clean:
         shutil.rmtree(os.path.join(temp_dir, 'G2P'), ignore_errors=True)
         shutil.rmtree(os.path.join(temp_dir, 'models', 'G2P'), ignore_errors=True)
+    if args.config_path:
+        train_config = train_g2p_yaml_to_config(args.config_path)
+    else:
+        train_config = load_basic_train_g2p_config()
+    if unknown_args:
+        train_config.update_from_args(unknown_args)
     dictionary = Dictionary(args.dictionary_path, '')
-    t = Trainer(dictionary, args.output_model_path, temp_directory=temp_dir, order=args.order, num_jobs=args.num_jobs,
-                use_mp=not args.disable_mp, verbose=args.verbose, max_iters=args.max_iterations, batch_size=args.batch_size,
-                lr=args.learning_rate)
+    t = Trainer(dictionary, args.output_model_path, temp_directory=temp_dir, train_config=train_config, num_jobs=args.num_jobs,
+                verbose=args.verbose)
     if args.validate:
         t.validate()
     else:
@@ -34,17 +40,17 @@ def validate(args, download_dictionaries=None):
         raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
 
 
-def run_train_g2p(args, download_dictionaries=None):
+def run_train_g2p(args, unknown, download_dictionaries=None):
     if download_dictionaries is None:
         download_dictionaries = get_available_dict_languages()
     validate(args, download_dictionaries)
-    train_g2p(args)
+    train_g2p(args, unknown)
 
 
 if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import train_g2p_parser, fix_path, unfix_path, dict_languages
 
-    train_args = train_g2p_parser.parse_args()
+    train_args, unknown_args = train_g2p_parser.parse_known_args()
     fix_path()
-    run_train_g2p(train_args, dict_languages)
+    run_train_g2p(train_args, unknown_args, dict_languages)
     unfix_path()

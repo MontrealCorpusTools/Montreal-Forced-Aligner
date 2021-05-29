@@ -15,3 +15,4 @@ Contents:
    configuration_lm.rst
    configuration_segment.rst
    configuration_ivector.rst
+   configuration_g2p.rst

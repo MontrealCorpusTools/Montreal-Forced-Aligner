@@ -1,0 +1,15 @@
+punctuation: '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+='
+clitic_markers: "'’"
+compound_markers: "-"
+num_pronunciations: 1  # Used if running in validation mode
+use_mp: True
+order: 7
+random_starts: 25
+seed: 1917
+delta: 0.0009765
+lr: 1.0
+batch_size: 200
+max_iterations: 10
+smoothing_method: "kneser_ney"
+pruning_method: "relative_entropy"
+model_size: 1000000

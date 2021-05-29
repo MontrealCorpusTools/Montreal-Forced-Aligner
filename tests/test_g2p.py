@@ -3,6 +3,9 @@ import pytest
 from montreal_forced_aligner.utils import get_pretrained_g2p_path
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer, G2P_DISABLED
 
+from montreal_forced_aligner.config.train_g2p_config import load_basic_train_g2p_config
+from montreal_forced_aligner.config.g2p_config import load_basic_g2p_config
+
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
 from montreal_forced_aligner.dictionary import check_bracketed
 
@@ -28,7 +31,10 @@ def test_check_bracketed():
 def test_training(sick_dict, sick_g2p_model_path, temp_dir):
     if G2P_DISABLED:
         pytest.skip('No Pynini found')
-    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, random_starts=1, max_iters=5)
+    train_config = load_basic_train_g2p_config()
+    train_config.random_starts = 1
+    train_config.max_iterations = 5
+    trainer = PyniniTrainer(sick_dict, sick_g2p_model_path, temp_directory=temp_dir, train_config=train_config)
     trainer.validate()
 
     trainer.train()

@@ -134,8 +134,8 @@ g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by 
                         action='store_true')
 g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                         help='Number of cores to use while generating pronunciations')
-g2p_parser.add_argument('-n', '--num_pronunciations', type=int, default=1,
-                        help='Number of candidate pronunciations to output')
+g2p_parser.add_argument('--config_path', type=str, default='',
+                          help='Path to config file to use for G2P')
 g2p_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 g2p_parser.add_argument('--disable_mp', help="Disable multiprocessing (not recommended)", action='store_true')
 
@@ -147,15 +147,8 @@ train_g2p_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                               help='Number of cores to use while training')
 train_g2p_parser.add_argument('-t', '--temp_directory', type=str, default='',
                               help='Temporary directory root to use for G2P training, default is ~/Documents/MFA')
-
-train_g2p_parser.add_argument("--order", type=int, default=7,
-                              help="Order of the ngram model, defaults to 7")
-train_g2p_parser.add_argument("--batch_size", type=int, default=200,
-                              help="Batch size for Baum-Welch training")
-train_g2p_parser.add_argument("--max_iterations", type=int, default=50,
-                              help="Max number of iterations for Baum-Welch training")
-train_g2p_parser.add_argument("--learning_rate", type=float, default=1.0,
-                              help="Learning rate for Baum-Welch training")
+train_g2p_parser.add_argument('--config_path', type=str, default='',
+                          help='Path to config file to use for G2P')
 train_g2p_parser.add_argument('-v', "--verbose", action='store_true',
                               help="Output messages on the command line")
 train_g2p_parser.add_argument("--validate", action='store_true',
@@ -355,9 +348,9 @@ def main():
     elif args.subcommand == 'train':
         run_train_corpus(args)
     elif args.subcommand == 'g2p':
-        run_g2p(args, g2p_languages)
+        run_g2p(args, unknown, g2p_languages)
     elif args.subcommand == 'train_g2p':
-        run_train_g2p(args)
+        run_train_g2p(args, unknown)
     elif args.subcommand == 'validate':
         run_validate_corpus(args)
     elif args.subcommand == 'download':

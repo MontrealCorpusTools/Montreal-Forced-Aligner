@@ -123,6 +123,7 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config
     c.initialize_corpus()
     default_feature_config.generate_features(c)
     assert c.get_feat_dim(default_feature_config) == 39
+    assert len(c.utt_wav_mapping) == 2
 
 
 def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, default_feature_config):

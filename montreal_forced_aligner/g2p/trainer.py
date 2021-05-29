@@ -444,16 +444,14 @@ class PairNGramAligner:
 
 
 class PyniniTrainer(object):
-    def __init__(self, dictionary, model_path, temp_directory=None, order=7, evaluate=False,
-                 input_epsilon=True, output_epsilon=True, num_jobs=3, random_starts=25, seed=1917,
-                 delta = 1/1024, lr = 1.0, batch_size=200, verbose=False,
-                 max_iters=10, smoothing_method='kneser_ney', pruning_method='relative_entropy',
-                 model_size=1000000, use_mp=False, num_pronunciations=1):
+    def __init__(self, dictionary, model_path, train_config, temp_directory=None,
+                 input_epsilon=True, output_epsilon=True, num_jobs=3,
+                 verbose=False):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = os.path.join(temp_directory, 'G2P')
-        self.use_mp = use_mp
+        self.train_config = train_config
         self.verbose = verbose
         self.models_temp_dir = os.path.join(temp_directory, 'models', 'G2P')
 
@@ -465,21 +463,12 @@ class PyniniTrainer(object):
         self.fst_path = os.path.join(self.temp_directory, 'model.fst')
         self.far_path = os.path.join(self.temp_directory, self.name + '.far')
         self.encoder_path = os.path.join(self.temp_directory, self.name + '.enc')
-        self.evaluate = evaluate
         self.dictionary = dictionary
         self.input_epsilon = input_epsilon
         self.output_epsilon = output_epsilon
         self.num_jobs = num_jobs
-        self.random_starts = random_starts
-        self.seed = seed
-        self.max_iters = max_iters
-        self.delta = delta
-        self.lr = lr
-        self.batch_size = batch_size
         self.fst_default_cache_gc = ''
         self.fst_default_cache_gc_limit = ''
-        self.order = order
-        self.num_pronunciations = num_pronunciations
         self.train_log_path = os.path.join(self.temp_directory, 'train.log')
 
         self.logger = logging.getLogger('g2p_trainer')
@@ -497,9 +486,6 @@ class PyniniTrainer(object):
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         self.model_log_path = os.path.join(self.temp_directory, 'model.log')
-        self.smoothing_method = smoothing_method
-        self.pruning_method = pruning_method
-        self.model_size = model_size
         self.sym_path = os.path.join(self.temp_directory, 'phones.sym')
         self.output_token_type = None
 
@@ -518,19 +504,20 @@ class PyniniTrainer(object):
             ngram_make_path = os.path.join(self.temp_directory, 'ngram.make')
             ngram_shrink_path = os.path.join(self.temp_directory, 'ngram.shrink')
             ngramcount_proc = subprocess.Popen(['ngramcount', "--require_symbols=false",
-                                                '--order={}'.format(self.order),
+                                                '--order={}'.format(self.train_config.order),
                                                 self.far_path, ngram_count_path],
                                                stderr=logf)
             ngramcount_proc.communicate()
 
             ngrammake_proc = subprocess.Popen(['ngrammake',
-                                               '--method=' + self.smoothing_method, ngram_count_path, ngram_make_path],
+                                               '--method=' + self.train_config.smoothing_method,
+                                               ngram_count_path, ngram_make_path],
                                               stderr=logf)
             ngrammake_proc.communicate()
 
             ngramshrink_proc = subprocess.Popen(['ngramshrink',
-                                                 '--method=' + self.pruning_method,
-                                                 '--target_number_of_ngrams={}'.format(self.model_size),
+                                                 '--method=' + self.train_config.pruning_method,
+                                                 '--target_number_of_ngrams={}'.format(self.train_config.model_size),
                                                  ngram_make_path, ngram_shrink_path
                                                  ],
                                                 stderr=logf)
@@ -590,12 +577,12 @@ class PyniniTrainer(object):
                           self.output_token_type,
                           self.output_epsilon,
                           self.num_jobs,
-                          self.random_starts,
-                          self.seed,
-                          self.batch_size,
-                          self.delta,
-                          self.lr,
-                          self.max_iters,
+                          self.train_config.random_starts,
+                          self.train_config.seed,
+                          self.train_config.batch_size,
+                          self.train_config.delta,
+                          self.train_config.lr,
+                          self.train_config.max_iterations,
                           self.fst_default_cache_gc,
                           self.fst_default_cache_gc_limit)
         self.logger.debug('Aligning {} words took {} seconds'.format(len(word_dict), time.time() - begin))
@@ -624,7 +611,7 @@ class PyniniTrainer(object):
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
                                         temp_directory=os.path.join(self.temp_directory, 'validation'),
-                                        num_jobs=self.num_jobs, num_pronunciations=self.num_pronunciations)
+                                        num_jobs=self.num_jobs, num_pronunciations=self.train_config.num_pronunciations)
         output = gen.generate()
         begin = time.time()
         wer, ler = compute_validation_errors(validation_dictionary, output, num_jobs=self.num_jobs)

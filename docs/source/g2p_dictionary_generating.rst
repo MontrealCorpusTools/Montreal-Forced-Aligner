@@ -41,7 +41,7 @@ grapheme-to-phoneme mapping.
 
     mfa g2p input_path output_path
 
-Extra options:
+Extra options (see :ref:`configuration_g2p` for full configuration details):
 
 .. option:: -t DIRECTORY
                --temp_directory DIRECTORY
@@ -59,6 +59,10 @@ Extra options:
 
   Forces removal of temporary files under ``~/Documents/MFA`` or the specified temporary directory
   prior to generating the dictionary.
+
+.. option:: --config_path
+
+  Path to a configuration yaml for G2P generation (see :ref:`default_g2p_config` for an example yaml file)
 
 .. option:: -n NUMBER
                --num_pronunciations NUMBER
