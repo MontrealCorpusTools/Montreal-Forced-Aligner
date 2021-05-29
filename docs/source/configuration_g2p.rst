@@ -11,10 +11,11 @@ Global options
 
 .. csv-table::
    :header: "Parameter", "Default value", "Notes"
+   :escape: '
 
-   "punctuation", '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=', "Characters to treat as punctuation and strip from around words"
-   "clitic_markers", "'’", "Characters to treat as clitic markers, will be collapsed to the first character in the string"
-   "compound_markers", "-", "Characters to treat as marker in compound words (i.e., doesn't need to be preserved like for clitics)"
+   "punctuation", "、。।，@<>'"'(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=", "Characters to treat as punctuation and strip from around words"
+   "clitic_markers", "'''’", "Characters to treat as clitic markers, will be collapsed to the first character in the string"
+   "compound_markers", "\-", "Characters to treat as marker in compound words (i.e., doesn't need to be preserved like for clitics)"
    "num_pronunciations", 1, "Number of pronunciations to generate"
    "use_mp", True, "Flag for whether to use multiprocessing"
 
@@ -48,7 +49,7 @@ Default G2P training config file
 
 .. code-block:: yaml
 
-   punctuation: '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+='
+   punctuation: "、。।，@<>\"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+="
    clitic_markers: "'’"
    compound_markers: "-"
    num_pronunciations: 1  # Used if running in validation mode
@@ -73,7 +74,7 @@ G2P generation configuration file
 
 .. code-block:: yaml
 
-   punctuation: '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+='
+   punctuation: "、。।，@<>\"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+="
    clitic_markers: "'’"
    compound_markers: "-"
    num_pronunciations: 1

@@ -1,4 +1,4 @@
-punctuation: '、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+='
+punctuation: "、。।，@<>\"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+="
 clitic_markers: "'’"
 compound_markers: "-"
 num_pronunciations: 1
