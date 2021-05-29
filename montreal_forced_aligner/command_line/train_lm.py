@@ -14,7 +14,7 @@ from montreal_forced_aligner.utils import get_available_dict_languages, get_dict
 from montreal_forced_aligner.helper import setup_logger
 
 
-def train_lm(args):
+def train_lm(args, unknown_args=None):
     command = 'train_lm'
     all_begin = time.time()
     if not args.temp_directory:
@@ -25,6 +25,8 @@ def train_lm(args):
         train_config = train_lm_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_lm()
+    if unknown_args:
+        train_config.update_from_args(unknown_args)
     corpus_name = os.path.basename(args.source_path)
     if corpus_name == '':
         args.source_path = os.path.dirname(args.source_path)
@@ -76,7 +78,7 @@ def validate_args(args, download_dictionaries=None):
         raise (ArgumentError('Could not find the model file {}.'.format(args.model_path)))
 
 
-def run_train_lm(args, download_dictionaries=None):
+def run_train_lm(args, unknown=None, download_dictionaries=None):
     if not args.dictionary_path:
         args.dictionary_path = None
     if download_dictionaries is None:
@@ -84,14 +86,14 @@ def run_train_lm(args, download_dictionaries=None):
     args.source_path = args.source_path.rstrip('/').rstrip('\\')
 
     validate_args(args, download_dictionaries)
-    train_lm(args)
+    train_lm(args, unknown)
 
 
 if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path, dict_languages
-    args = train_lm_parser.parse_args()
+    args, unknown_args = train_lm_parser.parse_known_args()
 
     fix_path()
-    run_train_lm(args, dict_languages)
+    run_train_lm(args, unknown_args, dict_languages)
     unfix_path()

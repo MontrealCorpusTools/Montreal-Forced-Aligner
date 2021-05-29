@@ -17,7 +17,7 @@ from montreal_forced_aligner.utils import get_available_acoustic_languages, get_
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def transcribe_corpus(args):
+def transcribe_corpus(args, unknown_args):
     command = 'transcribe'
     all_begin = time.time()
     if not args.temp_directory:
@@ -32,6 +32,8 @@ def transcribe_corpus(args):
         transcribe_config = transcribe_yaml_to_config(args.config_path)
     else:
         transcribe_config = load_basic_transcribe()
+    if unknown_args:
+        transcribe_config.update_from_args(unknown_args)
     data_directory = os.path.join(temp_dir, corpus_name)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -174,7 +176,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries,  down
                 args.language_model_path.lower(), ', '.join(downloaded_language_models)))
 
 
-def run_transcribe_corpus(args, downloaded_acoustic_models=None, download_dictionaries=None,
+def run_transcribe_corpus(args, unknown=None, downloaded_acoustic_models=None, download_dictionaries=None,
                           downloaded_language_models=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
@@ -190,7 +192,7 @@ def run_transcribe_corpus(args, downloaded_acoustic_models=None, download_dictio
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries, downloaded_language_models)
-    transcribe_corpus(args)
+    transcribe_corpus(args, unknown)
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -198,7 +200,7 @@ if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import transcribe_parser, fix_path, unfix_path, acoustic_languages, \
         lm_languages, dict_languages
 
-    transcribe_args = transcribe_parser.parse_args()
+    transcribe_args, unknown_args = transcribe_parser.parse_known_args()
     fix_path()
-    run_transcribe_corpus(transcribe_args, acoustic_languages, dict_languages, lm_languages)
+    run_transcribe_corpus(transcribe_args, unknown_args, acoustic_languages, dict_languages, lm_languages)
     unfix_path()

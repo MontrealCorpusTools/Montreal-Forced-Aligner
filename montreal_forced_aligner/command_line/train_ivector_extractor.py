@@ -17,7 +17,7 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def train_ivector(args):
+def train_ivector(args, unknown_args=None):
     command = 'train_ivector'
     all_begin = time.time()
     if not args.temp_directory:
@@ -33,6 +33,9 @@ def train_ivector(args):
         train_config, align_config = train_yaml_to_config(args.config_path)
     else:
         train_config, align_config = load_basic_train_ivector()
+    if unknown_args:
+        train_config.update_from_args(unknown_args)
+        align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -152,7 +155,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
                 args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
 
-def run_train_ivector_extractor(args, downloaded_acoustic_models=None, download_dictionaries=None):
+def run_train_ivector_extractor(args, unknown=None, downloaded_acoustic_models=None, download_dictionaries=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:
@@ -164,7 +167,7 @@ def run_train_ivector_extractor(args, downloaded_acoustic_models=None, download_
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
-    train_ivector(args)
+    train_ivector(args, unknown)
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -172,8 +175,8 @@ if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import train_ivector_parser, fix_path, unfix_path, acoustic_languages, \
         dict_languages
 
-    ivector_args = train_ivector_parser.parse_args()
+    ivector_args, unknown_args = train_ivector_parser.parse_known_args()
 
     fix_path()
-    run_train_ivector_extractor(ivector_args, acoustic_languages, dict_languages)
+    run_train_ivector_extractor(ivector_args, unknown_args, acoustic_languages, dict_languages)
     unfix_path()

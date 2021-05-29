@@ -14,7 +14,7 @@ from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def classify_speakers(args):
+def classify_speakers(args, unknown_args=None):
     command = 'classify_speakers'
     all_begin = time.time()
     if not args.temp_directory:
@@ -31,6 +31,8 @@ def classify_speakers(args):
         classification_config = classification_yaml_to_config(args.config_path)
     else:
         classification_config = load_basic_classification()
+    if unknown_args:
+        classification_config.update_from_args(unknown_args)
     classification_config.use_mp = not args.disable_mp
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -125,7 +127,7 @@ def validate_args(args, downloaded_ivector_extractors):
                 args.ivector_extractor_path.lower(), ', '.join(downloaded_ivector_extractors)))
 
 
-def run_classify_speakers(args, downloaded_ivector_extractors=None):
+def run_classify_speakers(args, unknown=None, downloaded_ivector_extractors=None):
     if downloaded_ivector_extractors is None:
         downloaded_ivector_extractors = get_available_ivector_languages()
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
@@ -139,7 +141,7 @@ if __name__ == '__main__':  # pragma: no cover
     mp.freeze_support()
     from montreal_forced_aligner.command_line.mfa import classify_speakers_parser, fix_path, unfix_path, ivector_languages
 
-    classify_speakers_args = classify_speakers_parser.parse_args()
+    classify_speakers_args, unknown_args = classify_speakers_parser.parse_known_args()
     fix_path()
-    run_classify_speakers(classify_speakers_args, ivector_languages)
+    run_classify_speakers(classify_speakers_args, unknown_args, ivector_languages)
     unfix_path()

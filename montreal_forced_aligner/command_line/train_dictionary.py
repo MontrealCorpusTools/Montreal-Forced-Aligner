@@ -16,7 +16,7 @@ from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def train_dictionary(args):
+def train_dictionary(args, unknown_args=None):
     command = 'train_dictionary'
     all_begin = time.time()
     if not args.temp_directory:
@@ -33,6 +33,8 @@ def train_dictionary(args):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
+    if unknown_args:
+        align_config.update_from_args(unknown_args)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
@@ -139,7 +141,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
                 args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
 
-def run_train_dictionary(args, downloaded_acoustic_models=None, download_dictionaries=None):
+def run_train_dictionary(args, unknown=None, downloaded_acoustic_models=None, download_dictionaries=None):
     if downloaded_acoustic_models is None:
         downloaded_acoustic_models = get_available_acoustic_languages()
     if download_dictionaries is None:
@@ -152,7 +154,7 @@ def run_train_dictionary(args, downloaded_acoustic_models=None, download_diction
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
-    train_dictionary(args)
+    train_dictionary(args, unknown)
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -160,7 +162,7 @@ if __name__ == '__main__':  # pragma: no cover
     from montreal_forced_aligner.command_line.mfa import train_dictionary_parser, fix_path, unfix_path, \
         acoustic_languages, dict_languages
 
-    align_args = train_dictionary_parser.parse_args()
+    align_args, unknown_args = train_dictionary_parser.parse_known_args()
     fix_path()
-    run_train_dictionary(align_args, acoustic_languages, dict_languages)
+    run_train_dictionary(align_args, unknown_args, acoustic_languages, dict_languages)
     unfix_path()

@@ -352,24 +352,24 @@ def main():
     elif args.subcommand == 'train_g2p':
         run_train_g2p(args, unknown)
     elif args.subcommand == 'validate':
-        run_validate_corpus(args)
+        run_validate_corpus(args, unknown)
     elif args.subcommand == 'download':
         run_download(args)
     elif args.subcommand == 'train_lm':
-        run_train_lm(args)
+        run_train_lm(args, unknown)
     elif args.subcommand == 'train_dictionary':
-        run_train_dictionary(args)
+        run_train_dictionary(args, unknown)
     elif args.subcommand == 'train_ivector':
-        run_train_ivector_extractor(args)
+        run_train_ivector_extractor(args, unknown)
     elif args.subcommand == 'classify_speakers':
-        run_classify_speakers(args)
+        run_classify_speakers(args, unknown)
     elif args.subcommand == 'annotator':
         from montreal_forced_aligner.command_line.annotator import run_annotator
         run_annotator(args)
     elif args.subcommand == 'thirdparty':
         run_thirdparty(args)
     elif args.subcommand == 'transcribe':
-        run_transcribe_corpus(args)
+        run_transcribe_corpus(args, unknown)
     elif args.subcommand == 'create_segments':
         run_create_segments(args, unknown)
     elif args.subcommand == 'version':

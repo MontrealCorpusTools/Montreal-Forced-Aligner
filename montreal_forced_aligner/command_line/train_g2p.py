@@ -8,7 +8,7 @@ from montreal_forced_aligner.config.train_g2p_config import train_g2p_yaml_to_co
 from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
 
 
-def train_g2p(args, unknown_args):
+def train_g2p(args, unknown_args=None):
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
