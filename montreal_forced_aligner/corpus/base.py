@@ -25,7 +25,6 @@ def get_wav_info(file_path, sample_rate=16000):
         duration = frames / sr
         return_dict = {'num_channels': inf.channels, 'type': inf.subtype, 'bit_depth': bit_depth,
                        'sample_rate': sr, 'duration': duration, 'format': inf.format}
-    print(return_dict)
     use_sox = False
     if bit_depth != 16:
         use_sox = True

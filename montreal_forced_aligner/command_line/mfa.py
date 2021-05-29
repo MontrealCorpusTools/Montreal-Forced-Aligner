@@ -346,7 +346,7 @@ def main():
     if args.subcommand == 'align':
         run_align_corpus(args, unknown, acoustic_languages)
     elif args.subcommand == 'train':
-        run_train_corpus(args)
+        run_train_corpus(args, unknown)
     elif args.subcommand == 'g2p':
         run_g2p(args, unknown, g2p_languages)
     elif args.subcommand == 'train_g2p':

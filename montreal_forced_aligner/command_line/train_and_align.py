@@ -32,6 +32,7 @@ def align_corpus(args, unknown_args=None):
     else:
         train_config, align_config = load_basic_train()
     if unknown_args:
+        train_config.update_from_args(unknown_args)
         align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
