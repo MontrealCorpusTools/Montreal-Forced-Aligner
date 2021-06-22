@@ -5,18 +5,19 @@ import shutil
 from .helper import run_mp, run_non_mp, thirdparty_binary
 
 
-def decode_func(directory, job_name, mdl, config, feat_string, output_directory, num_threads=None):
+def decode_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None):
+    mdl_path = os.path.join(model_directory, 'final.mdl')
     log_path = os.path.join(output_directory, 'log', 'decode.{}.log'.format(job_name))
     lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
     if os.path.exists(lat_path):
         return
-    word_symbol_path = os.path.join(directory, 'words.txt')
-    hclg_path = os.path.join(directory, 'HCLG.fst')
+    word_symbol_path = os.path.join(model_directory, 'words.txt')
+    hclg_path = os.path.join(model_directory, 'HCLG.fst')
     if config.fmllr and config.first_beam is not None:
         beam = config.first_beam
     else:
         beam = config.beam
-    if config.fmllr and config.first_max_active is not None:
+    if config.fmllr and config.first_max_active is not None and not config.no_speakers:
         max_active = config.first_max_active
     else:
         max_active = config.max_active
@@ -29,7 +30,7 @@ def decode_func(directory, job_name, mdl, config, feat_string, output_directory,
                                             '--allow-partial=true',
                                             '--word-symbol-table={}'.format(word_symbol_path),
                                             '--acoustic-scale={}'.format(config.acoustic_scale),
-                                            mdl, hclg_path, feat_string,
+                                            mdl_path, hclg_path, feat_string,
                                             "ark:" + lat_path],
                                            stderr=log_file)
         else:
@@ -41,15 +42,18 @@ def decode_func(directory, job_name, mdl, config, feat_string, output_directory,
                                             '--word-symbol-table={}'.format(word_symbol_path),
                                             '--acoustic-scale={}'.format(config.acoustic_scale),
                                             '--num-threads={}'.format(num_threads),
-                                            mdl, hclg_path, feat_string,
+                                            mdl_path, hclg_path, feat_string,
                                             "ark:" + lat_path],
                                            stderr=log_file)
         decode_proc.communicate()
 
 
-def score_func(directory, job_name, config, output_directory, language_model_weight=None, word_insertion_penalty=None):
-    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
-    words_path = os.path.join(directory, 'words.txt')
+def score_func(model_directory, job_name, config, output_directory, language_model_weight=None, word_insertion_penalty=None):
+    lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
+    rescored_lat_path = os.path.join(output_directory, 'lat.{}.rescored'.format(job_name))
+    if os.path.exists(rescored_lat_path):
+        lat_path = rescored_lat_path
+    words_path = os.path.join(model_directory, 'words.txt')
     tra_path = os.path.join(output_directory, 'tra.{}'.format(job_name))
     log_path = os.path.join(output_directory, 'log', 'score.{}.log'.format(job_name))
     if language_model_weight is None:
@@ -71,42 +75,82 @@ def score_func(directory, job_name, config, output_directory, language_model_wei
         best_path_proc.communicate()
 
 
+def lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None):
+    log_path = os.path.join(output_directory, 'log', 'lm_rescore.{}.log'.format(job_name))
+    rescored_lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
+    lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
+    mdl_path = os.path.join(model_directory, 'final.mdl')
+    old_g_path = os.path.join(model_directory, 'small_G.fst')
+    new_g_path = os.path.join(model_directory, 'med_G.fst')
+
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        lattice_scale_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-pruned'),
+                                            '--acoustic-scale={}'.format(config.acoustic_scale),
+                                        "fstproject --project_type=output {} |".format(old_g_path),
+                                                 "fstproject --project_type=output {} |".format(new_g_path),
+                                               'ark:' + lat_path, 'ark:'+ rescored_lat_path], stderr=log_file)
+        lattice_scale_proc.communicate()
+
+
+def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None):
+    log_path = os.path.join(output_directory, 'log', 'carpa_lm_rescore.{}.log'.format(job_name))
+    lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
+    rescored_lat_path = os.path.join(output_directory, 'lat.{}.carparescored'.format(job_name))
+    if os.path.exists(rescored_lat_path):
+        return
+    old_g_path = os.path.join(model_directory, 'med_G.fst')
+    new_g_path = os.path.join(model_directory, 'G.carpa')
+
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        lmrescore_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore'),
+                                        '--lm-scale=-1.0', 'ark:' + lat_path,
+                                        "fstproject --project_type=output {} |".format(old_g_path),
+                                           'ark:-'], stdout=subprocess.PIPE, stderr=log_file)
+        lmrescore_const_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-const-arpa'),
+                                                 '--lm-scale=1.0', 'ark:-',
+                                                 new_g_path,
+                                                 'ark:'+ rescored_lat_path], stdin=lmrescore_proc.stdout, stderr=log_file)
+        lmrescore_const_proc.communicate()
+
+
 def transcribe(transcriber):
     """
     """
-    directory = transcriber.transcribe_directory
-    output_directory = transcriber.transcribe_directory
-    log_directory = os.path.join(output_directory, 'log')
+    model_directory = transcriber.model_directory
+    decode_directory = transcriber.transcribe_directory
+    log_directory = os.path.join(decode_directory, 'log')
     config = transcriber.transcribe_config
-    mdl_path = os.path.join(directory, 'final.mdl')
     corpus = transcriber.corpus
     num_jobs = corpus.num_jobs
 
-    if config.use_mp and num_jobs > 1:
-        jobs = [(directory, x, mdl_path, config,
-                 config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
-                 output_directory)
-                for x in range(num_jobs)]
-    else:
-        jobs = [(directory, x, mdl_path, config,
-                 config.feature_config.construct_feature_proc_string(corpus.split_directory(), directory, x),
-                 output_directory, corpus.original_num_jobs)
-                for x in range(num_jobs)]
+    jobs = [(model_directory, x, config,
+             config.feature_config.construct_feature_proc_string(corpus.split_directory(), model_directory, x),
+             decode_directory, corpus.original_num_jobs)
+            for x in range(num_jobs)]
 
-    if config.use_mp and num_jobs > 1:
-        run_mp(decode_func, jobs, log_directory)
+    run_non_mp(decode_func, jobs, log_directory)
+
+    if config.use_mp:
+        run_mp(lm_rescore_func, jobs, log_directory)
     else:
-        run_non_mp(decode_func, jobs, log_directory)
+        run_non_mp(lm_rescore_func, jobs, log_directory)
+
+    if config.use_mp:
+        run_mp(carpa_lm_rescore_func, jobs, log_directory)
+    else:
+        run_non_mp(carpa_lm_rescore_func, jobs, log_directory)
+
+
 
     if transcriber.evaluation_mode:
         best_wer = 10000
         best = None
         for lmwt in range(transcriber.min_language_model_weight, transcriber.max_language_model_weight):
             for wip in transcriber.word_insertion_penalties:
-                out_dir = os.path.join(output_directory, 'eval_{}_{}'.format(lmwt, wip))
+                out_dir = os.path.join(decode_directory, 'eval_{}_{}'.format(lmwt, wip))
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-                jobs = [(directory, x, config, out_dir, lmwt, wip)
+                jobs = [(model_directory, x, config, out_dir, lmwt, wip)
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -118,7 +162,7 @@ def transcribe(transcriber):
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
     else:
-        jobs = [(directory, x, config, output_directory)
+        jobs = [(model_directory, x, config, decode_directory)
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_directory)
@@ -126,12 +170,12 @@ def transcribe(transcriber):
             run_non_mp(score_func, jobs, log_directory)
 
 
-def initial_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
+def initial_fmllr_func(initial_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
                        num_threads=None):
 
     log_path = os.path.join(output_directory, 'log', 'initial_fmllr.{}.log'.format(job_name))
     pre_trans_path = os.path.join(output_directory, 'pre_trans.{}'.format(job_name))
-    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    lat_path = os.path.join(initial_directory, 'lat.{}'.format(job_name))
     spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
 
     with open(log_path, 'w', encoding='utf8') as log_file:
@@ -156,11 +200,11 @@ def initial_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, co
         fmllr_proc.communicate()
 
 
-def lat_gen_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
+def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
                        num_threads=None):
     log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.log'.format(job_name))
-    word_symbol_path = os.path.join(directory, 'words.txt')
-    hclg_path = os.path.join(directory, 'HCLG.fst')
+    word_symbol_path = os.path.join(model_directory, 'words.txt')
+    hclg_path = os.path.join(model_directory, 'HCLG.fst')
     tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
         if num_threads is None:
@@ -189,15 +233,16 @@ def lat_gen_fmllr_func(directory, split_directory, sil_phones, job_name, mdl, co
         lat_gen_proc.communicate()
 
 
-def final_fmllr_est_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
+def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, si_directory,
+                         fmllr_directory,
                          num_threads=None):
-    log_path = os.path.join(output_directory, 'log', 'final_fmllr.{}.log'.format(job_name))
-    pre_trans_path = os.path.join(output_directory, 'pre_trans.{}'.format(job_name))
-    trans_tmp_path = os.path.join(output_directory, 'trans_tmp.{}'.format(job_name))
-    trans_path = os.path.join(output_directory, 'trans.{}'.format(job_name))
-    lat_path = os.path.join(directory, 'lat.{}'.format(job_name))
+    log_path = os.path.join(fmllr_directory, 'log', 'final_fmllr.{}.log'.format(job_name))
+    pre_trans_path = os.path.join(fmllr_directory, 'pre_trans.{}'.format(job_name))
+    trans_tmp_path = os.path.join(fmllr_directory, 'trans_tmp.{}'.format(job_name))
+    trans_path = os.path.join(fmllr_directory, 'trans.{}'.format(job_name))
+    lat_path = os.path.join(si_directory, 'lat.{}'.format(job_name))
     spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
-    tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
+    tmp_lat_path = os.path.join(fmllr_directory, 'lat.tmp.{}'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
         if num_threads is None:
             determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
@@ -260,7 +305,7 @@ def fmllr_rescore_func(directory, split_directory, sil_phones, job_name, mdl, co
 
 
 def transcribe_fmllr(transcriber):
-    directory = transcriber.transcribe_directory
+    model_directory = transcriber.model_directory
     output_directory = transcriber.transcribe_directory
     config = transcriber.transcribe_config
     corpus = transcriber.corpus
@@ -271,33 +316,66 @@ def transcribe_fmllr(transcriber):
     fmllr_directory = os.path.join(output_directory, 'fmllr')
     log_dir = os.path.join(fmllr_directory, 'log')
     os.makedirs(log_dir, exist_ok=True)
-    mdl_path = os.path.join(directory, 'final.mdl')
+    mdl_path = os.path.join(model_directory, 'final.mdl')
     feat_name = config.feature_file_base_name
     feat_name += '.{}.scp'
     jobs = []
     for x in range(num_jobs):
         if num_jobs > 1:
-            jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
-                     config.feature_config.construct_feature_proc_string(split_directory, directory, x), fmllr_directory)
+            jobs = [(output_directory, split_directory, sil_phones, x, mdl_path, config,
+                     config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), fmllr_directory)
                     for x in range(num_jobs)]
         else:
-            jobs = [(directory, split_directory, sil_phones, x, mdl_path, config,
-                 config.feature_config.construct_feature_proc_string(split_directory, directory, x), fmllr_directory, corpus.original_num_jobs)
+            jobs = [(output_directory, split_directory, sil_phones, x, mdl_path, config,
+                 config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), fmllr_directory, corpus.original_num_jobs)
                 for x in range(num_jobs)]
 
     run_non_mp(initial_fmllr_func, jobs, log_dir)
 
-    if config.use_mp and num_jobs > 1:
-        run_mp(lat_gen_fmllr_func, jobs, log_dir)
-    else:
-        run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
+    jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
+         config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), fmllr_directory, corpus.original_num_jobs)
+        for x in range(num_jobs)]
+
+    run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
+
+    jobs = []
+    for x in range(num_jobs):
+        if num_jobs > 1:
+            jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
+                     config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), output_directory, fmllr_directory)
+                    for x in range(num_jobs)]
+        else:
+            jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
+                 config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), output_directory, fmllr_directory, corpus.original_num_jobs)
+                for x in range(num_jobs)]
 
     run_non_mp(final_fmllr_est_func, jobs, log_dir)
+
+    jobs = []
+    for x in range(num_jobs):
+        if num_jobs > 1:
+            jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
+                     config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), fmllr_directory)
+                    for x in range(num_jobs)]
+        else:
+            jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
+                 config.feature_config.construct_feature_proc_string(split_directory, model_directory, x), fmllr_directory, corpus.original_num_jobs)
+                for x in range(num_jobs)]
 
     if config.use_mp:
         run_mp(fmllr_rescore_func, jobs, log_dir)
     else:
         run_non_mp(fmllr_rescore_func, jobs, log_dir)
+
+    if config.use_mp:
+        run_mp(lm_rescore_func, jobs, log_dir)
+    else:
+        run_non_mp(lm_rescore_func, jobs, log_dir)
+
+    if config.use_mp:
+        run_mp(carpa_lm_rescore_func, jobs, log_dir)
+    else:
+        run_non_mp(carpa_lm_rescore_func, jobs, log_dir)
 
     if transcriber.evaluation_mode:
         best_wer = 10000
@@ -307,7 +385,7 @@ def transcribe_fmllr(transcriber):
                 out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(lmwt, wip))
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-                jobs = [(directory, x, config, out_dir, lmwt, wip)
+                jobs = [(model_directory, x, config, out_dir, lmwt, wip)
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -324,7 +402,7 @@ def transcribe_fmllr(transcriber):
             saved_tra_path = os.path.join(fmllr_directory, 'tra.{}'.format(j))
             shutil.copyfile(tra_path, saved_tra_path)
     else:
-        jobs = [(directory, x, config, fmllr_directory)
+        jobs = [(model_directory, x, config, fmllr_directory)
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_dir)

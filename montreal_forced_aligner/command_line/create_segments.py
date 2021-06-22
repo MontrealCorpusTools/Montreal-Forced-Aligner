@@ -8,7 +8,7 @@ from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
 from montreal_forced_aligner.segmenter import Segmenter
 from montreal_forced_aligner.config import TEMP_DIR, segmentation_yaml_to_config, load_basic_segmentation
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
@@ -35,6 +35,7 @@ def create_segments(args, unknown_args=None):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
     logger = setup_logger(command, data_directory)
+    log_config(logger, segmentation_config)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -65,7 +66,8 @@ def create_segments(args, unknown_args=None):
     try:
         corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                                   sample_rate=segmentation_config.feature_config.sample_frequency,
-                        num_jobs=args.num_jobs, logger=logger, use_mp=segmentation_config.use_mp)
+                        num_jobs=args.num_jobs, logger=logger, use_mp=segmentation_config.use_mp, no_speakers=True,
+                                  ignore_transcriptions=True)
 
         begin = time.time()
         a = Segmenter(corpus, segmentation_config,

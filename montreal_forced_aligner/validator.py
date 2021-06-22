@@ -437,4 +437,5 @@ class CorpusValidator(object):
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise

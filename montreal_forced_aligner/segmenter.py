@@ -57,6 +57,7 @@ class Segmenter(object):
     def segmentation_options(self):
         return {'max_segment_length': self.segmentation_config.max_segment_length,
                 'min_pause_duration': self.segmentation_config.min_pause_duration,
+                'snap_boundary_threshold': self.segmentation_config.snap_boundary_threshold,
                 'frame_shift': round(self.segmentation_config.feature_config.frame_shift / 1000, 2)}
 
     @property
@@ -82,6 +83,7 @@ class Segmenter(object):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
 
     def segment(self):
@@ -101,6 +103,7 @@ class Segmenter(object):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
         with open(done_path, 'w'):
             pass

@@ -17,12 +17,13 @@ class TranscribeConfig(BaseConfig):
         self.fmllr_update_type = 'full'
         self.lattice_beam = 6
         self.first_beam = None
-        self.first_max_active = None
+        self.first_max_active = 2000
         self.max_fmllr_jobs = 12
         self.language_model_weight = 10
         self.word_insertion_penalty = 0.5
         self.data_directory = None # Gets set later
         self.use_mp = True
+        self.no_speakers = False
 
     def params(self):
         return {

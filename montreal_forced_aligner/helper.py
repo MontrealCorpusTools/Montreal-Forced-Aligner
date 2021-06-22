@@ -169,7 +169,7 @@ def score(gold : Labels, hypo: (Labels, List)) -> Tuple[int, int]:
     return edits, len(gold)
 
 
-def setup_logger(identifier, output_directory):
+def setup_logger(identifier, output_directory, console_level='info'):
     os.makedirs(output_directory, exist_ok=True)
     log_path = os.path.join(output_directory, identifier + '.log')
     if os.path.exists(log_path):
@@ -178,14 +178,14 @@ def setup_logger(identifier, output_directory):
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
 
-    handler = logging.FileHandler(log_path)
+    handler = logging.FileHandler(log_path, encoding='utf8')
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(getattr(logging, console_level.upper()))
     formatter = logging.Formatter('%(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)

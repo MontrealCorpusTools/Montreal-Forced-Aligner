@@ -86,17 +86,21 @@ def transcribe_corpus(args, unknown_args):
         if conf['language_model_path'] != args.language_model_path:
             logger.debug('Previous run used language model path {} '
                          '(new run: {})'.format(conf['language_model_path'], args.language_model_path))
+    audio_dir = None
+    if args.audio_directory:
+        audio_dir = args.audio_directory
     try:
         if args.evaluate:
             corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                      speaker_characters=args.speaker_characters,
                                      sample_rate=transcribe_config.feature_config.sample_frequency,
-                                     num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
+                                     num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp, audio_directory=audio_dir)
         else:
             corpus = TranscribeCorpus(args.corpus_directory, data_directory,
                                       speaker_characters=args.speaker_characters,
                                       sample_rate=transcribe_config.feature_config.sample_frequency,
-                                      num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp)
+                                      num_jobs=args.num_jobs, use_mp=transcribe_config.use_mp,
+                                      no_speakers=transcribe_config.no_speakers, audio_directory=audio_dir)
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
@@ -105,14 +109,12 @@ def transcribe_corpus(args, unknown_args):
         begin = time.time()
         t = Transcriber(corpus, dictionary, acoustic_model, language_model, transcribe_config,
                         temp_directory=data_directory,
-                        debug=getattr(args, 'debug', False), evaluation_mode=args.evaluate)
-        if args.debug:
-            print('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
+                        debug=getattr(args, 'debug', False), evaluation_mode=args.evaluate, logger=logger)
+        logger.debug('Setup pretrained aligner in {} seconds'.format(time.time() - begin))
 
         begin = time.time()
         t.transcribe()
-        if args.debug:
-            print('Performed transcribing in {} seconds'.format(time.time() - begin))
+        logger.debug('Performed transcribing in {} seconds'.format(time.time() - begin))
         if args.evaluate:
             t.evaluate(args.output_directory)
             best_config_path = os.path.join(args.output_directory, 'best_transcribe_config.yaml')
@@ -121,9 +123,8 @@ def transcribe_corpus(args, unknown_args):
         else:
             begin = time.time()
             t.export_transcriptions(args.output_directory)
-            if args.debug:
-                print('Exported transcriptions in {} seconds'.format(time.time() - begin))
-        print('Done! Everything took {} seconds'.format(time.time() - all_begin))
+            logger.debug('Exported transcriptions in {} seconds'.format(time.time() - begin))
+        logger.info('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:
         conf['dirty'] = True
         raise

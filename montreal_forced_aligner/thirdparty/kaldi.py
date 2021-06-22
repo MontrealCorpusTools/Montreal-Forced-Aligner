@@ -38,7 +38,9 @@ transcribe_filenames = [
     'fstpushspecial', 'fstcomposecontext', 'make-h-transducer', 'fstrmsymbols', 'fstrmepslocal',
     'add-self-loops', 'lattice-scale', 'lattice-add-penalty', 'lattice-best-path', 'lattice-to-post',
     'gmm-post-to-gpost', 'gmm-est-fmllr-gpost', 'lattice-determinize-pruned', 'gmm-rescore-lattice',
-    'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel'
+    'gmm-latgen-faster-parallel', 'lattice-determinize-pruned-parallel', 'arpa-to-const-arpa',
+    'lattice-lmrescore', 'lattice-lmrescore-const-arpa', 'lattice-compose', 'lattice-determinize',
+    'lattice-add-trans-probs', 'lattice-lmrescore-pruned'
 ]
 
 speaker_diarization_filenames = [
@@ -52,7 +54,7 @@ speaker_diarization_filenames = [
 
 included_filenames = alignment_filenames + train_dict_filenames + transcribe_filenames + speaker_diarization_filenames
 if sys.platform == 'win32':
-    included_filenames += ['fstcompile', 'fstarcsort', 'fstconvert']
+    included_filenames += ['fstcompile', 'fstarcsort', 'fstconvert', 'fstproject']
 
 linux_libraries = [#'libfst.so.13', 'libfstfar.so.13',
                    #'libfstscript.so.13', 'libfstfarscript.so.13',
@@ -87,7 +89,6 @@ def collect_kaldi_binaries(directory):
         cur_dir = os.path.basename(root)
         for name in files:
             if os.path.islink(os.path.join(root, name)):
-                print('is link!!')
                 continue
             ext = os.path.splitext(name)
             (key, value) = ext

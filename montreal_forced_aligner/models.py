@@ -281,11 +281,38 @@ class LanguageModel(Archive):
             self.dirname = os.path.join(root_directory, self.name)
             if not os.path.exists(self.dirname):
                 os.makedirs(self.dirname, exist_ok=True)
-            copy(source, self.arpa_path)
+            copy(source, self.large_arpa_path)
 
     @property
-    def arpa_path(self):
-        print(os.listdir(self.dirname))
+    def decode_arpa_path(self):
+        """
+        Use the smallest language model for decoding
+        """
+        for path in [self.small_arpa_path, self.medium_arpa_path, self.large_arpa_path]:
+            if os.path.exists(path):
+                return path
+        raise Exception('Could not find a suitable language model')
+
+    @property
+    def carpa_path(self):
+        """
+        Use the largest language model for rescoring
+        """
+        for path in [self.large_arpa_path, self.medium_arpa_path, self.small_arpa_path]:
+            if os.path.exists(path):
+                return path
+        raise Exception('Could not find a suitable language model')
+
+    @property
+    def small_arpa_path(self):
+        return os.path.join(self.dirname, self.name + '_small' + self.extension)
+
+    @property
+    def medium_arpa_path(self):
+        return os.path.join(self.dirname, self.name + '_med' + self.extension)
+
+    @property
+    def large_arpa_path(self):
         return os.path.join(self.dirname, self.name + self.extension)
 
     def add_arpa_file(self, arpa_path):

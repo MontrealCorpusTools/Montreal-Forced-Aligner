@@ -154,6 +154,14 @@ class LMError(MFAError):
 
 
 class KaldiProcessingError(MFAError):
-    def __init__(self, error_logs):
-        super(KaldiProcessingError, self).__init__('There was one or more errors when running Kaldi binaries.')
+    def __init__(self, error_logs, log_file=None):
+        message = 'There was one or more errors when running Kaldi binaries.'
+        if log_file is not None:
+            message += ' For more details, please check {}'.format(log_file)
+        super(KaldiProcessingError, self).__init__()
         self.error_logs = error_logs
+        self.log_file = log_file
+
+    def update_log_file(self, log_file):
+        self.log_file = log_file
+        self.args = ('There was one or more errors when running Kaldi binaries. For more details, please check {}'.format(log_file),)

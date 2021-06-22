@@ -1,13 +1,15 @@
 import subprocess
 import os
 import shutil
+import re
 import multiprocessing as mp
 from praatio import tgio
 from .config import TEMP_DIR
 from .helper import thirdparty_binary
 from .multiprocessing import transcribe, transcribe_fmllr
 from .corpus import AlignableCorpus
-from .helper import score
+from .helper import score, log_kaldi_errors, parse_logs
+from .exceptions import KaldiProcessingError
 
 
 class Transcriber(object):
@@ -16,7 +18,8 @@ class Transcriber(object):
     word_insertion_penalties = [0, 0.5, 1.0]
 
     def __init__(self, corpus, dictionary, acoustic_model, language_model, transcribe_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, evaluation_mode=False):
+                 call_back=None, debug=False, verbose=False, evaluation_mode=False, logger=None):
+        self.logger = logger
         self.corpus = corpus
         self.dictionary = dictionary
         self.acoustic_model = acoustic_model
@@ -32,7 +35,7 @@ class Transcriber(object):
         self.verbose = verbose
         self.debug = debug
         self.evaluation_mode = evaluation_mode
-        self.acoustic_model.export_model(self.transcribe_directory)
+        self.acoustic_model.export_model(self.model_directory)
         self.log_dir = os.path.join(self.transcribe_directory, 'log')
         os.makedirs(self.log_dir, exist_ok=True)
         self.setup()
@@ -41,9 +44,13 @@ class Transcriber(object):
     def transcribe_directory(self):
         return os.path.join(self.temp_directory, 'transcribe')
 
+    @property
+    def model_directory(self):
+        return os.path.join(self.temp_directory, 'models')
+
     def get_tree_info(self):
         tree_proc = subprocess.Popen([thirdparty_binary('tree-info'),
-                                      os.path.join(self.transcribe_directory, 'tree')], text=True,
+                                      os.path.join(self.model_directory, 'tree')], text=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, _ = tree_proc.communicate()
         context_width = 1
@@ -57,126 +64,230 @@ class Transcriber(object):
         return context_width, central_pos
 
     def setup(self):
+        dirty_path = os.path.join(self.model_directory, 'dirty')
+        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
+            shutil.rmtree(self.model_directory)
         self.dictionary.write(disambig=True)
         if isinstance(self.corpus, AlignableCorpus):
             self.corpus.initialize_corpus(self.dictionary)
         else:
             self.corpus.initialize_corpus()
         self.acoustic_model.feature_config.generate_features(self.corpus)
-
+        log_dir = os.path.join(self.model_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
         context_width, central_pos = self.get_tree_info()
-        g_path = os.path.join(self.transcribe_directory, 'G.fst')
-        lg_path = os.path.join(self.transcribe_directory, 'LG.fst')
-        clg_path = os.path.join(self.transcribe_directory, 'CLG_{}_{}.fst'.format(context_width, central_pos))
-        log_path = os.path.join(self.log_dir, 'hclg.log')
+        small_g_path = os.path.join(self.model_directory, 'small_G.fst')
+        ldet_temp_path = os.path.join(self.model_directory, 'Ldet.fst_temp')
+        ldet_path = os.path.join(self.model_directory, 'Ldet.fst')
+        med_g_path = os.path.join(self.model_directory, 'med_G.fst')
+        carpa_path = os.path.join(self.model_directory, 'G.carpa')
+        temp_carpa_path = os.path.join(self.model_directory, 'G.carpa_temp')
+        lg_path = os.path.join(self.model_directory, 'LG.fst')
+        clg_path = os.path.join(self.model_directory, 'CLG_{}_{}.fst'.format(context_width, central_pos))
+        log_path = os.path.join(log_dir, 'hclg.log')
         in_disambig = os.path.join(self.dictionary.phones_dir, 'disambig.int')
-        out_disambig = os.path.join(self.transcribe_directory,
+        out_disambig = os.path.join(self.model_directory,
                                     'disambig_ilabels_{}_{}.int'.format(context_width, central_pos))
-        ha_out_disambig = os.path.join(self.transcribe_directory, 'disambig_tid.int')
-        ilabels_temp = os.path.join(self.transcribe_directory, 'ilabels_{}_{}'.format(context_width, central_pos))
-        tree_path = os.path.join(self.transcribe_directory, 'tree')
-        model_path = os.path.join(self.transcribe_directory, 'final.mdl')
-        ha_path = os.path.join(self.transcribe_directory, 'Ha.fst')
-        hclga_path = os.path.join(self.transcribe_directory, 'HCLGa.fst')
-        hclg_path = os.path.join(self.transcribe_directory, 'HCLG.fst')
-        words_path = os.path.join(self.transcribe_directory, 'words.txt')
-        shutil.copyfile(self.dictionary.words_symbol_path, os.path.join(self.transcribe_directory, 'words.txt'))
+        ha_out_disambig = os.path.join(self.model_directory, 'disambig_tid.int')
+        ilabels_temp = os.path.join(self.model_directory, 'ilabels_{}_{}'.format(context_width, central_pos))
+        tree_path = os.path.join(self.model_directory, 'tree')
+        model_path = os.path.join(self.model_directory, 'final.mdl')
+        ha_path = os.path.join(self.model_directory, 'Ha.fst')
+        hclga_path = os.path.join(self.model_directory, 'HCLGa.fst')
+        hclg_path = os.path.join(self.model_directory, 'HCLG.fst')
+        words_path = os.path.join(self.model_directory, 'words.txt')
+        dirty_path = os.path.join(self.model_directory, 'dirty')
+        shutil.copyfile(self.dictionary.words_symbol_path, os.path.join(self.model_directory, 'words.txt'))
         if os.path.exists(hclg_path):
             return
-        print('Generating decoding graph...')
+        try:
+            self.logger.info('Generating decoding graph...')
 
-        with open(log_path, 'w') as log_file:
-            if not os.path.exists(g_path):
-                print('Generating G.fst...')
-                arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                                 '--read-symbol-table=' + words_path,
-                                                 self.language_model.arpa_path, g_path], stderr=log_file,
-                                                stdout=log_file)
-                arpafst_proc.communicate()
-                print('Done!')
-            if not os.path.exists(lg_path):
-                print('Generating LG.fst...')
-                temp_compose_path = os.path.join(self.transcribe_directory, 'LG.temp')
-                compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'),
-                                                 self.dictionary.disambig_path, g_path, temp_compose_path],
-                                                stderr=log_file)
-                compose_proc.communicate()
+            with open(log_path, 'w') as log_file:
+                #if not os.path.exists(ldet_path):
+                #    self.logger.info('Generating Ldet.fst...')
+                #    with open(ldet_temp_path, 'w', encoding='utf8') as f:
+                #        print_proc = subprocess.Popen([thirdparty_binary('fstprint'), self.dictionary.disambig_path],
+                #                                      stdout=subprocess.PIPE, stderr=log_file, text=True)
+                #        for line in iter(print_proc.stdout.readline,''):
+                #
+                #            print(line)
+                #        error
+                if not os.path.exists(small_g_path):
+                    self.logger.info('Generating small_G.fst...')
+                    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
+                                                     '--read-symbol-table=' + words_path,
+                                                     self.language_model.small_arpa_path, small_g_path], stderr=log_file,
+                                                    stdout=log_file)
+                    arpafst_proc.communicate()
+                    self.logger.info('Done!')
+                if not os.path.exists(med_g_path):
+                    self.logger.info('Generating med_G.fst...')
+                    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
+                                                     '--read-symbol-table=' + words_path,
+                                                     self.language_model.medium_arpa_path, med_g_path], stderr=log_file,
+                                                    stdout=log_file)
+                    arpafst_proc.communicate()
+                    self.logger.info('Done!')
+                if not os.path.exists(carpa_path):
+                    self.logger.info('Generating G.carpa...')
+                    bos_symbol = self.dictionary.words_mapping['<s>']
+                    eos_symbol = self.dictionary.words_mapping['</s>']
+                    unk_symbol = self.dictionary.words_mapping['<unk>']
+                    with open(self.language_model.carpa_path, 'r', encoding='utf8') as f, \
+                            open(temp_carpa_path, 'w', encoding='utf8') as outf:
+                        current_order = -1
+                        num_oov_lines = 0
+                        for line in f:
+                            line = line.strip()
+                            col = line.split()
+                            if current_order == -1 and not re.match(r'^\\data\\$', line):
+                                continue
+                            if re.match(r'^\\data\\$', line):
+                                log_file.write(r'Processing data...\n')
+                                current_order = 0
+                                outf.write(line + '\n')
+                            elif re.match(r'^\\[0-9]*-grams:$', line):
+                                current_order = int(re.sub(r'\\([0-9]*)-grams:$', r'\1', line))
+                                log_file.write('Processing {} grams...\n'.format(current_order))
+                                outf.write(line + '\n')
+                            elif re.match(r'^\\end\\$', line):
+                                outf.write(line + '\n')
+                            elif not line:
+                                if current_order >= 1:
+                                    outf.write('\n')
+                            else:
+                                if current_order == 0:
+                                    outf.write(line + '\n')
+                                else:
+                                    if len(col) > 2 + current_order or len(col) < 1 + current_order:
+                                        raise Exception('Bad line in arpa lm "{}"'.format(line))
+                                    prob = col.pop(0)
+                                    is_oov = False
+                                    for i in range(current_order):
+                                        try:
+                                            col[i] = str(self.dictionary.words_mapping[col[i]])
+                                        except KeyError:
+                                            is_oov = True
+                                            num_oov_lines += 1
+                                            break
+                                    if not is_oov:
+                                        rest_of_line = ' '.join(col)
+                                        outf.write('{}\t{}\n'.format(prob, rest_of_line))
+                    carpa_proc = subprocess.Popen([thirdparty_binary('arpa-to-const-arpa'),
+                                                   '--bos-symbol={}'.format(bos_symbol),'--eos-symbol={}'.format(eos_symbol),
+                                                   '--unk-symbol={}'.format(unk_symbol),
+                                                     temp_carpa_path, carpa_path], stdin=subprocess.PIPE,
+                                                  stderr=log_file,
+                                                    stdout=log_file)
+                    carpa_proc.communicate()
+                    os.remove(temp_carpa_path)
+                    self.logger.info('Done!')
 
-                temp2_compose_path = os.path.join(self.transcribe_directory, 'LG.temp2')
-                determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
-                                                     '--use-log=true', temp_compose_path, temp2_compose_path],
+
+                if not os.path.exists(lg_path):
+                    self.logger.info('Generating LG.fst...')
+                    temp_compose_path = os.path.join(self.model_directory, 'LG.temp')
+                    compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'),
+                                                     self.dictionary.disambig_path, small_g_path, temp_compose_path],
                                                     stderr=log_file)
-                determinize_proc.communicate()
-                os.remove(temp_compose_path)
+                    compose_proc.communicate()
 
-                minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'),
-                                                  temp2_compose_path, temp_compose_path],
-                                                 stdout=subprocess.PIPE, stderr=log_file)
-                minimize_proc.communicate()
-                os.remove(temp2_compose_path)
-                push_proc = subprocess.Popen([thirdparty_binary('fstpushspecial'), temp_compose_path, lg_path],
-                                             stderr=log_file)
-                push_proc.communicate()
-                os.remove(temp_compose_path)
-                print('Done!')
-            if not os.path.exists(clg_path):
-                print('Generating CLG.fst...')
-                compose_proc = subprocess.Popen([thirdparty_binary('fstcomposecontext'),
-                                                 '--context-size={}'.format(context_width),
-                                                 '--central-position={}'.format(central_pos),
-                                                 '--read-disambig-syms={}'.format(in_disambig),
-                                                 '--write-disambig-syms={}'.format(out_disambig),
-                                                 ilabels_temp, lg_path], stdout=subprocess.PIPE, stderr=log_file)
-                sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'), '--sort_type=ilabel', '-', clg_path],
-                                             stdin=compose_proc.stdout, stderr=log_file)
-                sort_proc.communicate()
-                print('Done!')
-            if not os.path.exists(hclga_path):
-                print('Generating HCLGa.fst...')
-                make_h_proc = subprocess.Popen([thirdparty_binary('make-h-transducer'),
-                                                '--disambig-syms-out={}'.format(ha_out_disambig),
-                                                '--transition-scale={}'.format(self.transcribe_config.transition_scale),
-                                                ilabels_temp, tree_path, model_path, ha_path],
-                                               stderr=log_file, stdout=log_file)
-                make_h_proc.communicate()
+                    temp2_compose_path = os.path.join(self.model_directory, 'LG.temp2')
+                    determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
+                                                         '--use-log=true', temp_compose_path, temp2_compose_path],
+                                                        stderr=log_file)
+                    determinize_proc.communicate()
+                    os.remove(temp_compose_path)
 
-                temp_compose_path = os.path.join(self.transcribe_directory, 'HCLGa.temp')
-                compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'), ha_path,
-                                                 clg_path, temp_compose_path], stderr=log_file)
-                compose_proc.communicate()
+                    minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'),
+                                                      temp2_compose_path, temp_compose_path],
+                                                     stdout=subprocess.PIPE, stderr=log_file)
+                    minimize_proc.communicate()
+                    os.remove(temp2_compose_path)
+                    push_proc = subprocess.Popen([thirdparty_binary('fstpushspecial'), temp_compose_path, lg_path],
+                                                 stderr=log_file)
+                    push_proc.communicate()
+                    os.remove(temp_compose_path)
+                    self.logger.info('Done!')
+                if not os.path.exists(clg_path):
+                    self.logger.info('Generating CLG.fst...')
+                    compose_proc = subprocess.Popen([thirdparty_binary('fstcomposecontext'),
+                                                     '--context-size={}'.format(context_width),
+                                                     '--central-position={}'.format(central_pos),
+                                                     '--read-disambig-syms={}'.format(in_disambig),
+                                                     '--write-disambig-syms={}'.format(out_disambig),
+                                                     ilabels_temp, lg_path], stdout=subprocess.PIPE, stderr=log_file)
+                    sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'), '--sort_type=ilabel', '-', clg_path],
+                                                 stdin=compose_proc.stdout, stderr=log_file)
+                    sort_proc.communicate()
+                    self.logger.info('Done!')
+                if not os.path.exists(hclga_path):
+                    self.logger.info('Generating HCLGa.fst...')
+                    make_h_proc = subprocess.Popen([thirdparty_binary('make-h-transducer'),
+                                                    '--disambig-syms-out={}'.format(ha_out_disambig),
+                                                    '--transition-scale={}'.format(self.transcribe_config.transition_scale),
+                                                    ilabels_temp, tree_path, model_path, ha_path],
+                                                   stderr=log_file, stdout=log_file)
+                    make_h_proc.communicate()
 
-                determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
-                                                     '--use-log=true', temp_compose_path],
-                                                    stdout=subprocess.PIPE, stderr=log_file)
-                rmsymbols_proc = subprocess.Popen([thirdparty_binary('fstrmsymbols'), ha_out_disambig],
-                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
-                                                  stderr=log_file)
-                rmeps_proc = subprocess.Popen([thirdparty_binary('fstrmepslocal')],
-                                              stdin=rmsymbols_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-                minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'), '-', hclga_path],
-                                                 stdin=rmeps_proc.stdout, stderr=log_file)
-                minimize_proc.communicate()
-                os.remove(temp_compose_path)
-                print('Done!')
-            print('Finishing up...')
-            self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
-                                               '--self-loop-scale={}'.format(self.transcribe_config.self_loop_scale),
-                                               '--reorder=true', model_path, hclga_path],
-                                              stdout=subprocess.PIPE, stderr=log_file)
-            convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
-                                            stdin=self_loop_proc.stdout, stderr=log_file)
-            convert_proc.communicate()
-            print('Finished graph construction!')
+                    temp_compose_path = os.path.join(self.model_directory, 'HCLGa.temp')
+                    compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'), ha_path,
+                                                     clg_path, temp_compose_path], stderr=log_file)
+                    compose_proc.communicate()
+
+                    determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
+                                                         '--use-log=true', temp_compose_path],
+                                                        stdout=subprocess.PIPE, stderr=log_file)
+                    rmsymbols_proc = subprocess.Popen([thirdparty_binary('fstrmsymbols'), ha_out_disambig],
+                                                      stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
+                                                      stderr=log_file)
+                    rmeps_proc = subprocess.Popen([thirdparty_binary('fstrmepslocal')],
+                                                  stdin=rmsymbols_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                    minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'), '-', hclga_path],
+                                                     stdin=rmeps_proc.stdout, stderr=log_file)
+                    minimize_proc.communicate()
+                    os.remove(temp_compose_path)
+                    self.logger.info('Done!')
+                self.logger.info('Finishing up...')
+                self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
+                                                   '--self-loop-scale={}'.format(self.transcribe_config.self_loop_scale),
+                                                   '--reorder=true', model_path, hclga_path],
+                                                  stdout=subprocess.PIPE, stderr=log_file)
+                convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
+                                                stdin=self_loop_proc.stdout, stderr=log_file)
+                convert_proc.communicate()
+                parse_logs(log_dir)
+                self.logger.info('Finished graph construction!')
+        except Exception as e:
+            with open(dirty_path, 'w'):
+                pass
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
+            raise
 
     def transcribe(self):
-        print('Beginning transcription...')
-        transcribe(self)
-        if self.transcribe_config.fmllr:
-            print('Performing speaker adjusted transcription...')
-            transcribe_fmllr(self)
+        self.logger.info('Beginning transcription...')
+        dirty_path = os.path.join(self.transcribe_directory, 'dirty')
+        if os.path.exists(dirty_path):
+            shutil.rmtree(self.transcribe_directory, ignore_errors=True)
+        os.makedirs(self.log_dir,exist_ok=True)
+        try:
+            transcribe(self)
+            if self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
+                self.logger.info('Performing speaker adjusted transcription...')
+                transcribe_fmllr(self)
+        except Exception as e:
+            with open(dirty_path, 'w'):
+                pass
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
+            raise
 
     def evaluate(self, output_directory, input_directory=None):
-        print('Evaluating transcripts...')
+        self.logger.info('Evaluating transcripts...')
         transcripts = self._load_transcripts(input_directory)
         # Sentence-level measures
 
@@ -216,7 +327,7 @@ class Transcriber(object):
                 g = ' '.join(g)
                 h = ' '.join(h)
                 f.write('{},{},{}\n'.format(utt, g, h))
-        print('SER: {:.2f}%, WER: {:.2f}%'.format(ser, wer))
+        self.logger.info('SER: {:.2f}%, WER: {:.2f}%'.format(ser, wer))
         return ser, wer
 
     def _load_transcripts(self, input_directory=None):
@@ -224,7 +335,7 @@ class Transcriber(object):
         lookup = self.dictionary.reversed_word_mapping
         if input_directory is None:
             input_directory = self.transcribe_directory
-            if self.transcribe_config.fmllr:
+            if self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
                 input_directory = os.path.join(input_directory, 'fmllr')
         for j in range(self.corpus.num_jobs):
             with open(os.path.join(input_directory, 'tra.{}'.format(j)), 'r', encoding='utf8') as f:
@@ -242,7 +353,6 @@ class Transcriber(object):
 
     def export_transcriptions(self, output_directory, source=None):
         transcripts = self._load_transcripts(source)
-        print(self.corpus.file_directory_mapping)
         if not self.corpus.segments:
             for utt, t in transcripts.items():
                 relative = self.corpus.file_directory_mapping[utt]
@@ -256,26 +366,37 @@ class Transcriber(object):
                     f.write(t)
 
         else:
-            for filename in self.corpus.speaker_ordering.keys():
+
+            for filename in self.corpus.file_directory_mapping.keys():
                 maxtime = self.corpus.get_wav_duration(filename)
+                speaker_directory = output_directory
                 try:
-                    speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
+                    if self.corpus.file_directory_mapping[filename]:
+                        speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
                 except KeyError:
-                    speaker_directory = output_directory
+                    pass
                 tiers = {}
-                for speaker in self.corpus.speaker_ordering[filename]:
-                    tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=maxtime)
+                if self.transcribe_config.no_speakers:
+                    speaker = 'speech'
+                    tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=maxtime)
+                else:
+                    for speaker in self.corpus.speaker_ordering[filename]:
+                        tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=maxtime)
 
                 tg = tgio.Textgrid()
                 tg.maxTimestamp = maxtime
                 for utt_name, text in transcripts.items():
-                    utt_filename, begin, end = self.corpus.segments[utt_name].split(' ')
+                    seg = self.corpus.segments[utt_name]
+                    utt_filename, begin, end = seg['file_name'], seg['begin'], seg['end']
                     if utt_filename != filename:
                         continue
-                    speaker = self.corpus.utt_speak_mapping[utt_name]
+                    if self.transcribe_config.no_speakers:
+                        speaker = 'speech'
+                    else:
+                        speaker = self.corpus.utt_speak_mapping[utt_name]
                     begin = float(begin)
                     end = float(end)
-                    tiers[speaker].append((begin, end, text))
+                    tiers[speaker].entryList.append((begin, end, text))
                 for t in tiers.values():
                     tg.addTier(t)
                 tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)

@@ -5,7 +5,6 @@ from ..corpus.base import get_wav_info
 from PyQt5 import QtGui, QtCore, QtWidgets, QtMultimedia
 
 import pyqtgraph as pg
-
 import librosa
 import numpy as np
 
@@ -34,32 +33,46 @@ class DetailedMessageBox(QtWidgets.QMessageBox):  # pragma: no cover
 
 
 class MediaPlayer(QtMultimedia.QMediaPlayer):  # pragma: no cover
+    timeChanged = QtCore.pyqtSignal(object)
     def __init__(self):
         super(MediaPlayer, self).__init__()
         self.max_time = None
         self.min_time = None
+        self.start_time = 0
         self.sr = None
         self.setNotifyInterval(1)
         self.positionChanged.connect(self.checkStop)
+        self.buf = QtCore.QBuffer()
+
+    def currentTime(self):
+        pos = self.position()
+        return pos / 1000
 
     def setMaxTime(self, max_time):
         self.max_time = max_time * 1000
 
     def setMinTime(self, min_time):  # Positions for MediaPlayer are in milliseconds, no SR required
         self.min_time = min_time * 1000
+        if self.start_time < self.min_time:
+            self.start_time = self.min_time
+
+    def setStartTime(self, start_time):  # Positions for MediaPlayer are in milliseconds, no SR required
+        self.start_time = start_time * 1000
+
+    def setCurrentTime(self, time):
+        pos = time * 1000
+        self.setPosition(pos)
 
     def checkStop(self, position):
         if self.state() == QtMultimedia.QMediaPlayer.PlayingState:
-            if self.min_time is not None:
-                if position < self.min_time:
-                    self.setPosition(self.min_time)
+            self.timeChanged.emit(self.currentTime())
             if self.max_time is not None:
-                if position > self.max_time:
+                if position > self.max_time + 3:
                     self.stop()
 
 
 class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
-    utteranceChanged = QtCore.pyqtSignal(object)
+    utteranceChanged = QtCore.pyqtSignal(object, object)
     fileChanged = QtCore.pyqtSignal(object)
     utteranceMerged = QtCore.pyqtSignal()
     utteranceDeleted = QtCore.pyqtSignal()
@@ -114,7 +127,17 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
             self.current_file = self.corpus.segments[utterance]['file_name']
         else:
             self.current_file = utterance
-        self.utteranceChanged.emit(utterance)
+        self.utteranceChanged.emit(utterance, False)
+
+    def update_and_zoom_utterance(self, cell):
+        if not cell:
+            return
+        utterance = self.table_widget.item(cell.row(), 0).text()
+        if self.corpus.segments:
+            self.current_file = self.corpus.segments[utterance]['file_name']
+        else:
+            self.current_file = utterance
+        self.utteranceChanged.emit(utterance, True)
 
     def update_utterance_text(self, utterance):
         t = self.corpus.text_mapping[utterance]
@@ -196,9 +219,13 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         first_seg = {'file_name': filename, 'begin': beg, 'end': split_time, 'channel': channel}
         self.corpus.add_utterance(first_utt, speaker, file, utt_text, seg=first_seg)
 
+        second_utt_text = ''
+        if utt_text == 'speech':  # Check for segmentation
+            second_utt_text = 'speech'
+
         second_utt = '{}_{}_{}_{}'.format(speaker, filename, split_time, end).replace('.', '_')
         second_seg = {'file_name': filename, 'begin': split_time, 'end': end, 'channel': channel}
-        self.corpus.add_utterance(second_utt, speaker, file, '', seg=second_seg)
+        self.corpus.add_utterance(second_utt, speaker, file, second_utt_text, seg=second_seg)
 
         self.corpus.delete_utterance(old_utt)
 
@@ -206,8 +233,8 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.utteranceMerged.emit()
         self.table_widget.clearSelection()
         self.select_utterance(first_utt)
-        self.utteranceChanged.emit(first_utt)
-        self.updateView.emit(beg, end)
+        self.utteranceChanged.emit(first_utt, False)
+        self.updateView.emit(None, None)
 
     def merge_utterances(self):
         print('MERGING')
@@ -245,6 +272,8 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
                 if end > max_end:
                     max_end = end
                 utt_text = self.corpus.text_mapping[old_utt]
+                if utt_text == 'speech' and text.strip() == 'speech':
+                    continue
                 text += utt_text + ' '
             else:
                 return
@@ -259,7 +288,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.table_widget.clearSelection()
         self.utteranceMerged.emit()
         self.select_utterance(new_utt)
-        self.utteranceChanged.emit(new_utt)
+        self.utteranceChanged.emit(new_utt, False)
 
     def create_utterance(self, speaker, begin, end, channel):
         begin = round(begin, 4)
@@ -273,9 +302,9 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.table_widget.clearSelection()
         self.utteranceMerged.emit()
         self.select_utterance(new_utt)
-        self.utteranceChanged.emit(new_utt)
+        self.utteranceChanged.emit(new_utt, False)
 
-    def select_utterance(self, utt):
+    def select_utterance(self, utt, zoom=False):
         self.table_widget.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
         if utt is None:
             self.table_widget.clearSelection()
@@ -286,19 +315,25 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
                     break
         self.table_widget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         cur = self.get_current_selection()
-        if len(cur) > 1 and self.corpus.segments:
-            min_time = 100000
-            max_time = 0
-            for u in cur:
-                beg = self.corpus.segments[u]['begin']
-                end = self.corpus.segments[u]['end']
-                if beg < min_time:
-                    min_time = beg
-                if end > max_time:
-                    max_time = end
-            min_time -= 1
-            max_time += 1
-            self.updateView.emit(min_time, max_time)
+        if not cur:
+            return
+        if zoom:
+            if self.corpus.segments:
+                min_time = 100000
+                max_time = 0
+                for u in cur:
+                    beg = self.corpus.segments[u]['begin']
+                    end = self.corpus.segments[u]['end']
+                    if beg < min_time:
+                        min_time = beg
+                    if end > max_time:
+                        max_time = end
+                min_time -= 1
+                max_time += 1
+        else:
+            min_time = None
+            max_time = None
+        self.updateView.emit(min_time, max_time)
 
     def refresh_corpus(self, utt=None):
         self.refresh_list()
@@ -321,6 +356,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
                 self.table_widget.setHorizontalHeaderLabels(['Utterance', 'Speaker', 'Begin', 'End', 'OOV found'])
 
             self.table_widget.currentItemChanged.connect(self.update_utterance)
+            self.table_widget.itemDoubleClicked.connect(self.update_and_zoom_utterance)
         else:
             self.file_dropdown.clear()
             self.file_dropdown.hide()
@@ -337,6 +373,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
     def refresh_file_dropdown(self):
         self.file_dropdown.clear()
         for fn in self.corpus.file_utt_mapping:
+
             self.file_dropdown.addItem(fn)
 
     def refresh_list(self):
@@ -350,7 +387,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
             if not file:
                 return
             self.table_widget.setRowCount(len(self.corpus.file_utt_mapping[file]))
-            for i, u in enumerate(self.corpus.file_utt_mapping[file]):
+            for i, u in enumerate(sorted(self.corpus.file_utt_mapping[file], key=lambda x: self.corpus.segments[x]['begin'])):
                 t = self.corpus.text_mapping[u]
                 self.table_widget.setItem(i, 0, QtWidgets.QTableWidgetItem(u))
                 self.table_widget.setItem(i, 1, QtWidgets.QTableWidgetItem(self.corpus.utt_speak_mapping[u]))
@@ -406,6 +443,21 @@ class TranscriptionWidget(QtWidgets.QTextEdit):  # pragma: no cover
         super(TranscriptionWidget, self).keyPressEvent(event)
 
 
+class SelectedUtterance(pg.LinearRegionItem):
+    dragFinished = QtCore.pyqtSignal(object)
+    def mouseDragEvent(self, ev):
+        if ev.button() != QtCore.Qt.LeftButton:
+            ev.ignore()
+            return
+
+        if ev.isFinish():
+            pos = ev.pos()
+            self.dragFinished.emit(pos)
+            return
+
+        ev.accept()
+
+
 def construct_text_region(utt, view_min, view_max, point_min, point_max, sr, speaker_ind,
                           selected_range_color='blue', selected_line_color='g',
                           break_line_color=1.0, text_color=1.0, interval_background_color=0.25,
@@ -418,7 +470,7 @@ def construct_text_region(utt, view_min, view_max, point_min, point_max, sr, spe
     selected_range_color.setAlpha(50)
     reg_brush = pg.mkBrush(selected_range_color)
 
-    reg = pg.LinearRegionItem([b_s, e_s], pen=pg.mkPen(selected_line_color, width=3), brush=reg_brush)
+    reg = SelectedUtterance([b_s, e_s], pen=pg.mkPen(selected_line_color, width=3), brush=reg_brush)
     reg.movable = False
     mid_b = utt['begin']
     mid_e = utt['end']
@@ -494,7 +546,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
     lookUpWord = QtCore.pyqtSignal(object)
     createWord = QtCore.pyqtSignal(object)
     saveUtterance = QtCore.pyqtSignal(object, object)
-    selectUtterance = QtCore.pyqtSignal(object)
+    selectUtterance = QtCore.pyqtSignal(object, object)
     createUtterance = QtCore.pyqtSignal(object, object, object, object)
     refreshCorpus = QtCore.pyqtSignal(object)
     updateSpeaker = QtCore.pyqtSignal(object, object)
@@ -515,7 +567,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.background_color = '#000000'
         self.m_audioOutput = MediaPlayer()
         # self.m_audioOutput.error.connect(self.showError)
-        self.m_audioOutput.positionChanged.connect(self.notified)
+        self.m_audioOutput.timeChanged.connect(self.notified)
         self.m_audioOutput.stateChanged.connect(self.handleAudioState)
         # self.setFocusPolicy(QtCore.Qt.StrongFocus)
 
@@ -540,6 +592,9 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         button_layout = QtWidgets.QVBoxLayout()
         self.play_button = QtWidgets.QPushButton('Play')
         self.play_button.clicked.connect(self.play_audio)
+        self.show_all_speaker_checkbox = QtWidgets.QCheckBox('Show all speakers')
+        self.show_all_speakers = False
+        self.show_all_speaker_checkbox.stateChanged.connect(self.update_show_speakers)
         # self.play_button.setFocusPolicy(QtCore.Qt.NoFocus)
         self.speaker_dropdown = QtWidgets.QComboBox()
         self.speaker_dropdown.currentIndexChanged.connect(self.update_speaker)
@@ -560,6 +615,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         volume_layout.addWidget(self.volume_slider)
 
         button_layout.addWidget(self.play_button)
+        button_layout.addWidget(self.show_all_speaker_checkbox)
         button_layout.addLayout(volume_layout)
         button_layout.addWidget(self.speaker_dropdown)
         self.text_widget = TranscriptionWidget()
@@ -584,6 +640,10 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.sr = None
         self.file_utts = []
         self.selected_utterance = None
+
+    def update_show_speakers(self, state):
+        self.show_all_speakers = state > 0
+        self.update_plot(self.min_time, self.max_time)
 
     def update_config(self, config):
         self.background_color = config['background_color']
@@ -697,15 +757,15 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
                     continue
                 utt = u
             if utt is not None:
+                zoom = ev.double()
                 if modifiers == QtCore.Qt.ControlModifier and utt is not None:
-                    self.selectUtterance.emit(utt['utt'])
+                    self.selectUtterance.emit(utt['utt'], zoom)
                 else:
-                    self.selectUtterance.emit(None)
+                    self.selectUtterance.emit(None, zoom)
                     if utt is not None:
-                        self.selectUtterance.emit(utt['utt'])
-                self.m_audioOutput.setMinTime(self.selected_min)
+                        self.selectUtterance.emit(utt['utt'], zoom)
                 self.m_audioOutput.setMaxTime(self.selected_max)
-                self.m_audioOutput.setPosition(self.m_audioOutput.min_time)
+                self.m_audioOutput.setCurrentTime(self.selected_min)
             elif ev.double():
                 beg = time - 0.5
                 end = time + 0.5
@@ -747,9 +807,9 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
                 x = self.current_time * self.sr
 
             self.line.setPos(x)
-            self.m_audioOutput.setMinTime(self.current_time)
+            self.m_audioOutput.setStartTime(self.current_time)
+            self.m_audioOutput.setCurrentTime(self.current_time)
             self.m_audioOutput.setMaxTime(self.max_time)
-            self.m_audioOutput.setPosition(self.m_audioOutput.min_time)
 
     def refresh_view(self):
         self.refresh_utterances()
@@ -781,6 +841,8 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.file_name = None
             self.wave_data = None
             return
+        if file_name == self.file_name:
+            return
         self.file_name = file_name
         if file_name in self.corpus.utt_speak_mapping:
             self.long_file = False
@@ -803,10 +865,11 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.m_audioOutput.setMedia(QtMultimedia.QMediaContent(p))
         self.updatePlayTime(0)
         self.m_audioOutput.setMinTime(0)
+        self.m_audioOutput.setStartTime(0)
         self.m_audioOutput.setMaxTime(end)
-        self.m_audioOutput.setPosition(self.m_audioOutput.min_time)
+        self.m_audioOutput.setCurrentTime(0)
 
-    def update_utterance(self, utterance):
+    def update_utterance(self, utterance, zoom=False):
         if utterance is None:
             return
         self.utterance = utterance
@@ -835,22 +898,40 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.wave_data = None
             begin = 0
             end = self.wav_info['duration']
-
+        if not zoom:
+            begin, end = None, None
         self.update_plot(begin, end)
         if self.long_file:
-            self.m_audioOutput.setMinTime(self.selected_min)
             self.m_audioOutput.setMaxTime(self.selected_max)
         self.updatePlayTime(self.selected_min)
-        self.m_audioOutput.setPosition(self.m_audioOutput.min_time)
+        self.m_audioOutput.setStartTime(self.selected_min)
+        self.m_audioOutput.setCurrentTime(self.selected_min)
+        self.m_audioOutput.setMaxTime(self.selected_max)
 
     def update_selected_times(self, region):
         self.selected_min, self.selected_max = region.getRegion()
         self.selected_min /= self.sr
         self.selected_max /= self.sr
         self.updatePlayTime(self.selected_min)
-        self.m_audioOutput.setMinTime(self.selected_min)
+        self.m_audioOutput.setStartTime(self.selected_min)
+        self.m_audioOutput.setCurrentTime(self.selected_min)
         self.m_audioOutput.setMaxTime(self.selected_max)
-        self.m_audioOutput.setPosition(self.m_audioOutput.min_time)
+
+    def update_selected_speaker(self, pos):
+        pos = pos.y()
+        if pos > self.min_point:
+            return
+        y_range = self.max_point - self.min_point
+        speaker_tier_range = (y_range / 2)
+        new_speaker = None
+        for k, s_id in self.speaker_mapping.items():
+            top_pos = self.min_point - speaker_tier_range * (s_id - 1)
+            bottom_pos = top_pos - speaker_tier_range
+            if top_pos > pos > bottom_pos:
+                new_speaker = k
+        if new_speaker != self.selected_utterance['speaker']:
+            self.updateSpeaker.emit(self.utterance, new_speaker)
+
 
     def update_plot(self, begin, end):
         self.ax.getPlotItem().clear()
@@ -860,6 +941,9 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         if self.wav_path is None:
             return
         from functools import partial
+        if begin is None and end is None:
+            begin = self.min_time
+            end = self.max_time
         if end is None:
             return
         if end <= 0:
@@ -868,13 +952,14 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             begin = 0
         if self.long_file:
             duration = end - begin
-            self.wave_data, self.sr = librosa.load(self.wav_path, offset=begin, duration=duration, sr=None, mono=False)
+            self.wave_data, self.sr = librosa.load(self.wav_path, offset=begin, duration=duration + 2, sr=None, mono=False)
 
         elif self.wave_data is None:
             self.wave_data, self.sr = librosa.load(self.wav_path, sr=None)
             # Normalize y1 between 0 and 2
             self.wave_data /= np.max(np.abs(self.wave_data), axis=0)  # between -1 and 1
             self.wave_data += 1  # shift to 0 and 2
+        #self.m_audioOutput.setData(self.wave_data, self.sr)
         begin_samp = int(begin * self.sr)
         end_samp = int(end * self.sr)
         window_size = end - begin
@@ -952,14 +1037,15 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.speaker_mapping = {}
             # Figure out speaker mapping first
             speakers = set()
-            for u in self.file_utts:
-                if u['end'] - self.min_time <= 0:
-                    continue
-                if self.max_time - u['begin'] <= 0:
-                    break
-                speakers.add(u['speaker'])
+            if not self.show_all_speakers:
+                for u in self.file_utts:
+                    if u['end'] - self.min_time <= 0:
+                        continue
+                    if self.max_time - u['begin'] <= 0:
+                        break
+                    speakers.add(u['speaker'])
             for sp in self.corpus.speaker_ordering[self.file_name]:
-                if sp not in speakers:
+                if not self.show_all_speakers and sp not in speakers:
                     continue
                 if sp not in self.speaker_mapping:
                     self.speaker_mapping[sp] = speaker_ind
@@ -986,6 +1072,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
                     func = partial(self.update_utt_times, u)
                     reg.sigRegionChangeFinished.connect(func)
                     reg.sigRegionChangeFinished.connect(self.update_selected_times)
+                    reg.dragFinished.connect(self.update_selected_speaker)
                 else:
                     t, bl, el, fill = construct_text_box(u, self.min_time, self.max_time, self.min_point, self.max_point,
                                                          self.sr, s_id, break_line_color=self.break_line_color,
@@ -1096,8 +1183,6 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.m_audioOutput.play()
         elif self.m_audioOutput.state() == QtMultimedia.QMediaPlayer.PlayingState:
             self.m_audioOutput.pause()
-        elif self.m_audioOutput.state() == QtMultimedia.QMediaPlayer.PausedState:
-            self.m_audioOutput.play()
 
     def zoom_in(self):
         shift = round((self.max_time - self.min_time) * 0.25, 3)
@@ -1108,7 +1193,11 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             shift = (cur_duration - 1) / 2
         self.min_time += shift
         self.max_time -= shift
+        cur_time = self.m_audioOutput.currentTime()
         self.update_plot(self.min_time, self.max_time)
+        self.m_audioOutput.setStartTime(cur_time)
+        self.m_audioOutput.setCurrentTime(cur_time)
+        self.updatePlayTime(cur_time)
 
     def zoom_out(self):
         shift = round((self.max_time - self.min_time) * 0.25, 3)
@@ -1121,7 +1210,11 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.max_time = self.wav_info['duration']
         if self.min_time < 0:
             self.min_time = 0
+        cur_time = self.m_audioOutput.currentTime()
         self.update_plot(self.min_time, self.max_time)
+        self.m_audioOutput.setStartTime(cur_time)
+        self.m_audioOutput.setCurrentTime(cur_time)
+        self.updatePlayTime(cur_time)
 
     def pan_left(self):
         shift = round((self.max_time - self.min_time) * 0.25, 3)
@@ -1132,7 +1225,11 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         if self.min_time < 0:
             self.max_time -= self.min_time
             self.min_time = 0
+        cur_time = self.m_audioOutput.currentTime()
         self.update_plot(self.min_time, self.max_time)
+        self.m_audioOutput.setStartTime(cur_time)
+        self.m_audioOutput.setCurrentTime(cur_time)
+        self.updatePlayTime(cur_time)
 
     def pan_right(self):
         shift = round((self.max_time - self.min_time) * 0.25, 3)
@@ -1142,26 +1239,30 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
             self.min_time -= self.max_time - self.wav_info['duration']
             self.min_time = round(self.min_time, 4)
             self.max_time = self.wav_info['duration']
+        cur_time = self.m_audioOutput.currentTime()
         self.update_plot(self.min_time, self.max_time)
+        self.m_audioOutput.setStartTime(cur_time)
+        self.m_audioOutput.setCurrentTime(cur_time)
+        self.updatePlayTime(cur_time)
 
     def updatePlayTime(self, time):
         if not time:
             return
-        if self.max_time and time > self.max_time:
-            return
+        #if self.max_time and time > self.max_time:
+        #    return
         if self.sr:
             pos = int(time * self.sr)
             self.line.setPos(pos)
 
-    def notified(self, position):
-        time = position / 1000  # position for MediaPlayer is in milliseconds
-        self.updatePlayTime(time)
+    def notified(self, current_time):
+        if self.m_audioOutput.min_time is None:
+            return
+        self.updatePlayTime(current_time)
 
     def handleAudioState(self, state):
         if state == QtMultimedia.QMediaPlayer.StoppedState:
-            min_time = self.min_time
-            self.m_audioOutput.setPosition(0)
-            self.updatePlayTime(min_time)
+            self.m_audioOutput.setPosition(self.m_audioOutput.start_time)
+            self.updatePlayTime(self.m_audioOutput.currentTime())
 
 
 class InformationWidget(QtWidgets.QWidget):  # pragma: no cover

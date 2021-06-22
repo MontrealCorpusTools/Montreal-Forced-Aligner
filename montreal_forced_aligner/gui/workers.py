@@ -63,6 +63,7 @@ class ImportCorpusWorker(FunctionWorker):
         time.sleep(0.1)
         if not self.directory:
             return
+        print('hello?')
         corpus = AlignableCorpus(self.directory, self.corpus_temp_dir, logger=self.logger)
         #if not corpus.loaded_from_temp:
         #    corpus.initialize_corpus(None)

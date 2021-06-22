@@ -41,8 +41,8 @@ class BaseAligner(object):
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
         os.makedirs(self.temp_directory, exist_ok=True)
+        self.log_file = os.path.join(self.temp_directory, 'aligner.log')
         if logger is None:
-            self.log_file = os.path.join(self.temp_directory, 'aligner.log')
             self.logger = logging.getLogger('corpus_setup')
             self.logger.setLevel(logging.INFO)
             handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
@@ -65,6 +65,7 @@ class BaseAligner(object):
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
 
     @property

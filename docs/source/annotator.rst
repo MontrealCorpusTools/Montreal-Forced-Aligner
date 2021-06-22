@@ -1,3 +1,6 @@
+
+.. _`LAV filters`: https://github.com/Nevcairiel/LAVFilters/releases
+
 .. _annotator:
 
 *********
@@ -30,6 +33,11 @@ Initial setup
 
 To load a corpus for inspection, go to the Corpus drop down menu and select "Load a corpus".  Navigate
 to the desired corpus directory.  Please note that it should follow one of the data formats outlined in :ref:`data_format`.
+
+.. note::
+
+   Some set up of system codecs may be necessary to playback those types of files.  For Windows, `LAV filters` has been
+   tested to work with :code:`.flac` files.
 
 Next, dictionary files and G2P models should be loaded via their respective menus.  If any pretrained
 models have been installed via :ref:`pretrained_models`, these can be selected directly.

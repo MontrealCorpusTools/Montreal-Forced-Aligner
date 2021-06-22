@@ -88,7 +88,7 @@ def transcription_acoustic_model(acoustic_model_dir):
 
 @pytest.fixture(scope='session')
 def transcription_language_model(language_model_dir, generated_dir):
-    return os.path.join(language_model_dir, 'basic_lm.zip')
+    return os.path.join(language_model_dir, 'test_lm.zip')
 
 
 @pytest.fixture(scope='session')

@@ -14,8 +14,8 @@ from ..exceptions import CorpusError, WavReadError,  \
 from .base import BaseCorpus, find_exts
 import multiprocessing as mp
 from queue import Empty
-from ..multiprocessing.helper import Stopped
-from ..multiprocessing.corpus import CorpusProcessWorker, parse_lab_file, parse_textgrid_file
+from ..multiprocessing.helper import Stopped, Counter as MPCounter
+from ..multiprocessing.corpus import CorpusProcessWorker, parse_lab_file, parse_textgrid_file, parse_transcription
 
 
 class AlignableCorpus(BaseCorpus):
@@ -53,10 +53,11 @@ class AlignableCorpus(BaseCorpus):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
                  num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True,
-                 punctuation=None, clitic_markers=None):
+                 punctuation=None, clitic_markers=None, parse_text_only_files=False, audio_directory=None):
         super(AlignableCorpus, self).__init__(directory, output_directory,
                                               speaker_characters,
-                                              num_jobs, sample_rate, debug, logger, use_mp, punctuation, clitic_markers)
+                                              num_jobs, sample_rate, debug, logger, use_mp,
+                                              punctuation, clitic_markers, audio_directory=audio_directory)
         self.utt_text_file_mapping = {}
         self.word_counts = Counter()
         self.utterance_oovs = {}
@@ -65,6 +66,7 @@ class AlignableCorpus(BaseCorpus):
         self.transcriptions_without_wavs = []
         self.tg_count = 0
         self.lab_count = 0
+        self.parse_text_only_files = parse_text_only_files
 
         self.loaded_from_temp = self._load_from_temp()
         if not self.loaded_from_temp:
@@ -176,17 +178,29 @@ class AlignableCorpus(BaseCorpus):
         return_queue = manager.Queue()
         return_dict = manager.dict()
         stopped = Stopped()
+        processed_counter = MPCounter()
+        max_counter = MPCounter()
+
+        text_only_files = []
+        all_sound_files = {}
+        if self.audio_directory and os.path.exists(self.audio_directory):
+            for root, dirs, files in os.walk(self.directory, followlinks=True):
+                wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
 
         procs = []
         for i in range(self.num_jobs):
-            p = CorpusProcessWorker(job_queue, return_dict, return_queue, stopped)
+            p = CorpusProcessWorker(job_queue, return_dict, return_queue, stopped,
+                                    processed_counter, max_counter)
             procs.append(p)
             p.start()
-
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+            all_sound_files.update(other_audio_files)
+            all_sound_files.update(wav_files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
+            for file_name, f in all_sound_files.items():
                 wav_path = os.path.join(root, f)
                 if file_name in lab_files:
                     lab_name = lab_files[file_name]
@@ -198,10 +212,17 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
+                max_counter.increment()
                 job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
                                self.sample_rate, self.punctuation, self.clitic_markers))
+            if self.parse_text_only_files:
+                for filename, f in itertools.chain(lab_files.items(), textgrid_files.items()):
+                    if filename in wav_files:
+                        continue
+                    text_path = os.path.join(root, f)
+                    text_only_files.append((filename, text_path))
         job_queue.join()
-        stopped.stop()
+
         for p in procs:
             p.join()
 
@@ -209,6 +230,8 @@ class AlignableCorpus(BaseCorpus):
             try:
                 info = return_queue.get(timeout=1)
             except Empty:
+                for p in procs:
+                    p.stopped.stop()
                 break
             if 'segments' not in info:  # was a lab file
                 utt_name = info['utt_name']
@@ -244,8 +267,8 @@ class AlignableCorpus(BaseCorpus):
                 self.speaker_ordering[file_name] = info['speaker_ordering']
                 self.segments.update(info['segments'])
                 self.utt_wav_mapping.update(info['utt_wav_mapping'])
-                if 'sox_strings' in info:
-                    self.sox_strings.update(info['sox_strings'])
+                if 'sox_string' in info:
+                    self.sox_strings.update(info['sox_string'])
                 self.file_utt_mapping.update(info['file_utt_mapping'])
                 self.utt_file_mapping.update(info['utt_file_mapping'])
                 self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
@@ -273,15 +296,69 @@ class AlignableCorpus(BaseCorpus):
                         getattr(self, k).update(return_dict[k])
                     else:
                         setattr(self, k, return_dict[k])
+        if self.parse_text_only_files:
+            for file_name, path in text_only_files:
+                if path.lower().endswith('.textgrid'):
+                    tg = tgio.openTextgrid(path)
+                    for i, tier_name in enumerate(tg.tierNameList):
+                        ti = tg.tierDict[tier_name]
+                        if not isinstance(ti, tgio.IntervalTier):
+                            continue
+                        speaker_name = tier_name.strip().replace(' ', '_')
+                        for begin, end, text in ti.entryList:
+                            text = text.lower().strip()
+                            words = parse_transcription(text, self.punctuation, self.clitic_markers)
+
+                            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
+                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+                            utt_name = utt_name.replace('_', '-')
+                            if not words:
+                                continue
+                            for w in words:
+                                new_w = re.split(r"[-']", w)
+                                self.word_counts.update(new_w + [w])
+                            self.text_mapping[utt_name] = ' '.join(words)
+                else:
+                    text_ind = 0
+                    with open(path, 'r', encoding='utf8') as f:
+                        for line in f:
+                            line = line.strip().lower()
+                            if not line:
+                                continue
+                            utt_name = '{}_{}'.format(file_name, text_ind)
+                            words = parse_transcription(line, self.punctuation, self.clitic_markers)
+                            for w in words:
+                                new_w = re.split(r"[-']", w)
+                                self.word_counts.update(new_w + [w])
+                            self.text_mapping[utt_name] = ' '.join(words)
+
+                            text_ind += 1
         self.logger.debug('Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time()-begin_time))
 
     def _load_from_source(self):
         begin_time = time.time()
+        text_only_files = []
+
+        all_sound_files = {}
+        if self.audio_directory and os.path.exists(self.audio_directory):
+            for root, dirs, files in os.walk(self.directory, followlinks=True):
+                wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
+
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+            all_sound_files.update(other_audio_files)
+            all_sound_files.update(wav_files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+            if self.parse_text_only_files:
+                for filename, f in itertools.chain(lab_files.items(), textgrid_files.items()):
+                    if filename in wav_files:
+                        continue
+                    text_path = os.path.join(root, f)
+                    text_only_files.append((filename, text_path))
 
-            for file_name, f in itertools.chain(wav_files.items(), other_audio_files.items()):
+            for file_name, f in all_sound_files.items():
                 wav_path = os.path.join(root, f)
                 if file_name in lab_files:
                     lab_name = lab_files[file_name]
@@ -363,6 +440,43 @@ class AlignableCorpus(BaseCorpus):
                 else:
                     self.no_transcription_files.append(wav_path)
                     continue
+        if self.parse_text_only_files:
+            for file_name, path in text_only_files:
+                if path.lower().endswith('.textgrid'):
+                    tg = tgio.openTextgrid(path)
+                    for i, tier_name in enumerate(tg.tierNameList):
+                        ti = tg.tierDict[tier_name]
+                        if not isinstance(ti, tgio.IntervalTier):
+                            continue
+                        speaker_name = tier_name.strip().replace(' ', '_')
+                        for begin, end, text in ti.entryList:
+                            text = text.lower().strip()
+                            words = parse_transcription(text, self.punctuation, self.clitic_markers)
+
+                            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
+                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
+                            utt_name = utt_name.replace('_', '-')
+                            if not words:
+                                continue
+                            for w in words:
+                                new_w = re.split(r"[-']", w)
+                                self.word_counts.update(new_w + [w])
+                            self.text_mapping[utt_name] = ' '.join(words)
+                else:
+                    text_ind = 0
+                    with open(path, 'r', encoding='utf8') as f:
+                        for line in f:
+                            line = line.strip().lower()
+                            if not line:
+                                continue
+                            utt_name = '{}_{}'.format(file_name, text_ind)
+                            words = parse_transcription(line, self.punctuation, self.clitic_markers)
+                            for w in words:
+                                new_w = re.split(r"[-']", w)
+                                self.word_counts.update(new_w + [w])
+                            self.text_mapping[utt_name] = ' '.join(words)
+                            text_ind += 1
+
         self.logger.debug('Parsed corpus directory in {} seconds'.format(time.time()-begin_time))
 
     def check_warnings(self):
@@ -379,14 +493,14 @@ class AlignableCorpus(BaseCorpus):
 
             for utt in self.file_utt_mapping[file_name]:
                 seg = self.segments[utt]
-                fn, begin, end = seg.split()
+                fn, begin, end = seg['file_name'], seg['begin'], seg['end']
                 begin = round(float(begin), 4)
                 end = round(float(end), 4)
                 text =  self.text_mapping[utt]
                 speaker = self.utt_speak_mapping[utt]
                 if speaker not in tiers:
-                    tiers[speaker] = tgio.IntervalTier(speaker, [], maxT=duration)
-                tiers[speaker].entryList.append(begin, end, text)
+                    tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=duration)
+                tiers[speaker].entryList.append((begin, end, text))
 
             for v in tiers.values():
                 tg.addTier(v)
@@ -407,6 +521,7 @@ class AlignableCorpus(BaseCorpus):
             new_text = []
             for t in text:
                 if dictionary is not None:
+                    dictionary.to_int(t)
                     lookup = dictionary.split_clitics(t)
                     if lookup is None:
                         continue
@@ -561,7 +676,9 @@ class AlignableCorpus(BaseCorpus):
 
     def initialize_corpus(self, dictionary):
         if not self.utt_wav_mapping:
-            raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
+            raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus. '
+                              'This error can also be caused if you\'re trying to find non-wav files without sox available '
+                              'on the system path.')
         split_dir = self.split_directory()
         self.write()
         self.split(dictionary)

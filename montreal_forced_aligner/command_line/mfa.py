@@ -178,8 +178,10 @@ train_lm_parser.add_argument('-t', '--temp_directory', type=str, default='',
                              help='Temporary directory root to use for training, default is ~/Documents/MFA')
 train_lm_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                              help='Number of cores to use while aligning')
+train_lm_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 train_lm_parser.add_argument('--config_path', type=str, default='',
                              help='Path to config file to use for training and alignment')
+train_lm_parser.add_argument('--debug', help="Output debug messages about training", action='store_true')
 
 train_dictionary_parser = subparsers.add_parser('train_dictionary')
 train_dictionary_parser.add_argument('corpus_directory', help='Full path to the directory to align')
@@ -283,7 +285,9 @@ transcribe_parser.add_argument('-s', '--speaker_characters', type=str, default='
                                help='Number of characters of file names to use for determining speaker, '
                                     'default is to use directory names')
 transcribe_parser.add_argument('-t', '--temp_directory', type=str, default='',
-                               help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+                               help='Temporary directory root to use for transcribing, default is ~/Documents/MFA')
+transcribe_parser.add_argument('-a', '--audio_directory', type=str, default='',
+                               help='Audio directory root to use for finding audio files')
 transcribe_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                                help='Number of cores to use while aligning')
 transcribe_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')

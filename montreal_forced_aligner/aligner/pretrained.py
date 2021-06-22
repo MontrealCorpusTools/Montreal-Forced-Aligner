@@ -107,6 +107,7 @@ class PretrainedAligner(BaseAligner):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
         with open(done_path, 'w'):
             pass

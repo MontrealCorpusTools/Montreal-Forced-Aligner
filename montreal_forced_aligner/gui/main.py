@@ -274,8 +274,8 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
 
         self.create_actions()
         self.create_menus()
-        self.default_directory = os.path.dirname(TEMP_DIR)
-        self.logger = setup_logger('annotator', self.default_directory)
+        self.default_directory = TEMP_DIR
+        self.logger = setup_logger('annotator', self.default_directory, 'debug')
         self.setWindowTitle("MFA Annotator")
         self.loading_corpus = False
         self.loading_dictionary = False
@@ -358,7 +358,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.list_widget.refresh_corpus(new_utt)
         self.information_widget.refresh_speakers()
         self.detail_widget.refresh_utterances()
-        self.list_widget.utteranceChanged.emit(new_utt)
+        self.list_widget.utteranceChanged.emit(new_utt, False)
 
     def save_config(self):
         with open(self.config_path, 'w', encoding='utf8') as f:

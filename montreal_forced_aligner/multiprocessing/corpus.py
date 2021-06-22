@@ -34,8 +34,11 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
         speaker_name = utt_name
     speaker_name = speaker_name.strip().replace(' ', '_')
     utt_name = utt_name.strip().replace(' ', '_')
-    return {'utt_name': utt_name, 'speaker_name': speaker_name, 'wav_path': wav_path,
+    return_dict = {'utt_name': utt_name, 'speaker_name': speaker_name, 'wav_path': wav_path,
             'wav_info': wav_info, 'relative_path': relative_path}
+    if 'sox_string' in wav_info:
+        return_dict['sox_string'] = wav_info['sox_string']
+    return return_dict
 
 
 def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characters, sample_rate=16000, punctuation=None,
@@ -154,20 +157,25 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
 
 
 class CorpusProcessWorker(mp.Process):
-    def __init__(self, job_q, return_dict, return_q, stopped, initializing=True):
+    def __init__(self, job_q, return_dict, return_q, stopped, processed_counter, max_counter, initializing=True):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
         self.return_q = return_q
         self.stopped = stopped
+        self.processed_counter = processed_counter
+        self.max_counter = max_counter
         self.initializing = initializing
 
     def run(self):
         while True:
             try:
                 arguments = self.job_q.get(timeout=1)
+                self.processed_counter.increment()
             except Empty as error:
                 if self.initializing and not self.stopped.stop_check():
+                    if self.processed_counter.value() >= self.max_counter.value():
+                        break
                     continue
                 else:
                     break

@@ -93,7 +93,8 @@ class BaseCorpus(object):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
                  num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True,
-                 punctuation=None, clitic_markers=None):
+                 punctuation=None, clitic_markers=None, audio_directory=None):
+        self.audio_directory = audio_directory
         self.punctuation = punctuation
         self.clitic_markers = clitic_markers
         self.debug = debug
@@ -174,6 +175,8 @@ class BaseCorpus(object):
         self.text_mapping[utterance] = text
         if wav_file is not None:
             self.utt_wav_mapping[utterance] = wav_file
+        if speaker not in self.speaker_ordering[file]:
+            self.speaker_ordering[file].append(speaker)
 
     def delete_utterance(self, utterance):
         if utterance in self.segments:

@@ -11,6 +11,7 @@ class SegmentationConfig(BaseConfig):
         self.energy_mean_scale = 0.5
         self.max_segment_length = 30
         self.min_pause_duration = 0.05
+        self.snap_boundary_threshold = 0.15
         self.feature_config = feature_config
         self.feature_config.use_energy = True
 

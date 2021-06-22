@@ -380,12 +380,21 @@ def get_initial_segmentation(frames, frame_shift):
     return segs
 
 
-def merge_segments(segments, min_pause_duration, max_segment_length):
+def merge_segments(segments, min_pause_duration, max_segment_length, snap_boundary_threshold):
     merged_segs = []
     for s in segments:
         if not merged_segs or s['begin'] > merged_segs[-1]['end'] + min_pause_duration or \
                 s['end'] - merged_segs[-1]['begin'] > max_segment_length:
             if s['end'] - s['begin'] > min_pause_duration:
+                if merged_segs and snap_boundary_threshold:
+                    boundary_gap = s['begin'] - merged_segs[-1]['end']
+                    if boundary_gap < snap_boundary_threshold:
+                        half_boundary = boundary_gap / 2
+                    else:
+                        half_boundary = snap_boundary_threshold / 2
+                    merged_segs[-1]['end'] += half_boundary
+                    s['begin'] -= half_boundary
+
                 merged_segs.append(s)
         else:
             merged_segs[-1]['end'] = s['end']
@@ -400,7 +409,7 @@ def segment_vad_func(directory, job_name, config):
     with open(vad_segments_path, 'w', encoding='utf8') as out_file:
         for recording, frames in vad.items():
             initial_segments = get_initial_segmentation(frames, config['frame_shift'])
-            merged = merge_segments(initial_segments, config['min_pause_duration'], config['max_segment_length'])
+            merged = merge_segments(initial_segments, config['min_pause_duration'], config['max_segment_length'], config['snap_boundary_threshold'])
             for seg in merged:
                 start = seg['begin']
                 end = seg['end']

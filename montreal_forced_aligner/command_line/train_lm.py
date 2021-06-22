@@ -1,5 +1,6 @@
 import os
 import time
+import shutil
 import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -38,17 +39,22 @@ def train_lm(args, unknown_args=None):
         data_directory = os.path.join(temp_dir, corpus_name)
     else:
         data_directory = os.path.join(temp_dir, corpus_name)
+    if getattr(args, 'clean', False) and os.path.exists(data_directory):
+        print('Cleaning old directory!')
+        shutil.rmtree(data_directory, ignore_errors=True)
 
     logger = setup_logger(command, data_directory)
     if not args.source_path.lower().endswith('.arpa'):
-        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=args.num_jobs>1)
+        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=args.num_jobs>1,
+                                 parse_text_only_files=True, debug=args.debug)
         if args.dictionary_path is not None:
-            dictionary = Dictionary(args.dictionary_path, data_directory)
+            dictionary = Dictionary(args.dictionary_path, data_directory, debug=args.debug, word_set=source.word_set)
+            dictionary.generate_mappings()
         else:
             dictionary = None
     trainer = LmTrainer(source, train_config, args.output_model_path, dictionary=dictionary,
                         temp_directory=data_directory,
-                        supplemental_model_path=args.model_path, supplemental_model_weight=args.model_weight)
+                        supplemental_model_path=args.model_path, supplemental_model_weight=args.model_weight, debug=args.debug, logger=logger)
     begin = time.time()
     trainer.train()
     logger.debug('Training took {} seconds'.format(time.time() - begin))

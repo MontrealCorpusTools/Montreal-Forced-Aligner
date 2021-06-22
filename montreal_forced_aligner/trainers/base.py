@@ -160,6 +160,7 @@ class BaseTrainer(object):
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
         self.logger.debug('Setup for initialization took {} seconds'.format(time.time() - begin))
 
@@ -234,6 +235,7 @@ class BaseTrainer(object):
                     pass
                 if isinstance(e, KaldiProcessingError):
                     log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
                 raise
             with open(done_path, 'w'):
                 pass
@@ -311,6 +313,7 @@ class BaseTrainer(object):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
         with open(done_path, 'w'):
             pass
@@ -337,6 +340,7 @@ class BaseTrainer(object):
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
         self.logger.debug('Exporting textgrids took {} seconds'.format(time.time() - begin))
 

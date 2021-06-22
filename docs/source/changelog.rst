@@ -7,6 +7,21 @@
 Changelog
 =========
 
+2.0.0a20
+--------
+
+- Fixed an issue with :code:`create_segments` where it would assue singular speakers
+- Fixed a race condition in multiprocessing where the queue could finish with the jobs still running and unable to join
+- Updated transcription to use a small language model for first pass decoding followed by LM rescoring in line with Kaldi recipes
+- Added an optional :code:`--audio_directory` argument for finding sound files in a directory separate from the transcriptions
+- Added perplexity calculations for language model training
+- Updated annotator GUI to support new improvements, mainly playback of :code:`.flac` files
+- Added annotator GUI functionality for showing all speaker tiers
+- Added annotator GUI functionality for changing speakers of utterances by clicking and dragging them
+- Updated annotator GUI to no longer aggressively zoom when selecting, merging, or splitting utterances, instead zoom
+  functionality is achieved through double clicks
+
+
 2.0.0a19
 --------
 
