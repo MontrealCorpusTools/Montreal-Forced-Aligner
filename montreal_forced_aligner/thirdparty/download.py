@@ -29,7 +29,7 @@ def download_binaries():
     else:
         plat = 'linux'
 
-    download_link = 'https://github.com/MontrealCorpusTools/mfa-models/raw/master/thirdparty/mfa_thirdparty_{}.zip'.format(
+    download_link = 'https://github.com/MontrealCorpusTools/mfa-models/raw/main/thirdparty/mfa_thirdparty_{}.zip'.format(
         plat)
     bin_dir = os.path.join(base_dir, 'bin')
     path = os.path.join(base_dir, '{}.zip'.format(plat))

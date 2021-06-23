@@ -1,117 +1,117 @@
-.. _`Arabic acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/arabic.zip
+.. _`Arabic acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/arabic.zip
 
-.. _`Bulgarian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/bulgarian.zip
+.. _`Bulgarian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/bulgarian.zip
 
-.. _`Croatian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/croatian.zip
+.. _`Croatian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/croatian.zip
 
-.. _`Czech acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/czech.zip
+.. _`Czech acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/czech.zip
 
-.. _`English acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/english.zip
+.. _`English acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/english.zip
 
-.. _`French (FR) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french.zip
+.. _`French (FR) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/french.zip
 
-.. _`French (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french_prosodylab.zip
+.. _`French (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/french_prosodylab.zip
 
-.. _`French (QC) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/french_qc.zip
+.. _`French (QC) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/french_qc.zip
 
-.. _`German acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/german.zip
+.. _`German acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/german.zip
 
-.. _`German (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/german_prosodylab.zip
+.. _`German (Prosodylab) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/german_prosodylab.zip
 
-.. _`Hausa acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/hausa.zip
+.. _`Hausa acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/hausa.zip
 
-.. _`Japanese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/japanese.zip
+.. _`Japanese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/japanese.zip
 
-.. _`Korean acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/korean.zip
+.. _`Korean acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/korean.zip
 
-.. _`Mandarin acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/mandarin.zip
+.. _`Mandarin acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/mandarin.zip
 
-.. _`Polish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/polish.zip
+.. _`Polish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/polish.zip
 
-.. _`Portuguese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/portuguese.zip
+.. _`Portuguese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/portuguese.zip
 
-.. _`Russian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/russian.zip
+.. _`Russian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/russian.zip
 
-.. _`Spanish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/spanish.zip
+.. _`Spanish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/spanish.zip
 
-.. _`Swahili acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/swahili.zip
+.. _`Swahili acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/swahili.zip
 
-.. _`Swedish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/swedish.zip
+.. _`Swedish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/swedish.zip
 
-.. _`Tamil acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/tamil.zip
+.. _`Tamil acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/tamil.zip
 
-.. _`Thai acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/thai.zip
+.. _`Thai acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/thai.zip
 
-.. _`Turkish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/turkish.zip
+.. _`Turkish acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/turkish.zip
 
-.. _`Ukrainian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/ukrainian.zip
+.. _`Ukrainian acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/ukrainian.zip
 
-.. _`Vietnamese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/vietnamese.zip
+.. _`Vietnamese acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/vietnamese.zip
 
-.. _`Vietnamese (vPhon) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/vietnamese_vphon.zip
+.. _`Vietnamese (vPhon) acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/vietnamese_vphon.zip
 
-.. _`Wu acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/acoustic/wu.zip
+.. _`Wu acoustic model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/acoustic/wu.zip
 
 
 .. _`Pynini`: https://github.com/kylebgormon/Pynini
 .. _`Sigmorphon 2020 G2P task baseline`: https://github.com/sigmorphon/2020/tree/master/task1/baselines/fst
 
 
-.. _`Arabic G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/arabic_g2p.zip
+.. _`Arabic G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/arabic_g2p.zip
 
-.. _`Bulgarian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/bulgarian_g2p.zip
+.. _`Bulgarian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/bulgarian_g2p.zip
 
-.. _`Croatian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/croatian_g2p.zip
+.. _`Croatian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/croatian_g2p.zip
 
-.. _`Czech G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/czech_g2p.zip
+.. _`Czech G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/czech_g2p.zip
 
-.. _`English G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/english_g2p.zip
+.. _`English G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/english_g2p.zip
 
-.. _`French G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_g2p.zip
+.. _`French G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/french_g2p.zip
 
-.. _`French (Lexique) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_lexique_g2p.zip
+.. _`French (Lexique) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/french_lexique_g2p.zip
 
-.. _`French (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/french_prosodylab_g2p.zip
+.. _`French (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/french_prosodylab_g2p.zip
 
-.. _`German G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/german_g2p.zip
+.. _`German G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/german_g2p.zip
 
-.. _`German (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/german_prosodylab_g2p.zip
+.. _`German (ProsodyLab) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/german_prosodylab_g2p.zip
 
-.. _`Hausa G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/hausa_g2p.zip
+.. _`Hausa G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/hausa_g2p.zip
 
-.. _`Japanese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/japanese_character_g2p.zip
+.. _`Japanese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/japanese_character_g2p.zip
 
-.. _`Korean Hangul G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_hangul_g2p.zip
+.. _`Korean Hangul G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/korean_hangul_g2p.zip
 
-.. _`Korean Jamo G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/korean_jamo_g2p.zip
+.. _`Korean Jamo G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/korean_jamo_g2p.zip
 
-.. _`Mandarin Pinyin G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/mandarin_pinyin_g2p.zip
+.. _`Mandarin Pinyin G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/mandarin_pinyin_g2p.zip
 
-.. _`Mandarin Character G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/mandarin_character_g2p.zip
+.. _`Mandarin Character G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/mandarin_character_g2p.zip
 
-.. _`Polish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/polish_g2p.zip
+.. _`Polish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/polish_g2p.zip
 
-.. _`Portuguese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/portuguese_g2p.zip
+.. _`Portuguese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/portuguese_g2p.zip
 
-.. _`Russian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/russian_g2p.zip
+.. _`Russian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/russian_g2p.zip
 
-.. _`Spanish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/spanish_g2p.zip
+.. _`Spanish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/spanish_g2p.zip
 
-.. _`Swahili G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/swahili_g2p.zip
+.. _`Swahili G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/swahili_g2p.zip
 
-.. _`Swedish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/swedish_g2p.zip
+.. _`Swedish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/swedish_g2p.zip
 
-.. _`Thai G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/thai_g2p.zip
+.. _`Thai G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/thai_g2p.zip
 
-.. _`Turkish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/turkish_g2p.zip
+.. _`Turkish G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/turkish_g2p.zip
 
-.. _`Ukrainian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/ukrainian_g2p.zip
+.. _`Ukrainian G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/ukrainian_g2p.zip
 
-.. _`Vietnamese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/vietnamese_g2p.zip
+.. _`Vietnamese G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/vietnamese_g2p.zip
 
-.. _`Vietnamese (vPhon) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/vietnamese_vphon_g2p.zip
+.. _`Vietnamese (vPhon) G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/vietnamese_vphon_g2p.zip
 
-.. _`Wu G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/master/g2p/wu_g2p.zip
+.. _`Wu G2P model`: https://github.com/MontrealCorpusTools/mfa-models/raw/main/g2p/wu_g2p.zip
 
 .. _`ProsodyLab dictionary repository`: https://github.com/prosodylab/prosodylab.dictionaries
 
@@ -119,16 +119,16 @@
 
 .. _`ProsodyLab French dictionary`: https://github.com/prosodylab/prosodylab.dictionaries/raw/master/fr.dict
 
-.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/english.dict
-.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/fr.dict
-.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/master/dictionary/de.dict
+.. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/english.dict
+.. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/fr.dict
+.. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/de.dict
 
 .. _`GlobalPhone language models`: https://www.csl.uni-bremen.de/GlobalPhone/
 
 .. _`LibriSpeech language models`: https://www.openslr.org/11/
 
-.. _`FalaBrasil language models`: https://gitlab.com/fb-asr/fb-asr-resources/kaldi-resources/-/tree/master/lm
-.. _`FalaBrasil dictionary`: https://gitlab.com/fb-nlp/nlp-resources/-/tree/master/res
+.. _`FalaBrasil language models`: https://gitlab.com/fb-asr/fb-asr-resources/kaldi-resources/-/tree/main/lm
+.. _`FalaBrasil dictionary`: https://gitlab.com/fb-nlp/nlp-resources/-/tree/main/res
 
 .. _pretrained_models:
 
