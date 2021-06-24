@@ -190,8 +190,7 @@ class CorpusValidator(object):
             self.trainer.feature_config.generate_features(self.corpus)
 
     def analyze_setup(self):
-        total_duration = sum(self.corpus.utterance_lengths.values()) * self.trainer.feature_config.frame_shift
-        total_duration /= 1000
+        total_duration = sum(x[2] for x in self.corpus.wav_info.values())
         total_duration = Decimal(str(total_duration)).quantize(Decimal('0.001'))
 
         ignored_count = len(self.corpus.no_transcription_files)

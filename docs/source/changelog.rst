@@ -7,6 +7,11 @@
 Changelog
 =========
 
+2.0.0a21
+--------
+
+- Fixed a memory leak in corpus parsing introduced by 2.0.0a20
+
 2.0.0a20
 --------
 

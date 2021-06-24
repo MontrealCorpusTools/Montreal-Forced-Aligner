@@ -181,6 +181,8 @@ class CorpusProcessWorker(mp.Process):
                     break
             self.initializing = False
             self.job_q.task_done()
+            if self.stopped.stop_check():
+                continue
             wav_path = arguments[1]
             transcription_path = arguments[2]
 

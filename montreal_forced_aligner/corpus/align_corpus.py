@@ -182,8 +182,10 @@ class AlignableCorpus(BaseCorpus):
         max_counter = MPCounter()
 
         text_only_files = []
+        use_audio_directory = False
         all_sound_files = {}
         if self.audio_directory and os.path.exists(self.audio_directory):
+            use_audio_directory = True
             for root, dirs, files in os.walk(self.directory, followlinks=True):
                 wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
                 all_sound_files.update(other_audio_files)
@@ -197,41 +199,72 @@ class AlignableCorpus(BaseCorpus):
             p.start()
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-            all_sound_files.update(other_audio_files)
-            all_sound_files.update(wav_files)
             relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in all_sound_files.items():
-                wav_path = os.path.join(root, f)
-                if file_name in lab_files:
-                    lab_name = lab_files[file_name]
-                    transcription_path = os.path.join(root, lab_name)
+            if stopped.stop_check():
+                break
+            if not use_audio_directory:
+                all_sound_files = {}
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
+                for file_name, f in all_sound_files.items():
+                    if stopped.stop_check():
+                        break
+                    wav_path = os.path.join(root, f)
+                    if file_name in lab_files:
+                        lab_name = lab_files[file_name]
+                        transcription_path = os.path.join(root, lab_name)
 
-                elif file_name in textgrid_files:
-                    tg_name = textgrid_files[file_name]
-                    transcription_path = os.path.join(root, tg_name)
-                else:
-                    self.no_transcription_files.append(wav_path)
-                    continue
-                max_counter.increment()
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
-                               self.sample_rate, self.punctuation, self.clitic_markers))
+                    elif file_name in textgrid_files:
+                        tg_name = textgrid_files[file_name]
+                        transcription_path = os.path.join(root, tg_name)
+                    else:
+                        self.no_transcription_files.append(wav_path)
+                        continue
+                    max_counter.increment()
+                    job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                                   self.sample_rate, self.punctuation, self.clitic_markers))
+            else:
+                for file_name, f in itertools.chain(lab_files.items(), textgrid_files.items()):
+                    if stopped.stop_check():
+                        break
+                    if file_name in all_sound_files:
+                        wav_path = all_sound_files[file_name]
+                    else:
+                        continue
+                    if file_name in lab_files:
+                        lab_name = lab_files[file_name]
+                        transcription_path = os.path.join(root, lab_name)
+
+                    elif file_name in textgrid_files:
+                        tg_name = textgrid_files[file_name]
+                        transcription_path = os.path.join(root, tg_name)
+                    else:
+                        self.no_transcription_files.append(wav_path)
+                        continue
+                    job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                                   self.sample_rate, self.punctuation, self.clitic_markers))
+
             if self.parse_text_only_files:
-                for filename, f in itertools.chain(lab_files.items(), textgrid_files.items()):
-                    if filename in wav_files:
+                for file_name, f in itertools.chain(lab_files.items(), textgrid_files.items()):
+                    if file_name in wav_files:
                         continue
                     text_path = os.path.join(root, f)
-                    text_only_files.append((filename, text_path))
+                    text_only_files.append((file_name, text_path))
+        self.logger.debug('Finished adding jobs!')
         job_queue.join()
 
+        self.logger.debug('Waiting for workers to finish...')
         for p in procs:
             p.join()
 
+        if 'error' in return_dict:
+            raise return_dict['error'][1]
+
+        self.logger.debug('Beginning processing of results queue...')
         while True:
             try:
                 info = return_queue.get(timeout=1)
             except Empty:
-                for p in procs:
-                    p.stopped.stop()
                 break
             if 'segments' not in info:  # was a lab file
                 utt_name = info['utt_name']
