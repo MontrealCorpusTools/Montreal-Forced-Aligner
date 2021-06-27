@@ -93,6 +93,13 @@ class WavReadError(CorpusReadError):
     pass
 
 
+class SoxError(WavReadError):
+    """
+    Class for errors in different sample rates
+    """
+    pass
+
+
 # Aligner Errors
 
 class AlignerError(MFAError):

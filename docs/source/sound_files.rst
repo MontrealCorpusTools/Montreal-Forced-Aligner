@@ -13,6 +13,11 @@ MFA will use it to convert ``.flac``, ``.ogg`` and ``.aiff`` files to WAV for Ka
    Sound files will be ignored if there is no ``.lab`` or ``.TextGrid`` with the same name as the sound file. The validation
    utility (:ref:`validating_data`) will print a warning message when this happens and log all such files.
 
+.. note::
+
+   ``.mp3`` files are supported if ``sox`` can parse them.  On Ubuntu this is available via ``sudo apt-get install libsox-fmt-mp3``.
+   You can verify whether sox can read them via the ``soxi yoursoundfile.mp3``.
+
 Sampling rate
 =============
 

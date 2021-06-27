@@ -7,6 +7,11 @@
 Changelog
 =========
 
+2.0.0a22
+--------
+
+- Add support for aligning mp3 files
+
 2.0.0a21
 --------
 

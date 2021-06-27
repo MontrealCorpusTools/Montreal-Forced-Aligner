@@ -6,32 +6,51 @@ import subprocess
 import shutil
 from collections import defaultdict
 
-from ..exceptions import SampleRateError, CorpusError
+from ..exceptions import SoxError, CorpusError
 from ..helper import thirdparty_binary, load_scp, output_mapping, save_groups, filter_scp
 
 
-supported_audio_extensions = ['.flac', '.ogg', '.aiff']
+supported_audio_extensions = ['.flac', '.ogg', '.aiff', '.mp3']
 
 
 def get_wav_info(file_path, sample_rate=16000):
-    with soundfile.SoundFile(file_path, 'r') as inf:
-        subtype = inf.subtype
-        if subtype == 'FLOAT':
-            bit_depth = 32
-        else:
-            bit_depth = int(subtype.split('_')[-1])
-        frames = inf.frames
-        sr = inf.samplerate
-        duration = frames / sr
-        return_dict = {'num_channels': inf.channels, 'type': inf.subtype, 'bit_depth': bit_depth,
-                       'sample_rate': sr, 'duration': duration, 'format': inf.format}
-    use_sox = False
-    if bit_depth != 16:
+    if file_path.endswith('.mp3'):
+        if not shutil.which('soxi'):
+            raise SoxError('No sox found')
+        sox_proc = subprocess.Popen(['soxi', '-D', file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        stdout, stderr = sox_proc.communicate()
+        if stderr.startswith('soxi FAIL formats'):
+            raise SoxError('No support for mp3 in sox')
+        return_dict = {'duration': float(stdout.strip()), 'format': 'MP3'}
+        sox_proc = subprocess.Popen(['soxi', '-r', file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        stdout, stderr = sox_proc.communicate()
+        return_dict['sample_rate'] = int(stdout.strip())
+        sox_proc = subprocess.Popen(['soxi', '-c', file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        stdout, stderr = sox_proc.communicate()
+        return_dict['num_channels'] = int(stdout.strip())
+        sox_proc = subprocess.Popen(['soxi', '-p', file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        stdout, stderr = sox_proc.communicate()
+        return_dict['bit_depth'] = int(stdout.strip())
         use_sox = True
-    if return_dict['format'] != 'WAV':
-        use_sox = True
-    if not subtype.startswith('PCM'):
-        use_sox = True
+    else:
+        with soundfile.SoundFile(file_path, 'r') as inf:
+            subtype = inf.subtype
+            if subtype == 'FLOAT':
+                bit_depth = 32
+            else:
+                bit_depth = int(subtype.split('_')[-1])
+            frames = inf.frames
+            sr = inf.samplerate
+            duration = frames / sr
+            return_dict = {'num_channels': inf.channels, 'type': inf.subtype, 'bit_depth': bit_depth,
+                           'sample_rate': sr, 'duration': duration, 'format': inf.format}
+        use_sox = False
+        if bit_depth != 16:
+            use_sox = True
+        if return_dict['format'] != 'WAV':
+            use_sox = True
+        if not subtype.startswith('PCM'):
+            use_sox = True
     if use_sox:
         return_dict['sox_string'] = 'sox {} -t wav -b 16 -r {} - |'.format(file_path, sample_rate)
     return return_dict

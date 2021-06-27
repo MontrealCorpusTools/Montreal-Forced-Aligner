@@ -60,6 +60,8 @@ class MediaPlayer(QtMultimedia.QMediaPlayer):  # pragma: no cover
         self.start_time = start_time * 1000
 
     def setCurrentTime(self, time):
+        if self.state() == QtMultimedia.QMediaPlayer.PlayingState:
+            return
         pos = time * 1000
         self.setPosition(pos)
 
@@ -372,7 +374,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
 
     def refresh_file_dropdown(self):
         self.file_dropdown.clear()
-        for fn in self.corpus.file_utt_mapping:
+        for fn in sorted(self.corpus.file_utt_mapping):
 
             self.file_dropdown.addItem(fn)
 
@@ -515,13 +517,14 @@ def construct_text_box(utt, view_min, view_max, point_min, point_max, sr, speake
     mid_b = utt['begin']
     mid_e = utt['end']
     speaker_tier_range = (y_range / 2)
-
+    b_s_for_text = b_s
+    e_s_for_text = e_s
     if view_min > mid_b and mid_e - view_min > 1:
-        b_s = view_min * sr
+        b_s_for_text = view_min * sr
     if view_max < mid_e and view_max - mid_b > 1:
-        e_s = view_max * sr
-    text_dur = e_s - b_s
-    mid_point = b_s + (text_dur * 0.5)  # * self.sr
+        e_s_for_text = view_max * sr
+    text_dur = e_s_for_text - b_s_for_text
+    mid_point = b_s_for_text + (text_dur * 0.5)  # * self.sr
     t = pg.TextItem(utt['text'], anchor=(0.5, 0.5), color=text_color)
     top_point = point_min - speaker_tier_range * (speaker_ind - 1)
     y_mid_point = top_point - (speaker_tier_range / 2)

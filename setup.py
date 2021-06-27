@@ -48,6 +48,7 @@ if __name__ == '__main__':
           description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
                       'acoustic models and dictionaries using Kaldi functionality.',
           long_description=readme(),
+          long_description_content_type='text/markdown',
           classifiers=[
               'Development Status :: 3 - Alpha',
               'Programming Language :: Python',

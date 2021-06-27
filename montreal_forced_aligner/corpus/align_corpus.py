@@ -325,6 +325,10 @@ class AlignableCorpus(BaseCorpus):
                   'decode_error_files', 'textgrid_read_errors']:
             if hasattr(self, k):
                 if k in return_dict:
+                    self.logger.info('There were some issues with files in the corpus. '
+                                     'Please look at the log file or run the validator for more information.')
+                    self.logger.debug('{} showed {} errors:'.format(k, len(return_dict[k])))
+                    self.logger.debug(', '.join(return_dict[k]))
                     if k == 'textgrid_read_errors':
                         getattr(self, k).update(return_dict[k])
                     else:

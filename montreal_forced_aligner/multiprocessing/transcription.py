@@ -367,6 +367,11 @@ def transcribe_fmllr(transcriber):
     else:
         run_non_mp(fmllr_rescore_func, jobs, log_dir)
 
+    jobs = [(model_directory, x, config,
+             config.feature_config.construct_feature_proc_string(corpus.split_directory(), model_directory, x),
+             fmllr_directory)
+            for x in range(num_jobs)]
+
     if config.use_mp:
         run_mp(lm_rescore_func, jobs, log_dir)
     else:
