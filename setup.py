@@ -17,8 +17,11 @@ class PostDevelopCommand(develop):
 
     def run(self):
         develop.run(self)
-        from montreal_forced_aligner.thirdparty.download import download_binaries
-        download_binaries()
+        try:
+            from montreal_forced_aligner.thirdparty.download import download_binaries
+            download_binaries()
+        except ImportError:
+            pass
 
 
 class PostInstallCommand(install):
@@ -26,8 +29,11 @@ class PostInstallCommand(install):
 
     def run(self):
         install.run(self)
-        from montreal_forced_aligner.thirdparty.download import download_binaries
-        download_binaries()
+        try:
+            from montreal_forced_aligner.thirdparty.download import download_binaries
+            download_binaries()
+        except ImportError:
+            pass
 
 
 class PyTest(TestCommand):
