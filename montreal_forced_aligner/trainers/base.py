@@ -326,8 +326,22 @@ class BaseTrainer(object):
                 'version': __version__,
                 'architecture': self.architecture,
                 'features': self.feature_config.params(),
+                'multilingual_ipa': self.dictionary.multilingual_ipa
                 }
+        if self.dictionary.multilingual_ipa:
+            data['strip_diacritics'] = self.dictionary.strip_diacritics
+            data['digraphs'] = self.dictionary.digraphs
         return data
+
+    def dictionaries_for_job(self, job_name):
+        from ..dictionary import MultispeakerDictionary
+        if isinstance(self.dictionary, MultispeakerDictionary):
+            dictionary_names = []
+            for name in self.dictionary.dictionary_mapping.keys():
+                if os.path.exists(os.path.join(self.corpus.split_directory(), 'utt2spk.{}.{}'.format(job_name, name))):
+                    dictionary_names.append(name)
+            return dictionary_names
+        return None
 
     def export_textgrids(self):
         """

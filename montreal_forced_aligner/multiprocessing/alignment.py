@@ -78,8 +78,7 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
         run_non_mp(acc_stats_func, jobs, config.log_directory)
 
 
-def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, debug=True):
-    fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
+def compile_train_graphs_func(directory, lang_directory, split_directory, job_name, dictionary_names=None, debug=True):
     tree_path = os.path.join(directory, 'tree')
     mdl_path = os.path.join(directory, '0.mdl')
     if not os.path.exists(mdl_path):
@@ -87,33 +86,71 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
 
     log_path = os.path.join(directory, 'log', 'show_transition.log')
     transition_path = os.path.join(directory, 'transitions.txt')
-    phones_file_path = os.path.join(lang_directory, 'phones.txt')
-
     triphones_file_path = os.path.join(directory, 'triphones.txt')
-    if debug:
-        with open(log_path, 'w', encoding='utf8') as log_file:
-            with open(transition_path, 'w', encoding='utf8') as f:
-                subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
-                                stdout=f, stderr=log_file)
-            parse_transitions(transition_path, triphones_file_path)
-    log_path = os.path.join(directory, 'log', 'compile-graphs.0.{}.log'.format(job_name))
 
-    if os.path.exists(triphones_file_path):
-        phones_file_path = triphones_file_path
-    words_file_path = os.path.join(lang_directory, 'words.txt')
+    if dictionary_names is None:
+        phones_file_path = os.path.join(lang_directory, 'phones.txt')
+        if debug:
+            with open(log_path, 'w', encoding='utf8') as log_file:
+                with open(transition_path, 'w', encoding='utf8') as f:
+                    subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
+                                    stdout=f, stderr=log_file)
+                parse_transitions(transition_path, triphones_file_path)
+        log_path = os.path.join(directory, 'log', 'compile-graphs.{}.log'.format(job_name))
 
-    with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
-            open(fst_path, 'wb') as outf, \
-            open(log_path, 'w', encoding='utf8') as log_file:
+        if os.path.exists(triphones_file_path):
+            phones_file_path = triphones_file_path
+        words_file_path = os.path.join(lang_directory, 'words.txt')
+        fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
+        fst_ark_path = os.path.join(directory, 'fsts.{}.ark'.format(job_name))
 
-        proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
-                                 '--read-disambig-syms={}'.format(
-                                     os.path.join(lang_directory, 'phones', 'disambig.int')),
-                                 tree_path, mdl_path,
-                                 os.path.join(lang_directory, 'L.fst'),
-                                 "ark:-", "ark:-"],
-                                stdin=inf, stdout=outf, stderr=log_file)
-        proc.communicate()
+        with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
+                open(log_path, 'w', encoding='utf8') as log_file:
+
+            proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
+                                     '--read-disambig-syms={}'.format(
+                                         os.path.join(lang_directory, 'phones', 'disambig.int')),
+                                     tree_path, mdl_path,
+                                     os.path.join(lang_directory, 'L.fst'),
+                                     "ark:-", "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                    stdin=inf, stderr=log_file)
+            proc.communicate()
+    else:
+        for name in dictionary_names:
+            phones_file_path = os.path.join(lang_directory, 'phones.txt')
+            if debug:
+                with open(log_path, 'w', encoding='utf8') as log_file:
+                    with open(transition_path, 'w', encoding='utf8') as f:
+                        subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
+                                        stdout=f, stderr=log_file)
+                    parse_transitions(transition_path, triphones_file_path)
+            log_path = os.path.join(directory, 'log', 'compile-graphs.{}.{}.log'.format(job_name, name))
+
+            if os.path.exists(triphones_file_path):
+                phones_file_path = triphones_file_path
+            words_file_path = os.path.join(lang_directory, 'words.txt')
+            fst_scp_path = os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name))
+            fst_ark_path = os.path.join(directory, 'fsts.{}.{}.ark'.format(job_name, name))
+
+            with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
+                    open(log_path, 'w', encoding='utf8') as log_file:
+
+                proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
+                                         '--read-disambig-syms={}'.format(
+                                             os.path.join(lang_directory, 'phones', 'disambig.int')),
+                                         tree_path, mdl_path,
+                                         os.path.join(lang_directory, name, 'dictionary', 'L.fst'),
+                                         "ark:-", "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                        stdin=inf, stderr=log_file)
+                proc.communicate()
+
+        fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
+        with open(fst_scp_path, 'w', encoding='utf8') as outf:
+            for name in dictionary_names:
+                with open(os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name)), 'r', encoding='utf8') as inf:
+                    for line in inf:
+                        outf.write(line)
+
 
     if debug:
         utterances = []
@@ -125,12 +162,6 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                 utterances.append(utt)
 
         with open(log_path, 'a', encoding='utf8') as log_file:
-            fst_ark_path = os.path.join(directory, 'fsts.{}.ark'.format(job_name))
-            fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
-            proc = subprocess.Popen([thirdparty_binary('fstcopy'),
-                                     'ark:{}'.format(fst_path),
-                                     'ark,scp:{},{}'.format(fst_ark_path, fst_scp_path)], stderr=log_file)
-            proc.communicate()
 
             temp_fst_path = os.path.join(directory, 'temp.fst.{}'.format(job_name))
 
@@ -160,7 +191,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                         pass
 
 
-def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, config, debug=False):
+def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, aligner, debug=False):
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -184,22 +215,22 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, c
     """
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-    jobs = [(directory, lang_directory, split_directory, x, debug)
+    jobs = [(directory, lang_directory, split_directory, x, aligner.dictionaries_for_job(x), debug)
             for x in range(num_jobs)]
-    if config.use_mp:
+    if aligner.use_mp:
         run_mp(compile_train_graphs_func, jobs, log_directory)
     else:
         run_non_mp(compile_train_graphs_func, jobs, log_directory)
 
 
 def mono_align_equal_func(mono_directory, job_name, feature_string):
-    fst_path = os.path.join(mono_directory, 'fsts.{}'.format(job_name))
+    fst_path = os.path.join(mono_directory, 'fsts.{}.scp'.format(job_name))
     mdl_path = os.path.join(mono_directory, '0.mdl')
     log_path = os.path.join(mono_directory, 'log', 'align.0.{}.log'.format(job_name))
     ali_path = os.path.join(mono_directory, 'ali.{}'.format(job_name))
     acc_path = os.path.join(mono_directory, '0.{}.acc'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
-        align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "ark:" + fst_path,
+        align_proc = subprocess.Popen([thirdparty_binary('align-equal-compiled'), "scp:" + fst_path,
                                        '{}'.format(feature_string), 'ark:' + ali_path],
                                       stderr=log_file)
         align_proc.communicate()
@@ -241,7 +272,7 @@ def mono_align_equal(mono_directory, split_directory, num_jobs, config):
 
 
 def align_func(directory, iteration, job_name, mdl, config, feature_string, output_directory, debug=False):
-    fst_path = os.path.join(directory, 'fsts.{}'.format(job_name))
+    fst_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
     log_path = os.path.join(output_directory, 'log', 'align.{}.{}.log'.format(iteration, job_name))
     ali_path = os.path.join(output_directory, 'ali.{}'.format(job_name))
     score_path = os.path.join(output_directory, 'ali.{}.scores'.format(job_name))
@@ -258,7 +289,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                                        '--careful=false',
                                        '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
                                        mdl,
-                                       "ark:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                                       "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
                                        "ark,t:" + score_path]
         else:
             com = [thirdparty_binary('gmm-align-compiled'),
@@ -269,7 +300,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                                        '--retry-beam={}'.format(config['retry_beam']),
                                        '--careful=false',
                                        mdl,
-                                       "ark:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                                       "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
                                        "ark,t:" + score_path]
         align_proc = subprocess.Popen(com,
                                       stderr=log_file)
@@ -541,6 +572,8 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
     nbest_path = os.path.join(model_directory, 'nbest.{}'.format(job_name))
     word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
     phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
+    if os.path.exists(word_ctm_path) and os.path.exists(phone_ctm_path):
+        return
 
     with open(log_path, 'w', encoding='utf8') as log_file:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
@@ -862,7 +895,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     jobs = [(directory, split_directory, sil_phones, x,
                      config.feature_config.construct_feature_proc_string(split_directory, directory, x),
                      config, initial, model_name) for x in range(num_jobs)]
-    if config.use_mp:
+    if config.use_fmllr_mp:
         run_mp(calc_fmllr_func, jobs, log_directory)
     else:
         run_non_mp(calc_fmllr_func, jobs, log_directory)

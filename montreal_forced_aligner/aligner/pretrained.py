@@ -85,7 +85,7 @@ class PretrainedAligner(BaseAligner):
             return
         try:
             compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                 self.align_config.data_directory, self.corpus.num_jobs, self.align_config)
+                                 self.align_config.data_directory, self.corpus.num_jobs, self)
             self.acoustic_model.feature_config.generate_features(self.corpus)
             log_dir = os.path.join(self.align_directory, 'log')
             os.makedirs(log_dir, exist_ok=True)

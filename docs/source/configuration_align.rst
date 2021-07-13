@@ -27,6 +27,9 @@ or longer stretches of audio).
    "punctuation", "、。।，@<>'"'(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=", "Characters to treat as punctuation and strip from around words"
    "clitic_markers", "'''’", "Characters to treat as clitic markers, will be collapsed to the first character in the string"
    "compound_markers", "\-", "Characters to treat as marker in compound words (i.e., doesn't need to be preserved like for clitics)"
+   "multilingual_ipa", False, "Flag for enabling multilingual IPA mode, see :ref:`multilingual_ipa` for more details"
+   "strip_diacritics", "/iː/ /iˑ/ /ĭ/ /i̯/  /t͡s/ /t‿s/ /t͜s/ /n̩/", "IPA diacritics to strip in multilingual IPA mode (phone symbols for proper display, when specifying them just have the diacritic)"
+   "digraphs", "[dt][szʒʃʐʑʂɕç], [aoɔe][ʊɪ]", "Digraphs to split up in multilingual IPA mode"
 
 
 .. _feature_config:

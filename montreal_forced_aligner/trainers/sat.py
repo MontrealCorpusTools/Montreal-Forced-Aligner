@@ -39,6 +39,7 @@ class SatTrainer(TriphoneTrainer):
         self.fmllr_iterations.append(max_fmllr_iter)
         self.silence_weight = 0.0
         self.feature_config.fmllr = True
+        self.use_fmllr_mp = False
 
     def compute_calculated_properties(self):
         super(SatTrainer, self).compute_calculated_properties()
@@ -110,6 +111,7 @@ class SatTrainer(TriphoneTrainer):
                         os.path.join(self.train_directory, 'final.mdl'))
             shutil.copy(os.path.join(self.train_directory, '{}.occs'.format(self.num_iterations)),
                         os.path.join(self.train_directory, 'final.occs'))
+
             if not self.debug:
                 for i in range(1, self.num_iterations):
                     model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
@@ -200,13 +202,13 @@ class SatTrainer(TriphoneTrainer):
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
+        self.feature_config.fmllr = True
         if os.path.exists(done_path):
             self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
             return
         begin = time.time()
         if os.path.exists(os.path.join(self.train_directory, '1.mdl')):
             return
-        self.feature_config.fmllr = True
 
         self.logger.info('Initializing speaker-adapted triphone training...')
         align_directory = previous_trainer.align_directory

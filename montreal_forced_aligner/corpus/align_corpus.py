@@ -6,14 +6,15 @@ import itertools
 
 from praatio import tgio
 from collections import Counter
-from ..helper import output_mapping, save_groups, filter_scp, load_scp
+from ..helper import output_mapping, save_groups, filter_scp, load_scp, log_kaldi_errors
 
 from ..exceptions import CorpusError, WavReadError,  \
-    TextParseError, TextGridParseError
+    TextParseError, TextGridParseError, KaldiProcessingError
 
 from .base import BaseCorpus, find_exts
 import multiprocessing as mp
 from queue import Empty
+from ..dictionary import MultispeakerDictionary
 from ..multiprocessing.helper import Stopped, Counter as MPCounter
 from ..multiprocessing.corpus import CorpusProcessWorker, parse_lab_file, parse_textgrid_file, parse_transcription
 
@@ -177,6 +178,10 @@ class AlignableCorpus(BaseCorpus):
         job_queue = manager.Queue()
         return_queue = manager.Queue()
         return_dict = manager.dict()
+        return_dict['wav_read_errors'] = manager.list()
+        return_dict['unsupported_sample_rate'] = manager.list()
+        return_dict['decode_error_files'] = manager.list()
+        return_dict['textgrid_read_errors'] = manager.dict()
         stopped = Stopped()
         processed_counter = MPCounter()
         max_counter = MPCounter()
@@ -321,17 +326,19 @@ class AlignableCorpus(BaseCorpus):
                     self.file_directory_mapping[fn] = info['relative_path']
                 self.tg_count += 1
             self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
-        for k in ['wav_read_errors', 'unsupported_bit_depths',
+        for k in ['wav_read_errors',
                   'decode_error_files', 'textgrid_read_errors']:
             if hasattr(self, k):
-                if k in return_dict:
+                if return_dict[k]:
                     self.logger.info('There were some issues with files in the corpus. '
                                      'Please look at the log file or run the validator for more information.')
                     self.logger.debug('{} showed {} errors:'.format(k, len(return_dict[k])))
-                    self.logger.debug(', '.join(return_dict[k]))
                     if k == 'textgrid_read_errors':
                         getattr(self, k).update(return_dict[k])
+                        for f, e in return_dict[k].items():
+                            self.logger.debug(f + ': ' + e.error)
                     else:
+                        self.logger.debug(', '.join(return_dict[k]))
                         setattr(self, k, return_dict[k])
         if self.parse_text_only_files:
             for file_name, path in text_only_files:
@@ -586,13 +593,18 @@ class AlignableCorpus(BaseCorpus):
                     except KeyError:
                         continue
                 else:
+                    if isinstance(dictionary, MultispeakerDictionary):
+                        speaker = self.utt_speak_mapping[u]
+                        d = dictionary.get_dictionary(speaker)
+                    else:
+                        d = dictionary
                     try:
                         text = self.text_mapping[u].split()
                     except KeyError:
                         continue
                     new_text = []
                     for t in text:
-                        lookup = dictionary.split_clitics(t)
+                        lookup = d.split_clitics(t)
                         if lookup is None:
                             continue
                         new_text.extend(x for x in lookup if x != '')
@@ -610,11 +622,16 @@ class AlignableCorpus(BaseCorpus):
             for u, text in g:
                 if u in self.ignored_utterances:
                     continue
+                if isinstance(dictionary, MultispeakerDictionary):
+                    speaker = self.utt_speak_mapping[u]
+                    d = dictionary.get_dictionary(speaker)
+                else:
+                    d = dictionary
                 oovs = []
                 new_text = []
                 for i in range(len(text)):
                     t = text[i]
-                    lookup = dictionary.to_int(t)
+                    lookup = d.to_int(t)
                     for w in lookup:
                         if w == oov_code:
                             oovs.append(text[i])
@@ -629,10 +646,16 @@ class AlignableCorpus(BaseCorpus):
     def get_word_frequency(self, dictionary):
         word_counts = Counter()
         for u, text in self.text_mapping.items():
+            if isinstance(dictionary, MultispeakerDictionary):
+                speaker = self.utt_speak_mapping[u]
+                d = dictionary.get_dictionary(speaker)
+            else:
+                d = dictionary
             new_text = []
             text = text.split()
             for t in text:
-                lookup = dictionary.split_clitics(t)
+
+                lookup = d.split_clitics(t)
                 if lookup is None:
                     continue
                 new_text.extend(x for x in lookup if x != '')
@@ -652,13 +675,18 @@ class AlignableCorpus(BaseCorpus):
                 except KeyError:
                     continue
                 new_text = []
+                if isinstance(dictionary, MultispeakerDictionary):
+                    speaker = self.utt_speak_mapping[u]
+                    d = dictionary.get_dictionary(speaker)
+                else:
+                    d = dictionary
                 for t in text:
-                    lookup = dictionary.split_clitics(t)
+                    lookup = d.split_clitics(t)
                     if lookup is None:
                         continue
                     new_text.extend(x for x in lookup if x != '')
                 try:
-                    fst_text = dictionary.create_utterance_fst(new_text, most_frequent)
+                    fst_text = d.create_utterance_fst(new_text, most_frequent)
                 except ZeroDivisionError:
                     print(u, text, new_text)
                     raise
@@ -677,7 +705,6 @@ class AlignableCorpus(BaseCorpus):
         super(AlignableCorpus, self).write()
         self._write_text()
         self._write_utt_text_file()
-        self._write_speaker_ordering()
 
     def _write_text(self):
         path = os.path.join(self.output_directory, 'text')
@@ -686,10 +713,6 @@ class AlignableCorpus(BaseCorpus):
     def _write_utt_text_file(self):
         path = os.path.join(self.output_directory, 'text_file.scp')
         output_mapping(self.utt_text_file_mapping, path)
-
-    def _write_speaker_ordering(self):
-        path = os.path.join(self.output_directory, 'speaker_ordering.scp')
-        output_mapping(self.speaker_ordering, path)
 
     def _split_utt2fst(self, directory, dictionary):
         if dictionary is None:
@@ -711,14 +734,23 @@ class AlignableCorpus(BaseCorpus):
         self._split_texts(split_dir, dictionary)
         self._split_utt2fst(split_dir, dictionary)
 
-    def initialize_corpus(self, dictionary):
+    def initialize_corpus(self, dictionary=None, feature_config=None):
         if not self.utt_wav_mapping:
             raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus. '
                               'This error can also be caused if you\'re trying to find non-wav files without sox available '
-                              'on the system path.')
-        split_dir = self.split_directory()
+                          'on the system path.')
         self.write()
         self.split(dictionary)
+        if feature_config is not None:
+            try:
+                feature_config.generate_features(self)
+            except Exception as e:
+                if isinstance(e, KaldiProcessingError):
+                    log_kaldi_errors(e.error_logs, self.logger)
+                    e.update_log_file(self.logger.handlers[0].baseFilename)
+                raise
+        if isinstance(dictionary, MultispeakerDictionary):
+            self.split_by_dictionary(dictionary)
         self.figure_utterance_lengths()
 
     def create_subset(self, subset, feature_config):

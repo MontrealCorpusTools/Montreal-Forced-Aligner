@@ -179,15 +179,16 @@ class CorpusValidator(object):
         self.dictionary.write()
         if self.test_transcriptions:
             self.dictionary.write(disambig=True)
+        if self.ignore_acoustics:
+            fc = None
+            self.logger.info('Skipping acoustic feature generation')
+        else:
+            fc = self.trainer.feature_config
         try:
-            self.corpus.initialize_corpus(self.dictionary)
+            self.corpus.initialize_corpus(self.dictionary, fc)
         except CorpusError:
             self.logger.warning('There was an error when initializing the corpus, likely due to missing sound files. Ignoring acoustic generation...')
             self.ignore_acoustics = True
-        if self.ignore_acoustics:
-            print('Skipping acoustic feature generation')
-        else:
-            self.trainer.feature_config.generate_features(self.corpus)
 
     def analyze_setup(self):
         total_duration = sum(x[2] for x in self.corpus.wav_info.values())

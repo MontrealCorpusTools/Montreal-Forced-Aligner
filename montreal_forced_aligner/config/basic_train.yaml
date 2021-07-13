@@ -5,7 +5,7 @@ features:
   type: "mfcc"
   use_energy: false
   frame_shift: 10
-  snip_edges: false
+  snip_edges: true
 
 training:
   - monophone:

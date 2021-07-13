@@ -7,6 +7,7 @@ from ..config import TEMP_DIR
 
 from ..helper import log_kaldi_errors, load_scp
 from ..exceptions import KaldiProcessingError
+from ..dictionary import MultispeakerDictionary
 
 
 class BaseAligner(object):
@@ -59,14 +60,11 @@ class BaseAligner(object):
 
     def setup(self):
         self.dictionary.write()
-        self.corpus.initialize_corpus(self.dictionary)
-        try:
-            self.align_config.feature_config.generate_features(self.corpus, logger=self.logger)
-        except Exception as e:
-            if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger.handlers[0].baseFilename)
-            raise
+        self.corpus.initialize_corpus(self.dictionary, self.align_config.feature_config)
+
+    @property
+    def use_mp(self):
+        return self.align_config.use_mp
 
     @property
     def meta(self):
@@ -77,8 +75,21 @@ class BaseAligner(object):
                 }
         return data
 
+    def dictionaries_for_job(self, job_name):
+        if isinstance(self.dictionary, MultispeakerDictionary):
+            dictionary_names = []
+            for name in self.dictionary.dictionary_mapping.keys():
+                if os.path.exists(os.path.join(self.corpus.split_directory(), 'utt2spk.{}.{}'.format(job_name, name))):
+                    dictionary_names.append(name)
+            return dictionary_names
+        return None
+
     def compile_information(self, model_directory, output_directory):
         issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
+        errors_path = os.path.join(output_directory, 'output_errors.txt')
+        if os.path.exists(errors_path):
+            self.logger.warning('There were errors when generating the textgrids. See the output_errors.txt in the '
+                                'output directory for more details.')
         if issues:
             issue_path = os.path.join(output_directory, 'unaligned.txt')
             with open(issue_path, 'w', encoding='utf8') as f:

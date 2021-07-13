@@ -11,6 +11,14 @@ Changelog
 --------
 
 - Add support for aligning mp3 files
+- Fix for log error in 0 probability entries in probabilistic lexicons
+- Add support for multilingual IPA mode (see :ref:`multilingual_ipa` for more details)
+- Add support for specifying per-speaker pronunciation dictionaries (see :ref:`speaker_dictionaries` for more details)
+- Fixed cases where TextGrid parsing errors were misattributed to sound file issues, and these should be properly detected
+  by the validator now
+- Add check for system version of libc to provide a more informative error message with next steps for compiling Kaldi on
+  the user's machine
+- Update annotator utility to have autosave on exit
 
 2.0.0a21
 --------

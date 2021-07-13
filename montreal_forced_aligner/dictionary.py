@@ -1,14 +1,16 @@
 import os
-import os
+import yaml
 import math
 import subprocess
 import re
 import logging
 import sys
 from collections import defaultdict, Counter
-from .config.base_config import DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
+from .config.base_config import DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS, \
+    DEFAULT_DIGRAPHS, DEFAULT_STRIP_DIACRITICS
 
 from .helper import thirdparty_binary
+from .utils import get_available_dict_languages, get_dictionary_path
 from .exceptions import DictionaryPathError, DictionaryFileError, DictionaryError
 
 
@@ -67,7 +69,7 @@ def check_format(path):
             if not line:
                 continue
             line = line.split()
-            word = line.pop(0)
+            _ = line.pop(0)  # word
             next = line.pop(0)
             if pronunciation_probabilities:
                 try:
@@ -91,6 +93,30 @@ def check_format(path):
             if count > 10:
                 break
     return pronunciation_probabilities, silence_probabilities
+
+
+def parse_ipa(transcription, strip_diacritics=None, digraphs=None):
+    if strip_diacritics is None:
+        strip_diacritics = DEFAULT_STRIP_DIACRITICS
+    if digraphs is None:
+        digraphs = DEFAULT_DIGRAPHS
+    new_transcription = []
+    for t in transcription:
+        new_t = t
+        for d in strip_diacritics:
+            new_t = new_t.replace(d, '')
+        if 'g' in new_t:
+            new_t = new_t.replace('g', 'ɡ')
+
+        found = False
+        for digraph in digraphs:
+            if re.match(r'^{}$'.format(digraph), new_t):
+                found = True
+        if found:
+            new_transcription.extend(new_t)
+            continue
+        new_transcription.append(new_t)
+    return tuple(new_transcription)
 
 
 class Dictionary(object):
@@ -132,7 +158,15 @@ class Dictionary(object):
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
                  sil_prob=0.5, word_set=None, debug=False, logger=None,
-                 punctuation=None, clitic_markers=None, compound_markers=None):
+                 punctuation=None, clitic_markers=None, compound_markers=None,
+                 multilingual_ipa=False, strip_diacritics=None, digraphs=None):
+        self.multilingual_ipa = multilingual_ipa
+        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
+        self.digraphs = DEFAULT_DIGRAPHS
+        if strip_diacritics is not None:
+            self.strip_diacritics = strip_diacritics
+        if digraphs is not None:
+            self.digraphs = digraphs
         self.punctuation = DEFAULT_PUNCTUATION
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
@@ -220,11 +254,15 @@ class Dictionary(object):
                     right_sil_prob = None
                     left_sil_prob = None
                     left_nonsil_prob = None
-
-                pron = tuple(line)
+                if self.multilingual_ipa:
+                    pron = parse_ipa(line, self.strip_diacritics, self.digraphs)
+                else:
+                    pron = tuple(line)
                 pronunciation = {"pronunciation": pron, "probability": prob, "disambiguation": None,
                                  'right_sil_prob': right_sil_prob, 'left_sil_prob': left_sil_prob,
                                  'left_nonsil_prob': left_nonsil_prob}
+                if self.multilingual_ipa:
+                    pronunciation['original_pronunciation'] = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
                     if self.word_set is None or word in self.word_set:
                         self.nonsil_phones.update(pron)
@@ -310,6 +348,8 @@ class Dictionary(object):
         return sum(len(x) for x in self.words.values())
 
     def generate_mappings(self):
+        if len(self.phone_mapping):
+            return
         self.phone_mapping = {}
         i = 0
         self.phone_mapping['<eps>'] = i
@@ -898,6 +938,8 @@ class Dictionary(object):
                     else:
                         if prob is None:
                             prob = 1.0
+                        elif not prob:
+                            prob = 0.001  # Dithering to ensure low probability entries
                         pron_cost = -1 * math.log(prob)
 
                     pron_cost_string = ''
@@ -997,3 +1039,188 @@ class OrthographicDictionary(Dictionary):
 
         self.oovs_found = Counter()
         self.add_disambiguation()
+
+
+class MultispeakerDictionary(Dictionary):
+    """
+    Class containing information about a pronunciation dictionary with different dictionaries per speaker
+
+    Parameters
+    ----------
+    input_path : str
+        Path to an input pronunciation dictionary
+    output_directory : str
+        Path to a directory to store files for Kaldi
+    oov_code : str, optional
+        What to label words not in the dictionary, defaults to ``'<unk>'``
+    position_dependent_phones : bool, optional
+        Specifies whether phones should be represented as dependent on their
+        position in the word (beginning, middle or end), defaults to True
+    num_sil_states : int, optional
+        Number of states to use for silence phones, defaults to 5
+    num_nonsil_states : int, optional
+        Number of states to use for non-silence phones, defaults to 3
+    shared_silence_phones : bool, optional
+        Specify whether to share states across all silence phones, defaults
+        to True
+    pronunciation probabilities : bool, optional
+        Specifies whether to model different pronunciation probabilities
+        or to treat each entry as a separate word, defaults to True
+    sil_prob : float, optional
+        Probability of optional silences following words, defaults to 0.5
+    """
+
+    def __init__(self, input_path, output_directory, oov_code='<unk>',
+                 position_dependent_phones=True, num_sil_states=5,
+                 num_nonsil_states=3, shared_silence_phones=True,
+                 sil_prob=0.5, word_set=None, debug=False, logger=None,
+                 punctuation=None, clitic_markers=None, compound_markers=None,
+                 multilingual_ipa=False, strip_diacritics=None, digraphs=None):
+        self.multilingual_ipa = multilingual_ipa
+        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
+        self.digraphs = DEFAULT_DIGRAPHS
+        if strip_diacritics is not None:
+            self.strip_diacritics = strip_diacritics
+        if digraphs is not None:
+            self.digraphs = digraphs
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
+        if punctuation is not None:
+            self.punctuation = punctuation
+        if clitic_markers is not None:
+            self.clitic_markers = clitic_markers
+        if compound_markers is not None:
+            self.compound_markers = compound_markers
+        self.input_path = input_path
+        self.debug = debug
+        self.output_directory = os.path.join(output_directory, 'dictionary')
+        os.makedirs(self.output_directory, exist_ok=True)
+        self.log_file = os.path.join(self.output_directory, 'dictionary.log')
+        if logger is None:
+            self.logger = logging.getLogger('dictionary_setup')
+            self.logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+            handler.setFormatter = logging.Formatter('%(name)s %(message)s')
+            self.logger.addHandler(handler)
+        else:
+            self.logger = logger
+        self.num_sil_states = num_sil_states
+        self.num_nonsil_states = num_nonsil_states
+        self.shared_silence_phones = shared_silence_phones
+        self.sil_prob = sil_prob
+        self.oov_code = oov_code
+        self.sil_code = '!sil'
+        self.oovs_found = Counter()
+        self.position_dependent_phones = position_dependent_phones
+        self.max_disambig = 0
+        self.optional_silence = 'sp'
+        self.nonoptional_silence = 'sil'
+
+        if word_set is not None:
+            word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}
+            word_set.add('!sil')
+            word_set.add(self.oov_code)
+        self.word_set = word_set
+
+        if not os.path.exists(input_path):
+            raise (DictionaryPathError(input_path))
+        if not os.path.isfile(input_path):
+            raise (DictionaryFileError(input_path))
+
+        self.speaker_mapping = {}
+        self.dictionary_mapping = {}
+        self.logger.info('Parsing multispeaker dictionary file')
+        available_langs = get_available_dict_languages()
+        with open(input_path, 'r', encoding='utf8') as f:
+            data = yaml.safe_load(f)
+            for speaker, path in data.items():
+                if path in available_langs:
+                    path = get_dictionary_path(path)
+                dictionary_name = os.path.splitext(os.path.basename(path))[0]
+                self.speaker_mapping[speaker] = dictionary_name
+                output_directory = os.path.join(self.output_directory, dictionary_name)
+                if dictionary_name not in self.dictionary_mapping:
+                    self.dictionary_mapping[dictionary_name] = Dictionary(path, output_directory, oov_code=self.oov_code,
+                                                                          position_dependent_phones=self.position_dependent_phones,
+                                                                          word_set=self.word_set,
+                                                                          num_sil_states=self.num_sil_states, num_nonsil_states=self.num_nonsil_states,
+                                                                          shared_silence_phones=self.shared_silence_phones, sil_prob=self.sil_prob,
+                                                                          debug=self.debug, logger=self.logger, punctuation=self.punctuation,
+                                                                          clitic_markers=self.clitic_markers, compound_markers=self.compound_markers,
+                                                                          multilingual_ipa=self.multilingual_ipa, strip_diacritics=self.strip_diacritics,
+                                                                          digraphs=self.digraphs)
+
+        self.nonsil_phones = set()
+        self.sil_phones = {'sp', 'spn', 'sil'}
+        self.words = set()
+        for d in self.dictionary_mapping.values():
+            self.nonsil_phones.update(d.nonsil_phones)
+            self.sil_phones.update(d.sil_phones)
+            self.words.update(d.words)
+        self.words_mapping = {}
+        self.phone_mapping = {}
+
+    def get_dictionary_name(self, speaker):
+        if speaker not in self.speaker_mapping:
+            return self.speaker_mapping['default']
+        return self.speaker_mapping[speaker]
+
+    def get_dictionary(self, speaker):
+        return self.dictionary_mapping[self.get_dictionary_name(speaker)]
+
+    def generate_mappings(self):
+        self.phone_mapping = {}
+        i = 0
+        self.phone_mapping['<eps>'] = i
+        if self.position_dependent_phones:
+            for p in self.positional_sil_phones:
+                i += 1
+                self.phone_mapping[p] = i
+            for p in self.positional_nonsil_phones:
+                i += 1
+                self.phone_mapping[p] = i
+        else:
+            for p in sorted(self.sil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+            for p in sorted(self.nonsil_phones):
+                i += 1
+                self.phone_mapping[p] = i
+
+        self.words_mapping = {}
+        i = 0
+        self.words_mapping['<eps>'] = i
+        for w in sorted(self.words):
+            if self.word_set is not None and w not in self.word_set:
+                continue
+            i += 1
+            self.words_mapping[w] = i
+
+        self.words_mapping['#0'] = i + 1
+        self.words_mapping['<s>'] = i + 2
+        self.words_mapping['</s>'] = i + 3
+        self.words.update(['<eps>', '#0', '<s>', '</s>'])
+        self.oovs_found = Counter()
+        self.max_disambig = 0
+        for name, d in self.dictionary_mapping.items():
+            d.phone_mapping = self.phone_mapping
+            d.words_mapping = self.words_mapping
+            d.add_disambiguation()
+            if d.max_disambig > self.max_disambig:
+                self.max_disambig = d.max_disambig
+        self.disambig = {'#{}'.format(x) for x in range(self.max_disambig + 2)}
+        i = max(self.phone_mapping.values())
+        for p in sorted(self.disambig):
+            i += 1
+            self.phone_mapping[p] = i
+
+    def write(self, disambig=False):
+        os.makedirs(self.phones_dir, exist_ok=True)
+        self.generate_mappings()
+        for name, d in self.dictionary_mapping.items():
+            d.write(disambig)
+        self._write_word_file()
+        self._write_phone_symbol_table()
+        self._write_disambig()
+        self._write_word_boundaries()

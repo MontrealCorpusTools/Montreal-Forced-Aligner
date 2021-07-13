@@ -85,7 +85,7 @@ class SpeakerClassifier(object):
         os.makedirs(log_dir, exist_ok=True)
         self.ivector_extractor.export_model(self.classify_directory)
         try:
-            self.corpus.initialize_corpus()
+            self.corpus.initialize_corpus(None, None)
             self.feature_config.generate_features(self.corpus, logger=self.logger, cmvn=False)
             extract_ivectors(self.classify_directory, self.corpus.split_directory(), self, self.corpus.num_jobs)
         except Exception as e:

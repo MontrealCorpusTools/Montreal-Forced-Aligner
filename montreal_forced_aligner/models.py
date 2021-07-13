@@ -109,6 +109,7 @@ class AcousticModel(Archive):
             if not os.path.exists(meta_path):
                 self._meta = {'version': '0.9.0',
                               'architecture': 'gmm-hmm',
+                              'multilingual_ipa': False,
                               'features': default_features
                               }
             else:
@@ -118,6 +119,8 @@ class AcousticModel(Archive):
                     self._meta['features'] = default_features
             if 'uses_lda' not in self._meta:  # Backwards compatibility
                 self._meta['uses_lda'] = False
+            if 'multilingual_ipa' not in self._meta:
+                self._meta['multilingual_ipa'] = False
             if 'uses_sat' not in self._meta:
                 self._meta['uses_sat'] = False
             if 'phone_type' not in self._meta:

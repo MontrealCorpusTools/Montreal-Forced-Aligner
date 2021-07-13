@@ -101,6 +101,11 @@ class OptionsDialog(QtWidgets.QDialog):
 
         key_bind_layout = QtWidgets.QFormLayout()
 
+        self.autosave_edit = QtWidgets.QCheckBox()
+        self.autosave_edit.setChecked(self.base_config['autosave'])
+        self.autosave_edit.setFocusPolicy(QtCore.Qt.ClickFocus)
+        key_bind_layout.addRow('Autosave on exit', self.autosave_edit)
+
         self.play_key_bind_edit = QtWidgets.QKeySequenceEdit()
         self.play_key_bind_edit.setKeySequence(QtGui.QKeySequence(self.base_config['play_keybind']))
         self.play_key_bind_edit.setFocusPolicy(QtCore.Qt.ClickFocus)
@@ -167,6 +172,7 @@ class OptionsDialog(QtWidgets.QDialog):
 
     def generate_config(self):
         out = {
+            'autosave': self.autosave_edit.isChecked(),
             'play_keybind': self.play_key_bind_edit.keySequence().toString(),
             'delete_keybind': self.delete_key_bind_edit.keySequence().toString(),
             'save_keybind': self.save_key_bind_edit.keySequence().toString(),
@@ -206,6 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
     ivectorExtractorLoaded = QtCore.pyqtSignal(object)
     acousticModelLoaded = QtCore.pyqtSignal(object)
     languageModelLoaded = QtCore.pyqtSignal(object)
+    saveCompleted = QtCore.pyqtSignal(object)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Tab:
@@ -244,6 +251,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.detail_widget.refreshCorpus.connect(self.list_widget.refresh_corpus)
         self.detail_widget.createUtterance.connect(self.list_widget.create_utterance)
         self.detail_widget.utteranceUpdated.connect(self.list_widget.update_utterance_text)
+        self.detail_widget.utteranceChanged.connect(self.list_widget.setFileSaveable)
         self.detail_widget.updateSpeaker.connect(self.update_speaker)
         self.corpusLoaded.connect(self.information_widget.update_corpus)
         self.dictionaryLoaded.connect(self.list_widget.update_dictionary)
@@ -252,6 +260,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.detail_widget.lookUpWord.connect(self.information_widget.look_up_word)
         self.detail_widget.createWord.connect(self.information_widget.create_pronunciation)
         self.list_widget.saveFile.connect(self.save_file)
+        self.saveCompleted.connect(self.list_widget.setFileSaveable)
         self.information_widget.resetDictionary.connect(self.load_dictionary)
         self.information_widget.saveDictionary.connect(self.save_dictionary)
         self.information_widget.newSpeaker.connect(self.detail_widget.refresh_speaker_dropdown)
@@ -295,6 +304,12 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.load_g2p()
         self.load_ivector_extractor()
 
+    def closeEvent(self, a0: QtGui.QCloseEvent) -> None:
+        if self.config['autosave']:
+            print('Saving!')
+            self.save_file(self.list_widget.current_file)
+        a0.accept()
+
     def load_config(self):
         self.config = {
             'temp_directory': TEMP_DIR,
@@ -304,6 +319,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
             'current_g2p_model_path': None,
             'current_language_model_path': None,
             'current_ivector_extractor_path': None,
+            'autosave': True,
             'play_keybind': 'Tab',
             'delete_keybind': 'Delete',
             'save_keybind': '',
@@ -638,6 +654,7 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
             return
         self.saving_utterance = True
 
+        self.status_label.setText('Saving {}...'.format(file_name))
         try:
             self.corpus.save_text_file(file_name)
         except Exception as e:
@@ -646,6 +663,8 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
             ret = reply.exec_()
         self.saving_utterance = False
         #self.corpusLoaded.emit(self.corpus)
+        self.saveCompleted.emit(False)
+        self.status_label.setText('Saved {}!'.format(file_name))
 
     def save_dictionary(self, words):
         if self.saving_dictionary:

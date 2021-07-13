@@ -98,6 +98,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         layout = QtWidgets.QVBoxLayout()
         button_layout = QtWidgets.QHBoxLayout()
         self.saveButton = QtWidgets.QPushButton('Save current file')
+        self.saveButton.setDisabled(True)
         self.saveButton.clicked.connect(self.save_file)
         self.restoreButton = QtWidgets.QPushButton('Restore deleted')
         self.restoreButton.clicked.connect(self.restore_deleted_utts)
@@ -113,10 +114,14 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         # self.setFocusPolicy(QtCore.Qt.NoFocus)
         # self.table_widget.setFocusPolicy(QtCore.Qt.NoFocus)
 
+    def setFileSaveable(self, value=True):
+        self.saveButton.setEnabled(value)
+
     def file_changed(self, file_name):
         self.current_file = file_name
         self.fileChanged.emit(file_name)
         self.refresh_list()
+        self.setFileSaveable(False)
 
     def save_file(self):
         self.saveFile.emit(self.current_file)
@@ -197,6 +202,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.refresh_list()
         self.table_widget.clearSelection()
         self.utteranceDeleted.emit()
+        self.setFileSaveable(True)
 
     def split_utterances(self):
         utts = self.get_current_selection()
@@ -237,6 +243,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.select_utterance(first_utt)
         self.utteranceChanged.emit(first_utt, False)
         self.updateView.emit(None, None)
+        self.setFileSaveable(True)
 
     def merge_utterances(self):
         print('MERGING')
@@ -291,6 +298,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.utteranceMerged.emit()
         self.select_utterance(new_utt)
         self.utteranceChanged.emit(new_utt, False)
+        self.setFileSaveable(True)
 
     def create_utterance(self, speaker, begin, end, channel):
         begin = round(begin, 4)
@@ -305,6 +313,7 @@ class UtteranceListWidget(QtWidgets.QWidget):  # pragma: no cover
         self.utteranceMerged.emit()
         self.select_utterance(new_utt)
         self.utteranceChanged.emit(new_utt, False)
+        self.setFileSaveable(True)
 
     def select_utterance(self, utt, zoom=False):
         self.table_widget.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
@@ -554,6 +563,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
     refreshCorpus = QtCore.pyqtSignal(object)
     updateSpeaker = QtCore.pyqtSignal(object, object)
     utteranceUpdated = QtCore.pyqtSignal(object)
+    utteranceChanged = QtCore.pyqtSignal(object)
 
     def __init__(self, parent):
         super(UtteranceDetailWidget, self).__init__(parent=parent)
@@ -614,7 +624,7 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.volume_slider.setMinimum(0)
         self.volume_slider.setMaximumWidth(100)
         self.volume_slider.setSliderPosition(self.m_audioOutput.volume())
-        self.volume_slider.sliderMoved.connect(self.m_audioOutput.setVolume)
+        self.volume_slider.valueChanged.connect(self.m_audioOutput.setVolume)
         volume_layout.addWidget(self.volume_slider)
 
         button_layout.addWidget(self.play_button)
@@ -674,7 +684,10 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         if self.utterance is None:
             return
         new_text = self.text_widget.toPlainText().strip().lower()
-        self.corpus.text_mapping[self.utterance] = new_text
+        if new_text != self.corpus.text_mapping[self.utterance]:
+            self.utteranceChanged.emit(True)
+
+            self.corpus.text_mapping[self.utterance] = new_text
 
         for u in self.file_utts:
             if u['utt'] == self.utterance:
@@ -687,21 +700,27 @@ class UtteranceDetailWidget(QtWidgets.QWidget):  # pragma: no cover
         self.p2.setGeometry(self.p1.vb.sceneBoundingRect())
 
     def refresh_speaker_dropdown(self):
+        current_speaker = self.speaker_dropdown.currentText()
         self.speaker_dropdown.clear()
         if not self.corpus:
             return
         speakers = sorted(self.corpus.speak_utt_mapping.keys())
-        for s in self.corpus.speak_utt_mapping.keys():
+        for i, s in enumerate(speakers):
             if not s:
                 continue
             self.speaker_dropdown.addItem(s)
+            if current_speaker and current_speaker == s:
+                self.speaker_dropdown.setCurrentIndex(i)
 
     def reset(self):
         self.utterance = None
         self.file_name = None
         self.wave_data = None
         self.wav_path = None
-        self.scroll_bar.valueChanged.disconnect(self.update_from_slider)
+        try:
+            self.scroll_bar.valueChanged.disconnect(self.update_from_slider)
+        except TypeError:
+            pass
         self.ax.getPlotItem().clear()
         self.reset_text()
 
@@ -1321,6 +1340,7 @@ class InformationWidget(QtWidgets.QWidget):  # pragma: no cover
         self.speaker_edit = QtWidgets.QLineEdit()
         self.save_speaker_button = QtWidgets.QPushButton('Add speaker')
 
+        self.speaker_edit.returnPressed.connect(self.save_speaker)
         self.save_speaker_button.clicked.connect(self.save_speaker)
 
         add_layout.addWidget(self.speaker_edit)

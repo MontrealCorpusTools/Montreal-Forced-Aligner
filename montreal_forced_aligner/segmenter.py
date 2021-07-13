@@ -75,7 +75,7 @@ class Segmenter(object):
         log_dir = os.path.join(self.segmenter_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         try:
-            self.corpus.initialize_corpus()
+            self.corpus.initialize_corpus(None, None)
             fc = self.segmentation_config.feature_config
             fc.generate_features(self.corpus, logger=self.logger, cmvn=False)
         except Exception as e:

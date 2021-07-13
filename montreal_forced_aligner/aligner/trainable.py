@@ -36,16 +36,8 @@ class TrainableAligner(BaseAligner):
         if self.dictionary is not None:
             self.dictionary.set_word_set(self.corpus.word_set)
             self.dictionary.write()
-        self.corpus.initialize_corpus(self.dictionary)
-        for identifier, trainer in self.training_config.items():
-            try:
-                trainer.feature_config.generate_features(self.corpus)
-            except Exception as e:
-                if isinstance(e, KaldiProcessingError):
-                    log_kaldi_errors(e.error_logs, self.logger)
-                    e.update_log_file(self.logger.handlers[0].baseFilename)
-                raise
-            break
+        first_trainer = list(self.training_config.items())[0][1]
+        self.corpus.initialize_corpus(self.dictionary, first_trainer.feature_config)
 
     def save(self, path, root_directory=None):
         """

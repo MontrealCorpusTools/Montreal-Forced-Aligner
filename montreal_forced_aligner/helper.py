@@ -53,6 +53,8 @@ def save_scp(scp, path, sort=True, multiline=False):
         newline = ''
     else:
         newline = None
+    if not scp:
+        return
     with open(path, 'w', encoding='utf8', newline=newline) as f:
         if sort:
             scp = sorted(scp)
@@ -208,6 +210,10 @@ def parse_logs(log_directory):
                 if 'error while loading shared libraries: libopenblas.so.0' in line:
                     raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
                                           'Try installing openblas via system package manager?')
+                if 'GLIBC_2.27' in line or'GLIBCXX_3.4.20' in line:
+                    raise ThirdpartyError('There was a problem with the version of system libraries that Kaldi was linked against. '
+                                          'Try compiling Kaldi on your machine and collecting the binaries via '
+                                          'the `mfa thirdparty kaldi` command.')
                 if 'sox FAIL formats' in line:
                     f = line.split(' ')[-1]
                     raise ThirdpartyError('Your version of sox does not support the file format in your corpus. '

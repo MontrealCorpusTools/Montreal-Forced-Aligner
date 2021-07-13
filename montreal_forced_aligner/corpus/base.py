@@ -550,6 +550,10 @@ class BaseCorpus(object):
             feats = stdout.decode('utf8').strip()
         return int(feats)
 
+    def _write_speaker_ordering(self):
+        path = os.path.join(self.output_directory, 'speaker_ordering.scp')
+        output_mapping(self.speaker_ordering, path)
+
     def write(self):
         self._write_speak_utt()
         self._write_utt_speak()
@@ -561,6 +565,7 @@ class BaseCorpus(object):
         self._write_speaker_sr()
         self._write_wav_info()
         self._write_file_directory()
+        self._write_speaker_ordering()
 
     def split(self):
         split_dir = self.split_directory()
@@ -570,3 +575,85 @@ class BaseCorpus(object):
         self._split_utt2spk(split_dir)
         self._split_spk2utt(split_dir)
         self._split_segments(split_dir)
+
+
+    def spk2utt_by_dictionary(self, multispeaker_dictionary, dictionary_name):
+        output = []
+        for g in self.speaker_groups:
+            output_g = []
+            for s in sorted(g):
+                if multispeaker_dictionary.get_dictionary_name(s) != dictionary_name:
+                    continue
+                try:
+                    output_g.append([s, sorted(self.speak_utt_mapping[s])])
+                except KeyError:
+                    pass
+            output.append(output_g)
+        return output
+
+    def utt2spk_by_dictionary(self, multispeaker_dictionary, dictionary_name):
+        output = []
+        for g in self.groups:
+            output_g = []
+            for u in sorted(g):
+                if u in self.ignored_utterances:
+                    continue
+                s = self.utt_speak_mapping[u]
+                if multispeaker_dictionary.get_dictionary_name(s) != dictionary_name:
+                    continue
+                try:
+                    output_g.append([u, s])
+                except KeyError:
+                    pass
+            output.append(output_g)
+        return output
+
+    def feats_by_dictionary(self, multispeaker_dictionary, dictionary_name):
+        output = []
+        for g in self.groups:
+            output_g = []
+            for u in sorted(g):
+                if u in self.ignored_utterances:
+                    continue
+                s = self.utt_speak_mapping[u]
+                if multispeaker_dictionary.get_dictionary_name(s) != dictionary_name:
+                    continue
+                try:
+                    output_g.append([u, self.feat_mapping[u]])
+                except KeyError:
+                    pass
+            output.append(output_g)
+        return output
+
+    def cmvn_by_dictionary(self, multispeaker_dictionary, dictionary_name):
+        output = []
+        for g in self.speaker_groups:
+            output_g = []
+            for s in sorted(g):
+                if multispeaker_dictionary.get_dictionary_name(s) != dictionary_name:
+                    continue
+                try:
+                    output_g.append([s, self.cmvn_mapping[s]])
+                except KeyError:
+                    pass
+            output.append(output_g)
+        return output
+
+    def split_by_dictionary(self, multispeaker_dictionary):
+        split_dir = self.split_directory()
+        for name, d in multispeaker_dictionary.dictionary_mapping.items():
+            spk2utt = self.spk2utt_by_dictionary(multispeaker_dictionary, name)
+            pattern = 'spk2utt.{}.'+ name
+            save_groups(spk2utt, split_dir, pattern)
+
+            utt2spk = self.utt2spk_by_dictionary(multispeaker_dictionary, name)
+            pattern = 'utt2spk.{}.'+ name
+            save_groups(utt2spk, split_dir, pattern)
+
+            feats = self.feats_by_dictionary(multispeaker_dictionary, name)
+            pattern = 'feats.{}.'+ name + '.scp'
+            save_groups(feats, split_dir, pattern)
+
+            cmvn = self.cmvn_by_dictionary(multispeaker_dictionary, name)
+            pattern = 'cmvn.{}.'+ name + '.scp'
+            save_groups(cmvn, split_dir, pattern)

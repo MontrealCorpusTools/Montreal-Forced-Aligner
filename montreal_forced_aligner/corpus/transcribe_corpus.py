@@ -8,6 +8,7 @@ from praatio import tgio
 
 from .base import BaseCorpus, get_wav_info, find_exts
 from ..helper import load_scp
+from ..dictionary import MultispeakerDictionary
 
 from ..exceptions import CorpusError
 from ..multiprocessing import segment_vad
@@ -329,13 +330,17 @@ class TranscribeCorpus(BaseCorpus):
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
 
-    def initialize_corpus(self, dictionary=None):
+    def initialize_corpus(self, dictionary=None, feature_config=None):
         if not self.utt_wav_mapping:
             raise CorpusError('There were no wav files found for transcribing this corpus. Please validate the corpus.')
         split_dir = self.split_directory()
         self.write()
         if not os.path.exists(split_dir):
             self.split()
+        if feature_config is not None:
+            feature_config.generate_features(self)
+        if isinstance(dictionary, MultispeakerDictionary):
+            self.split_by_dictionary(dictionary)
         self.figure_utterance_lengths()
 
     def create_vad_segments(self, segmentation_config):

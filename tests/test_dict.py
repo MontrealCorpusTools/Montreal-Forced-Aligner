@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from montreal_forced_aligner.dictionary import Dictionary, sanitize
+from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary, sanitize, parse_ipa
 
 
 def ListLines(path):
@@ -61,3 +61,26 @@ def test_devanagari():
 def test_japanese():
     assert "かぎ括弧" == sanitize("「かぎ括弧」")
     assert "二重かぎ括弧" == sanitize("『二重かぎ括弧』")
+
+
+def test_multilingual_ipa():
+    input_transcription = 'm æ ŋ g oʊ dʒ aɪ'.split()
+    expected = tuple('m æ ŋ ɡ o ʊ d ʒ a ɪ'.split())
+    assert parse_ipa(input_transcription) == expected
+
+    input_transcription = 'n ɔː ɹ i'.split()
+    expected = tuple('n ɔ ɹ i'.split())
+    assert parse_ipa(input_transcription) == expected
+
+    input_transcription = 't ʌ tʃ ə b l̩'.split()
+    expected = tuple('t ʌ t ʃ ə b l'.split())
+    assert parse_ipa(input_transcription) == expected
+
+
+def test_multispeaker_config(multispeaker_dictionary_config, generated_dir):
+    dictionary = MultispeakerDictionary(multispeaker_dictionary_config, os.path.join(generated_dir, 'multispeaker'))
+    dictionary.write()
+    for name, d in dictionary.dictionary_mapping.items():
+        assert dictionary.phone_mapping == d.phone_mapping
+        assert dictionary.words_mapping == d.words_mapping
+        assert dictionary.words == set(d.words.keys())

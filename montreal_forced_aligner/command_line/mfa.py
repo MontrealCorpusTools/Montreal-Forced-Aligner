@@ -20,6 +20,7 @@ from montreal_forced_aligner.command_line.classify_speakers import run_classify_
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 from montreal_forced_aligner.command_line.create_segments import run_create_segments
+from montreal_forced_aligner.exceptions import MFAError
 
 
 def fix_path():
@@ -310,75 +311,80 @@ thirdparty_parser.add_argument('local_directory',
 def main():
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
-    if not getattr(args, 'debug', False):
-        sys.tracebacklimit = 0
-    fix_path()
-    if args.subcommand in ['align', 'train', 'train_ivector']:
-        from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
-        if not validate_alignment_binaries():
-            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                  "on why this check failed.")
-            sys.exit(1)
-    elif args.subcommand in ['transcribe']:
-        from montreal_forced_aligner.thirdparty.kaldi import validate_transcribe_binaries
-        if not validate_transcribe_binaries():
-            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                  "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
-                  "via the download command do not contain the transcription ones.  To get this functionality working "
-                  "for the time being, please build kaldi locally and follow the instructions for running the "
-                  "'mfa thirdparty kaldi' command.")
-            sys.exit(1)
-    elif args.subcommand in ['train_dictionary']:
-        from montreal_forced_aligner.thirdparty.kaldi import validate_train_dictionary_binaries
-        if not validate_train_dictionary_binaries():
-            print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                  "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                  "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
-                  "via the download command do not contain the train_dictionary ones.  To get this functionality working "
-                  "for the time being, please build kaldi locally and follow the instructions for running the "
-                  "'mfa thirdparty kaldi' command.")
-            sys.exit(1)
-    elif args.subcommand in ['g2p', 'train_g2p']:
-        try:
-            import pynini
-        except ImportError:
-            print("There was an issue importing Pynini, please ensure that it is installed. If you are on Windows, "
-                  "please use the Windows Subsystem for Linux to use g2p functionality.")
-            sys.exit(1)
-    if args.subcommand == 'align':
-        run_align_corpus(args, unknown, acoustic_languages)
-    elif args.subcommand == 'train':
-        run_train_corpus(args, unknown)
-    elif args.subcommand == 'g2p':
-        run_g2p(args, unknown, g2p_languages)
-    elif args.subcommand == 'train_g2p':
-        run_train_g2p(args, unknown)
-    elif args.subcommand == 'validate':
-        run_validate_corpus(args, unknown)
-    elif args.subcommand == 'download':
-        run_download(args)
-    elif args.subcommand == 'train_lm':
-        run_train_lm(args, unknown)
-    elif args.subcommand == 'train_dictionary':
-        run_train_dictionary(args, unknown)
-    elif args.subcommand == 'train_ivector':
-        run_train_ivector_extractor(args, unknown)
-    elif args.subcommand == 'classify_speakers':
-        run_classify_speakers(args, unknown)
-    elif args.subcommand == 'annotator':
-        from montreal_forced_aligner.command_line.annotator import run_annotator
-        run_annotator(args)
-    elif args.subcommand == 'thirdparty':
-        run_thirdparty(args)
-    elif args.subcommand == 'transcribe':
-        run_transcribe_corpus(args, unknown)
-    elif args.subcommand == 'create_segments':
-        run_create_segments(args, unknown)
-    elif args.subcommand == 'version':
-        print(__version__)
-    unfix_path()
+    try:
+        fix_path()
+        if args.subcommand in ['align', 'train', 'train_ivector']:
+            from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
+            if not validate_alignment_binaries():
+                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                      "on why this check failed.")
+                sys.exit(1)
+        elif args.subcommand in ['transcribe']:
+            from montreal_forced_aligner.thirdparty.kaldi import validate_transcribe_binaries
+            if not validate_transcribe_binaries():
+                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                      "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
+                      "via the download command do not contain the transcription ones.  To get this functionality working "
+                      "for the time being, please build kaldi locally and follow the instructions for running the "
+                      "'mfa thirdparty kaldi' command.")
+                sys.exit(1)
+        elif args.subcommand in ['train_dictionary']:
+            from montreal_forced_aligner.thirdparty.kaldi import validate_train_dictionary_binaries
+            if not validate_train_dictionary_binaries():
+                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
+                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
+                      "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
+                      "via the download command do not contain the train_dictionary ones.  To get this functionality working "
+                      "for the time being, please build kaldi locally and follow the instructions for running the "
+                      "'mfa thirdparty kaldi' command.")
+                sys.exit(1)
+        elif args.subcommand in ['g2p', 'train_g2p']:
+            try:
+                import pynini
+            except ImportError:
+                print("There was an issue importing Pynini, please ensure that it is installed. If you are on Windows, "
+                      "please use the Windows Subsystem for Linux to use g2p functionality.")
+                sys.exit(1)
+        if args.subcommand == 'align':
+            run_align_corpus(args, unknown, acoustic_languages)
+        elif args.subcommand == 'train':
+            run_train_corpus(args, unknown)
+        elif args.subcommand == 'g2p':
+            run_g2p(args, unknown, g2p_languages)
+        elif args.subcommand == 'train_g2p':
+            run_train_g2p(args, unknown)
+        elif args.subcommand == 'validate':
+            run_validate_corpus(args, unknown)
+        elif args.subcommand == 'download':
+            run_download(args)
+        elif args.subcommand == 'train_lm':
+            run_train_lm(args, unknown)
+        elif args.subcommand == 'train_dictionary':
+            run_train_dictionary(args, unknown)
+        elif args.subcommand == 'train_ivector':
+            run_train_ivector_extractor(args, unknown)
+        elif args.subcommand == 'classify_speakers':
+            run_classify_speakers(args, unknown)
+        elif args.subcommand == 'annotator':
+            from montreal_forced_aligner.command_line.annotator import run_annotator
+            run_annotator(args)
+        elif args.subcommand == 'thirdparty':
+            run_thirdparty(args)
+        elif args.subcommand == 'transcribe':
+            run_transcribe_corpus(args, unknown)
+        elif args.subcommand == 'create_segments':
+            run_create_segments(args, unknown)
+        elif args.subcommand == 'version':
+            print(__version__)
+    except MFAError as e:
+        if getattr(args, 'debug', False):
+            raise
+        print(e)
+        sys.exit(1)
+    finally:
+        unfix_path()
 
 
 if __name__ == '__main__':

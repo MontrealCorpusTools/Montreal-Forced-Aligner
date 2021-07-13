@@ -64,6 +64,13 @@ def temp_dir(generated_dir):
 
 
 @pytest.fixture(scope='session')
+def config_dir(generated_dir):
+    path = os.path.join(generated_dir, 'configs')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+@pytest.fixture(scope='session')
 def english_acoustic_model():
     from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
@@ -583,3 +590,12 @@ def lda_sat_train_config(config_directory):
 @pytest.fixture(scope='session')
 def ivector_train_config(config_directory):
     return train_yaml_to_config(os.path.join(config_directory, 'ivector_train.yaml'))
+
+
+@pytest.fixture(scope='session')
+def multispeaker_dictionary_config(config_dir, sick_dict_path):
+    import yaml
+    path = os.path.join(config_dir, 'multispeaker_dictionary.yaml')
+    with open(path, 'w', encoding='utf8') as f:
+        yaml.safe_dump({'default': 'english', 'michael': sick_dict_path}, f)
+    return path

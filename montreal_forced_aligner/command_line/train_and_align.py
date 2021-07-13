@@ -90,7 +90,10 @@ def align_corpus(args, unknown_args=None):
         logger.info(corpus.speaker_utterance_info())
         dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger,
                                 punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers,
-                                compound_markers=align_config.compound_markers)
+                                compound_markers=align_config.compound_markers,
+                                multilingual_ipa=align_config.multilingual_ipa,
+                                strip_diacritics=align_config.strip_diacritics,
+                                digraphs=align_config.digraphs)
         utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
@@ -104,9 +107,9 @@ def align_corpus(args, unknown_args=None):
         begin = time.time()
         a.train()
         logger.debug('Training took {} seconds'.format(time.time() - begin))
-        a.export_textgrids(args.output_directory)
         if args.output_model_path is not None:
             a.save(args.output_model_path, root_directory=model_directory)
+        a.export_textgrids(args.output_directory)
         logger.info('All done!')
         logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
     except Exception as _:

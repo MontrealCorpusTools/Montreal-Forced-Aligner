@@ -6,14 +6,14 @@ import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
 from montreal_forced_aligner.transcriber import Transcriber
 from montreal_forced_aligner.models import AcousticModel, LanguageModel, FORMAT
 from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.config import TEMP_DIR, transcribe_yaml_to_config, load_basic_transcribe, save_config
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_lm_languages, get_pretrained_language_model_path, \
-    get_available_dict_languages, get_dictionary_path
+    get_available_dict_languages, validate_dictionary_arg
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
@@ -104,7 +104,18 @@ def transcribe_corpus(args, unknown_args):
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
-        dictionary = Dictionary(args.dictionary_path, data_directory)
+        if args.dictionary_path.lower().endswith('.yaml'):
+            dictionary = MultispeakerDictionary(args.dictionary_path, data_directory, logger=logger,
+                                                punctuation=transcribe_config.punctuation,
+                                                clitic_markers=transcribe_config.clitic_markers,
+                                                compound_markers=transcribe_config.compound_markers,
+                                multilingual_ipa=transcribe_config.multilingual_ipa)
+        else:
+            dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger,
+                                                punctuation=transcribe_config.punctuation,
+                                                clitic_markers=transcribe_config.clitic_markers,
+                                                compound_markers=transcribe_config.compound_markers,
+                                multilingual_ipa=transcribe_config.multilingual_ipa)
         acoustic_model.validate(dictionary)
         begin = time.time()
         t = Transcriber(corpus, dictionary, acoustic_model, language_model, transcribe_config,
@@ -139,17 +150,12 @@ def transcribe_corpus(args, unknown_args):
 
 
 def validate_args(args, downloaded_acoustic_models, download_dictionaries,  downloaded_language_models):
+    validate_dictionary_arg(args.dictionary_path, download_dictionaries)
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
         raise ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory))
 
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
-    if not os.path.exists(args.dictionary_path):
-        raise ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path))
-    if not os.path.isfile(args.dictionary_path):
-        raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path))
     if args.corpus_directory == args.output_directory:
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 

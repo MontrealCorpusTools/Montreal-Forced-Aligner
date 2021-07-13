@@ -6,12 +6,12 @@ import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
 from montreal_forced_aligner.aligner import PretrainedAligner
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
-    get_available_dict_languages, get_dictionary_path
+    get_available_dict_languages, validate_dictionary_arg
 from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
@@ -79,6 +79,8 @@ def align_corpus(args, unknown_args=None):
     model_directory = os.path.join(data_directory, 'acoustic_models')
     os.makedirs(model_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
+    acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
+    acoustic_model.log_details(logger)
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
@@ -87,13 +89,24 @@ def align_corpus(args, unknown_args=None):
                                  clitic_markers=align_config.clitic_markers)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
-                  'Please run the validator to get more information.')
+                           'Please run the validator to get more information.')
         logger.info(corpus.speaker_utterance_info())
-        dictionary = Dictionary(args.dictionary_path, data_directory, word_set=corpus.word_set, logger=logger,
-                                punctuation=align_config.punctuation, clitic_markers=align_config.clitic_markers,
-                                compound_markers=align_config.compound_markers)
-        acoustic_model = AcousticModel(args.acoustic_model_path,  root_directory=model_directory)
-        acoustic_model.log_details(logger)
+        if args.dictionary_path.lower().endswith('.yaml'):
+            dictionary = MultispeakerDictionary(args.dictionary_path, data_directory, logger=logger,
+                                                punctuation=align_config.punctuation,
+                                                clitic_markers=align_config.clitic_markers,
+                                                compound_markers=align_config.compound_markers,
+                                                multilingual_ipa=acoustic_model.meta['multilingual_ipa'],
+                                                strip_diacritics=acoustic_model.meta.get('strip_diacritics', None),
+                                                digraphs=acoustic_model.meta.get('digraphs', None))
+        else:
+            dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger,
+                                    punctuation=align_config.punctuation,
+                                    clitic_markers=align_config.clitic_markers,
+                                    compound_markers=align_config.compound_markers,
+                                    multilingual_ipa=acoustic_model.meta['multilingual_ipa'],
+                                    strip_diacritics=acoustic_model.meta.get('strip_diacritics', None),
+                                    digraphs=acoustic_model.meta.get('digraphs', None))
         acoustic_model.validate(dictionary)
 
         begin = time.time()
@@ -133,12 +146,7 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries):
     if args.corpus_directory == args.output_directory:
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
-    if not os.path.exists(args.dictionary_path):
-        raise ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path))
-    if not os.path.isfile(args.dictionary_path):
-        raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path))
+    validate_dictionary_arg(args.dictionary_path, download_dictionaries)
 
     if args.acoustic_model_path.lower() in downloaded_acoustic_models:
         args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())

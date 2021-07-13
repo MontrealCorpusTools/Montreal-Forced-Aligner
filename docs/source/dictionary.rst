@@ -72,3 +72,69 @@ to align annotations like laughter, coughing, etc.
 
   {LG} spn
   {SL} sil
+
+
+.. _speaker_dictionaries:
+
+Per-speaker dictionaries
+========================
+
+In addition to specifying a single dictionary to use when aligning or transcribing, MFA also supports specifying per-speaker
+dictionaries via a yaml file, like the following.
+
+.. code-block:: yaml
+
+   default: /mnt/d/Data/speech/english_us_ipa.txt
+
+   speaker_a: /mnt/d/Data/speech/english_uk_ipa.txt
+   speaker_b: /mnt/d/Data/speech/english_uk_ipa.txt
+   speaker_c: /mnt/d/Data/speech/english_uk_ipa.txt
+
+What the above yaml file specifies is a "default" dictionary that will be used for any speaker not explicitly listed with
+another dictionary, so it's possible to train/align/transcribe using multiple dialects or languages, provided the model
+specified is compatible with all dictionaries.
+
+The way to use this per-speaker dictionary is in place of where the dictionary argument is:
+
+.. code-block::
+
+   mfa align /path/to/corpus /path/to/speaker_dictionaries.yaml /path/to/acoustic_model.zip /path/to/output
+
+
+.. _multilingual_ipa:
+
+Multilingual IPA mode
+=====================
+
+For the purposes of training multilingual models with IPA, there is a flag for training that enables this mode
+:code:`--multilingual_ipa`. With this mode, it strips out certain diacritics that are not generally related to the quality
+of the vowel (i.e., diacritics related to length), and splits digraphs (affricates and diphthongs/triphthongs) into
+their component symbols.  The reasoning behind these are that length can be modelled through transition probabilities
+and the model can take advantage of a less confusable phone set, and for digraphs, we can model the components parts
+to account better for rarer sounds.  For example, in English /dʒ/ is more common than /ʒ/, so by modelling /dʒ/ as /d ʒ/,
+we have more data for the solo instances of /ʒ/.  The downside for this split is that that the minimum duration is increased
+to 6 frames (3 frames per phone), however in general, diphthongs and affricates should be longer than less complex sounds.
+
+The default configuration for multilingual IPA is as follows:
+
+.. code-block::
+
+   strip_diacritics:
+     - "ː"  # long, i.e. /ɑː/
+     - "ˑ"  # half long, i.e. /ɑˑ/
+     - "̆"  # extra short, i.e. /ĭ/
+     - "̯"   # non syllabic, i.e. /i̯/
+     - "͡"  # linking, i.e. /d͡ʒ/
+     - "‿"  # linking, i.e. /d‿ʒ/
+     - "͜"  # linking, i.e. /d͜ʒ/
+     - "̩"   # syllabic, i.e. /n̩/
+
+   digraphs:
+     - "[dt][szʒʃʐʑʂɕç]" # affricates
+     - "[aoɔe][ʊɪ]" # diphthongs
+
+.. note::
+   Digraphs are specified as a regular expression pattern, where the characters in first set of square brackets (i.e. ``[aoɔe]``)
+   is the the set of characters that matches the first element in the digraph, and the characters in second set of square
+   brackets (i.e. ``[ʊɪ]``) matches the second element.  Triphthongs or longer sequences can be specified with more
+   sets of square brackets, like ``[e][i][u]`` would match just a /eiu/ triphthong.

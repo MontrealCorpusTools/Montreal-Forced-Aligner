@@ -86,6 +86,8 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
                                  '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
     n_channels = wav_info['num_channels']
     num_tiers = len(tg.tierNameList)
+    if num_tiers == 0:
+        raise TextGridParseError(textgrid_path, 'Number of tiers parsed was zero')
     if n_channels > 2:
         raise (Exception('More than two channels'))
     speaker_ordering = []
@@ -195,21 +197,13 @@ class CorpusProcessWorker(mp.Process):
                     info = parse_lab_file(*arguments)
                 self.return_q.put(info)
             except WavReadError:
-                if 'wav_read_errors' not in self.return_dict:
-                    self.return_dict['wav_read_errors'] = []
                 self.return_dict['wav_read_errors'].append(wav_path)
             except SampleRateError:
-                if 'unsupported_sample_rate' not in self.return_dict:
-                    self.return_dict['unsupported_sample_rate'] = []
                 self.return_dict['unsupported_sample_rate'].append(wav_path)
             except TextParseError:
-                if 'decode_error_files' not in self.return_dict:
-                    self.return_dict['decode_error_files'] = []
                 self.return_dict['decode_error_files'].append(transcription_path)
             except TextGridParseError as e:
-                if 'textgrid_read_errors' not in self.return_dict:
-                    self.return_dict['textgrid_read_errors'] = {}
-                self.return_dict['textgrid_read_errors'][transcription_path] = e.error
+                self.return_dict['textgrid_read_errors'][transcription_path] = e
             except Exception as e:
                 self.stopped.stop()
                 self.return_dict['error'] = arguments, Exception(traceback.format_exception(*sys.exc_info()))

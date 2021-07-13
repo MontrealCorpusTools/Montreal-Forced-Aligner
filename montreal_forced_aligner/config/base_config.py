@@ -5,6 +5,8 @@ DEFAULT_PUNCTUATION = r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」
 
 DEFAULT_CLITIC_MARKERS = "'’"
 DEFAULT_COMPOUND_MARKERS = "-"
+DEFAULT_STRIP_DIACRITICS = ['ː', 'ˑ', '̩', '̆', '̯', '͡', '‿', '͜']
+DEFAULT_DIGRAPHS = ['[dt][szʒʃʐʑʂɕç]', '[aoɔe][ʊɪ]']
 
 
 class BaseConfig(object):

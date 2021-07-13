@@ -1,6 +1,7 @@
 import os
 import yaml
-from .base_config import BaseConfig, ConfigError
+from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, \
+    DEFAULT_COMPOUND_MARKERS, DEFAULT_DIGRAPHS, DEFAULT_STRIP_DIACRITICS
 from ..features.config import FeatureConfig
 
 
@@ -23,7 +24,14 @@ class TranscribeConfig(BaseConfig):
         self.word_insertion_penalty = 0.5
         self.data_directory = None # Gets set later
         self.use_mp = True
+        self.use_fmllr_mp = False
+        self.multilingual_ipa = False
         self.no_speakers = False
+        self.punctuation = DEFAULT_PUNCTUATION
+        self.clitic_markers = DEFAULT_CLITIC_MARKERS
+        self.compound_markers = DEFAULT_COMPOUND_MARKERS
+        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
+        self.digraphs = DEFAULT_DIGRAPHS
 
     def params(self):
         return {
