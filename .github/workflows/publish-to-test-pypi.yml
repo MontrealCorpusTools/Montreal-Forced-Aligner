@@ -18,6 +18,12 @@ jobs:
           pip install
           build
           --user
+      - name: Install numpy
+        run: >-
+          python -m
+          pip install
+          numpy
+          --user
       - name: Install requirements
         run: >-
           python -m
