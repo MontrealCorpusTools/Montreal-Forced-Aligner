@@ -3,6 +3,8 @@ from setuptools import setup
 from setuptools.command.test import test as TestCommand
 from setuptools.command.develop import develop
 from setuptools.command.install import install
+import codecs
+import os.path
 
 
 def readme():
@@ -40,12 +42,27 @@ class PyTest(TestCommand):
             errcode = pytest.main(self.test_args)
             sys.exit(errcode)
 
+def read(rel_path):
+    here = os.path.abspath(os.path.dirname(__file__))
+    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
+        return fp.read()
+
+
+def get_version(rel_path):
+    for line in read(rel_path).splitlines():
+        if line.startswith('__version__'):
+            delim = '"' if '"' in line else "'"
+            return line.split(delim)[1]
+    else:
+        raise RuntimeError("Unable to find version string.")
+
 
 if __name__ == '__main__':
     setup(name='Montreal Forced Aligner',
           description='Montreal Forced Aligner is a package for aligning speech corpora through the use of '
                       'acoustic models and dictionaries using Kaldi functionality.',
           long_description=readme(),
+          version=get_version("montreal_forced_aligner/__init__.py"),
           long_description_content_type='text/markdown',
           classifiers=[
               'Development Status :: 3 - Alpha',
