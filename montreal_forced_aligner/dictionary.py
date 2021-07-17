@@ -264,8 +264,7 @@ class Dictionary(object):
                 if self.multilingual_ipa:
                     pronunciation['original_pronunciation'] = tuple(line)
                 if not any(x in self.sil_phones for x in pron):
-                    if self.word_set is None or word in self.word_set:
-                        self.nonsil_phones.update(pron)
+                    self.nonsil_phones.update(pron)
                 if word in self.words and pron in {x['pronunciation'] for x in self.words[word]}:
                     continue
                 self.words[word].append(pronunciation)
@@ -301,6 +300,10 @@ class Dictionary(object):
         self.logger.debug('Punctuation: {}'.format(self.punctuation))
         self.logger.debug('Clitic markers: {}'.format(self.clitic_markers))
         self.logger.debug('Clitic set: {}'.format(', '.join(sorted(self.clitic_set))))
+        if self.multilingual_ipa:
+            self.logger.debug('Strip diacritics: {}'.format(', '.join(sorted(self.strip_diacritics))))
+            self.logger.debug('Digraphs: {}'.format(', '.join(sorted(self.digraphs))))
+
 
     def set_word_set(self, word_set):
         word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}

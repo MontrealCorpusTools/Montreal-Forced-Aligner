@@ -375,6 +375,8 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         self.information_widget.refresh_speakers()
         self.detail_widget.refresh_utterances()
         self.list_widget.utteranceChanged.emit(new_utt, False)
+        self.list_widget.setFileSaveable(True)
+
 
     def save_config(self):
         with open(self.config_path, 'w', encoding='utf8') as f:
