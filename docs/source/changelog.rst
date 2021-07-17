@@ -19,6 +19,7 @@ Changelog
 - Add check for system version of libc to provide a more informative error message with next steps for compiling Kaldi on
   the user's machine
 - Update annotator utility to have autosave on exit
+- Fixed cases where not all phones in a dictionary were present in phone_mapping
 
 2.0.0a21
 --------
