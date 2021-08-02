@@ -5,8 +5,6 @@ from .. import __version__
 from ..multiprocessing import compile_information
 from ..config import TEMP_DIR
 
-from ..helper import log_kaldi_errors, load_scp
-from ..exceptions import KaldiProcessingError
 from ..dictionary import MultispeakerDictionary
 
 
@@ -97,19 +95,6 @@ class BaseAligner(object):
                     f.write('{}\t{}\n'.format(u, r))
             self.logger.warning('There were {} segments/files not aligned.  Please see {} for more details on why '
                                 'alignment failed for these files.'.format(len(issues), issue_path))
-
-        log_like = 0
-        tot_frames = 0
-        for j in range(self.corpus.num_jobs):
-            score_path = os.path.join(model_directory, 'ali.{}.scores'.format(j))
-            scores = load_scp(score_path, data_type=float)
-            for k, v in scores.items():
-                log_like += v
-                tot_frames += self.corpus.utterance_lengths[k]
-        if tot_frames:
-            self.logger.debug('Average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
-        else:
-            self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
 
     def export_textgrids(self, output_directory):
         """

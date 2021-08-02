@@ -1,0 +1,18 @@
+beam: 10
+retry_beam: 40
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+  snip_edges: true
+
+training:
+
+  - triphone:
+      num_iterations: 3
+      num_leaves: 4200
+      max_gaussians: 40000
+      power: 0.25
+      boost_silence: 1.25
+

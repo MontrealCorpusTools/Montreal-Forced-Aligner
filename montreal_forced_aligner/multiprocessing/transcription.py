@@ -53,7 +53,7 @@ def decode_func(model_directory, job_name, config, feat_string, output_directory
             lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
             if os.path.exists(lat_path):
                 continue
-            word_symbol_path = os.path.join(model_directory, 'words.txt')
+            word_symbol_path = os.path.join(model_directory, name + '_words.txt')
             hclg_path = os.path.join(model_directory, name + '_HCLG.fst')
             if config.fmllr and config.first_beam is not None:
                 beam = config.first_beam
@@ -96,18 +96,21 @@ def decode_func(model_directory, job_name, config, feat_string, output_directory
 
 def score_func(model_directory, job_name, config, output_directory, language_model_weight=None,
                word_insertion_penalty=None, dictionary_names=None):
+    if language_model_weight is None:
+        language_model_weight = config.language_model_weight
+    if word_insertion_penalty is None:
+        word_insertion_penalty = config.word_insertion_penalty
     if dictionary_names is None:
         lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
         rescored_lat_path = os.path.join(output_directory, 'lat.{}.rescored'.format(job_name))
-        if os.path.exists(rescored_lat_path):
+        carpa_rescored_lat_path = os.path.join(output_directory, 'lat.{}.carparescored'.format(job_name))
+        if os.path.exists(carpa_rescored_lat_path):
+            lat_path = carpa_rescored_lat_path
+        elif os.path.exists(rescored_lat_path):
             lat_path = rescored_lat_path
         words_path = os.path.join(model_directory, 'words.txt')
         tra_path = os.path.join(output_directory, 'tra.{}'.format(job_name))
         log_path = os.path.join(output_directory, 'log', 'score.{}.log'.format(job_name))
-        if language_model_weight is None:
-            language_model_weight = config.language_model_weight
-        if word_insertion_penalty is None:
-            word_insertion_penalty = config.word_insertion_penalty
         with open(log_path, 'w', encoding='utf8') as log_file:
             scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
                                            '--inv-acoustic-scale={}'.format(language_model_weight),
@@ -125,15 +128,14 @@ def score_func(model_directory, job_name, config, output_directory, language_mod
         for name in dictionary_names:
             lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
             rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.rescored'.format(job_name, name))
-            if os.path.exists(rescored_lat_path):
+            carpa_rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
+            if os.path.exists(carpa_rescored_lat_path):
+                lat_path = carpa_rescored_lat_path
+            elif os.path.exists(rescored_lat_path):
                 lat_path = rescored_lat_path
-            words_path = os.path.join(model_directory, 'words.txt')
+            words_path = os.path.join(model_directory, name + '_words.txt')
             tra_path = os.path.join(output_directory, 'tra.{}.{}'.format(job_name, name))
             log_path = os.path.join(output_directory, 'log', 'score.{}.{}.log'.format(job_name, name))
-            if language_model_weight is None:
-                language_model_weight = config.language_model_weight
-            if word_insertion_penalty is None:
-                word_insertion_penalty = config.word_insertion_penalty
             with open(log_path, 'w', encoding='utf8') as log_file:
                 scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
                                                '--inv-acoustic-scale={}'.format(language_model_weight),
@@ -168,8 +170,8 @@ def lm_rescore_func(model_directory, job_name, config, feat_string, output_direc
         for name in dictionary_names:
             rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.lmrescored'.format(job_name, name))
             lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
-            old_g_path = os.path.join(model_directory, 'small_G.fst')
-            new_g_path = os.path.join(model_directory, 'med_G.fst')
+            old_g_path = os.path.join(model_directory, name + '_small_G.fst')
+            new_g_path = os.path.join(model_directory, name + '_med_G.fst')
             log_path = os.path.join(output_directory, 'log', 'lm_rescore.{}.{}.log'.format(job_name, name))
 
             with open(log_path, 'w', encoding='utf8') as log_file:
@@ -208,8 +210,8 @@ def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output
             rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
             if os.path.exists(rescored_lat_path):
                 continue
-            old_g_path = os.path.join(model_directory, 'med_G.fst')
-            new_g_path = os.path.join(model_directory, 'G.carpa')
+            old_g_path = os.path.join(model_directory, name + '_med_G.fst')
+            new_g_path = os.path.join(model_directory, name + '_G.carpa')
             log_path = os.path.join(output_directory, 'log', 'carpa_lm_rescore.{}.{}.log'.format(job_name, name))
 
             with open(log_path, 'w', encoding='utf8') as log_file:
@@ -379,7 +381,7 @@ def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, m
     else:
         for name in dictionary_names:
             log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.{}.log'.format(job_name, name))
-            word_symbol_path = os.path.join(model_directory, 'words.txt')
+            word_symbol_path = os.path.join(model_directory, name + '_words.txt')
             hclg_path = os.path.join(model_directory, name + '_HCLG.fst')
             tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}.{}'.format(job_name, name))
             dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),

@@ -80,6 +80,66 @@ def compose_hclg(model_directory, ilabels_temp, transition_scale, clg_path, hclg
     minimize_proc.communicate()
     os.remove(temp_compose_path)
 
+def compose_g(arpa_path, words_path, g_path, log_file):
+    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
+                                     '--read-symbol-table=' + words_path,
+                                     arpa_path, g_path], stderr=log_file,
+                                    stdout=log_file)
+    arpafst_proc.communicate()
+
+def compose_g_carpa(in_carpa_path, temp_carpa_path, dictionary, carpa_path, log_file):
+    bos_symbol = dictionary.words_mapping['<s>']
+    eos_symbol = dictionary.words_mapping['</s>']
+    unk_symbol = dictionary.words_mapping['<unk>']
+    with open(in_carpa_path, 'r', encoding='utf8') as f, \
+            open(temp_carpa_path, 'w', encoding='utf8') as outf:
+        current_order = -1
+        num_oov_lines = 0
+        for line in f:
+            line = line.strip()
+            col = line.split()
+            if current_order == -1 and not re.match(r'^\\data\\$', line):
+                continue
+            if re.match(r'^\\data\\$', line):
+                log_file.write(r'Processing data...\n')
+                current_order = 0
+                outf.write(line + '\n')
+            elif re.match(r'^\\[0-9]*-grams:$', line):
+                current_order = int(re.sub(r'\\([0-9]*)-grams:$', r'\1', line))
+                log_file.write('Processing {} grams...\n'.format(current_order))
+                outf.write(line + '\n')
+            elif re.match(r'^\\end\\$', line):
+                outf.write(line + '\n')
+            elif not line:
+                if current_order >= 1:
+                    outf.write('\n')
+            else:
+                if current_order == 0:
+                    outf.write(line + '\n')
+                else:
+                    if len(col) > 2 + current_order or len(col) < 1 + current_order:
+                        raise Exception('Bad line in arpa lm "{}"'.format(line))
+                    prob = col.pop(0)
+                    is_oov = False
+                    for i in range(current_order):
+                        try:
+                            col[i] = str(dictionary.words_mapping[col[i]])
+                        except KeyError:
+                            is_oov = True
+                            num_oov_lines += 1
+                            break
+                    if not is_oov:
+                        rest_of_line = ' '.join(col)
+                        outf.write('{}\t{}\n'.format(prob, rest_of_line))
+    carpa_proc = subprocess.Popen([thirdparty_binary('arpa-to-const-arpa'),
+                                   '--bos-symbol={}'.format(bos_symbol), '--eos-symbol={}'.format(eos_symbol),
+                                   '--unk-symbol={}'.format(unk_symbol),
+                                   temp_carpa_path, carpa_path], stdin=subprocess.PIPE,
+                                  stderr=log_file,
+                                  stdout=log_file)
+    carpa_proc.communicate()
+    os.remove(temp_carpa_path)
+
 class Transcriber(object):
     min_language_model_weight = 7
     max_language_model_weight = 17
@@ -149,12 +209,8 @@ class Transcriber(object):
         log_dir = os.path.join(self.model_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         context_width, central_pos = self.get_tree_info()
-        small_g_path = os.path.join(self.model_directory, 'small_G.fst')
         ldet_temp_path = os.path.join(self.model_directory, 'Ldet.fst_temp')
         ldet_path = os.path.join(self.model_directory, 'Ldet.fst')
-        med_g_path = os.path.join(self.model_directory, 'med_G.fst')
-        carpa_path = os.path.join(self.model_directory, 'G.carpa')
-        temp_carpa_path = os.path.join(self.model_directory, 'G.carpa_temp')
         log_path = os.path.join(log_dir, 'hclg.log')
         ilabels_temp = os.path.join(self.model_directory, 'ilabels_{}_{}'.format(context_width, central_pos))
         model_path = os.path.join(self.model_directory, 'final.mdl')
@@ -162,136 +218,44 @@ class Transcriber(object):
         clg_path = os.path.join(self.model_directory, 'CLG_{}_{}.fst'.format(context_width, central_pos))
         hclga_path = os.path.join(self.model_directory, 'HCLGa.fst')
         hclg_path = os.path.join(self.model_directory, 'HCLG.fst')
-        words_path = os.path.join(self.model_directory, 'words.txt')
         dirty_path = os.path.join(self.model_directory, 'dirty')
         out_disambig = os.path.join(self.model_directory,
                                     'disambig_ilabels_{}_{}.int'.format(context_width, central_pos))
-        shutil.copyfile(self.dictionary.words_symbol_path, os.path.join(self.model_directory, 'words.txt'))
-        if os.path.exists(hclg_path):
-            return
-        elif isinstance(self.dictionary, MultispeakerDictionary):
-            found_all = True
-            for name in self.dictionary.dictionary_mapping.keys():
-                hclg_path = os.path.join(self.model_directory, name + '_HCLG.fst')
-                if not os.path.exists(hclg_path):
-                    found_all = False
-            if found_all:
-                return
+
         try:
-            self.logger.info('Generating decoding graph...')
 
             with open(log_path, 'w') as log_file:
-                #if not os.path.exists(ldet_path):
-                #    self.logger.info('Generating Ldet.fst...')
-                #    with open(ldet_temp_path, 'w', encoding='utf8') as f:
-                #        print_proc = subprocess.Popen([thirdparty_binary('fstprint'), self.dictionary.disambig_path],
-                #                                      stdout=subprocess.PIPE, stderr=log_file, text=True)
-                #        for line in iter(print_proc.stdout.readline,''):
-                #
-                #            print(line)
-                #        error
-                if not os.path.exists(small_g_path):
-                    self.logger.info('Generating small_G.fst...')
-                    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                                     '--read-symbol-table=' + words_path,
-                                                     self.language_model.small_arpa_path, small_g_path], stderr=log_file,
-                                                    stdout=log_file)
-                    arpafst_proc.communicate()
-                    self.logger.info('Done!')
-                if not os.path.exists(med_g_path):
-                    self.logger.info('Generating med_G.fst...')
-                    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
-                                                     '--read-symbol-table=' + words_path,
-                                                     self.language_model.medium_arpa_path, med_g_path], stderr=log_file,
-                                                    stdout=log_file)
-                    arpafst_proc.communicate()
-                    self.logger.info('Done!')
-                if not os.path.exists(carpa_path):
-                    self.logger.info('Generating G.carpa...')
-                    bos_symbol = self.dictionary.words_mapping['<s>']
-                    eos_symbol = self.dictionary.words_mapping['</s>']
-                    unk_symbol = self.dictionary.words_mapping['<unk>']
-                    with open(self.language_model.carpa_path, 'r', encoding='utf8') as f, \
-                            open(temp_carpa_path, 'w', encoding='utf8') as outf:
-                        current_order = -1
-                        num_oov_lines = 0
-                        for line in f:
-                            line = line.strip()
-                            col = line.split()
-                            if current_order == -1 and not re.match(r'^\\data\\$', line):
-                                continue
-                            if re.match(r'^\\data\\$', line):
-                                log_file.write(r'Processing data...\n')
-                                current_order = 0
-                                outf.write(line + '\n')
-                            elif re.match(r'^\\[0-9]*-grams:$', line):
-                                current_order = int(re.sub(r'\\([0-9]*)-grams:$', r'\1', line))
-                                log_file.write('Processing {} grams...\n'.format(current_order))
-                                outf.write(line + '\n')
-                            elif re.match(r'^\\end\\$', line):
-                                outf.write(line + '\n')
-                            elif not line:
-                                if current_order >= 1:
-                                    outf.write('\n')
-                            else:
-                                if current_order == 0:
-                                    outf.write(line + '\n')
-                                else:
-                                    if len(col) > 2 + current_order or len(col) < 1 + current_order:
-                                        raise Exception('Bad line in arpa lm "{}"'.format(line))
-                                    prob = col.pop(0)
-                                    is_oov = False
-                                    for i in range(current_order):
-                                        try:
-                                            col[i] = str(self.dictionary.words_mapping[col[i]])
-                                        except KeyError:
-                                            is_oov = True
-                                            num_oov_lines += 1
-                                            break
-                                    if not is_oov:
-                                        rest_of_line = ' '.join(col)
-                                        outf.write('{}\t{}\n'.format(prob, rest_of_line))
-                    carpa_proc = subprocess.Popen([thirdparty_binary('arpa-to-const-arpa'),
-                                                   '--bos-symbol={}'.format(bos_symbol),'--eos-symbol={}'.format(eos_symbol),
-                                                   '--unk-symbol={}'.format(unk_symbol),
-                                                     temp_carpa_path, carpa_path], stdin=subprocess.PIPE,
-                                                  stderr=log_file,
-                                                    stdout=log_file)
-                    carpa_proc.communicate()
-                    os.remove(temp_carpa_path)
-                    self.logger.info('Done!')
-
-                if isinstance(self.dictionary, MultispeakerDictionary):
-                    for name, d in self.dictionary.dictionary_mapping.items():
-                        lg_path = os.path.join(self.model_directory, name + '_LG.fst')
-                        if not os.path.exists(lg_path):
-                            self.logger.info('Generating {}_LG.fst...'.format(name))
-                            compose_lg(self.model_directory, d.disambig_path, small_g_path, lg_path, log_file)
-                            self.logger.info('Done!')
-                        clg_path = os.path.join(self.model_directory, name + '_CLG_{}_{}.fst'.format(context_width, central_pos))
-                        if not os.path.exists(clg_path):
-                            in_disambig = os.path.join(d.phones_dir, 'disambig.int')
-                            self.logger.info('Generating {}_CLG.fst...'.format(name))
-                            compose_clg(in_disambig, out_disambig, context_width, central_pos, ilabels_temp, lg_path, clg_path, log_file)
-                            self.logger.info('Done!')
-                        hclga_path = os.path.join(self.model_directory, name + '_HCLGa.fst')
-                        if not os.path.exists(hclga_path):
-                            self.logger.info('Generating {}_HCLGa.fst...'.format(name))
-                            compose_hclg(self.model_directory, ilabels_temp, self.transcribe_config.transition_scale,
-                                         clg_path, hclga_path, log_file)
-                            self.logger.info('Done!')
-                        hclg_path = os.path.join(self.model_directory, name + '_HCLG.fst')
-                        if not os.path.exists(hclg_path):
-                            self.logger.info('Generating {}_HCLG.fst...'.format(name))
-                            self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
-                                                               '--self-loop-scale={}'.format(self.transcribe_config.self_loop_scale),
-                                                               '--reorder=true', model_path, hclga_path],
-                                                              stdout=subprocess.PIPE, stderr=log_file)
-                            convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
-                                                            stdin=self_loop_proc.stdout, stderr=log_file)
-                            convert_proc.communicate()
-                            self.logger.info('Done!')
-                else:
+                if not self.dictionary.has_multiple:
+                    small_g_path = os.path.join(self.model_directory, 'small_G.fst')
+                    med_g_path = os.path.join(self.model_directory, 'med_G.fst')
+                    carpa_path = os.path.join(self.model_directory, 'G.carpa')
+                    temp_carpa_path = os.path.join(self.model_directory, 'G.carpa_temp')
+                    words_path = os.path.join(self.model_directory, 'words.txt')
+                    shutil.copyfile(self.dictionary.words_symbol_path, words_path)
+                    if os.path.exists(hclg_path):
+                        return
+                    self.logger.info('Generating decoding graph...')
+                        #if not os.path.exists(ldet_path):
+                        #    self.logger.info('Generating Ldet.fst...')
+                        #    with open(ldet_temp_path, 'w', encoding='utf8') as f:
+                        #        print_proc = subprocess.Popen([thirdparty_binary('fstprint'), self.dictionary.disambig_path],
+                        #                                      stdout=subprocess.PIPE, stderr=log_file, text=True)
+                        #        for line in iter(print_proc.stdout.readline,''):
+                        #
+                        #            print(line)
+                        #        error
+                    if not os.path.exists(small_g_path):
+                        self.logger.info('Generating small_G.fst...')
+                        compose_g(self.language_model.small_arpa_path, words_path, small_g_path, log_file)
+                        self.logger.info('Done!')
+                    if not os.path.exists(med_g_path):
+                        self.logger.info('Generating med_G.fst...')
+                        compose_g(self.language_model.medium_arpa_path, words_path, med_g_path, log_file)
+                        self.logger.info('Done!')
+                    if not os.path.exists(carpa_path):
+                        self.logger.info('Generating G.carpa...')
+                        compose_g_carpa(self.language_model.carpa_path, temp_carpa_path, self.dictionary, carpa_path, log_file)
+                        self.logger.info('Done!')
                     if not os.path.exists(lg_path):
                         self.logger.info('Generating LG.fst...')
                         compose_lg(self.model_directory, self.dictionary.disambig_path, small_g_path, lg_path, log_file)
@@ -299,7 +263,8 @@ class Transcriber(object):
                     if not os.path.exists(clg_path):
                         in_disambig = os.path.join(self.dictionary.phones_dir, 'disambig.int')
                         self.logger.info('Generating CLG.fst...')
-                        compose_clg(in_disambig, out_disambig, context_width, central_pos, ilabels_temp, lg_path, clg_path, log_file)
+                        compose_clg(in_disambig, out_disambig, context_width, central_pos, ilabels_temp, lg_path, clg_path,
+                                    log_file)
                         self.logger.info('Done!')
                     if not os.path.exists(hclga_path):
                         self.logger.info('Generating HCLGa.fst...')
@@ -308,14 +273,73 @@ class Transcriber(object):
                         self.logger.info('Done!')
                     self.logger.info('Generating HCLG.fst...')
                     self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
-                                                       '--self-loop-scale={}'.format(self.transcribe_config.self_loop_scale),
+                                                       '--self-loop-scale={}'.format(
+                                                           self.transcribe_config.self_loop_scale),
                                                        '--reorder=true', model_path, hclga_path],
                                                       stdout=subprocess.PIPE, stderr=log_file)
                     convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
                                                     stdin=self_loop_proc.stdout, stderr=log_file)
                     convert_proc.communicate()
-                parse_logs(log_dir)
-                self.logger.info('Finished graph construction!')
+                else:
+                    found_all = True
+                    for name in self.dictionary.dictionary_mapping.keys():
+                        hclg_path = os.path.join(self.model_directory, name + '_HCLG.fst')
+                        if not os.path.exists(hclg_path):
+                            found_all = False
+                    if found_all:
+                        return
+                    self.logger.info('Generating decoding graph...')
+
+                    for name, d in self.dictionary.dictionary_mapping.items():
+                        words_path = os.path.join(self.model_directory, name + '_words.txt')
+                        shutil.copyfile(d.words_symbol_path, words_path)
+                        small_g_path = os.path.join(self.model_directory, name + '_small_G.fst')
+                        med_g_path = os.path.join(self.model_directory, name + '_med_G.fst')
+                        carpa_path = os.path.join(self.model_directory, name + '_G.carpa')
+                        temp_carpa_path = os.path.join(self.model_directory, name + '_G.carpa_temp')
+                        if not os.path.exists(small_g_path):
+                            self.logger.info(f'Generating small_G.fst for {name}...')
+                            compose_g(self.language_model.small_arpa_path, words_path, small_g_path, log_file)
+                            self.logger.info('Done!')
+                        if not os.path.exists(med_g_path):
+                            self.logger.info(f'Generating med_G.fst for {name}...')
+                            compose_g(self.language_model.medium_arpa_path, words_path, med_g_path, log_file)
+                            self.logger.info('Done!')
+                        if not os.path.exists(carpa_path):
+                            self.logger.info(f'Generating G.carpa for {name}...')
+                            compose_g_carpa(self.language_model.carpa_path, temp_carpa_path, d, carpa_path, log_file)
+                            self.logger.info('Done!')
+                        lg_path = os.path.join(self.model_directory, name + '_LG.fst')
+                        if not os.path.exists(lg_path):
+                            self.logger.info(f'Generating {name}_LG.fst...')
+                            compose_lg(self.model_directory, d.disambig_path, small_g_path, lg_path, log_file)
+                            self.logger.info('Done!')
+                        clg_path = os.path.join(self.model_directory, name + '_CLG_{}_{}.fst'.format(context_width, central_pos))
+                        if not os.path.exists(clg_path):
+                            in_disambig = os.path.join(d.phones_dir, 'disambig.int')
+                            self.logger.info(f'Generating {name}_CLG.fst...')
+                            compose_clg(in_disambig, out_disambig, context_width, central_pos, ilabels_temp, lg_path, clg_path, log_file)
+                            self.logger.info('Done!')
+                        hclga_path = os.path.join(self.model_directory, name + '_HCLGa.fst')
+                        if not os.path.exists(hclga_path):
+                            self.logger.info(f'Generating {name}_HCLGa.fst...')
+                            compose_hclg(self.model_directory, ilabels_temp, self.transcribe_config.transition_scale,
+                                         clg_path, hclga_path, log_file)
+                            self.logger.info('Done!')
+                        hclg_path = os.path.join(self.model_directory, name + '_HCLG.fst')
+                        if not os.path.exists(hclg_path):
+                            self.logger.info(f'Generating {name}_HCLG.fst...')
+                            self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
+                                                               '--self-loop-scale={}'.format(self.transcribe_config.self_loop_scale),
+                                                               '--reorder=true', model_path, hclga_path],
+                                                              stdout=subprocess.PIPE, stderr=log_file)
+                            convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
+                                                            stdin=self_loop_proc.stdout, stderr=log_file)
+                            convert_proc.communicate()
+                            self.logger.info('Done!')
+
+                        parse_logs(log_dir)
+                        self.logger.info(f'Finished graph construction for {name}!')
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass

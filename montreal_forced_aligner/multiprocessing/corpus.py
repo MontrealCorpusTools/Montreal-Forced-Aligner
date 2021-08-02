@@ -61,13 +61,15 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     else:
         speaker_name = utt_name
     speaker_name = speaker_name.strip().replace(' ', '_')
-    utt_name = utt_name.strip().replace(' ', '_')
-    if not utt_name.startswith(speaker_name):
-        utt_name = speaker_name + '_' + utt_name  # Fix for some Kaldi issues in needing sorting by speaker
 
-    utt_name = utt_name.replace('_', '-')
-    return_dict = {'utt_name': utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
-                   'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path}
+    new_utt_name = utt_name.strip().replace(' ', '_')
+
+    if not new_utt_name.startswith(speaker_name):
+        new_utt_name = speaker_name + '_' + new_utt_name  # Fix for some Kaldi issues in needing sorting by speaker
+
+    new_utt_name = new_utt_name.replace('_', '-')
+    return_dict = {'utt_name': new_utt_name, 'speaker_name': speaker_name, 'text_file': lab_path, 'wav_path': wav_path,
+                   'words': ' '.join(words), 'wav_info': wav_info, 'relative_path': relative_path, 'file_name': utt_name}
     if 'sox_string' in wav_info:
         return_dict['sox_string'] = wav_info['sox_string']
     return return_dict

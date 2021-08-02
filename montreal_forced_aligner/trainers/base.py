@@ -7,7 +7,7 @@ import shutil
 
 from .. import __version__
 from ..exceptions import TrainerError, KaldiProcessingError
-from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors
+from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, load_scp
 
 from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids,
                                compute_alignment_improvement, compile_train_graphs)
@@ -114,6 +114,21 @@ class BaseTrainer(object):
     def align_options(self):
         return {'beam': self.beam, 'retry_beam': self.retry_beam, 'transition_scale': self.transition_scale,
                 'acoustic_scale': self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
+
+    def analyze_align_stats(self):
+
+        log_like = 0
+        tot_frames = 0
+        for j in range(self.corpus.num_jobs):
+            score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
+            scores = load_scp(score_path, data_type=float)
+            for k, v in scores.items():
+                log_like += v
+                tot_frames += self.corpus.utterance_lengths[k]
+        if tot_frames:
+            self.logger.debug('Average per frame likelihood (this might not actually mean anything) for {}: {}'.format(self.identifier, log_like/tot_frames))
+        else:
+            self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
 
     def update(self, data):
         for k, v in data.items():

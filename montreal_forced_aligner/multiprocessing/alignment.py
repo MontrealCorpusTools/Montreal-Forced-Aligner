@@ -103,17 +103,16 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
         words_file_path = os.path.join(lang_directory, 'words.txt')
         fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
         fst_ark_path = os.path.join(directory, 'fsts.{}.ark'.format(job_name))
+        text_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
 
-        with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
-                open(log_path, 'w', encoding='utf8') as log_file:
-
+        with open(log_path, 'w', encoding='utf8') as log_file:
             proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
                                      '--read-disambig-syms={}'.format(
                                          os.path.join(lang_directory, 'phones', 'disambig.int')),
                                      tree_path, mdl_path,
                                      os.path.join(lang_directory, 'L.fst'),
-                                     "ark:-", "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
-                                    stdin=inf, stderr=log_file)
+                                     "ark:"+ text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                    stderr=log_file)
             proc.communicate()
     else:
         for name in dictionary_names:
@@ -131,25 +130,27 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
             words_file_path = os.path.join(lang_directory, 'words.txt')
             fst_scp_path = os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name))
             fst_ark_path = os.path.join(directory, 'fsts.{}.{}.ark'.format(job_name, name))
-
-            with open(os.path.join(split_directory, 'text.{}.int'.format(job_name)), 'r', encoding='utf8') as inf, \
-                    open(log_path, 'w', encoding='utf8') as log_file:
+            text_path = os.path.join(split_directory, 'text.{}.{}.int'.format(job_name, name))
+            with open(log_path, 'w', encoding='utf8') as log_file:
 
                 proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
                                          '--read-disambig-syms={}'.format(
                                              os.path.join(lang_directory, 'phones', 'disambig.int')),
                                          tree_path, mdl_path,
                                          os.path.join(lang_directory, name, 'dictionary', 'L.fst'),
-                                         "ark:-", "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
-                                        stdin=inf, stderr=log_file)
+                                         "ark:"+text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                        stderr=log_file)
                 proc.communicate()
 
         fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
+        lines = []
+        for name in dictionary_names:
+            with open(os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name)), 'r', encoding='utf8') as inf:
+                for line in inf:
+                    lines.append(line)
         with open(fst_scp_path, 'w', encoding='utf8') as outf:
-            for name in dictionary_names:
-                with open(os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name)), 'r', encoding='utf8') as inf:
-                    for line in inf:
-                        outf.write(line)
+            for line in sorted(lines):
+                outf.write(line)
 
 
     if debug:

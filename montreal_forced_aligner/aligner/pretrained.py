@@ -6,7 +6,7 @@ from .base import BaseAligner
 from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs,
                                calc_fmllr, generate_pronunciations)
 from ..exceptions import KaldiProcessingError
-from ..helper import log_kaldi_errors
+from ..helper import log_kaldi_errors, load_scp
 
 
 def parse_transitions(path, phones_path):
@@ -77,7 +77,7 @@ class PretrainedAligner(BaseAligner):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
         super(PretrainedAligner, self).setup()
 
-    def align(self):
+    def align(self, subset=None):
         done_path = os.path.join(self.align_directory, 'done')
         dirty_path = os.path.join(self.align_directory, 'dirty')
         if os.path.exists(done_path):
@@ -93,6 +93,19 @@ class PretrainedAligner(BaseAligner):
             align('final', self.align_directory, self.align_config.data_directory,
                   self.dictionary.optional_silence_csl,
                   self.corpus.num_jobs, self.align_config)
+
+            log_like = 0
+            tot_frames = 0
+            for j in range(self.corpus.num_jobs):
+                score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
+                scores = load_scp(score_path, data_type=float)
+                for k, v in scores.items():
+                    log_like += v
+                    tot_frames += self.corpus.utterance_lengths[k]
+            if tot_frames:
+                self.logger.debug('Prior to SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
+            else:
+                self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
             if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
                     and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                 self.logger.info('Calculating fMLLR for speaker adaptation...')
@@ -102,6 +115,19 @@ class PretrainedAligner(BaseAligner):
                 align('final', self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl,
                       self.corpus.num_jobs, self.align_config)
+
+                log_like = 0
+                tot_frames = 0
+                for j in range(self.corpus.num_jobs):
+                    score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
+                    scores = load_scp(score_path, data_type=float)
+                    for k, v in scores.items():
+                        log_like += v
+                        tot_frames += self.corpus.utterance_lengths[k]
+                if tot_frames:
+                    self.logger.debug('Following SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
+                else:
+                    self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass

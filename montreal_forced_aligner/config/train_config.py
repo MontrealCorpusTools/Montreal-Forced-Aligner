@@ -69,7 +69,7 @@ class TrainingConfig(BaseConfig):
         return False
 
 
-def train_yaml_to_config(path):
+def train_yaml_to_config(path, require_mono=True):
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -103,7 +103,7 @@ def train_yaml_to_config(path):
         training_config = None
         if training:
             for i, t in enumerate(training):
-                if i == 0 and t.train_type not in ['mono', 'ivector']:
+                if i == 0 and require_mono and t.train_type not in ['mono', 'ivector']:
                     raise ConfigError('The first round of training must be monophone.')
                 t.update(global_params)
                 t.update(training_params[i])
@@ -121,6 +121,21 @@ def train_yaml_to_config(path):
 def load_basic_train():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train.yaml'))
+    return training_config, align_config
+
+
+def load_sat_adapt():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_sat.yaml'), require_mono=False)
+    training_config.training_configs[0].fmllr_iterations = range(0, training_config.training_configs[0].num_iterations)
+    training_config.training_configs[0].realignment_iterations = range(0, training_config.training_configs[0].num_iterations)
+    return training_config, align_config
+
+
+def load_no_sat_adapt():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_nosat.yaml'), require_mono=False)
+    training_config.training_configs[0].realignment_iterations = range(0, training_config.training_configs[0].num_iterations)
     return training_config, align_config
 
 

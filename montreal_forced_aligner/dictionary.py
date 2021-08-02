@@ -152,7 +152,7 @@ class Dictionary(object):
     topo_sil_template = '<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>'
     topo_transition_template = '<Transition> {} {}'
     positions = ["_B", "_E", "_I", "_S"]
-    clitic_markers = ["'", '-']
+    has_multiple = False
 
     def __init__(self, input_path, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
@@ -203,7 +203,7 @@ class Dictionary(object):
         self.oovs_found = Counter()
         self.position_dependent_phones = position_dependent_phones
 
-        self.words = defaultdict(list)
+        self.words = {}
         self.nonsil_phones = set()
         self.sil_phones = {'sp', 'spn', 'sil'}
         self.optional_silence = 'sp'
@@ -216,8 +216,8 @@ class Dictionary(object):
             word_set.add(self.oov_code)
         self.word_set = word_set
         self.clitic_set = set()
-        self.words[self.sil_code].append({'pronunciation': ('sp',), 'probability': 1})
-        self.words[self.oov_code].append({'pronunciation': ('spn',), 'probability': 1})
+        self.words[self.sil_code] = [{'pronunciation': ('sp',), 'probability': 1}]
+        self.words[self.oov_code] = [{'pronunciation': ('spn',), 'probability': 1}]
         self.pronunciation_probabilities, self.silence_probabilities = check_format(input_path)
         progress = 'Parsing dictionary'
         if self.pronunciation_probabilities:
@@ -267,6 +267,8 @@ class Dictionary(object):
                     self.nonsil_phones.update(pron)
                 if word in self.words and pron in {x['pronunciation'] for x in self.words[word]}:
                     continue
+                if word not in self.words:
+                    self.words[word] = []
                 self.words[word].append(pronunciation)
                 # test whether a word is a clitic
                 is_clitic = False
@@ -350,8 +352,15 @@ class Dictionary(object):
     def __len__(self):
         return sum(len(x) for x in self.words.values())
 
+    def exlude_for_alignment(self, w):
+        if self.word_set is None:
+            return False
+        if w not in self.word_set and w not in self.clitic_set:
+            return True
+        return False
+
     def generate_mappings(self):
-        if len(self.phone_mapping):
+        if self.phone_mapping:
             return
         self.phone_mapping = {}
         i = 0
@@ -375,7 +384,7 @@ class Dictionary(object):
         i = 0
         self.words_mapping['<eps>'] = i
         for w in sorted(self.words.keys()):
-            if self.word_set is not None and w not in self.word_set:
+            if self.exlude_for_alignment(w):
                 continue
             i += 1
             self.words_mapping[w] = i
@@ -391,7 +400,7 @@ class Dictionary(object):
         pronunciation_counts = defaultdict(int)
 
         for w, prons in self.words.items():
-            if self.word_set is not None and w not in self.word_set:
+            if self.exlude_for_alignment(w):
                 continue
             for p in prons:
                 pronunciation_counts[p['pronunciation']] += 1
@@ -401,7 +410,7 @@ class Dictionary(object):
                     pron = pron[:-1]
         last_used = defaultdict(int)
         for w, prons in sorted(self.words.items()):
-            if self.word_set is not None and w not in self.word_set:
+            if self.exlude_for_alignment(w):
                 continue
             for p in prons:
                 if pronunciation_counts[p['pronunciation']] == 1 and not p['pronunciation'] in subsequences:
@@ -680,7 +689,9 @@ class Dictionary(object):
 
         with open(path, 'w', encoding='utf8') as f:
             for w, i in self.words_mapping.items():
-                if self.word_set is not None and w not in self.word_set:
+                if self.exlude_for_alignment(w):
+                    continue
+                if w not in self.words:  # special characters
                     continue
                 for pron in sorted(self.words[w],
                                    key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
@@ -918,7 +929,7 @@ class Dictionary(object):
                                                    '<eps>'])) + '\n')  # silence disambiguation symbol.
 
             for w in sorted(self.words.keys()):
-                if self.word_set is not None and w not in self.word_set:
+                if self.exlude_for_alignment(w):
                     continue
                 for pron in sorted(self.words[w],
                                    key=lambda x: (x['pronunciation'], x['probability'], x['disambiguation'])):
@@ -1073,6 +1084,8 @@ class MultispeakerDictionary(Dictionary):
         Probability of optional silences following words, defaults to 0.5
     """
 
+    has_multiple = True
+
     def __init__(self, input_path, output_directory, oov_code='<unk>',
                  position_dependent_phones=True, num_sil_states=5,
                  num_nonsil_states=3, shared_silence_phones=True,
@@ -1157,10 +1170,12 @@ class MultispeakerDictionary(Dictionary):
         self.nonsil_phones = set()
         self.sil_phones = {'sp', 'spn', 'sil'}
         self.words = set()
+        self.clitic_set = set()
         for d in self.dictionary_mapping.values():
             self.nonsil_phones.update(d.nonsil_phones)
             self.sil_phones.update(d.sil_phones)
             self.words.update(d.words)
+            self.clitic_set.update(d.clitic_set)
         self.words_mapping = {}
         self.phone_mapping = {}
 
@@ -1195,7 +1210,7 @@ class MultispeakerDictionary(Dictionary):
         i = 0
         self.words_mapping['<eps>'] = i
         for w in sorted(self.words):
-            if self.word_set is not None and w not in self.word_set:
+            if self.exlude_for_alignment(w):
                 continue
             i += 1
             self.words_mapping[w] = i
@@ -1207,9 +1222,7 @@ class MultispeakerDictionary(Dictionary):
         self.oovs_found = Counter()
         self.max_disambig = 0
         for name, d in self.dictionary_mapping.items():
-            d.phone_mapping = self.phone_mapping
-            d.words_mapping = self.words_mapping
-            d.add_disambiguation()
+            d.generate_mappings()
             if d.max_disambig > self.max_disambig:
                 self.max_disambig = d.max_disambig
         self.disambig = {'#{}'.format(x) for x in range(self.max_disambig + 2)}
@@ -1225,5 +1238,9 @@ class MultispeakerDictionary(Dictionary):
             d.write(disambig)
         self._write_word_file()
         self._write_phone_symbol_table()
+        self._write_phone_sets()
         self._write_disambig()
+        self._write_extra_questions()
+        self._write_word_boundaries()
+        self._write_topo()
         self._write_word_boundaries()

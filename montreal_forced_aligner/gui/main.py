@@ -1,5 +1,7 @@
 import yaml
 import os
+import sys
+import traceback
 from PyQt5 import QtGui, QtCore, QtWidgets
 
 from ..config import TEMP_DIR
@@ -660,8 +662,10 @@ class MainWindow(QtWidgets.QMainWindow):  # pragma: no cover
         try:
             self.corpus.save_text_file(file_name)
         except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            print(traceback.format_exception(exc_type, exc_value, exc_traceback))
             reply = DetailedMessageBox()
-            reply.setDetailedText(str(e))
+            reply.setDetailedText('\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
             ret = reply.exec_()
         self.saving_utterance = False
         #self.corpusLoaded.emit(self.corpus)

@@ -9,7 +9,7 @@ from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path, validate_dictionary_arg
 from montreal_forced_aligner.helper import setup_logger, log_config
 
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -132,8 +132,7 @@ def validate_args(args, download_dictionaries):
     if not os.path.isdir(args.corpus_directory):
         raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
 
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
+    args.dictionary_path = validate_dictionary_arg(args.dictionary_path, download_dictionaries)
     if not os.path.exists(args.dictionary_path):
         raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
     if not os.path.isfile(args.dictionary_path):

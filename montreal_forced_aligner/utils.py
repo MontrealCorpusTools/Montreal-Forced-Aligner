@@ -108,4 +108,4 @@ def validate_dictionary_arg(dictionary_path, download_dictionaries):
             raise ArgumentError('Could not find the dictionary file {}'.format(dictionary_path))
         if not os.path.isfile(dictionary_path):
             raise ArgumentError('The specified dictionary path ({}) is not a text file.'.format(dictionary_path))
-
+    return dictionary_path

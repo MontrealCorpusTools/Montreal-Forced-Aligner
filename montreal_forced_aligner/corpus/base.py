@@ -164,6 +164,7 @@ class BaseCorpus(object):
         self.feat_mapping = {}
         self.cmvn_mapping = {}
         self.file_directory_mapping = {}
+        self.file_name_mapping = {}
         self.textgrid_read_errors = {}
         self.speaker_ordering = {}
         self.groups = []
@@ -431,6 +432,10 @@ class BaseCorpus(object):
         path = os.path.join(self.output_directory, 'file_directory.scp')
         output_mapping(self.file_directory_mapping, path)
 
+    def _write_file_name(self):
+        path = os.path.join(self.output_directory, 'file_name.scp')
+        output_mapping(self.file_name_mapping, path)
+
     def _write_segments(self):
         if not self.segments:
             return
@@ -565,6 +570,7 @@ class BaseCorpus(object):
         self._write_speaker_sr()
         self._write_wav_info()
         self._write_file_directory()
+        self._write_file_name()
         self._write_speaker_ordering()
 
     def split(self):

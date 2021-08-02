@@ -8,6 +8,7 @@ from montreal_forced_aligner import __version__
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_available_g2p_languages, \
     get_available_dict_languages, get_available_lm_languages, get_available_ivector_languages
 from montreal_forced_aligner.command_line.align import run_align_corpus
+from montreal_forced_aligner.command_line.adapt import run_adapt_model
 from montreal_forced_aligner.command_line.train_and_align import run_train_corpus
 from montreal_forced_aligner.command_line.g2p import run_g2p
 from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
@@ -77,6 +78,27 @@ align_parser.add_argument('-j', '--num_jobs', type=int, default=3,
 align_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
 align_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
 align_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
+
+adapt_parser = subparsers.add_parser('adapt')
+adapt_parser.add_argument('corpus_directory', help='Full path to the directory to align')
+adapt_parser.add_argument('dictionary_path', help='Full path to the pronunciation dictionary to use')
+adapt_parser.add_argument('acoustic_model_path',
+                          help='Full path to the archive containing pre-trained model or language ({})'.format(
+                              ', '.join(acoustic_languages)))
+adapt_parser.add_argument('output_model_path',
+                          help="Full path to save adapted_model")
+adapt_parser.add_argument('--config_path', type=str, default='',
+                          help='Path to config file to use for alignment')
+adapt_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
+                          help='Number of characters of file names to use for determining speaker, '
+                               'default is to use directory names')
+adapt_parser.add_argument('-t', '--temp_directory', type=str, default='',
+                          help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+adapt_parser.add_argument('-j', '--num_jobs', type=int, default=3,
+                          help='Number of cores to use while aligning')
+adapt_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
+adapt_parser.add_argument('-c', '--clean', help="Remove files from previous runs", action='store_true')
+adapt_parser.add_argument('-d', '--debug', help="Output debug messages about alignment", action='store_true')
 
 train_parser = subparsers.add_parser('train')
 train_parser.add_argument('corpus_directory', help='Full path to the source directory to align')
@@ -349,6 +371,8 @@ def main():
                 sys.exit(1)
         if args.subcommand == 'align':
             run_align_corpus(args, unknown, acoustic_languages)
+        elif args.subcommand == 'adapt':
+            run_adapt_model(args, unknown, acoustic_languages)
         elif args.subcommand == 'train':
             run_train_corpus(args, unknown)
         elif args.subcommand == 'g2p':

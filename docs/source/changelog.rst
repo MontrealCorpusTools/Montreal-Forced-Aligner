@@ -7,6 +7,15 @@
 Changelog
 =========
 
+2.0.0a23
+--------
+
+- Fix bugs in transcription and aligning with using multiple dictionaries
+- Fixed an issue where filenames were output with ``-`` rather than ``_`` if they originally had them
+- Changed how output text different from input text when there was a compound marker (i.e., ``-``), these should now
+  have a single interval for the whole compound rather than two intervals for each subword
+- Changed how OOV items are output, so they will be present in the output rather than ``<unk>``
+
 2.0.0a22
 --------
 
@@ -20,6 +29,7 @@ Changelog
   the user's machine
 - Update annotator utility to have autosave on exit
 - Fixed cases where not all phones in a dictionary were present in phone_mapping
+- Changed TextGrid export to not put "sp" or "sil" in the phone tier
 
 2.0.0a21
 --------

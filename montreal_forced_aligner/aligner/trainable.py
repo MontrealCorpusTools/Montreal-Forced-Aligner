@@ -1,8 +1,5 @@
-from ..multiprocessing import (convert_ali_to_textgrids)
+from ..multiprocessing import convert_ali_to_textgrids
 from .base import BaseAligner
-
-from ..helper import log_kaldi_errors
-from ..exceptions import KaldiProcessingError
 
 
 class TrainableAligner(BaseAligner):
@@ -27,8 +24,9 @@ class TrainableAligner(BaseAligner):
     """
 
     def __init__(self, corpus, dictionary, training_config, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, logger=None):
+                 call_back=None, debug=False, verbose=False, logger=None, pretrained_aligner=None):
         self.training_config = training_config
+        self.pretrained_aligner = pretrained_aligner
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
                                                call_back, debug, verbose, logger)
 
@@ -65,7 +63,7 @@ class TrainableAligner(BaseAligner):
         return data
 
     def train(self):
-        previous = None
+        previous = self.pretrained_aligner
         for identifier, trainer in self.training_config.items():
             trainer.debug = self.debug
             trainer.logger = self.logger

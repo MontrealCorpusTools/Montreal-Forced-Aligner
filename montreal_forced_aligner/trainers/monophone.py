@@ -78,9 +78,9 @@ class MonophoneTrainer(BaseTrainer):
             feature_string = self.feature_config.construct_feature_proc_string(self.data_directory, self.train_directory, 0)
             #feature_string += " subset-feats --n=10 ark:- ark:-| "
             shared_phones_opt = "--shared-phones=" + os.path.join(dictionary.phones_dir, 'sets.int')
-            log_path = os.path.join(self.log_directory, 'init.log')
+            init_log_path = os.path.join(self.log_directory, 'init.log')
             temp_feats_path = os.path.join(self.train_directory, 'temp_feats')
-            with open(log_path, 'w') as log_file:
+            with open(init_log_path, 'w') as log_file:
                 subprocess.call([thirdparty_binary('subset-feats'), '--n=10',
                                  feature_string, 'ark:'+temp_feats_path], stderr=log_file)
                 subprocess.call([thirdparty_binary('gmm-init-mono'), shared_phones_opt,
@@ -90,6 +90,8 @@ class MonophoneTrainer(BaseTrainer):
                                  mdl_path,
                                  tree_path],
                                 stderr=log_file)
+            if os.path.exists(mdl_path):
+                os.remove(init_log_path)
             os.remove(temp_feats_path)
             num_gauss = self.get_num_gauss()
             self.initial_gaussians = num_gauss

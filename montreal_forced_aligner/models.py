@@ -97,6 +97,14 @@ class AcousticModel(Archive):
         fc.update(self.meta['features'])
         return fc
 
+    def adaptation_config(self):
+        from .config.train_config import load_sat_adapt, load_no_sat_adapt
+        if self.meta['features']['fmllr']:
+            train, align =load_sat_adapt()
+        else:
+            train, align = load_no_sat_adapt()
+        return train
+
     @property
     def meta(self):
         default_features = {'type': 'mfcc',

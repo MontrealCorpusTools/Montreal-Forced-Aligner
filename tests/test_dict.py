@@ -81,6 +81,6 @@ def test_multispeaker_config(multispeaker_dictionary_config, generated_dir):
     dictionary = MultispeakerDictionary(multispeaker_dictionary_config, os.path.join(generated_dir, 'multispeaker'))
     dictionary.write()
     for name, d in dictionary.dictionary_mapping.items():
-        assert dictionary.phone_mapping == d.phone_mapping
-        assert dictionary.words_mapping == d.words_mapping
-        assert dictionary.words == set(d.words.keys())
+        assert d.sil_phones.issubset(dictionary.sil_phones)
+        assert d.nonsil_phones.issubset(dictionary.nonsil_phones)
+        assert set(d.words.keys()).issubset(dictionary.words)

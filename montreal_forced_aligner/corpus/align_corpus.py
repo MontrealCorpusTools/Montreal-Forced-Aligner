@@ -120,6 +120,9 @@ class AlignableCorpus(BaseCorpus):
         file_directory_path = os.path.join(self.output_directory, 'file_directory.scp')
         if not os.path.exists(file_directory_path):
             return False
+        file_name_mapping_path = os.path.join(self.output_directory, 'file_name.scp')
+        if not os.path.exists(file_name_mapping_path):
+            return False
         wav_info_path = os.path.join(self.output_directory, 'wav_info.scp')
         if not os.path.exists(wav_info_path):
             return False
@@ -137,6 +140,8 @@ class AlignableCorpus(BaseCorpus):
                 self.file_utt_mapping[file] = [utts]
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
+            if not isinstance(text, list):
+                text = [text]
             for w in text:
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
@@ -151,6 +156,7 @@ class AlignableCorpus(BaseCorpus):
             else:
                 self.lab_count += 1
         self.file_directory_mapping = load_scp(file_directory_path)
+        self.file_name_mapping = load_scp(file_name_mapping_path)
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if os.path.exists(feat_path):
             self.feat_mapping = load_scp(feat_path)
@@ -297,6 +303,7 @@ class AlignableCorpus(BaseCorpus):
                     self.sox_strings[utt_name] = info['sox_string']
                 self.utt_speak_mapping[utt_name] = speaker_name
                 self.file_directory_mapping[utt_name] = info['relative_path']
+                self.file_name_mapping[utt_name] = info['file_name']
                 self.lab_count += 1
             else:
                 wav_info = info['wav_info']
@@ -434,6 +441,7 @@ class AlignableCorpus(BaseCorpus):
                             self.sox_strings[utt_name] = info['sox_string']
                         self.utt_speak_mapping[utt_name] = speaker_name
                         self.file_directory_mapping[utt_name] = relative_path
+                        self.file_name_mapping[utt_name] = info['file_name']
                         self.wav_info[file_name] = [wav_info['num_channels'],
                                                     wav_info['sample_rate'],
                                                     wav_info['duration']]
@@ -544,6 +552,8 @@ class AlignableCorpus(BaseCorpus):
                 speaker = self.utt_speak_mapping[utt]
                 if speaker not in tiers:
                     tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=duration)
+                if end > duration:
+                    end = duration
                 tiers[speaker].entryList.append((begin, end, text))
 
             for v in tiers.values():
@@ -819,3 +829,41 @@ class AlignableCorpus(BaseCorpus):
                 with open(subset_scp, 'w') as f:
                     for line in filtered:
                         f.write(line.strip() + '\n')
+
+    def text_int_by_dictionay(self, multispeaker_dictionary, dictionary_name):
+        dictionary = multispeaker_dictionary.dictionary_mapping[dictionary_name]
+        oov_code = dictionary.oov_int
+        self.utterance_oovs = {}
+        output = []
+        grouped_texts = self.grouped_text(dictionary)
+        for g in grouped_texts:
+            output_g = []
+            for u, text in g:
+                if u in self.ignored_utterances:
+                    continue
+                s = self.utt_speak_mapping[u]
+                if multispeaker_dictionary.get_dictionary_name(s) != dictionary_name:
+                    continue
+                oovs = []
+                new_text = []
+                for i in range(len(text)):
+                    t = text[i]
+                    lookup = dictionary.to_int(t)
+                    for w in lookup:
+                        if w == oov_code:
+                            oovs.append(text[i])
+                        new_text.append(w)
+                if oovs:
+                    self.utterance_oovs[u] = oovs
+                new_text = map(str, (x for x in new_text if isinstance(x, int)))
+                output_g.append([u, ' '.join(new_text)])
+            output.append(output_g)
+        return output
+
+    def split_by_dictionary(self, multispeaker_dictionary):
+        super(AlignableCorpus, self).split_by_dictionary(multispeaker_dictionary)
+        split_dir = self.split_directory()
+        for name, d in multispeaker_dictionary.dictionary_mapping.items():
+            spk2utt = self.text_int_by_dictionay(multispeaker_dictionary, name)
+            pattern = 'text.{}.'+ name + '.int'
+            save_groups(spk2utt, split_dir, pattern)
