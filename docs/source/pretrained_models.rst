@@ -122,6 +122,9 @@
 .. _`English pronunciation dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/english.dict
 .. _`French Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/fr.dict
 .. _`German Prosodylab dictionary`:  https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/de.dict
+.. _`TalnUPF Spanish IPA dictionary`:  https://raw.githubusercontent.com/TalnUPF/phonetic_lexica/master/es/es_lexicon-IPA.txt
+.. _`TalnUPF Spanish gpA dictionary`:  https://raw.githubusercontent.com/TalnUPF/phonetic_lexica/master/es/es_lexicon-gpA.txt
+.. _`TalnUPF Catalan IPA dictionary`:  https://raw.githubusercontent.com/TalnUPF/phonetic_lexica/master/ca/ca_lexicon-IPA.txt
 
 .. _`GlobalPhone language models`: https://www.csl.uni-bremen.de/GlobalPhone/
 
@@ -272,6 +275,9 @@ at michael.e.mcauliffe@gmail.com.
    "French", `French Prosodylab dictionary`_, "Latin", "Prosodylab French"
    "German", `German Prosodylab dictionary`_, "Latin", "Prosodylab German"
    "Brazilian Portuguese", `FalaBrasil dictionary`_, "Latin", ""
+   "Spanish", `TalnUPF Spanish IPA dictionary`_, "Latin", "IPA"
+   "Spanish", `TalnUPF Spanish gpA dictionary`_, "Latin", "gpA"
+   "Catalan", `TalnUPF Catalan IPA dictionary`_, "Latin", "IPA"
 
 .. _language_models:
 

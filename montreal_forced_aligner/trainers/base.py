@@ -131,12 +131,13 @@ class BaseTrainer(object):
             self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
 
     def update(self, data):
+        from ..config.base_config import PARSING_KEYS
         for k, v in data.items():
             if k == 'use_mp':
                 self.feature_config.use_mp = v
             if k == 'features':
                 self.feature_config.update(v)
-            elif k in ['punctuation', 'clitic_markers', 'compound_markers']:
+            elif k in PARSING_KEYS:
                 continue
             elif not hasattr(self, k):
                 raise TrainerError('No field found for key {}'.format(k))

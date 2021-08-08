@@ -101,7 +101,7 @@ if __name__ == '__main__':
                     'montreal_forced_aligner.thirdparty',
                     'montreal_forced_aligner.trainers'],
           install_requires=[
-              'praatio',
+              'praatio ~= 4.1',
               'numpy',
               'tqdm',
               'pyyaml',

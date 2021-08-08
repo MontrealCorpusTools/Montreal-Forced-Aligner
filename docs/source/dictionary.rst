@@ -117,7 +117,7 @@ to 6 frames (3 frames per phone), however in general, diphthongs and affricates 
 
 The default configuration for multilingual IPA is as follows:
 
-.. code-block::
+.. code-block:: yaml
 
    strip_diacritics:
      - "ː"  # long, i.e. /ɑː/

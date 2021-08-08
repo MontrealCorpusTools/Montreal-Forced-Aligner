@@ -60,3 +60,12 @@ def test_load(config_directory):
     path = os.path.join(config_directory, 'out_of_order_config.yaml')
     with pytest.raises(ConfigError):
         train, align = train_yaml_to_config(path)
+
+
+def test_multilingual_ipa(config_directory):
+    from montreal_forced_aligner.config.base_config import DEFAULT_STRIP_DIACRITICS
+    path = os.path.join(config_directory, 'basic_ipa_config.yaml')
+    train, align = train_yaml_to_config(path)
+    assert align.multilingual_ipa
+    assert set(align.strip_diacritics) == set(DEFAULT_STRIP_DIACRITICS)
+    assert align.digraphs == ['[dt][szʒʃʐʑʂɕç]', '[a][i][u]']

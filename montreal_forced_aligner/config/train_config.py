@@ -1,7 +1,7 @@
 
 import os
 import yaml
-from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
+from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS, PARSING_KEYS
 from ..features.config import FeatureConfig
 from collections import Counter
 
@@ -29,7 +29,7 @@ class TrainingConfig(BaseConfig):
 
     def update(self, data):
         for k, v in data.items():
-            if k in ['punctuation', 'clitic_markers', 'compound_markers']:
+            if k in PARSING_KEYS:
                 if not v:
                     continue
                 if '-' in v:
