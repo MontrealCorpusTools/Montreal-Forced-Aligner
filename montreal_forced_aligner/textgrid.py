@@ -6,10 +6,6 @@ from praatio import tgio
 
 
 def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
-    if mode == 'word':
-        mapping = dictionary.reversed_word_mapping
-    else:
-        mapping = dictionary.reversed_phone_mapping
     file_dict = {}
     cur_utt = None
     text = None
@@ -26,13 +22,13 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
             duration = float(line[3])
             end = round(begin + duration, 4)
             label = line[4]
-            if dictionary.has_multiple:
-                d = dictionary.get_dictionary(speaker)
-            else:
-                d = dictionary
             if mode == 'word':
                 if utt != cur_utt:
                     if cur_utt != None:
+                        if dictionary.has_multiple:
+                            d = dictionary.get_dictionary(speaker)
+                        else:
+                            d = dictionary
                         cur_ind = 0
                         actual_labels = []
                         for word in text:
@@ -42,26 +38,14 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                             e = -1
                             for i in ints:
                                 cur = current_labels[cur_ind]
-                                if i == int(cur[2]):
-                                    if cur[0] < b:
-                                        b = cur[0]
-                                    if cur[1] > e:
-                                        e = cur[1]
+                                i_begin, i_end, lab = cur
+                                if i == int(lab):
+                                    if i_begin < b:
+                                        b = i_begin
+                                    if i_end > e:
+                                        e = i_end
                                 cur_ind += 1
                             if b == 1000000 or e == -1:
-                                print('UGH')
-                                print(cur_utt)
-                                print(text)
-                                print (word)
-                                print(ints)
-                                print(current_labels[cur_ind])
-                                print(current_labels)
-                                print(dictionary._lookup(word))
-                                print(dictionary.split_clitics(word))
-                                print(word in dictionary.words_mapping)
-                                print(dictionary.clitic_markers)
-                                print(dictionary.clitic_set)
-                                print(re.split(r'[{}]'.format(dictionary.clitic_markers), word, maxsplit=1))
                                 initial, final = re.split(r'[{}]'.format(dictionary.clitic_markers), word, maxsplit=1)
                                 if any(x in final for x in dictionary.clitic_markers):
                                     final = dictionary.split_clitics(final)
@@ -77,8 +61,6 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                                         print('FOUND FINAL')
                                         to_return = [initial] + final
                                         final[0] = clitic + final[0]
-                                print(initial, final, to_return)
-                                print(dictionary.words[word])
                                 raise Exception()
                             lab = [b, e, word]
                             actual_labels.append(lab)
@@ -88,10 +70,9 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                         seg = corpus.segments[utt]
                         filename = seg['file_name']
                         utt_begin = seg['begin']
-                        begin += utt_begin
-                        end += utt_begin
                     else:
                         filename = utt
+                        utt_begin = 0
                     if filename not in file_dict:
                         file_dict[filename] = {}
                     if speaker not in file_dict[filename]:
@@ -100,9 +81,15 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                     text = corpus.text_mapping[utt].split()
                     current_labels = []
 
+                begin += utt_begin
+                end += utt_begin
                 current_labels.append([begin, end, label])
             else:
                 speaker = corpus.utt_speak_mapping[utt]
+                if dictionary.has_multiple:
+                    d = dictionary.get_dictionary(speaker)
+                else:
+                    d = dictionary
                 if utt in corpus.segments:
                     seg = corpus.segments[utt]
                     filename = seg['file_name']
@@ -125,6 +112,10 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
 
         cur_ind = 0
         actual_labels = []
+        if dictionary.has_multiple:
+            d = dictionary.get_dictionary(speaker)
+        else:
+            d = dictionary
         for word in text:
 
             ints = d.to_int(word)
@@ -150,9 +141,10 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
 def map_to_original_pronunciation(phones, subpronunciations, strip_diacritics, digraphs):
     transcription = tuple(x[2] for x in phones)
     new_phones = []
-    pron = None
     mapping_ind = 0
+    transcription_ind = 0
     for pronunciations in subpronunciations:
+        pron = None
         if mapping_ind >= len(phones):
             break
         for p in pronunciations:
@@ -161,10 +153,13 @@ def map_to_original_pronunciation(phones, subpronunciations, strip_diacritics, d
                 new_phones.extend(phones)
                 mapping_ind += len(phones)
                 break
-            if p['pronunciation'] == transcription and pron is None:
+
+            if p['pronunciation'] == transcription[transcription_ind: transcription_ind+len(p['pronunciation'])] \
+                    and pron is None:
                 pron = p
         if mapping_ind >= len(phones):
             break
+        transcription_ind += len(pron['pronunciation'])
         if not pron:
             new_phones.extend(phones)
             mapping_ind += len(phones)
@@ -174,16 +169,16 @@ def map_to_original_pronunciation(phones, subpronunciations, strip_diacritics, d
             new_phones.extend(phones)
             mapping_ind += len(phones)
             break
-        for p in p['original_pronunciation']:
-            if p == phones[mapping_ind][2]:
+        for pi in p['original_pronunciation']:
+            if pi == phones[mapping_ind][2]:
                 new_phones.append(phones[mapping_ind])
             else:
-                modded_phone = p
+                modded_phone = pi
                 new_p = phones[mapping_ind][2]
                 for diacritic in strip_diacritics:
                     modded_phone = modded_phone.replace(diacritic, '')
                 if modded_phone == new_p:
-                    phones[mapping_ind][2] = p
+                    phones[mapping_ind][2] = pi
                     new_phones.append(phones[mapping_ind])
                 elif mapping_ind != len(phones) - 1:
                     new_p = phones[mapping_ind][2] + phones[mapping_ind + 1][2]
@@ -239,7 +234,8 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                             phone_ind += 1
                             if phone_ind > len(phone_ctm[k][speaker]) - 1:
                                 break
-                        phones.extend(map_to_original_pronunciation(cur_phones, subprons, dictionary.strip_diacritics, dictionary.digraphs))
+                        phones.extend(map_to_original_pronunciation(cur_phones, subprons,
+                                                                    dictionary.strip_diacritics, dictionary.digraphs))
                         if not word:
                             continue
 
@@ -288,6 +284,7 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     speaker_directory = os.path.join(out_directory, corpus.file_directory_mapping[filename])
                 except KeyError:
                     speaker_directory = out_directory
+                os.makedirs(speaker_directory, exist_ok=True)
                 tg = tgio.Textgrid()
                 tg.minTimestamp = 0
                 tg.maxTimestamp = max_time
@@ -302,12 +299,14 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     phones = []
                     if dictionary.multilingual_ipa:
                         phone_ind = 0
-                        phone_tier_len = len(phone_ctm[filename][speaker])
                         for interval in word_ctm[filename][speaker]:
                             if max_time - interval[1] < frame_shift:  # Fix rounding issues
                                 interval[1] = max_time
                             end = interval[1]
                             word = interval[2]
+                            subwords = d._lookup(word)
+                            subwords = [x if x in d.words_mapping else d.oov_code for x in subwords ]
+                            subprons = [d.words[x] for x in subwords]
                             cur_phones = []
                             while phone_ind <= len(phone_ctm[filename][speaker]) - 1 and phone_ctm[filename][speaker][phone_ind][1] <= end:
                                 p = phone_ctm[filename][speaker][phone_ind]
@@ -318,7 +317,11 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                                     continue
                                 cur_phones.append(p)
                                 phone_ind += 1
-                            phones.extend(map_to_original_pronunciation(cur_phones, d.words[word], dictionary.strip_diacritics, dictionary.digraphs))
+                                if phone_ind > len(phone_ctm[filename][speaker]) - 1:
+                                    break
+                            phones.extend(map_to_original_pronunciation(cur_phones, subprons, dictionary.strip_diacritics, dictionary.digraphs))
+                            if not word:
+                                continue
 
                             words.append(interval)
 
@@ -337,7 +340,18 @@ def ctm_to_textgrid(word_ctm, phone_ctm, out_directory, corpus, dictionary, fram
                     phone_tier = tgio.IntervalTier(phone_tier_name, phones, minT=0, maxT=max_time)
                     tg.addTier(word_tier)
                     tg.addTier(phone_tier)
-                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
+                relative = corpus.file_directory_mapping[filename]
+
+                if relative:
+                    speaker_directory = os.path.join(out_directory, relative)
+                else:
+                    speaker_directory = out_directory
+                os.makedirs(speaker_directory, exist_ok=True)
+                if filename in corpus.file_name_mapping:
+                    output_name = corpus.file_name_mapping[filename]
+                else:
+                    output_name = filename
+                tg.save(os.path.join(speaker_directory, output_name + '.TextGrid'), useShortForm=False)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 textgrid_write_errors[filename] = '\n'.join(

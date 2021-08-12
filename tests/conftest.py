@@ -5,6 +5,7 @@ fix_path()
 import os
 import shutil
 import pytest
+import yaml
 
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary
@@ -74,6 +75,28 @@ def config_dir(generated_dir):
 def english_acoustic_model():
     from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
+    return 'english'
+
+
+@pytest.fixture(scope='session')
+def english_ipa_acoustic_model():
+    from montreal_forced_aligner.command_line.download import download_model
+    download_model('acoustic', 'english_ipa')
+    return 'english_ipa'
+
+
+@pytest.fixture(scope='session')
+def english_us_ipa_dictionary():
+    from montreal_forced_aligner.command_line.download import download_model
+    download_model('dictionary', 'english_us_ipa')
+    return 'english_us_ipa'
+
+
+@pytest.fixture(scope='session')
+def english_uk_ipa_dictionary():
+    from montreal_forced_aligner.command_line.download import download_model
+    download_model('dictionary', 'english_uk_ipa')
+    return 'english_uk_ipa'
 
 
 @pytest.fixture(scope='session')
@@ -132,6 +155,20 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
         for name in files:
             shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, name + '.wav'))
             shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, name + '.lab'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'multilingual')
+    os.makedirs(path, exist_ok=True)
+    names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(s_dir, name + '.flac'))
+            shutil.copyfile(os.path.join(lab_dir, name + '.txt'), os.path.join(s_dir, name + '.txt'))
     return path
 
 
@@ -338,6 +375,20 @@ def basic_word_boundarytxt_path(expected_dict_path):
 @pytest.fixture(scope='session')
 def sick_dict_path(dict_dir):
     return os.path.join(dict_dir, 'sick.txt')
+
+
+@pytest.fixture(scope='session')
+def acoustic_dict_path(dict_dir):
+    return os.path.join(dict_dir, 'acoustic.txt')
+
+
+@pytest.fixture(scope='session')
+def speaker_dictionary_path(sick_dict_path, acoustic_dict_path, generated_dir):
+    data = {'default': acoustic_dict_path, 'sickmichael': sick_dict_path}
+    speaker_dict_path = os.path.join(generated_dir, 'sick_acoustic_dicts.yaml')
+    with open(speaker_dict_path, 'w') as f:
+        yaml.safe_dump(data, f)
+    return speaker_dict_path
 
 
 @pytest.fixture(scope='session')
@@ -593,9 +644,16 @@ def ivector_train_config(config_directory):
 
 
 @pytest.fixture(scope='session')
-def multispeaker_dictionary_config(config_dir, sick_dict_path):
-    import yaml
-    path = os.path.join(config_dir, 'multispeaker_dictionary.yaml')
+def multispeaker_dictionary_config(generated_dir, sick_dict_path):
+    path = os.path.join(generated_dir, 'multispeaker_dictionary.yaml')
     with open(path, 'w', encoding='utf8') as f:
         yaml.safe_dump({'default': 'english', 'michael': sick_dict_path}, f)
+    return path
+
+
+@pytest.fixture(scope='session')
+def ipa_speaker_dict_path(generated_dir, english_uk_ipa_dictionary, english_us_ipa_dictionary):
+    path = os.path.join(generated_dir, 'multispeaker_ipa_dictionary.yaml')
+    with open(path, 'w', encoding='utf8') as f:
+        yaml.safe_dump({'default': english_us_ipa_dictionary, 'speaker': english_uk_ipa_dictionary}, f)
     return path
