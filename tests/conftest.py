@@ -159,6 +159,24 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope='session')
+def basic_split_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'split')
+    audio_path = os.path.join(path, 'audio')
+    text_path = os.path.join(path, 'text')
+    os.makedirs(path, exist_ok=True)
+    names = [('michael', ['acoustic_corpus']), ('sickmichael', ['cold_corpus', 'cold_corpus3'])]
+    for s, files in names:
+        s_text_dir = os.path.join(text_path, s)
+        s_audio_dir = os.path.join(audio_path, s)
+        os.makedirs(s_text_dir, exist_ok=True)
+        os.makedirs(s_audio_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_audio_dir, name + '.wav'))
+            shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_text_dir, name + '.lab'))
+    return audio_path, text_path
+
+
+@pytest.fixture(scope='session')
 def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, 'multilingual')
     os.makedirs(path, exist_ok=True)

@@ -83,12 +83,15 @@ def adapt_model(args, unknown_args=None):
     training_config = acoustic_model.adaptation_config()
     logger.debug('ADAPT TRAINING CONFIG:')
     log_config(logger, training_config)
+    audio_dir = None
+    if args.audio_directory:
+        audio_dir = args.audio_directory
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
                                  logger=logger, use_mp=align_config.use_mp, punctuation=align_config.punctuation,
-                                 clitic_markers=align_config.clitic_markers)
+                                 clitic_markers=align_config.clitic_markers, audio_directory=audio_dir)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                            'Please run the validator to get more information.')

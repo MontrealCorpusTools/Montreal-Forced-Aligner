@@ -386,7 +386,7 @@ class Transcriber(object):
                 if g != h:
                     issues.append((utt, g, h))
                 to_comp.append((g, h))
-            gen = pool.map(score, to_comp)
+            gen = pool.starmap(score, to_comp)
             for (edits, length) in gen:
                 if edits == 0:
                     correct += 1

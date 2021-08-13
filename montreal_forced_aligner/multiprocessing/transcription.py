@@ -94,16 +94,16 @@ def decode_func(model_directory, job_name, config, feat_string, output_directory
                 decode_proc.communicate()
 
 
-def score_func(model_directory, job_name, config, output_directory, language_model_weight=None,
+def score_func(model_directory, transcribe_directory, job_name, config, output_directory, language_model_weight=None,
                word_insertion_penalty=None, dictionary_names=None):
     if language_model_weight is None:
         language_model_weight = config.language_model_weight
     if word_insertion_penalty is None:
         word_insertion_penalty = config.word_insertion_penalty
     if dictionary_names is None:
-        lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
-        rescored_lat_path = os.path.join(output_directory, 'lat.{}.rescored'.format(job_name))
-        carpa_rescored_lat_path = os.path.join(output_directory, 'lat.{}.carparescored'.format(job_name))
+        lat_path = os.path.join(transcribe_directory, 'lat.{}'.format(job_name))
+        rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.rescored'.format(job_name))
+        carpa_rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.carparescored'.format(job_name))
         if os.path.exists(carpa_rescored_lat_path):
             lat_path = carpa_rescored_lat_path
         elif os.path.exists(rescored_lat_path):
@@ -126,9 +126,9 @@ def score_func(model_directory, job_name, config, output_directory, language_mod
             best_path_proc.communicate()
     else:
         for name in dictionary_names:
-            lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
-            rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.rescored'.format(job_name, name))
-            carpa_rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
+            lat_path = os.path.join(transcribe_directory, 'lat.{}.{}'.format(job_name, name))
+            rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.{}.rescored'.format(job_name, name))
+            carpa_rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
             if os.path.exists(carpa_rescored_lat_path):
                 lat_path = carpa_rescored_lat_path
             elif os.path.exists(rescored_lat_path):
@@ -262,7 +262,8 @@ def transcribe(transcriber):
                 out_dir = os.path.join(decode_directory, 'eval_{}_{}'.format(lmwt, wip))
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-                jobs = [(model_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
+
+                jobs = [(model_directory, decode_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -274,7 +275,7 @@ def transcribe(transcriber):
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
     else:
-        jobs = [(model_directory, x, config, decode_directory, None, None, transcriber.dictionaries_for_job(x))
+        jobs = [(model_directory, decode_directory, x, config, decode_directory, None, None, transcriber.dictionaries_for_job(x))
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_directory)
@@ -642,7 +643,7 @@ def transcribe_fmllr(transcriber):
                 out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(lmwt, wip))
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-                jobs = [(model_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
+                jobs = [(model_directory, fmllr_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -659,7 +660,7 @@ def transcribe_fmllr(transcriber):
             saved_tra_path = os.path.join(fmllr_directory, 'tra.{}'.format(j))
             shutil.copyfile(tra_path, saved_tra_path)
     else:
-        jobs = [(model_directory, x, config, fmllr_directory, None, None, transcriber.dictionaries_for_job(x))
+        jobs = [(model_directory, fmllr_directory, x, config, fmllr_directory, None, None, transcriber.dictionaries_for_job(x))
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_dir)

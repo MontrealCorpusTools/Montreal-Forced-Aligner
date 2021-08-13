@@ -81,12 +81,15 @@ def align_corpus(args, unknown_args=None):
     os.makedirs(args.output_directory, exist_ok=True)
     acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
     acoustic_model.log_details(logger)
+    audio_dir = None
+    if args.audio_directory:
+        audio_dir = args.audio_directory
     try:
         corpus = AlignableCorpus(args.corpus_directory, data_directory,
                                  speaker_characters=args.speaker_characters,
                                  num_jobs=args.num_jobs, sample_rate=align_config.feature_config.sample_frequency,
                                  logger=logger, use_mp=align_config.use_mp, punctuation=align_config.punctuation,
-                                 clitic_markers=align_config.clitic_markers)
+                                 clitic_markers=align_config.clitic_markers, audio_directory=audio_dir)
         if corpus.issues_check:
             logger.warning('Some issues parsing the corpus were detected. '
                            'Please run the validator to get more information.')

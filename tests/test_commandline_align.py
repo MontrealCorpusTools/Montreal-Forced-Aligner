@@ -55,9 +55,17 @@ def test_align_multilingual(multilingual_ipa_corpus_dir, english_uk_ipa_dictiona
     run_align_corpus(args, unknown)
 
 def test_align_multilingual_speaker_dict(multilingual_ipa_corpus_dir, ipa_speaker_dict_path, generated_dir, temp_dir,
-                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
+                     basic_align_config,  english_ipa_acoustic_model):
 
     command = ['align', multilingual_ipa_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual_speaker_dict'),
+               '-t', temp_dir, '-c', basic_align_config, '-q', '--clean', '-d']
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+def test_align_split(basic_corpus_dir, english_us_ipa_dictionary, generated_dir, temp_dir,
+                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
+
+    command = ['align', basic_corpus_dir, english_us_ipa_dictionary, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual'),
                '-t', temp_dir, '-c', basic_align_config, '-q', '--clean', '-d']
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)

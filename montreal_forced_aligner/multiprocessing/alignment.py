@@ -1,6 +1,5 @@
 import subprocess
 import os
-import shutil
 import re
 from decimal import Decimal
 import statistics
@@ -10,28 +9,6 @@ from .helper import make_path_safe, run_mp, run_non_mp, thirdparty_binary
 from ..textgrid import ctm_to_textgrid, parse_ctm
 
 from ..exceptions import AlignmentError
-
-
-def parse_transitions(path, phones_path):
-    state_extract_pattern = re.compile(r'Transition-state (\d+): phone = (\w+)')
-    id_extract_pattern = re.compile(r'Transition-id = (\d+)')
-    cur_phone = None
-    current = 0
-    with open(path, encoding='utf8') as f, open(phones_path, 'w', encoding='utf8') as outf:
-        outf.write('{} {}\n'.format('<eps>', 0))
-        for line in f:
-            line = line.strip()
-            if line.startswith('Transition-state'):
-                m = state_extract_pattern.match(line)
-                _, phone = m.groups()
-                if phone != cur_phone:
-                    current = 0
-                    cur_phone = phone
-            else:
-                m = id_extract_pattern.match(line)
-                id = m.groups()[0]
-                outf.write('{}_{} {}\n'.format(phone, current, id))
-                current += 1
 
 
 def acc_stats_func(directory, iteration, job_name, feature_string):
@@ -69,7 +46,7 @@ def acc_stats(iteration, directory, split_directory, num_jobs, config):
         The number of processes to use in calculation
     """
     jobs = [(directory, iteration, x,
-                     config.feature_config.construct_feature_proc_string(split_directory, directory, x)
+             config.feature_config.construct_feature_proc_string(split_directory, directory, x)
              ) for x in range(num_jobs)]
 
     if config.use_mp:
@@ -84,23 +61,9 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
     if not os.path.exists(mdl_path):
         mdl_path = os.path.join(directory, 'final.mdl')
 
-    log_path = os.path.join(directory, 'log', 'show_transition.log')
-    transition_path = os.path.join(directory, 'transitions.txt')
-    triphones_file_path = os.path.join(directory, 'triphones.txt')
-
     if dictionary_names is None:
-        phones_file_path = os.path.join(lang_directory, 'phones.txt')
-        if debug:
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                with open(transition_path, 'w', encoding='utf8') as f:
-                    subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
-                                    stdout=f, stderr=log_file)
-                parse_transitions(transition_path, triphones_file_path)
         log_path = os.path.join(directory, 'log', 'compile-graphs.{}.log'.format(job_name))
 
-        if os.path.exists(triphones_file_path):
-            phones_file_path = triphones_file_path
-        words_file_path = os.path.join(lang_directory, 'words.txt')
         fst_scp_path = os.path.join(directory, 'fsts.{}.scp'.format(job_name))
         fst_ark_path = os.path.join(directory, 'fsts.{}.ark'.format(job_name))
         text_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
@@ -111,23 +74,13 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                                          os.path.join(lang_directory, 'phones', 'disambig.int')),
                                      tree_path, mdl_path,
                                      os.path.join(lang_directory, 'L.fst'),
-                                     "ark:"+ text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                     "ark:" + text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
                                     stderr=log_file)
             proc.communicate()
     else:
         for name in dictionary_names:
-            phones_file_path = os.path.join(lang_directory, 'phones.txt')
-            if debug:
-                with open(log_path, 'w', encoding='utf8') as log_file:
-                    with open(transition_path, 'w', encoding='utf8') as f:
-                        subprocess.call([thirdparty_binary('show-transitions'), phones_file_path, mdl_path],
-                                        stdout=f, stderr=log_file)
-                    parse_transitions(transition_path, triphones_file_path)
             log_path = os.path.join(directory, 'log', 'compile-graphs.{}.{}.log'.format(job_name, name))
 
-            if os.path.exists(triphones_file_path):
-                phones_file_path = triphones_file_path
-            words_file_path = os.path.join(lang_directory, 'words.txt')
             fst_scp_path = os.path.join(directory, 'fsts.{}.{}.scp'.format(job_name, name))
             fst_ark_path = os.path.join(directory, 'fsts.{}.{}.ark'.format(job_name, name))
             text_path = os.path.join(split_directory, 'text.{}.{}.int'.format(job_name, name))
@@ -138,7 +91,7 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
                                              os.path.join(lang_directory, 'phones', 'disambig.int')),
                                          tree_path, mdl_path,
                                          os.path.join(lang_directory, name, 'dictionary', 'L.fst'),
-                                         "ark:"+text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
+                                         "ark:" + text_path, "ark,scp:{},{}".format(fst_ark_path, fst_scp_path)],
                                         stderr=log_file)
                 proc.communicate()
 
@@ -151,45 +104,6 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
         with open(fst_scp_path, 'w', encoding='utf8') as outf:
             for line in sorted(lines):
                 outf.write(line)
-
-
-    if debug:
-        utterances = []
-        with open(os.path.join(split_directory, 'utt2spk.{}'.format(job_name)), 'r', encoding='utf8') as f:
-            for line in f:
-                utt = line.split()[0].strip()
-                if not utt:
-                    continue
-                utterances.append(utt)
-
-        with open(log_path, 'a', encoding='utf8') as log_file:
-
-            temp_fst_path = os.path.join(directory, 'temp.fst.{}'.format(job_name))
-
-            with open(fst_scp_path, 'r', encoding='utf8') as f:
-                for line in f:
-                    line = line.strip()
-                    utt = line.split()[0]
-
-                    dot_path = os.path.join(directory, '{}.dot'.format(utt))
-                    fst_proc = subprocess.Popen([thirdparty_binary('fstcopy'),
-                                                 'scp:-',
-                                                 'scp:echo {} {}|'.format(utt, temp_fst_path)],
-                                                stdin=subprocess.PIPE, stderr=log_file)
-                    fst_proc.communicate(input=line.encode())
-
-                    draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'), '--portrait=true',
-                                                  '--isymbols={}'.format(phones_file_path),
-                                                  '--osymbols={}'.format(words_file_path), temp_fst_path,
-                                                  dot_path],
-                                                 stderr=log_file)
-                    draw_proc.communicate()
-                    try:
-                        dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path],
-                                                    stderr=log_file)
-                        dot_proc.communicate()
-                    except FileNotFoundError:
-                        pass
 
 
 def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, aligner, debug=False):
@@ -282,33 +196,34 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
         if debug:
             loglike_path = os.path.join(output_directory, 'ali.{}.loglikes'.format(job_name))
             com = [thirdparty_binary('gmm-align-compiled'),
-                                       '--transition-scale={}'.format(config['transition_scale']),
-                                       '--acoustic-scale={}'.format(config['acoustic_scale']),
-                                       '--self-loop-scale={}'.format(config['self_loop_scale']),
-                                       '--beam={}'.format(config['beam']),
-                                       '--retry-beam={}'.format(config['retry_beam']),
-                                       '--careful=false',
-                                       '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
-                                       mdl,
-                                       "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
-                                       "ark,t:" + score_path]
+                   '--transition-scale={}'.format(config['transition_scale']),
+                   '--acoustic-scale={}'.format(config['acoustic_scale']),
+                   '--self-loop-scale={}'.format(config['self_loop_scale']),
+                   '--beam={}'.format(config['beam']),
+                   '--retry-beam={}'.format(config['retry_beam']),
+                   '--careful=false',
+                   '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
+                   mdl,
+                   "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                   "ark,t:" + score_path]
         else:
             com = [thirdparty_binary('gmm-align-compiled'),
-                                       '--transition-scale={}'.format(config['transition_scale']),
-                                       '--acoustic-scale={}'.format(config['acoustic_scale']),
-                                       '--self-loop-scale={}'.format(config['self_loop_scale']),
-                                       '--beam={}'.format(config['beam']),
-                                       '--retry-beam={}'.format(config['retry_beam']),
-                                       '--careful=false',
-                                       mdl,
-                                       "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
-                                       "ark,t:" + score_path]
+                   '--transition-scale={}'.format(config['transition_scale']),
+                   '--acoustic-scale={}'.format(config['acoustic_scale']),
+                   '--self-loop-scale={}'.format(config['self_loop_scale']),
+                   '--beam={}'.format(config['beam']),
+                   '--retry-beam={}'.format(config['retry_beam']),
+                   '--careful=false',
+                   mdl,
+                   "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                   "ark,t:" + score_path]
         align_proc = subprocess.Popen(com,
                                       stderr=log_file)
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None, debug=False):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None,
+          debug=False):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -344,7 +259,7 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
 
     jobs = [(directory, iteration, x, mdl, config.align_options,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     output_directory) for x in range(num_jobs)]
+             output_directory) for x in range(num_jobs)]
 
     if config.use_mp:
         run_mp(align_func, jobs, log_directory)
@@ -422,9 +337,9 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                                          '', '', 'ark:-'],
                                         stdout=subprocess.PIPE, stderr=log_file)
             det_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                           'ark:-', 'ark:-'],
-                                          stdin=lin_proc.stdout, stderr=log_file,
-                                          stdout=subprocess.PIPE)
+                                         'ark:-', 'ark:-'],
+                                        stdin=lin_proc.stdout, stderr=log_file,
+                                        stdout=subprocess.PIPE)
             align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
                                            os.path.join(config.dictionary.phones_dir, 'word_boundary.int'), model_path,
                                            'ark:-', 'ark:-'],
@@ -588,9 +503,9 @@ def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, 
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=log_file)
         det_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                       'ark:-', 'ark:-'],
-                                      stdin=lin_proc.stdout, stderr=log_file,
-                                      stdout=subprocess.PIPE)
+                                     'ark:-', 'ark:-'],
+                                    stdin=lin_proc.stdout, stderr=log_file,
+                                    stdout=subprocess.PIPE)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
                                        word_path, model_path,
                                        'ark:-', 'ark,t:' + aligned_path],
@@ -662,7 +577,7 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     else:
         run_non_mp(ali_to_textgrid_func, jobs, log_directory)
 
-    if not corpus.segments: # Hack for better memory management for .lab files
+    if not corpus.segments:  # Hack for better memory management for .lab files
         for i in range(num_jobs):
             word_ctm = {}
             phone_ctm = {}
@@ -804,7 +719,6 @@ def convert_alignments(directory, align_directory, num_jobs, config):
 
 def calc_fmllr_func(directory, split_directory, sil_phones, job_name, feature_string, config, initial,
                     model_name='final'):
-
     log_path = os.path.join(directory, 'log', 'fmllr.{}.{}.log'.format(model_name, job_name))
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     mdl_path = os.path.join(directory, '{}.mdl'.format(model_name))
@@ -892,10 +806,9 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         model_name = iteration
     log_directory = os.path.join(directory, 'log')
 
-
     jobs = [(directory, split_directory, sil_phones, x,
-                     config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-                     config, initial, model_name) for x in range(num_jobs)]
+             config.feature_config.construct_feature_proc_string(split_directory, directory, x),
+             config, initial, model_name) for x in range(num_jobs)]
     if config.use_fmllr_mp:
         run_mp(calc_fmllr_func, jobs, log_directory)
     else:
@@ -960,9 +873,8 @@ def lda_acc_stats(directory, split_directory, align_directory, config, ci_phones
 
     """
     jobs = [(directory,
-                     config.feature_config.construct_feature_proc_string(split_directory, directory, x, splice=True),
+             config.feature_config.construct_feature_proc_string(split_directory, directory, x, splice=True),
              align_directory, config.lda_options, ci_phones, x) for x in range(num_jobs)]
-
 
     if config.use_mp:
         run_mp(lda_acc_stats_func, jobs, config.log_directory)
@@ -996,20 +908,20 @@ def calc_lda_mllt_func(directory, feature_string, sil_phones, job_name, config,
     # Estimating MLLT
     with open(log_path, 'a', encoding='utf8') as log_file:
         post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
-                         "ark:" + ali_path, 'ark:-'],
+                                      "ark:" + ali_path, 'ark:-'],
                                      stdout=subprocess.PIPE, stderr=log_file)
 
         weight_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'), '0.0',
-                         sil_phones, mdl_path, 'ark:-',
-                         'ark:-'],
-                                      stdin=post_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                        sil_phones, mdl_path, 'ark:-',
+                                        'ark:-'],
+                                       stdin=post_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
         acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-mllt'),
-                         '--rand-prune=' + str(config['random_prune']),
-                         mdl_path,
-                          '{}'.format(feature_string),
-                         'ark:-',
-                         os.path.join(directory, '{}.{}.macc'.format(model_name, job_name))],
-                        stdin=weight_proc.stdout, stderr=log_file)
+                                     '--rand-prune=' + str(config['random_prune']),
+                                     mdl_path,
+                                     '{}'.format(feature_string),
+                                     'ark:-',
+                                     os.path.join(directory, '{}.{}.macc'.format(model_name, job_name))],
+                                    stdin=weight_proc.stdout, stderr=log_file)
         acc_proc.communicate()
 
 
@@ -1056,8 +968,8 @@ def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
     else:
         model_name = iteration
     jobs = [(directory,
-                     config.feature_config.construct_feature_proc_string(data_directory, directory, x),
-         sil_phones, x, config.lda_options, initial, model_name) for x in range(num_jobs)]
+             config.feature_config.construct_feature_proc_string(data_directory, directory, x),
+             sil_phones, x, config.lda_options, initial, model_name) for x in range(num_jobs)]
 
     if config.use_mp:
         run_mp(calc_lda_mllt_func, jobs, config.log_directory)
@@ -1092,4 +1004,3 @@ def calc_lda_mllt(directory, data_directory, sil_phones, num_jobs, config,
             os.rename(composed_path, previous_mat_path)
         else:
             os.rename(new_mat_path, previous_mat_path)
-

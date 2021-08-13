@@ -73,6 +73,8 @@ align_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                                'default is to use directory names')
 align_parser.add_argument('-t', '--temp_directory', type=str, default='',
                           help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+align_parser.add_argument('-a', '--audio_directory', type=str, default='',
+                               help='Audio directory root to use for finding audio files')
 align_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                           help='Number of cores to use while aligning')
 align_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
@@ -94,6 +96,8 @@ adapt_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                                'default is to use directory names')
 adapt_parser.add_argument('-t', '--temp_directory', type=str, default='',
                           help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+adapt_parser.add_argument('-a', '--audio_directory', type=str, default='',
+                               help='Audio directory root to use for finding audio files')
 adapt_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                           help='Number of cores to use while aligning')
 adapt_parser.add_argument('-v', '--verbose', help="Print more information during alignment", action='store_true')
@@ -115,6 +119,8 @@ train_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                                'default is to use directory names')
 train_parser.add_argument('-t', '--temp_directory', type=str, default='',
                           help='Temporary directory root to use for aligning, default is ~/Documents/MFA')
+train_parser.add_argument('-a', '--audio_directory', type=str, default='',
+                               help='Audio directory root to use for finding audio files')
 train_parser.add_argument('-j', '--num_jobs', type=int, default=3,
                           help='Number of cores to use while aligning')
 train_parser.add_argument('-v', '--verbose', help="Output debug messages about alignment", action='store_true')

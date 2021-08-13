@@ -109,13 +109,13 @@ def transcribe_corpus(args, unknown_args):
                                                 punctuation=transcribe_config.punctuation,
                                                 clitic_markers=transcribe_config.clitic_markers,
                                                 compound_markers=transcribe_config.compound_markers,
-                                multilingual_ipa=transcribe_config.multilingual_ipa)
+                                multilingual_ipa=acoustic_model.meta['multilingual_ipa'])
         else:
             dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger,
                                                 punctuation=transcribe_config.punctuation,
                                                 clitic_markers=transcribe_config.clitic_markers,
                                                 compound_markers=transcribe_config.compound_markers,
-                                multilingual_ipa=transcribe_config.multilingual_ipa)
+                                multilingual_ipa=acoustic_model.meta['multilingual_ipa'])
         acoustic_model.validate(dictionary)
         begin = time.time()
         t = Transcriber(corpus, dictionary, acoustic_model, language_model, transcribe_config,
