@@ -45,29 +45,12 @@ class Rewriter:
             input_token_type=input_token_type,
             output_token_type=output_token_type)
 
-    def __call__(self, i: str) -> str:
+    def __call__(self, i: str) -> str:  # pragma: no cover
         try:
             return self.rewrite(i)
         except rewrite.Error:
             return "<composition failure>"
 
-
-def parse_errors(error_output):
-    missing_symbols = []
-    line_regex = re.compile("Symbol: '(.+?)' not found in input symbols table")
-    for line in error_output.splitlines():
-        m = line_regex.match(line)
-        if m is not None:
-            missing_symbols.append(m.groups()[0])
-    return missing_symbols
-
-
-def parse_output(output):
-    for line in output.splitlines():
-        line = line.strip().split("\t")
-        if len(line) == 2:
-            line += [None]
-        yield line[0], line[2]
 
 
 class RewriterWorker(mp.Process):

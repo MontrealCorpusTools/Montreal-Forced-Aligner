@@ -7,6 +7,11 @@
 Changelog
 =========
 
+2.0.0a24
+--------
+
+- Fixed some miscellaneous bugs and cleaned up old and unused code
+
 2.0.0a23
 --------
 

@@ -72,45 +72,6 @@ def generate_dictionary(args, unknown_args=None):
 
 def get_word_set(corpus, include_bracketed=False):
     word_set = corpus.word_set
-    decode_error_files = []
-    textgrid_read_errors = {}
-
-    for file_path in corpus.transcriptions_without_wavs:
-        if file_path.endswith('.lab'):
-            try:
-                text = load_text(file_path)
-            except UnicodeDecodeError:
-                decode_error_files.append(file_path)
-                continue
-            words = parse_transcription(text)
-            word_set.update(words)
-        else:
-            try:
-                tg = tgio.openTextgrid(file_path)
-            except Exception as e:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                textgrid_read_errors[file_path] = '\n'.join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback))
-                continue
-            for i, tier_name in enumerate(tg.tierNameList):
-                ti = tg.tierDict[tier_name]
-                if ti.name.lower() == 'notes':
-                    continue
-                if not isinstance(ti, tgio.IntervalTier):
-                    continue
-                for _, _, text in ti.entryList:
-                    text = text.lower().strip()
-                    words = parse_transcription(text)
-                    if not words:
-                        continue
-                    word_set.update(words)
-
-    if decode_error_files:
-        print('WARNING: The following files were not able to be decoded using utf8:\n\n'
-              '{}'.format('\n'.join(decode_error_files)))
-    if textgrid_read_errors:
-        print('WARNING: The following TextGrid files were not able to be read:\n\n'
-              '{}'.format('\n'.join(textgrid_read_errors.keys())))
     print('Generating transcriptions for the {} word types found in the corpus...'.format(len(word_set)))
     if not include_bracketed:
         word_set = [x for x in word_set if not check_bracketed(x)]

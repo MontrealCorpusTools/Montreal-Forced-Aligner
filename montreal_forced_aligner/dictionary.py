@@ -880,16 +880,6 @@ class Dictionary(object):
                 arc_sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'), '--sort_type=olabel',
                                                   temp_fst_path, output_fst], stderr=log_file)
             arc_sort_proc.communicate()
-        if self.debug:
-            dot_path = os.path.join(self.output_directory, 'L.dot')
-            with open(log_path, 'w') as logf:
-                draw_proc = subprocess.Popen([thirdparty_binary('fstdraw'), '--portrait=true',
-                                              '--isymbols={}'.format(phones_file_path),
-                                              '--osymbols={}'.format(words_file_path), output_fst, dot_path],
-                                             stderr=logf)
-                draw_proc.communicate()
-                dot_proc = subprocess.Popen([thirdparty_binary('dot'), '-Tpdf', '-O', dot_path], stderr=logf)
-                dot_proc.communicate()
 
     def _write_fst_text(self, disambig=False):
         if disambig:

@@ -6,6 +6,7 @@
 .. _`Bootstrapping an IPA dictionary for English using Montreal Forced Aligner 2.0`: https://mmcauliffe.medium.com/creating-english-ipa-dictionary-using-montreal-forced-aligner-2-0-242415dfee32
 
 .. _`Update on Montreal Forced Aligner performance`: https://memcauliffe.com/update-on-montreal-forced-aligner-performance.html
+.. _`Speaker dictionaries and multilingual IPA`: https://memcauliffe.com/speaker-dictionaries-and-multilingual-ipa.html
 
 .. _tutorials:
 
@@ -18,3 +19,4 @@ could be included here, please let me know by `filing an issue`_ and I will add 
 * (Version 1.0) `MFA section in Eleanor Chodroff's excellent corpus phonetics tutorial series`_
 * `Bootstrapping an IPA dictionary for English using Montreal Forced Aligner 2.0`_
 * `Update on Montreal Forced Aligner performance`_
+* `Speaker dictionaries and multilingual IPA`_
