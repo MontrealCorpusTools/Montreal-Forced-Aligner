@@ -492,6 +492,7 @@ class Transcriber(object):
                         speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
                 except KeyError:
                     pass
+                os.makedirs(speaker_directory, exist_ok=True)
                 tiers = {}
                 if self.transcribe_config.no_speakers:
                     speaker = 'speech'
