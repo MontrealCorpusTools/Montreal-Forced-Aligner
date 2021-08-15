@@ -62,11 +62,19 @@ def test_align_multilingual_speaker_dict(multilingual_ipa_corpus_dir, ipa_speake
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-def test_align_split(basic_corpus_dir, english_us_ipa_dictionary, generated_dir, temp_dir,
-                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
+def test_align_multilingual_tg_speaker_dict(multilingual_ipa_tg_corpus_dir, ipa_speaker_dict_path, generated_dir, temp_dir,
+                     basic_align_config,  english_ipa_acoustic_model):
 
-    command = ['align', basic_corpus_dir, english_us_ipa_dictionary, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual'),
+    command = ['align', multilingual_ipa_tg_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual_speaker_dict_tg'),
                '-t', temp_dir, '-c', basic_align_config, '-q', '--clean', '-d']
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+def test_align_split(basic_split_dir, english_us_ipa_dictionary, generated_dir, temp_dir,
+                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
+    audio_dir, text_dir = basic_split_dir
+    command = ['align', text_dir, english_us_ipa_dictionary, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual'),
+               '-t', temp_dir, '-c', basic_align_config, '-q', '--clean', '-d', '--audio_directory', audio_dir]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 

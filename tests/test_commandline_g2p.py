@@ -43,6 +43,19 @@ def test_generate_dict(basic_corpus_dir, sick_g2p_model_path, g2p_sick_output, t
     assert len(d.words) > 0
 
 
+def test_generate_dict_text_only(basic_split_dir, sick_g2p_model_path, g2p_sick_output, temp_dir, g2p_config):
+    if G2P_DISABLED:
+        pytest.skip('No Pynini found')
+    text_dir = basic_split_dir[1]
+    command = ['g2p', sick_g2p_model_path, text_dir, g2p_sick_output,
+               '-t', temp_dir, '-q', '--clean', '-d', '--config_path', g2p_config]
+    args, unknown = parser.parse_known_args(command)
+    run_g2p(args, unknown)
+    assert os.path.exists(g2p_sick_output)
+    d = Dictionary(g2p_sick_output, temp_dir)
+    assert len(d.words) > 0
+
+
 def test_generate_orthography_dict(basic_corpus_dir, orth_sick_output, temp_dir):
     if G2P_DISABLED:
         pytest.skip('No Pynini found')

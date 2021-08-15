@@ -159,7 +159,7 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope='session')
-def basic_split_dir(corpus_root_dir, wav_dir, lab_dir):
+def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, 'split')
     audio_path = os.path.join(path, 'audio')
     text_path = os.path.join(path, 'text')
@@ -173,6 +173,7 @@ def basic_split_dir(corpus_root_dir, wav_dir, lab_dir):
         for name in files:
             shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_audio_dir, name + '.wav'))
             shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_text_dir, name + '.lab'))
+    shutil.copyfile(os.path.join(textgrid_dir, 'acoustic_corpus.TextGrid'), os.path.join(s_text_dir, 'acoustic_corpus_nonsense.TextGrid'))
     return audio_path, text_path
 
 
@@ -187,6 +188,20 @@ def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
         for name in files:
             shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(s_dir, name + '.flac'))
             shutil.copyfile(os.path.join(lab_dir, name + '.txt'), os.path.join(s_dir, name + '.txt'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = os.path.join(corpus_root_dir, 'multilingual')
+    os.makedirs(path, exist_ok=True)
+    names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(s_dir, name + '.flac'))
+            shutil.copyfile(os.path.join(textgrid_dir, name + '.TextGrid'), os.path.join(s_dir, name + '.TextGrid'))
     return path
 
 
@@ -282,6 +297,15 @@ def flac_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     name = '61-70968-0000'
     shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(path, name + '.flac'))
     shutil.copyfile(os.path.join(textgrid_dir, name + '.TextGrid'), os.path.join(path, name + '.TextGrid'))
+    return path
+
+
+@pytest.fixture(scope='session')
+def flac_transcribe_corpus_dir(corpus_root_dir, wav_dir):
+    path = os.path.join(corpus_root_dir, 'flac_transcribe_corpus')
+    os.makedirs(path, exist_ok=True)
+    name = '61-70968-0000'
+    shutil.copyfile(os.path.join(wav_dir, name + '.flac'), os.path.join(path, name + '.flac'))
     return path
 
 

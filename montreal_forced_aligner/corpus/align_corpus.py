@@ -197,8 +197,10 @@ class AlignableCorpus(BaseCorpus):
         all_sound_files = {}
         if self.audio_directory and os.path.exists(self.audio_directory):
             use_audio_directory = True
-            for root, dirs, files in os.walk(self.directory, followlinks=True):
+            for root, dirs, files in os.walk(self.audio_directory, followlinks=True):
                 wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                other_audio_files = {k: os.path.join(root, v) for k, v in other_audio_files.items()}
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
 
@@ -391,17 +393,58 @@ class AlignableCorpus(BaseCorpus):
         text_only_files = []
 
         all_sound_files = {}
+        use_audio_directory = False
         if self.audio_directory and os.path.exists(self.audio_directory):
-            for root, dirs, files in os.walk(self.directory, followlinks=True):
+            use_audio_directory = True
+            for root, dirs, files in os.walk(self.audio_directory, followlinks=True):
                 wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                other_audio_files = {k: os.path.join(root, v) for k, v in other_audio_files.items()}
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
 
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-            all_sound_files.update(other_audio_files)
-            all_sound_files.update(wav_files)
-            relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+            to_parse = []
+            if not use_audio_directory:
+                all_sound_files = {}
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
+                relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+
+                for file_name, f in all_sound_files.items():
+                    wav_path = os.path.join(root, f)
+                    if file_name in lab_files:
+                        lab_name = lab_files[file_name]
+                        transcription_path = os.path.join(root, lab_name)
+
+                    elif file_name in textgrid_files:
+                        tg_name = textgrid_files[file_name]
+                        transcription_path = os.path.join(root, tg_name)
+                    else:
+                        self.no_transcription_files.append(wav_path)
+                        continue
+                    to_parse.append((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                     self.sample_rate, self.punctuation, self.clitic_markers))
+            else:
+                for file_name, f in itertools.chain(lab_files.items(), textgrid_files.items()):
+                    relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+                    if file_name in all_sound_files:
+                        wav_path = all_sound_files[file_name]
+                    else:
+                        continue
+                    if file_name in lab_files:
+                        lab_name = lab_files[file_name]
+                        transcription_path = os.path.join(root, lab_name)
+
+                    elif file_name in textgrid_files:
+                        tg_name = textgrid_files[file_name]
+                        transcription_path = os.path.join(root, tg_name)
+                    else:
+                        self.no_transcription_files.append(wav_path)
+                        continue
+                    to_parse.append((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                     self.sample_rate, self.punctuation, self.clitic_markers))
             if self.parse_text_only_files:
                 for filename, f in itertools.chain(lab_files.items(), textgrid_files.items()):
                     if filename in wav_files:
@@ -409,14 +452,13 @@ class AlignableCorpus(BaseCorpus):
                     text_path = os.path.join(root, f)
                     text_only_files.append((filename, text_path))
 
-            for file_name, f in all_sound_files.items():
-                wav_path = os.path.join(root, f)
-                if file_name in lab_files:
-                    lab_name = lab_files[file_name]
-                    lab_path = os.path.join(root, lab_name)
+            for args in to_parse:
+                file_name = args[0]
+                wav_path = args[1]
+                transcription_path = args[2]
+                if not transcription_path.lower().endswith('.textgrid'):
                     try:
-                        info = parse_lab_file(file_name, wav_path, lab_path, relative_path,
-                                              self.speaker_characters, self.sample_rate, self.punctuation, self.clitic_markers)
+                        info = parse_lab_file(*args)
                         utt_name = info['utt_name']
                         speaker_name = info['speaker_name']
                         wav_info = info['wav_info']
@@ -434,7 +476,7 @@ class AlignableCorpus(BaseCorpus):
                             new_w = re.split(r"[-']", w)
                             self.word_counts.update(new_w + [w])
                         self.text_mapping[utt_name] = ' '.join(words)
-                        self.utt_text_file_mapping[utt_name] = lab_path
+                        self.utt_text_file_mapping[utt_name] = transcription_path
                         self.speak_utt_mapping[speaker_name].append(utt_name)
                         self.utt_wav_mapping[utt_name] = wav_path
                         if 'sox_string' in info:
@@ -449,23 +491,21 @@ class AlignableCorpus(BaseCorpus):
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
                     except TextParseError:
-                        self.decode_error_files.append(lab_path)
+                        self.decode_error_files.append(transcription_path)
 
-                elif file_name in textgrid_files:
-                    tg_name = textgrid_files[file_name]
-                    tg_path = os.path.join(root, tg_name)
+                else:
                     try:
-                        info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path,
-                                                   self.speaker_characters, self.sample_rate,
-                                                   self.punctuation, self.clitic_markers)
+                        info = parse_textgrid_file(*args)
                         wav_info = info['wav_info']
                         self.wav_files.append(file_name)
                         self.speaker_ordering[file_name] = info['speaker_ordering']
                         self.segments.update(info['segments'])
                         self.utt_wav_mapping.update(info['utt_wav_mapping'])
-                        if 'sox_strings' in info:
-                            self.sox_strings.update(info['sox_strings'])
+                        if 'sox_string' in info:
+                            self.sox_strings.update(info['sox_string'])
                         self.utt_text_file_mapping.update(info['utt_text_file_mapping'])
+                        self.utt_file_mapping.update(info['utt_file_mapping'])
+                        self.file_utt_mapping.update(info['file_utt_mapping'])
                         for utt, words in info['text_mapping'].items():
                             words = words.split()
                             for w in words:
@@ -487,11 +527,8 @@ class AlignableCorpus(BaseCorpus):
                     except WavReadError:
                         self.wav_read_errors.append(wav_path)
                     except TextGridParseError as e:
-                        self.textgrid_read_errors[tg_path] = e.error
+                        self.textgrid_read_errors[transcription_path] = e.error
 
-                else:
-                    self.no_transcription_files.append(wav_path)
-                    continue
         if self.parse_text_only_files:
             for file_name, path in text_only_files:
                 if path.lower().endswith('.textgrid'):

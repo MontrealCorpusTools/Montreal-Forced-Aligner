@@ -4,7 +4,7 @@ from PyQt5 import QtCore
 
 from ..corpus.align_corpus import AlignableCorpus
 
-class FunctionWorker(QtCore.QThread):
+class FunctionWorker(QtCore.QThread):  # pragma: no cover
     updateProgress = QtCore.pyqtSignal(object)
     updateMaximum = QtCore.pyqtSignal(object)
     updateProgressText = QtCore.pyqtSignal(str)
@@ -44,7 +44,7 @@ class FunctionWorker(QtCore.QThread):
             self.updateProgress.emit(progress)
 
 
-class ImportCorpusWorker(FunctionWorker):
+class ImportCorpusWorker(FunctionWorker):  # pragma: no cover
     def __init__(self, logger):
         super(FunctionWorker, self).__init__()
         self.directory = None

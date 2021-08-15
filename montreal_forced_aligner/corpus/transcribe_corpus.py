@@ -237,35 +237,6 @@ class TranscribeCorpus(BaseCorpus):
                     self.wav_read_errors.append(wav_path)
                     continue
                 wav_max_time = wav_info['duration']
-                if self.speaker_directories:
-                    speaker_name = os.path.basename(root)
-                else:
-                    if isinstance(self.speaker_characters, int):
-                        speaker_name = f[:self.speaker_characters]
-                    elif self.speaker_characters == 'prosodylab':
-                        speaker_name = f.split('_')[1]
-                    else:
-                        speaker_name = f
-                speaker_name = speaker_name.strip().replace(' ', '_')
-                utt_name = file_name
-                if utt_name in self.utt_wav_mapping:
-                    ind = 0
-                    fixed_utt_name = utt_name
-                    while fixed_utt_name not in self.utt_wav_mapping:
-                        ind += 1
-                        fixed_utt_name = utt_name + '_{}'.format(ind)
-                    utt_name = fixed_utt_name
-                utt_name = utt_name.strip().replace(' ', '_')
-                self.utt_wav_mapping[utt_name] = wav_path
-                if self.no_speakers:
-                    self.speak_utt_mapping[utt_name].append(utt_name)
-                    self.utt_speak_mapping[utt_name] = utt_name
-                else:
-                    self.speak_utt_mapping[speaker_name].append(utt_name)
-                    self.utt_speak_mapping[utt_name] = speaker_name
-                if 'sox_string' in wav_info:
-                    self.sox_strings[utt_name] = wav_info['sox_string']
-                self.file_directory_mapping[utt_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
                 if file_name in textgrid_files and not self.ignore_transcriptions:
                     tg_name = textgrid_files[file_name]
@@ -329,6 +300,39 @@ class TranscribeCorpus(BaseCorpus):
                             self.text_mapping[utt_name] = text
                             self.utt_speak_mapping[utt_name] = speaker_name
                             self.speak_utt_mapping[speaker_name].append(utt_name)
+                    if 'sox_string' in wav_info:
+                        self.sox_strings[file_name] = wav_info['sox_string']
+                else:
+
+                    if self.speaker_directories:
+                        speaker_name = os.path.basename(root)
+                    else:
+                        if isinstance(self.speaker_characters, int):
+                            speaker_name = f[:self.speaker_characters]
+                        elif self.speaker_characters == 'prosodylab':
+                            speaker_name = f.split('_')[1]
+                        else:
+                            speaker_name = f
+                    speaker_name = speaker_name.strip().replace(' ', '_')
+                    utt_name = file_name
+                    if utt_name in self.utt_wav_mapping:
+                        ind = 0
+                        fixed_utt_name = utt_name
+                        while fixed_utt_name not in self.utt_wav_mapping:
+                            ind += 1
+                            fixed_utt_name = utt_name + '_{}'.format(ind)
+                        utt_name = fixed_utt_name
+                    utt_name = utt_name.strip().replace(' ', '_')
+                    self.utt_wav_mapping[utt_name] = wav_path
+                    if self.no_speakers:
+                        self.speak_utt_mapping[utt_name].append(utt_name)
+                        self.utt_speak_mapping[utt_name] = utt_name
+                    else:
+                        self.speak_utt_mapping[speaker_name].append(utt_name)
+                        self.utt_speak_mapping[utt_name] = speaker_name
+                    if 'sox_string' in wav_info:
+                        self.sox_strings[utt_name] = wav_info['sox_string']
+                self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
     def initialize_corpus(self, dictionary=None, feature_config=None):
         if not self.utt_wav_mapping:

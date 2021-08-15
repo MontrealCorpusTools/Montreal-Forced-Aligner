@@ -44,7 +44,8 @@ def generate_dictionary(args, unknown_args=None):
         data_directory = os.path.join(temp_dir, corpus_name)
 
         corpus = AlignableCorpus(input_dir, data_directory, num_jobs=args.num_jobs, use_mp=(not args.disable_mp),
-                                 punctuation=g2p_config.punctuation, clitic_markers=g2p_config.clitic_markers)
+                                 punctuation=g2p_config.punctuation, clitic_markers=g2p_config.clitic_markers,
+                                 parse_text_only_files=True)
 
         word_set = get_word_set(corpus, args.include_bracketed)
     else:
@@ -73,6 +74,7 @@ def get_word_set(corpus, include_bracketed=False):
     word_set = corpus.word_set
     decode_error_files = []
     textgrid_read_errors = {}
+
     for file_path in corpus.transcriptions_without_wavs:
         if file_path.endswith('.lab'):
             try:

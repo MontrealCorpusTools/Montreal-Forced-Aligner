@@ -23,7 +23,7 @@ from .widgets import UtteranceListWidget, UtteranceDetailWidget, InformationWidg
 from .workers import ImportCorpusWorker
 
 
-class ColorEdit(QtWidgets.QPushButton):
+class ColorEdit(QtWidgets.QPushButton): # pragma: no cover
     def __init__(self, color, parent=None):
         super(ColorEdit, self).__init__(parent=parent)
         self.color = color
@@ -44,7 +44,7 @@ class ColorEdit(QtWidgets.QPushButton):
             self.updateIcon()
 
 
-class OptionsDialog(QtWidgets.QDialog):
+class OptionsDialog(QtWidgets.QDialog): # pragma: no cover
     def __init__(self, parent=None):
         super(OptionsDialog, self).__init__(parent=parent)
         self.base_config = {}
@@ -198,7 +198,7 @@ class OptionsDialog(QtWidgets.QDialog):
         return out
 
 
-class Application(QtWidgets.QApplication):
+class Application(QtWidgets.QApplication): # pragma: no cover
     def notify(self, receiver, e):
         #if e and e.type() == QtCore.QEvent.KeyPress:
         #    if e.key() == QtCore.Qt.Key_Tab:

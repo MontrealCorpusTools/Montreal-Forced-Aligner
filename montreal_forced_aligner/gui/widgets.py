@@ -454,7 +454,7 @@ class TranscriptionWidget(QtWidgets.QTextEdit):  # pragma: no cover
         super(TranscriptionWidget, self).keyPressEvent(event)
 
 
-class SelectedUtterance(pg.LinearRegionItem):
+class SelectedUtterance(pg.LinearRegionItem):  # pragma: no cover
     dragFinished = QtCore.pyqtSignal(object)
     def mouseDragEvent(self, ev):
         if ev.button() != QtCore.Qt.LeftButton:
@@ -472,7 +472,7 @@ class SelectedUtterance(pg.LinearRegionItem):
 def construct_text_region(utt, view_min, view_max, point_min, point_max, sr, speaker_ind,
                           selected_range_color='blue', selected_line_color='g',
                           break_line_color=1.0, text_color=1.0, interval_background_color=0.25,
-                          plot_text_font=12, plot_text_width=400):
+                          plot_text_font=12, plot_text_width=400):  # pragma: no cover
     y_range = point_max - point_min
     b_s = utt['begin'] * sr
     e_s = utt['end'] * sr
@@ -517,7 +517,7 @@ def construct_text_region(utt, view_min, view_max, point_min, point_max, sr, spe
 
 def construct_text_box(utt, view_min, view_max, point_min, point_max, sr, speaker_ind,
                        break_line_color=1.0, text_color=1.0, interval_background_color=0.25,
-                       plot_text_font=12, plot_text_width=400):
+                       plot_text_font=12, plot_text_width=400):  # pragma: no cover
     y_range = point_max - point_min
     b_s = utt['begin'] * sr
     e_s = utt['end'] * sr

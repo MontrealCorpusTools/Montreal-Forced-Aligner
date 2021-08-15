@@ -45,23 +45,6 @@ def parse_ctm(ctm_path, corpus, dictionary, mode='word'):
                                     if i_end > e:
                                         e = i_end
                                 cur_ind += 1
-                            if b == 1000000 or e == -1:
-                                initial, final = re.split(r'[{}]'.format(dictionary.clitic_markers), word, maxsplit=1)
-                                if any(x in final for x in dictionary.clitic_markers):
-                                    final = dictionary.split_clitics(final)
-                                else:
-                                    final = [final]
-                                for clitic in dictionary.clitic_markers:
-                                    if initial + clitic in dictionary.clitic_set:
-                                        print('FOUND INITIAL')
-                                        to_return = [initial + clitic] + final
-                                        initial = initial + clitic
-
-                                    elif clitic+ final[0] in dictionary.clitic_set:
-                                        print('FOUND FINAL')
-                                        to_return = [initial] + final
-                                        final[0] = clitic + final[0]
-                                raise Exception()
                             lab = [b, e, word]
                             actual_labels.append(lab)
                         file_dict[filename][speaker].extend(actual_labels)

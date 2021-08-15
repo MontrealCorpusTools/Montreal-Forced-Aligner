@@ -141,6 +141,22 @@ def compose_g_carpa(in_carpa_path, temp_carpa_path, dictionary, carpa_path, log_
     os.remove(temp_carpa_path)
 
 class Transcriber(object):
+    """
+    Class for performing transcription.
+
+    Parameters
+    ----------
+    corpus : :class:`~montreal_forced_aligner.corpus.TranscribeCorpus` or :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
+        Corpus to transcribe
+    dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
+        Pronunciation dictionary to use as a lexicon
+    acoustic_model : :class:`~montreal_forced_aligner.models.AcousticModel`
+        Acoustic model to use
+    language_model : :class:`~montreal_forced_aligner.models.LanguageModel`
+        Language model to use
+    transcribe_config : :class:`~montreal_forced_aligner.config.TranscribeConfig`
+        Language model to use
+    """
     min_language_model_weight = 7
     max_language_model_weight = 17
     word_insertion_penalties = [0, 0.5, 1.0]
@@ -356,7 +372,7 @@ class Transcriber(object):
         os.makedirs(self.log_dir,exist_ok=True)
         try:
             transcribe(self)
-            if self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
+            if self.acoustic_model.feature_config.fmllr and not self.transcribe_config.no_speakers:
                 self.logger.info('Performing speaker adjusted transcription...')
                 transcribe_fmllr(self)
         except Exception as e:

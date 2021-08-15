@@ -655,9 +655,11 @@ def transcribe_fmllr(transcriber):
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
         out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(best[0], best[1]))
-        for j in range(num_jobs):
-            tra_path = os.path.join(out_dir, 'tra.{}'.format(j))
-            saved_tra_path = os.path.join(fmllr_directory, 'tra.{}'.format(j))
+        for filename in os.listdir(out_dir):
+            if not filename.startswith('tra'):
+                continue
+            tra_path = os.path.join(out_dir, filename)
+            saved_tra_path = os.path.join(fmllr_directory, filename)
             shutil.copyfile(tra_path, saved_tra_path)
     else:
         jobs = [(model_directory, fmllr_directory, x, config, fmllr_directory, None, None, transcriber.dictionaries_for_job(x))

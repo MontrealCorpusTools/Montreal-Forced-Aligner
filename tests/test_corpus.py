@@ -7,9 +7,11 @@ from montreal_forced_aligner.config.train_config import train_yaml_to_config
 
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature_config):
-    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
-    dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
+    dictionary = Dictionary(basic_dict_path, output_directory)
+    dictionary.write()
     c = AlignableCorpus(basic_corpus_dir, output_directory, use_mp=True)
     c.initialize_corpus(dictionary)
     default_feature_config.generate_features(c)
@@ -17,10 +19,13 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature
 
 
 def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config):
+    output_directory = os.path.join(generated_dir, 'basic')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
-    output_directory = os.path.join(generated_dir, 'basic')
     c = AlignableCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
+    print(c.no_transcription_files)
     assert len(c.no_transcription_files) == 0
     c.initialize_corpus(dictionary)
     default_feature_config.generate_features(c)
@@ -31,6 +36,8 @@ def test_alignable_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_di
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
     c = AlignableCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
     assert len(c.no_transcription_files) == 0
     c.initialize_corpus(dictionary)
@@ -48,6 +55,8 @@ def test_transcribe_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_d
     dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, 'basic'))
     dictionary.write()
     output_directory = os.path.join(generated_dir, 'basic')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
     c = TranscribeCorpus(basic_corpus_txt_dir, output_directory, use_mp=False)
     c.initialize_corpus(dictionary)
     default_feature_config.generate_features(c)
@@ -61,12 +70,16 @@ def test_transcribe_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_d
 
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, 'extra')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
     corpus = AlignableCorpus(extra_corpus_dir, output_directory, num_jobs=2, use_mp=False)
     corpus.initialize_corpus(sick_dict)
 
 
 def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'stereo')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = AlignableCorpus(stereo_corpus_dir, temp, use_mp=False)
@@ -77,6 +90,8 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
 
 def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'stereo_tg')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = AlignableCorpus(stereo_corpus_short_tg_dir, temp, use_mp=False)
@@ -87,6 +102,8 @@ def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, temp_dir, 
 
 def test_flac(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = AlignableCorpus(flac_corpus_dir, temp, use_mp=False)
@@ -95,8 +112,49 @@ def test_flac(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config
     assert d.get_feat_dim(default_feature_config) == 39
 
 
+
+def test_audio_directory(basic_dict_path, basic_split_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'audio_dir_test')
+    audio_dir, text_dir = basic_split_dir
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(text_dir, temp, use_mp=False, audio_directory=audio_dir)
+    assert len(d.no_transcription_files) == 0
+    assert len(d.utt_wav_mapping) > 0
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(text_dir, temp, use_mp=True, audio_directory=audio_dir)
+    assert len(d.no_transcription_files) == 0
+    assert len(d.utt_wav_mapping) > 0
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac_mp(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_corpus_dir, temp, use_mp=True)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
 def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = AlignableCorpus(flac_tg_corpus_dir, temp, use_mp=False)
@@ -105,8 +163,22 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_
     assert d.get_feat_dim(default_feature_config) == 39
 
 
+def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = AlignableCorpus(flac_tg_corpus_dir, temp, use_mp=True)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
 def test_flac_tg_transcribe(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
     dictionary.write()
     d = TranscribeCorpus(flac_tg_corpus_dir, temp, use_mp=False)
@@ -114,9 +186,42 @@ def test_flac_tg_transcribe(basic_dict_path, flac_tg_corpus_dir, temp_dir, defau
     default_feature_config.generate_features(d)
     assert d.get_feat_dim(default_feature_config) == 39
 
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = TranscribeCorpus(flac_tg_corpus_dir, temp, use_mp=True)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+
+def test_flac_transcribe(basic_dict_path, flac_transcribe_corpus_dir, temp_dir, default_feature_config):
+    temp = os.path.join(temp_dir, 'flac')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+    d = TranscribeCorpus(flac_transcribe_corpus_dir, temp, use_mp=True)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
+    dictionary = Dictionary(basic_dict_path, os.path.join(temp, 'basic'))
+    dictionary.write()
+
+    d = TranscribeCorpus(flac_transcribe_corpus_dir, temp, use_mp=False)
+    d.initialize_corpus(dictionary)
+    default_feature_config.generate_features(d)
+    assert d.get_feat_dim(default_feature_config) == 39
+
 
 def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, '24bit')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
 
     c = TranscribeCorpus(transcribe_corpus_24bit_dir, temp, use_mp=False)
     assert len(c.unsupported_bit_depths) == 0
@@ -128,6 +233,8 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config
 
 def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, 'short_segments')
+    if os.path.exists(temp):
+        shutil.rmtree(temp)
     dictionary = Dictionary(basic_dict_path, temp)
     dictionary.write()
     corpus = AlignableCorpus(shortsegments_corpus_dir, temp, use_mp=False)
@@ -146,7 +253,8 @@ def test_short_segments(basic_dict_path, shortsegments_corpus_dir, temp_dir, def
 
 def test_speaker_groupings(large_prosodylab_format_directory, temp_dir, large_dataset_dictionary, default_feature_config):
     output_directory = os.path.join(temp_dir, 'large')
-    shutil.rmtree(output_directory, ignore_errors=True)
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
     d = Dictionary(large_dataset_dictionary, output_directory)
     d.write()
     c = AlignableCorpus(large_prosodylab_format_directory, output_directory, use_mp=False)
