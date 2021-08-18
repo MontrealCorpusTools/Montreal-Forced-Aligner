@@ -15,6 +15,7 @@ Forced Alignment
 
    "align", "Perform forced alignment with a pretrained model", :ref:`pretrained_alignment`
    "train", "Train an acoustic model and export resulting alignment", :ref:`trained_alignment`
+   "adapt", "Adapt a pretrained acoustic model on a new dataset", :ref:`adapting_model`
    "validate", "Validate a corpus to ensure there are no issues with the data format", :ref:`validating_data`
    "train_dictionary", "Estimate pronunciation probabilities from aligning a corpus", :ref:`training_dictionary`
 
