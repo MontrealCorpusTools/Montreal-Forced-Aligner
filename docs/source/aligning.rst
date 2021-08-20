@@ -212,7 +212,7 @@ Steps to align:
 
   .. code-block:: bash
 
-     mfa adapt corpus_directory dictionary_path output_model_path output_path
+     mfa align corpus_directory dictionary_path output_model_path output_path
 
 
 .. note::
