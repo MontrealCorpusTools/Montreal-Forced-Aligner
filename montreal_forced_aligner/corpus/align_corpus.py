@@ -334,7 +334,7 @@ class AlignableCorpus(BaseCorpus):
                     if self.stopped.stop_check():
                         continue
                     if path.lower().endswith('.textgrid'):
-                        tg = textgrid.openTextgrid(path)
+                        tg = textgrid.openTextgrid(path, includeEmptyIntervals=False)
                         for i, tier_name in enumerate(tg.tierNameList):
                             ti = tg.tierDict[tier_name]
                             if not isinstance(ti, textgrid.IntervalTier):
@@ -604,7 +604,7 @@ class AlignableCorpus(BaseCorpus):
                 if self.stopped:
                     return
                 if path.lower().endswith('.textgrid'):
-                    tg = textgrid.openTextgrid(path)
+                    tg = textgrid.openTextgrid(path, includeEmptyIntervals=False)
                     for i, tier_name in enumerate(tg.tierNameList):
                         ti = tg.tierDict[tier_name]
                         if not isinstance(ti, textgrid.IntervalTier):

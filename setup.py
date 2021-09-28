@@ -106,7 +106,7 @@ if __name__ == '__main__':
               'pyyaml',
               'librosa',
               'requests',
-              'sklearn',
+              'scikit-learn==0.24.1',
               'joblib'
           ],
           python_requires='>=3.8',
