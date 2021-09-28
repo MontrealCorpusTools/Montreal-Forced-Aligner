@@ -118,13 +118,3 @@ def run_create_segments(args, unknown=None):
 
     validate_args(args)
     create_segments(args, unknown)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import create_segments_parser, fix_path, unfix_path
-
-    create_segments_args, unknown_args = create_segments_parser.parse_known_args()
-    fix_path()
-    run_create_segments(create_segments_args, unknown_args)
-    unfix_path()

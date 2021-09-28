@@ -25,11 +25,3 @@ def run_thirdparty(args):
         validate_kaldi_binaries()
     elif args.command == 'kaldi':
         collect_kaldi_binaries(args.local_directory)
-
-
-if __name__ == '__main__':
-    from montreal_forced_aligner.command_line.mfa import thirdparty_parser
-
-    thirdparty_args = thirdparty_parser.parse_args()
-
-    run_thirdparty(thirdparty_args)

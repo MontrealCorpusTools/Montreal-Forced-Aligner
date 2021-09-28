@@ -36,7 +36,7 @@ install:
   - which python
   - which sox
   - conda list
-  - python -m montreal_forced_aligner.command_line.thirdparty download
+  - python -m montreal_forced_aligner.command_line.mfa thirdparty download
   - ls $HOME/Documents/MFA/thirdparty/bin -al
   - $HOME/Documents/MFA/thirdparty/bin/compute-mfcc-feats --help
   - $HOME/Documents/MFA/thirdparty/bin/ivector-extractor-est --help

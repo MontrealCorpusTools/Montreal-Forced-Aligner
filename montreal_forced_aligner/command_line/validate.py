@@ -102,13 +102,3 @@ def run_validate_corpus(args, unknown=None, downloaded_acoustic_models=None, dow
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     validate_corpus(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import validate_parser, fix_path, unfix_path, acoustic_languages, \
-        dict_languages
-    validate_args, unknown_args = validate_parser.parse_known_args()
-
-    fix_path()
-    run_validate_corpus(validate_args, unknown_args, acoustic_languages, dict_languages)
-    unfix_path()

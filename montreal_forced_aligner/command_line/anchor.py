@@ -15,10 +15,3 @@ def run_anchor(args):  # pragma: no cover
         app.setActiveWindow(main)
         main.show()
         sys.exit(app.exec_())
-
-
-if __name__ == '__main__':  # pragma: no cover
-    from montreal_forced_aligner.command_line.mfa import fix_path, unfix_path
-    fix_path()
-    run_anchor(args=None)
-    unfix_path()

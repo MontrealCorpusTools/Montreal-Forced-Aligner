@@ -211,13 +211,3 @@ def run_transcribe_corpus(args, unknown=None, downloaded_acoustic_models=None, d
     validate_args(args, downloaded_acoustic_models, download_dictionaries, downloaded_language_models)
     transcribe_corpus(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import transcribe_parser, fix_path, unfix_path, acoustic_languages, \
-        lm_languages, dict_languages
-
-    transcribe_args, unknown_args = transcribe_parser.parse_known_args()
-    fix_path()
-    run_transcribe_corpus(transcribe_args, unknown_args, acoustic_languages, dict_languages, lm_languages)
-    unfix_path()

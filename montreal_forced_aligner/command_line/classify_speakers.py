@@ -141,12 +141,3 @@ def run_classify_speakers(args, unknown=None, downloaded_ivector_extractors=None
     validate_args(args, downloaded_ivector_extractors)
     classify_speakers(args)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import classify_speakers_parser, fix_path, unfix_path, ivector_languages
-
-    classify_speakers_args, unknown_args = classify_speakers_parser.parse_known_args()
-    fix_path()
-    run_classify_speakers(classify_speakers_args, unknown_args, ivector_languages)
-    unfix_path()

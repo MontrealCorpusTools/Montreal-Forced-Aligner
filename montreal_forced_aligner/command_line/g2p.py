@@ -95,12 +95,3 @@ def run_g2p(args, unknown=None, pretrained=None):
         pretrained = get_available_g2p_languages()
     validate(args, pretrained)
     generate_dictionary(args, unknown)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    from montreal_forced_aligner.command_line.mfa import g2p_parser, fix_path, unfix_path, g2p_languages
-    g2p_args, unknown_args = g2p_parser.parse_known_args()
-
-    fix_path()
-    run_g2p(g2p_args, unknown_args, g2p_languages)
-    unfix_path()

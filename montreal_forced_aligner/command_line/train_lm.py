@@ -99,12 +99,3 @@ def run_train_lm(args, unknown=None, download_dictionaries=None):
     validate_args(args, download_dictionaries)
     train_lm(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_lm_parser, fix_path, unfix_path, dict_languages
-    args, unknown_args = train_lm_parser.parse_known_args()
-
-    fix_path()
-    run_train_lm(args, unknown_args, dict_languages)
-    unfix_path()

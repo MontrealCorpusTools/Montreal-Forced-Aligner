@@ -188,14 +188,3 @@ def run_adapt_model(args, unknown_args=None, downloaded_acoustic_models=None, do
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     adapt_model(args, unknown_args)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import adapt_parser, fix_path, unfix_path, acoustic_languages, \
-        dict_languages
-
-    adapt_args, unknown = adapt_parser.parse_known_args()
-    fix_path()
-    run_adapt_model(adapt_args, unknown, acoustic_languages, dict_languages)
-    unfix_path()

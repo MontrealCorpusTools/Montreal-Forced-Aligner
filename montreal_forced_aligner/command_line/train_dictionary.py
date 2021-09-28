@@ -163,13 +163,3 @@ def run_train_dictionary(args, unknown=None, downloaded_acoustic_models=None, do
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     train_dictionary(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_dictionary_parser, fix_path, unfix_path, \
-        acoustic_languages, dict_languages
-
-    align_args, unknown_args = train_dictionary_parser.parse_known_args()
-    fix_path()
-    run_train_dictionary(align_args, unknown_args, acoustic_languages, dict_languages)
-    unfix_path()
