@@ -26,6 +26,7 @@ def train_lm(args, unknown_args=None):
         train_config = train_lm_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_lm()
+    train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_args(unknown_args)
     corpus_name = os.path.basename(args.source_path)
@@ -43,9 +44,13 @@ def train_lm(args, unknown_args=None):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
 
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     if not args.source_path.lower().endswith('.arpa'):
-        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=args.num_jobs>1,
+        source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=train_config.use_mp,
                                  parse_text_only_files=True, debug=args.debug)
         if args.dictionary_path is not None:
             dictionary = Dictionary(args.dictionary_path, data_directory, debug=args.debug, word_set=source.word_set)

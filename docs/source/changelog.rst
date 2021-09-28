@@ -7,6 +7,16 @@
 Changelog
 =========
 
+2.0.0b0
+-------
+
+Beta release!
+
+- Fixed an issue in transcription when using a .ARPA language model rather than one built in MFA
+- Fixed an issue in parsing filenames containing spaces
+- Added a ``mfa configure`` command to set global options.  Users can now specify a new default for arguments like ``--num_jobs``, ``--clean`` or ``--temp_directory``
+
+
 2.0.0a24
 --------
 

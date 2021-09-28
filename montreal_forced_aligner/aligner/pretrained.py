@@ -1,10 +1,11 @@
 import os
 import re
+import time
 from collections import Counter
 
 from .base import BaseAligner
 from ..multiprocessing import (align, convert_ali_to_textgrids, compile_train_graphs,
-                               calc_fmllr, generate_pronunciations)
+                               calc_fmllr, generate_pronunciations, compile_information)
 from ..exceptions import KaldiProcessingError
 from ..helper import log_kaldi_errors, load_scp
 
@@ -62,16 +63,12 @@ class PretrainedAligner(BaseAligner):
         self.acoustic_model.export_model(self.align_directory)
         log_dir = os.path.join(self.align_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
-
+        self.align_config.logger = self.logger
         self.logger.info('Done with setup!')
 
     @property
     def model_directory(self):
         return os.path.join(self.temp_directory, 'model')
-
-    @property
-    def align_directory(self):
-        return os.path.join(self.temp_directory, 'align')
 
     def setup(self):
         self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
@@ -86,48 +83,25 @@ class PretrainedAligner(BaseAligner):
         try:
             compile_train_graphs(self.align_directory, self.dictionary.output_directory,
                                  self.align_config.data_directory, self.corpus.num_jobs, self)
-            self.acoustic_model.feature_config.generate_features(self.corpus)
             log_dir = os.path.join(self.align_directory, 'log')
             os.makedirs(log_dir, exist_ok=True)
-            self.logger.info('Performing first-pass alignment...')
+
             align('final', self.align_directory, self.align_config.data_directory,
                   self.dictionary.optional_silence_csl,
                   self.corpus.num_jobs, self.align_config)
-
-            log_like = 0
-            tot_frames = 0
-            for j in range(self.corpus.num_jobs):
-                score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
-                scores = load_scp(score_path, data_type=float)
-                for k, v in scores.items():
-                    log_like += v
-                    tot_frames += self.corpus.utterance_lengths[k]
-            if tot_frames:
-                self.logger.debug('Prior to SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
-            else:
-                self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
+            unaligned, average_log_like = compile_information(self.align_directory, self.corpus, self.corpus.num_jobs, self)
+            self.logger.debug(f'Prior to SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
             if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
                     and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
-                self.logger.info('Calculating fMLLR for speaker adaptation...')
                 calc_fmllr(self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl, self.corpus.num_jobs, self.align_config, initial=True, iteration='final')
-                self.logger.info('Performing second-pass alignment...')
                 align('final', self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl,
                       self.corpus.num_jobs, self.align_config)
 
-                log_like = 0
-                tot_frames = 0
-                for j in range(self.corpus.num_jobs):
-                    score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
-                    scores = load_scp(score_path, data_type=float)
-                    for k, v in scores.items():
-                        log_like += v
-                        tot_frames += self.corpus.utterance_lengths[k]
-                if tot_frames:
-                    self.logger.debug('Following SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
-                else:
-                    self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
+                unaligned, average_log_like = compile_information(self.align_directory, self.corpus, self.corpus.num_jobs, self)
+                self.logger.debug(f'Following SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
+
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
@@ -137,15 +111,6 @@ class PretrainedAligner(BaseAligner):
             raise
         with open(done_path, 'w'):
             pass
-
-    def export_textgrids(self, output_directory):
-        """
-        Export a TextGrid file for every sound file in the dataset
-        """
-        ali_directory = self.align_directory
-        convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs, self)
-        self.compile_information(ali_directory, output_directory)
 
     def generate_pronunciations(self, output_path, calculate_silence_probs=False, min_count=1):
         pron_counts, utt_mapping = generate_pronunciations(self.align_config, self.align_directory, self.dictionary, self.corpus, self.corpus.num_jobs)

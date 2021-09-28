@@ -29,6 +29,8 @@ class TrainableAligner(BaseAligner):
         self.pretrained_aligner = pretrained_aligner
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
                                                call_back, debug, verbose, logger)
+        for trainer in self.training_config.training_configs:
+            trainer.logger = self.logger
 
     def setup(self):
         if self.dictionary is not None:
@@ -74,11 +76,6 @@ class TrainableAligner(BaseAligner):
             previous = trainer
         previous.align(None)
 
-    def export_textgrids(self, output_directory):
-        """
-        Export a TextGrid file for every sound file in the dataset
-        """
-        ali_directory = self.training_config.values()[-1].align_directory
-        convert_ali_to_textgrids(self.align_config, output_directory, ali_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs, self)
-        self.compile_information(ali_directory, output_directory)
+    @property
+    def align_directory(self):
+        return self.training_config.values()[-1].align_directory

@@ -3,30 +3,30 @@
 
 .. _annotator:
 
-*********
-Annotator
-*********
+**********
+MFA Anchor
+**********
+
+Anchor is a GUI utility for MFA that allows for users to modify transcripts and add/change entries in the pronunciation dictionary to interactively fix out of vocabulary issues.
 
 .. attention::
 
-   The GUI annotator is under development and is currently pre-alpha. Use at your own risk and please use version control
+   Anchor is under development and is currently pre-alpha. Use at your own risk and please use version control
    or back up any critical data.
 
-Currently the functionality of the Annotator GUI allows for users to modify transcripts and add/change
-entries in the pronunciation dictionary to interactively fix out of vocabulary issues.
-
-.. warning::
-
-   If you are trying to use the annotator from Windows, note that some issues will be present as native Windows use is not
-   fully supported. Specifically if you need G2P functionality, that does not function on Windows due to its dependencies
-   not being available (Pynini, Opengrm-ngram, OpenFst).
 
 To use the annotator, first follow the instructions in :ref:`installation`.  Once MFA is installed and thirdparty binaries
 have been downloaded, run the following command:
 
 .. code-block:: bash
 
-    mfa annotator
+    mfa anchor
+
+.. warning::
+
+   If you are trying to use the annotator from Windows, note that some issues will be present as native Windows use is not
+   fully supported. Specifically if you need G2P functionality, that does not function on Windows due to its dependencies
+   not being available (Pynini, Opengrm-ngram, OpenFst).
 
 Initial setup
 =============
@@ -132,3 +132,7 @@ The current available shortcuts are:
 
 
 
+Attribution
+===========
+
+The MFA annotator utility uses icons from FontAwesome

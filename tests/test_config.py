@@ -28,6 +28,22 @@ def test_load_align(config_directory, mono_align_config_path):
         align = align_yaml_to_config(path)
 
 
+def test_load_basic_train(config_directory, basic_train_config):
+    training_config, align_config = train_yaml_to_config(basic_train_config)
+    assert align_config.beam == 100
+    assert align_config.retry_beam == 400
+    assert align_config.align_options['beam'] == 100
+    assert align_config.align_options['retry_beam'] == 400
+
+    for trainer in training_config.training_configs:
+        assert trainer.beam == 100
+        assert trainer.retry_beam == 400
+        assert trainer.align_options['beam'] == 100
+        assert trainer.align_options['retry_beam'] == 400
+
+
+
+
 def test_load_mono_train(config_directory, mono_train_config_path):
     train, align = train_yaml_to_config(mono_train_config_path)
     for t in train.training_configs:

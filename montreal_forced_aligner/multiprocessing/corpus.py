@@ -3,7 +3,8 @@ from queue import Empty
 import traceback
 import sys
 import os
-from praatio import tgio
+import time
+from praatio import textgrid
 
 from ..helper import load_text
 
@@ -33,9 +34,10 @@ def parse_wav_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
     else:
         speaker_name = utt_name
     speaker_name = speaker_name.strip().replace(' ', '_')
-    utt_name = utt_name.strip().replace(' ', '_')
-    return_dict = {'utt_name': utt_name, 'speaker_name': speaker_name, 'wav_path': wav_path,
-            'wav_info': wav_info, 'relative_path': relative_path}
+
+    new_utt_name = utt_name.strip().replace(' ', '_space_')
+    return_dict = {'utt_name': new_utt_name, 'speaker_name': speaker_name, 'wav_path': wav_path,
+            'wav_info': wav_info, 'relative_path': relative_path, 'file_name': utt_name}
     if 'sox_string' in wav_info:
         return_dict['sox_string'] = wav_info['sox_string']
     return return_dict
@@ -62,7 +64,7 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
         speaker_name = utt_name
     speaker_name = speaker_name.strip().replace(' ', '_')
 
-    new_utt_name = utt_name.strip().replace(' ', '_')
+    new_utt_name = utt_name.strip().replace(' ', '_space_')
 
     if not new_utt_name.startswith(speaker_name):
         new_utt_name = speaker_name + '_' + new_utt_name  # Fix for some Kaldi issues in needing sorting by speaker
@@ -76,16 +78,18 @@ def parse_lab_file(utt_name, wav_path, lab_path, relative_path, speaker_characte
 
 
 def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, speaker_characters, sample_rate=16000,
-                        punctuation=None, clitic_markers=None):
+                        punctuation=None, clitic_markers=None, stop_check=None):
     file_name = recording_name
     wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
     wav_max_time = wav_info['duration']
     try:
-        tg = tgio.openTextgrid(textgrid_path)
+        tg = textgrid.openTextgrid(textgrid_path, includeEmptyIntervals=False)
     except Exception as e:
         exc_type, exc_value, exc_traceback = sys.exc_info()
         raise TextGridParseError(textgrid_path,
                                  '\n'.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+    if stop_check is not None and stop_check.stop_check():
+        return
     n_channels = wav_info['num_channels']
     num_tiers = len(tg.tierNameList)
     if num_tiers == 0:
@@ -115,19 +119,21 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
         ti = tg.tierDict[tier_name]
         if tier_name.lower() == 'notes':
             continue
-        if not isinstance(ti, tgio.IntervalTier):
+        if not isinstance(ti, textgrid.IntervalTier):
             continue
         if not speaker_characters:
             speaker_name = tier_name.strip().replace(' ', '_')
             speaker_ordering.append(speaker_name)
         for begin, end, text in ti.entryList:
+            if stop_check is not None and stop_check.stop_check():
+                return
             text = text.lower().strip()
             words = parse_transcription(text, punctuation, clitic_markers)
             if not words:
                 continue
             begin, end = round(begin, 4), round(end, 4)
             end = min(end, wav_max_time)
-            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
+            utt_name = '{}_{}_{}_{}'.format(file_name, speaker_name, begin, end)
             utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
             utt_name = utt_name.replace('_', '-')
             utt_wav_mapping[file_name] = wav_path
@@ -161,29 +167,22 @@ def parse_textgrid_file(recording_name, wav_path, textgrid_path, relative_path, 
 
 
 class CorpusProcessWorker(mp.Process):
-    def __init__(self, job_q, return_dict, return_q, stopped, processed_counter, max_counter, initializing=True):
+    def __init__(self, job_q, return_dict, return_q, stopped, finished_adding):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
         self.return_q = return_q
         self.stopped = stopped
-        self.processed_counter = processed_counter
-        self.max_counter = max_counter
-        self.initializing = initializing
+        self.finished_adding = finished_adding
 
     def run(self):
         while True:
             try:
                 arguments = self.job_q.get(timeout=1)
-                self.processed_counter.increment()
             except Empty as error:
-                if self.initializing and not self.stopped.stop_check():
-                    if self.processed_counter.value() >= self.max_counter.value():
-                        break
-                    continue
-                else:
+                if self.finished_adding.stop_check():
                     break
-            self.initializing = False
+                continue
             self.job_q.task_done()
             if self.stopped.stop_check():
                 continue
@@ -194,7 +193,7 @@ class CorpusProcessWorker(mp.Process):
                 if transcription_path is None:
                     info = parse_wav_file(*arguments)
                 elif transcription_path.lower().endswith('.textgrid'):
-                    info = parse_textgrid_file(*arguments)
+                    info = parse_textgrid_file(*arguments, stop_check=self.stopped)
                 else:
                     info = parse_lab_file(*arguments)
                 self.return_q.put(info)

@@ -46,10 +46,30 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.split_clitics('m\'m\'appelle') == ['m\'', 'm\'', 'appelle']
     assert d.split_clitics('c\'est') == ['c\'est']
     assert d.split_clitics('m\'c\'est') == ['m\'', 'c\'est']
-    assert d.split_clitics('purple-people-eater') == ['purple-people-eater']
+    assert d.split_clitics('purple-people-eater') == ['purple', 'people', 'eater']
     assert d.split_clitics('m\'appele') == ['m\'', 'appele']
     assert d.split_clitics('m\'ving-sic') == ["m'", 'ving', 'sic']
-    assert d.split_clitics('flying\'purple-people-eater') == ['flying\'purple-people-eater']
+    assert d.split_clitics('flying\'purple-people-eater') == ['flying\'purple', 'people', 'eater']
+
+    assert d.to_int('aujourd') == [d.oov_int]
+    assert d.to_int('aujourd\'hui') == [d.words_mapping['aujourd\'hui']]
+    assert d.to_int('vingt-six') == [d.words_mapping['vingt'], d.words_mapping['six']]
+    assert d.to_int('m\'appelle') == [d.words_mapping['m\''], d.words_mapping['appelle']]
+    assert d.to_int('m\'m\'appelle') == [d.words_mapping['m\''], d.words_mapping['m\''], d.words_mapping['appelle']]
+    assert d.to_int('c\'est') == [d.words_mapping['c\'est']]
+    assert d.to_int('m\'c\'est') == [d.words_mapping['m\''], d.words_mapping['c\'est']]
+    assert d.to_int('purple-people-eater') == [d.oov_int]
+    assert d.to_int('m\'appele') == [d.words_mapping['m\''], d.oov_int]
+    assert d.to_int('m\'ving-sic') == [d.words_mapping['m\''], d.oov_int, d.oov_int]
+    assert d.to_int('flying\'purple-people-eater') == [d.oov_int]
+
+
+def test_english_clitics(english_pretrained_dictionary, generated_dir):
+    d = Dictionary(english_pretrained_dictionary, os.path.join(generated_dir, 'english_clitic_test'))
+    d.write()
+    assert d.split_clitics("l'orme's") == ["l'", "orme's"]
+
+    assert d.to_int("l'orme's") == [d.words_mapping["l'"], d.words_mapping["orme's"]]
 
 
 def test_devanagari():

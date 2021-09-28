@@ -1,13 +1,7 @@
 import os
-import sys
-import traceback
 import shutil
 
-from praatio import tgio
-
-from montreal_forced_aligner.multiprocessing.corpus import parse_transcription
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
-from montreal_forced_aligner.helper import load_text
 from montreal_forced_aligner.config.g2p_config import load_basic_g2p_config, g2p_yaml_to_config
 
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
@@ -33,6 +27,7 @@ def generate_dictionary(args, unknown_args=None):
         g2p_config = g2p_yaml_to_config(args.config_path)
     else:
         g2p_config = load_basic_g2p_config()
+    g2p_config.use_mp = not args.disable_mp
     if unknown_args:
         g2p_config.update_from_args(unknown_args)
     if os.path.isdir(args.input_path):
@@ -43,7 +38,7 @@ def generate_dictionary(args, unknown_args=None):
             corpus_name = os.path.basename(args.input_path)
         data_directory = os.path.join(temp_dir, corpus_name)
 
-        corpus = AlignableCorpus(input_dir, data_directory, num_jobs=args.num_jobs, use_mp=(not args.disable_mp),
+        corpus = AlignableCorpus(input_dir, data_directory, num_jobs=args.num_jobs, use_mp=g2p_config.use_mp,
                                  punctuation=g2p_config.punctuation, clitic_markers=g2p_config.clitic_markers,
                                  parse_text_only_files=True)
 
@@ -59,7 +54,10 @@ def generate_dictionary(args, unknown_args=None):
     if args.g2p_model_path is not None:
         model = G2PModel(args.g2p_model_path, root_directory=os.path.join(temp_dir, 'models', 'G2P'))
         model.validate(word_set)
-        gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=args.num_jobs,
+        num_jobs = args.num_jobs
+        if not g2p_config.use_mp:
+            num_jobs = 1
+        gen = Generator(model, word_set, temp_directory=temp_dir, num_jobs=num_jobs,
                         num_pronunciations=g2p_config.num_pronunciations)
         gen.output(args.output_path)
         model.clean_up()

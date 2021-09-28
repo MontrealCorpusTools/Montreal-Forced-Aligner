@@ -20,6 +20,7 @@ def train_g2p(args, unknown_args=None):
         train_config = train_g2p_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_g2p_config()
+    train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_args(unknown_args)
     dictionary = Dictionary(args.dictionary_path, '')

@@ -31,15 +31,21 @@ def validate_corpus(args, unknown_args=None):
     os.makedirs(data_directory, exist_ok=True)
     model_directory = os.path.join(data_directory, 'acoustic_models')
     os.makedirs(model_directory, exist_ok=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
 
     corpus = AlignableCorpus(args.corpus_directory, data_directory, speaker_characters=args.speaker_characters,
                     num_jobs=getattr(args, 'num_jobs', 3), logger=logger, use_mp=not args.disable_mp)
-    dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
     if args.acoustic_model_path:
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
+        dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger, multilingual_ipa=acoustic_model.meta['multilingual_ipa'])
         acoustic_model.validate(dictionary)
+    else:
+        dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
 
     a = CorpusValidator(corpus, dictionary, temp_directory=data_directory,
                         ignore_acoustics=getattr(args, 'ignore_acoustics', False),

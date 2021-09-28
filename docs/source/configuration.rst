@@ -5,10 +5,20 @@
 Configuration
 *************
 
-Contents:
+Options available:
+
+.. option:: -h
+               --help
+
+   Display help message for the command
+
+
+
+Configuration of commands
+=========================
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 1
 
    configuration_align.rst
    configuration_transcription.rst

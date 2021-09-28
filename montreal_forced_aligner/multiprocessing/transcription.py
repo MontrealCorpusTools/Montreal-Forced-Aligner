@@ -1,12 +1,14 @@
 import subprocess
 import os
 import shutil
+import sys
 
 from .helper import run_mp, run_non_mp, thirdparty_binary
 from ..dictionary import MultispeakerDictionary
 
 
-def decode_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None, dictionary_names=None):
+def decode_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
+                dictionary_names=None):
     mdl_path = os.path.join(model_directory, 'final.mdl')
     if dictionary_names is None:
         lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
@@ -64,9 +66,12 @@ def decode_func(model_directory, job_name, config, feat_string, output_directory
             else:
                 max_active = config.max_active
             log_path = os.path.join(output_directory, 'log', 'decode.{}.{}.log'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name), 'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name), 'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name), 'utt2spk.{}.{}'.format(job_name, name))
+            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
+                                                         'feats.{}.{}.scp'.format(job_name, name))
+            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
+                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
+            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
+                                                                    'utt2spk.{}.{}'.format(job_name, name))
             with open(log_path, 'w', encoding='utf8') as log_file:
                 if num_threads is None:
                     decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
@@ -122,13 +127,15 @@ def score_func(model_directory, transcribe_directory, job_name, config, output_d
                                             stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
             best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
                                                '--word-symbol-table={}'.format(words_path),
-                                               'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout, stderr=log_file)
+                                               'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout,
+                                              stderr=log_file)
             best_path_proc.communicate()
     else:
         for name in dictionary_names:
             lat_path = os.path.join(transcribe_directory, 'lat.{}.{}'.format(job_name, name))
             rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.{}.rescored'.format(job_name, name))
-            carpa_rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
+            carpa_rescored_lat_path = os.path.join(transcribe_directory,
+                                                   'lat.{}.{}.carparescored'.format(job_name, name))
             if os.path.exists(carpa_rescored_lat_path):
                 lat_path = carpa_rescored_lat_path
             elif os.path.exists(rescored_lat_path):
@@ -147,12 +154,17 @@ def score_func(model_directory, transcribe_directory, job_name, config, output_d
                                                 stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
                 best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
                                                    '--word-symbol-table={}'.format(words_path),
-                                                   'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout, stderr=log_file)
+                                                   'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout,
+                                                  stderr=log_file)
                 best_path_proc.communicate()
 
 
-def lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None, dictionary_names=None):
-
+def lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
+                    dictionary_names=None):
+    if sys.platform == 'win32':
+        project_type_arg = '--project_output=true'
+    else:
+        project_type_arg = '--project_type=output'
     if dictionary_names is None:
         rescored_lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
         lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
@@ -161,10 +173,10 @@ def lm_rescore_func(model_directory, job_name, config, feat_string, output_direc
         log_path = os.path.join(output_directory, 'log', 'lm_rescore.{}.log'.format(job_name))
         with open(log_path, 'w', encoding='utf8') as log_file:
             lattice_scale_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-pruned'),
-                                                '--acoustic-scale={}'.format(config.acoustic_scale),
-                                            "fstproject --project_type=output {} |".format(old_g_path),
-                                                     "fstproject --project_type=output {} |".format(new_g_path),
-                                                   'ark:' + lat_path, 'ark:'+ rescored_lat_path], stderr=log_file)
+                                                   '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                   f"fstproject {project_type_arg} {old_g_path} |",
+                                                   f"fstproject {project_type_arg} {new_g_path} |",
+                                                   'ark:' + lat_path, 'ark:' + rescored_lat_path], stderr=log_file)
             lattice_scale_proc.communicate()
     else:
         for name in dictionary_names:
@@ -176,16 +188,19 @@ def lm_rescore_func(model_directory, job_name, config, feat_string, output_direc
 
             with open(log_path, 'w', encoding='utf8') as log_file:
                 lattice_scale_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-pruned'),
-                                                    '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                "fstproject --project_type=output {} |".format(old_g_path),
-                                                         "fstproject --project_type=output {} |".format(new_g_path),
-                                                       'ark:' + lat_path, 'ark:'+ rescored_lat_path], stderr=log_file)
+                                                       '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                       f"fstproject {project_type_arg} {old_g_path} |",
+                                                       f"fstproject {project_type_arg} {new_g_path} |",
+                                                       'ark:' + lat_path, 'ark:' + rescored_lat_path], stderr=log_file)
                 lattice_scale_proc.communicate()
 
 
-
-def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None, dictionary_names=None):
-
+def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
+                          dictionary_names=None):
+    if sys.platform == 'win32':
+        project_type_arg = '--project_output=true'
+    else:
+        project_type_arg = '--project_type=output'
     if dictionary_names is None:
         lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
         rescored_lat_path = os.path.join(output_directory, 'lat.{}.carparescored'.format(job_name))
@@ -196,13 +211,14 @@ def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output
         log_path = os.path.join(output_directory, 'log', 'carpa_lm_rescore.{}.log'.format(job_name))
         with open(log_path, 'w', encoding='utf8') as log_file:
             lmrescore_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore'),
-                                            '--lm-scale=-1.0', 'ark:' + lat_path,
-                                            "fstproject --project_type=output {} |".format(old_g_path),
+                                               '--lm-scale=-1.0', 'ark:' + lat_path,
+                                               f"fstproject {project_type_arg} {old_g_path} |",
                                                'ark:-'], stdout=subprocess.PIPE, stderr=log_file)
             lmrescore_const_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-const-arpa'),
                                                      '--lm-scale=1.0', 'ark:-',
                                                      new_g_path,
-                                                     'ark:'+ rescored_lat_path], stdin=lmrescore_proc.stdout, stderr=log_file)
+                                                     'ark:' + rescored_lat_path], stdin=lmrescore_proc.stdout,
+                                                    stderr=log_file)
             lmrescore_const_proc.communicate()
     else:
         for name in dictionary_names:
@@ -216,15 +232,15 @@ def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output
 
             with open(log_path, 'w', encoding='utf8') as log_file:
                 lmrescore_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore'),
-                                                '--lm-scale=-1.0', 'ark:' + lat_path,
-                                                "fstproject --project_type=output {} |".format(old_g_path),
+                                                   '--lm-scale=-1.0', 'ark:' + lat_path,
+                                                   f"fstproject {project_type_arg} {old_g_path} |",
                                                    'ark:-'], stdout=subprocess.PIPE, stderr=log_file)
                 lmrescore_const_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-const-arpa'),
                                                          '--lm-scale=1.0', 'ark:-',
                                                          new_g_path,
-                                                         'ark:'+ rescored_lat_path], stdin=lmrescore_proc.stdout, stderr=log_file)
+                                                         'ark:' + rescored_lat_path], stdin=lmrescore_proc.stdout,
+                                                        stderr=log_file)
                 lmrescore_const_proc.communicate()
-
 
 
 def transcribe(transcriber):
@@ -263,7 +279,8 @@ def transcribe(transcriber):
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
 
-                jobs = [(model_directory, decode_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
+                jobs = [(model_directory, decode_directory, x, config, out_dir, lmwt, wip,
+                         transcriber.dictionaries_for_job(x))
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -275,7 +292,8 @@ def transcribe(transcriber):
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
     else:
-        jobs = [(model_directory, decode_directory, x, config, decode_directory, None, None, transcriber.dictionaries_for_job(x))
+        jobs = [(model_directory, decode_directory, x, config, decode_directory, None, None,
+                 transcriber.dictionaries_for_job(x))
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_directory)
@@ -283,7 +301,8 @@ def transcribe(transcriber):
             run_non_mp(score_func, jobs, log_directory)
 
 
-def initial_fmllr_func(initial_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
+def initial_fmllr_func(initial_directory, split_directory, sil_phones, job_name, mdl, config, feat_string,
+                       output_directory,
                        num_threads=None, dictionary_names=None):
     if dictionary_names is None:
         log_path = os.path.join(output_directory, 'log', 'initial_fmllr.{}.log'.format(job_name))
@@ -346,8 +365,8 @@ def initial_fmllr_func(initial_directory, split_directory, sil_phones, job_name,
                 fmllr_proc.communicate()
 
 
-
-def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
+def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string,
+                       output_directory,
                        num_threads=None, dictionary_names=None):
     if dictionary_names is None:
         log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.log'.format(job_name))
@@ -416,7 +435,6 @@ def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, m
                                                      mdl, hclg_path, dictionary_feat_string, 'ark:' + tmp_lat_path
                                                      ], stderr=log_file)
                 lat_gen_proc.communicate()
-
 
 
 def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, si_directory,
@@ -493,7 +511,8 @@ def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name,
                 latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
                                                    '--acoustic-scale={}'.format(config.acoustic_scale),
                                                    'ark:' + lat_path, 'ark:-'],
-                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
+                                                  stderr=log_file)
                 weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
                                                         str(config.silence_weight),
                                                         sil_phones, mdl, 'ark:-', 'ark:-'],
@@ -590,30 +609,30 @@ def transcribe_fmllr(transcriber):
         num_threads = corpus.original_num_jobs
 
     jobs = [(output_directory, split_directory, sil_phones, x, mdl_path, config,
-         config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
+             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
              fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-        for x in range(num_jobs)]
+            for x in range(num_jobs)]
 
     run_non_mp(initial_fmllr_func, jobs, log_dir)
 
     jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-         config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
+             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
              fmllr_directory, corpus.original_num_jobs, transcriber.dictionaries_for_job(x))
-        for x in range(num_jobs)]
+            for x in range(num_jobs)]
 
     run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
 
     jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-         config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
+             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
              output_directory, fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-        for x in range(num_jobs)]
+            for x in range(num_jobs)]
 
     run_non_mp(final_fmllr_est_func, jobs, log_dir)
 
     jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-         config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
+             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
              fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-        for x in range(num_jobs)]
+            for x in range(num_jobs)]
 
     if config.use_mp:
         run_mp(fmllr_rescore_func, jobs, log_dir)
@@ -643,7 +662,8 @@ def transcribe_fmllr(transcriber):
                 out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(lmwt, wip))
                 log_dir = os.path.join(out_dir, 'log')
                 os.makedirs(log_dir, exist_ok=True)
-                jobs = [(model_directory, fmllr_directory, x, config, out_dir, lmwt, wip, transcriber.dictionaries_for_job(x))
+                jobs = [(model_directory, fmllr_directory, x, config, out_dir, lmwt, wip,
+                         transcriber.dictionaries_for_job(x))
                         for x in range(num_jobs)]
                 if config.use_mp:
                     run_mp(score_func, jobs, log_dir)
@@ -662,7 +682,8 @@ def transcribe_fmllr(transcriber):
             saved_tra_path = os.path.join(fmllr_directory, filename)
             shutil.copyfile(tra_path, saved_tra_path)
     else:
-        jobs = [(model_directory, fmllr_directory, x, config, fmllr_directory, None, None, transcriber.dictionaries_for_job(x))
+        jobs = [(model_directory, fmllr_directory, x, config, fmllr_directory, None, None,
+                 transcriber.dictionaries_for_job(x))
                 for x in range(num_jobs)]
         if config.use_mp:
             run_mp(score_func, jobs, log_dir)

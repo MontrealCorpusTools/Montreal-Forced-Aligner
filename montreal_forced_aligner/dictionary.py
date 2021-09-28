@@ -192,8 +192,10 @@ class Dictionary(object):
             handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
             handler.setFormatter = logging.Formatter('%(name)s %(message)s')
             self.logger.addHandler(handler)
+            self.individual_logger = True
         else:
             self.logger = logger
+            self.individual_logger = False
         self.num_sil_states = num_sil_states
         self.num_nonsil_states = num_nonsil_states
         self.shared_silence_phones = shared_silence_phones
@@ -210,11 +212,6 @@ class Dictionary(object):
         self.nonoptional_silence = 'sil'
         self.graphemes = set()
         self.all_words = defaultdict(list)
-        if word_set is not None:
-            word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}
-            word_set.add('!sil')
-            word_set.add(self.oov_code)
-        self.word_set = word_set
         self.clitic_set = set()
         self.words[self.sil_code] = [{'pronunciation': ('sp',), 'probability': 1}]
         self.words[self.oov_code] = [{'pronunciation': ('spn',), 'probability': 1}]
@@ -277,6 +274,11 @@ class Dictionary(object):
                         is_clitic = True
                 if is_clitic:
                     self.clitic_set.add(word)
+        if word_set is not None:
+            word_set = {y for x in word_set for y in self._lookup(x) }
+            word_set.add('!sil')
+            word_set.add(self.oov_code)
+        self.word_set = word_set
         if self.word_set is not None:
             self.word_set = self.word_set | self.clitic_set
         if not self.graphemes:
@@ -285,6 +287,18 @@ class Dictionary(object):
         self.log_info()
         self.phone_mapping = {}
         self.words_mapping = {}
+
+    @property
+    def silences(self):
+        return {self.optional_silence, self.nonoptional_silence}
+
+    def cleanup_logger(self):
+        if not self.individual_logger:
+            return
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
 
     def log_info(self):
         self.logger.debug('DICTIONARY INFORMATION')
@@ -308,7 +322,7 @@ class Dictionary(object):
 
 
     def set_word_set(self, word_set):
-        word_set = {sanitize(x, self.punctuation, self.clitic_markers) for x in word_set}
+        word_set = {y for x in word_set for y in self._lookup(x) }
         word_set.add(self.sil_code)
         word_set.add(self.oov_code)
         self.word_set = word_set | self.clitic_set
@@ -331,10 +345,7 @@ class Dictionary(object):
                     else:
                         new_s.append(seg)
                 s = new_s
-            oov_count = sum(1 for x in s if x not in self.words)
-            if oov_count < len(s):  # Only returned split item if it gains us any transcribed speech
-                return s
-            return [item]
+            return s
         if any(x in item and not item.endswith(x) and not item.startswith(x) for x in self.clitic_markers):
             initial, final = re.split(r'[{}]'.format(self.clitic_markers), item, maxsplit=1)
             if any(x in final for x in self.clitic_markers):
@@ -451,6 +462,8 @@ class Dictionary(object):
         sanitized = self._lookup(item)
         text_int = []
         for item in sanitized:
+            if not item:
+                continue
             if item not in self.words_mapping:
                 self.oovs_found.update([item])
                 text_int.append(self.oov_int)
@@ -474,13 +487,16 @@ class Dictionary(object):
                 cf.write('{}\t{}\n'.format(oov, self.oovs_found[oov]))
 
     def _lookup(self, item):
-        if item in self.words_mapping:
+        if item in self.words:
             return [item]
         sanitized = sanitize(item, self.punctuation, self.clitic_markers)
-        if sanitized in self.words_mapping:
+        if sanitized in self.words:
             return [sanitized]
-        sanitized = self.split_clitics(item)
-        return sanitized
+        split = self.split_clitics(sanitized)
+        oov_count = sum(1 for x in split if x not in self.words)
+        if oov_count < len(split):  # Only returned split item if it gains us any transcribed speech
+            return split
+        return [sanitized]
 
     def check_word(self, item):
         if item == '':
@@ -614,6 +630,8 @@ class Dictionary(object):
 
     def _write_graphemes(self):
         outfile = os.path.join(self.output_directory, 'graphemes.txt')
+        if os.path.exists(outfile):
+            return
         with open(outfile, 'w', encoding='utf8') as f:
             for char in sorted(self.graphemes):
                 f.write(char + '\n')
@@ -633,6 +651,8 @@ class Dictionary(object):
 
     def _write_phone_map_file(self):
         outfile = os.path.join(self.output_directory, 'phone_map.txt')
+        if os.path.exists(outfile):
+            return
         with open(outfile, 'w', encoding='utf8') as f:
             for sp in self.sil_phones:
                 if self.position_dependent_phones:
@@ -649,6 +669,8 @@ class Dictionary(object):
 
     def _write_phone_symbol_table(self):
         outfile = os.path.join(self.output_directory, 'phones.txt')
+        if os.path.exists(outfile):
+            return
         with open(outfile, 'w', encoding='utf8') as f:
             for p, i in sorted(self.phone_mapping.items(), key=lambda x: x[1]):
                 f.write('{} {}\n'.format(p, i))
@@ -656,6 +678,8 @@ class Dictionary(object):
     def _write_word_boundaries(self):
         boundary_path = os.path.join(self.output_directory, 'phones', 'word_boundary.txt')
         boundary_int_path = os.path.join(self.output_directory, 'phones', 'word_boundary.int')
+        if os.path.exists(boundary_path) and os.path.exists(boundary_int_path):
+            return
         with open(boundary_path, 'w', encoding='utf8') as f, \
                 open(boundary_int_path, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
@@ -676,6 +700,8 @@ class Dictionary(object):
 
     def _write_word_file(self):
         words_path = os.path.join(self.output_directory, 'words.txt')
+        if os.path.exists(words_path):
+            return
         if sys.platform == 'win32':
             newline = ''
         else:
@@ -686,6 +712,8 @@ class Dictionary(object):
 
     def _write_align_lexicon(self):
         path = os.path.join(self.phones_dir, 'align_lexicon.int')
+        if os.path.exists(path):
+            return
 
         with open(path, 'w', encoding='utf8') as f:
             for w, i in self.words_mapping.items():
@@ -713,6 +741,8 @@ class Dictionary(object):
 
     def _write_topo(self):
         filepath = os.path.join(self.output_directory, 'topo')
+        if os.path.exists(filepath):
+            return
         sil_transp = 1 / (self.num_sil_states - 1)
         initial_transition = [self.topo_transition_template.format(x, sil_transp)
                               for x in range(self.num_sil_states - 1)]
@@ -770,6 +800,9 @@ class Dictionary(object):
 
         sets_int_file = os.path.join(self.output_directory, 'phones', 'sets.int')
         roots_int_file = os.path.join(self.output_directory, 'phones', 'roots.int')
+        if os.path.exists(sets_file) and os.path.exists(roots_file) and \
+            os.path.exists(sets_int_file) and os.path.exists(roots_int_file):
+            return
 
         with open(sets_file, 'w', encoding='utf8') as setf, \
                 open(roots_file, 'w', encoding='utf8') as rootf, \
@@ -809,6 +842,8 @@ class Dictionary(object):
     def _write_extra_questions(self):
         phone_extra = os.path.join(self.phones_dir, 'extra_questions.txt')
         phone_extra_int = os.path.join(self.phones_dir, 'extra_questions.int')
+        if os.path.exists(phone_extra) and os.path.exists(phone_extra_int):
+            return
         with open(phone_extra, 'w', encoding='utf8') as outf, \
                 open(phone_extra_int, 'w', encoding='utf8') as intf:
             if self.position_dependent_phones:
@@ -837,19 +872,26 @@ class Dictionary(object):
     def _write_disambig(self):
         disambig = os.path.join(self.phones_dir, 'disambig.txt')
         disambig_int = os.path.join(self.phones_dir, 'disambig.int')
+        if os.path.exists(disambig) and os.path.exists(disambig_int):
+            return
         with open(disambig, 'w', encoding='utf8') as outf, \
                 open(disambig_int, 'w', encoding='utf8') as intf:
             for d in self.disambig:
                 outf.write('{}\n'.format(d))
                 intf.write('{}\n'.format(self.phone_mapping[d]))
 
-    def _write_fst_binary(self, disambig=False, self_loop=True):
+    def create_job_lexicons(self):
+        pass
+
+    def _write_fst_binary(self, disambig=False, job=None):
         if disambig:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon_disambig.text.fst')
             output_fst = os.path.join(self.output_directory, 'L_disambig.fst')
         else:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
             output_fst = os.path.join(self.output_directory, 'L.fst')
+        if os.path.exists(output_fst):
+            return
 
         phones_file_path = os.path.join(self.output_directory, 'phones.txt')
         words_file_path = os.path.join(self.output_directory, 'words.txt')
@@ -887,6 +929,8 @@ class Dictionary(object):
             sildisambig = '#{}'.format(self.max_disambig + 1)
         else:
             lexicon_fst_path = os.path.join(self.output_directory, 'lexicon.text.fst')
+        if os.path.exists(lexicon_fst_path):
+            return
         if self.sil_prob != 0:
             silphone = self.optional_silence
             nonoptsil = self.nonoptional_silence
@@ -1168,6 +1212,10 @@ class MultispeakerDictionary(Dictionary):
             self.clitic_set.update(d.clitic_set)
         self.words_mapping = {}
         self.phone_mapping = {}
+
+    @property
+    def silences(self):
+        return {self.optional_silence, self.nonoptional_silence}
 
     def get_dictionary_name(self, speaker):
         if speaker not in self.speaker_mapping:

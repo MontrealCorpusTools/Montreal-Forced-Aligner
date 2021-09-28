@@ -68,6 +68,8 @@ def save_scp(scp, path, sort=True, multiline=False):
 def save_groups(groups, seg_dir, pattern, multiline=False):
     for i, g in enumerate(groups):
         path = os.path.join(seg_dir, pattern.format(i))
+        if os.path.exists(path):
+            continue
         save_scp(g, path, multiline=multiline)
 
 

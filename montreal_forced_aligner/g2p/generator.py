@@ -129,8 +129,6 @@ class PyniniDictionaryGenerator(object):
             output_token_type = pynini.SymbolTable.read_text(self.model.sym_path)
         rewriter = Rewriter(fst, input_token_type, output_token_type, self.num_pronunciations)
 
-        stopped = Stopped()
-        job_queue = mp.JoinableQueue(100)
         ind = 0
         num_words = len(self.words)
         words = list(self.words)
@@ -139,7 +137,7 @@ class PyniniDictionaryGenerator(object):
         missing_graphemes = set()
         print('Generating pronunciations...')
         to_return = {}
-        if num_words < 30:
+        if num_words < 30 or self.num_jobs < 2:
             for word in words:
                 w, m = clean_up_word(word, self.model.meta['graphemes'])
                 missing_graphemes.update(m)
@@ -151,6 +149,8 @@ class PyniniDictionaryGenerator(object):
                     continue
                 to_return[word] = pron
         else:
+            stopped = Stopped()
+            job_queue = mp.JoinableQueue(100)
             with tqdm.tqdm(total=num_words) as pbar:
                 while True:
                     if ind == num_words:

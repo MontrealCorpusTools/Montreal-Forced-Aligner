@@ -29,12 +29,17 @@ def create_segments(args, unknown_args=None):
         segmentation_config = segmentation_yaml_to_config(args.config_path)
     else:
         segmentation_config = load_basic_segmentation()
+    segmentation_config.use_mp = not args.disable_mp
     if unknown_args:
         segmentation_config.update_from_args(unknown_args)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     log_config(logger, segmentation_config)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:

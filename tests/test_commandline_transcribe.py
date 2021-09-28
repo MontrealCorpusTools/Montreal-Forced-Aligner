@@ -10,7 +10,7 @@ def test_transcribe(basic_corpus_dir, sick_dict_path, english_acoustic_model, ge
     output_path = os.path.join(generated_dir, 'transcribe_test')
     command = ['transcribe', basic_corpus_dir, sick_dict_path, transcription_acoustic_model,
                transcription_language_model, output_path,
-               '-t', temp_dir, '-q', '--clean', '-d', '--config', transcribe_config]
+               '-t', temp_dir, '-q', '--clean', '-d', '--config_path', transcribe_config]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
 
@@ -20,7 +20,7 @@ def test_transcribe_speaker_dictionaries(multilingual_ipa_corpus_dir, ipa_speake
     output_path = os.path.join(generated_dir, 'transcribe_test')
     command = ['transcribe', multilingual_ipa_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model,
                transcription_language_model, output_path,
-               '-t', temp_dir, '-q', '--clean', '-d', '--config', transcribe_config]
+               '-t', temp_dir, '-q', '--clean', '-d', '--config_path', transcribe_config]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
 
@@ -30,6 +30,6 @@ def test_transcribe_speaker_dictionaries_evaluate(multilingual_ipa_corpus_dir, i
     output_path = os.path.join(generated_dir, 'transcribe_test')
     command = ['transcribe', multilingual_ipa_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model,
                transcription_language_model, output_path,
-               '-t', temp_dir, '-q', '--clean', '-d', '--config', transcribe_config, '--evaluate']
+               '-t', temp_dir, '-q', '--clean', '-d', '--config_path', transcribe_config, '--evaluate']
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)

@@ -196,7 +196,7 @@ Default training config file
      - sat:
          num_leaves: 2500
          max_gaussians: 15000
-         fmllr_power: 0.2
+         power: 0.2
          silence_weight: 0.0
          fmllr_update_type: "diag"
          subset: 10000
@@ -206,7 +206,7 @@ Default training config file
      - sat:
          num_leaves: 4200
          max_gaussians: 40000
-         fmllr_power: 0.2
+         power: 0.2
          silence_weight: 0.0
          fmllr_update_type: "diag"
          subset: 30000
@@ -246,7 +246,7 @@ Training configuration for 1.0
      - sat:
          num_leaves: 3100
          max_gaussians: 50000
-         fmllr_power: 0.2
+         power: 0.2
          silence_weight: 0.0
          cluster_threshold: 100
          fmllr_update_type: "full"

@@ -54,6 +54,9 @@ class AlignConfig(BaseConfig):
         self.use_mp = True
         self.use_fmllr_mp = False
         self.multilingual_ipa = False
+        self.debug = False
+        self.overwrite = False
+        self.cleanup_textgrids = True
 
     @property
     def feature_file_base_name(self):

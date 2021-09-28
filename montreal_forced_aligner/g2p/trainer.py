@@ -467,6 +467,8 @@ class PyniniTrainer(object):
         self.input_epsilon = input_epsilon
         self.output_epsilon = output_epsilon
         self.num_jobs = num_jobs
+        if not self.train_config.use_mp:
+            self.num_jobs = 1
         self.fst_default_cache_gc = ''
         self.fst_default_cache_gc_limit = ''
         self.train_log_path = os.path.join(self.temp_directory, 'train.log')
@@ -609,6 +611,7 @@ class PyniniTrainer(object):
         self.train(training_dictionary)
 
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
+
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
                                         temp_directory=os.path.join(self.temp_directory, 'validation'),
                                         num_jobs=self.num_jobs, num_pronunciations=self.train_config.num_pronunciations)

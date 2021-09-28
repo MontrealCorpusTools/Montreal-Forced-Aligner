@@ -366,7 +366,7 @@ class BaseTrainer(object):
         begin = time.time()
         try:
             convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
-                                     self.dictionary, self.corpus, self.corpus.num_jobs, self)
+                                     self.dictionary, self.corpus, self.corpus.num_jobs)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)

@@ -193,7 +193,7 @@ class FeatureConfig(BaseConfig):
             if fmllr_trans_path is not None:
                 if not os.path.exists(fmllr_trans_path):
                     raise Exception('Could not find {}'.format(fmllr_trans_path))
-                feats += " transform-feats --utt2spk=ark:{} ark,s,cs:{} ark:- ark:- |".format(utt2spk_path, fmllr_trans_path)
+                feats += " transform-feats --utt2spk=ark:{} ark:{} ark:- ark:- |".format(utt2spk_path, fmllr_trans_path)
         return feats
 
     def generate_features(self, corpus, data_directory=None, overwrite=False, logger=None, cmvn=True):

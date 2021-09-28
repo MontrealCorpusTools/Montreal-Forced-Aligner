@@ -39,6 +39,8 @@ class TrainingConfig(BaseConfig):
             if not hasattr(self, k):
                 raise ConfigError('No field found for key {}'.format(k))
             setattr(self, k, v)
+        for trainer in self.values():
+            trainer.update(data)
 
     def keys(self):
         return self.training_identifiers

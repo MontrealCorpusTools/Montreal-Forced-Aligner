@@ -1,7 +1,7 @@
 import os
 import shutil
 from decimal import Decimal
-from praatio import tgio
+from praatio import textgrid
 from .config import TEMP_DIR
 from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -128,15 +128,16 @@ class Segmenter(object):
                 speaker_directory = output_directory
             os.makedirs(speaker_directory, exist_ok=True)
             max_time = self.corpus.get_wav_duration(filename)
-            tg = tgio.Textgrid()
+            tg = textgrid.Textgrid()
             tg.minTimestamp = 0
             tg.maxTimestamp = max_time
             for speaker in sorted(speaker_dict.keys()):
                 words = speaker_dict[speaker]
-                tier = tgio.IntervalTier(speaker, [], minT=0, maxT=max_time)
+                entry_list = []
                 for w in words:
                     if w[1] > max_time:
                         w[1] = max_time
-                    tier.entryList.append(w)
+                    entry_list.append(w)
+                tier = textgrid.IntervalTier(speaker, entry_list, minT=0, maxT=max_time)
                 tg.addTier(tier)
-            tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
+            tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), includeBlankSpaces=True, format='long_textgrid')

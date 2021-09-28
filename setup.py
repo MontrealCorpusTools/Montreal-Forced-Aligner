@@ -95,19 +95,16 @@ if __name__ == '__main__':
                     'montreal_forced_aligner.corpus',
                     'montreal_forced_aligner.features',
                     'montreal_forced_aligner.g2p',
-                    'montreal_forced_aligner.gui',
                     'montreal_forced_aligner.lm',
                     'montreal_forced_aligner.multiprocessing',
                     'montreal_forced_aligner.thirdparty',
                     'montreal_forced_aligner.trainers'],
           install_requires=[
-              'praatio ~= 4.1',
+              'praatio ~= 5.0',
               'numpy',
               'tqdm',
               'pyyaml',
               'librosa',
-              'pyqt5',
-              'pyqtgraph',
               'requests',
               'sklearn',
               'joblib'
@@ -124,5 +121,6 @@ if __name__ == '__main__':
           },
           extras_require={
               'testing': ['pytest'],
+              'anchor': ['pyqt5', 'pyqtgraph', 'anchor-annotator']
           }
           )

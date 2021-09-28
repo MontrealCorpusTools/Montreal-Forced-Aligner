@@ -11,6 +11,7 @@ DEFAULT_DIGRAPHS = ['[dt][szʒʃʐʑʂɕç]', '[aoɔe][ʊɪ]']
 
 PARSING_KEYS = ['punctuation', 'clitic_markers', 'compound_markers', 'multilingual_ipa', 'strip_diacritics', 'digraphs']
 
+
 class BaseConfig(object):
     def update(self, data):
         for k, v in data.items():

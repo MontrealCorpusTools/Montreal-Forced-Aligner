@@ -64,6 +64,7 @@ def temp_dir(generated_dir):
     return os.path.join(generated_dir, 'temp')
 
 
+
 @pytest.fixture(scope='session')
 def config_dir(generated_dir):
     path = os.path.join(generated_dir, 'configs')
@@ -76,6 +77,14 @@ def english_acoustic_model():
     from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
     return 'english'
+
+
+@pytest.fixture(scope='session')
+def english_pretrained_dictionary():
+    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.utils import get_dictionary_path
+    download_model('dictionary', 'english')
+    return get_dictionary_path('english')
 
 
 @pytest.fixture(scope='session')
@@ -153,8 +162,11 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
         s_dir = os.path.join(path, s)
         os.makedirs(s_dir, exist_ok=True)
         for name in files:
+            space_name = name.replace('_', ' ')
             shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, name + '.wav'))
+            shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, space_name + '.wav'))
             shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, name + '.lab'))
+            shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, space_name + '.lab'))
     return path
 
 
@@ -456,6 +468,7 @@ def output_directory(basic_dir):
 @pytest.fixture(scope='session')
 def acoustic_corpus_textgrid_path(basic_dir):
     return os.path.join(basic_dir, 'acoustic_corpus.TextGrid')
+
 
 
 @pytest.fixture(scope='session')
