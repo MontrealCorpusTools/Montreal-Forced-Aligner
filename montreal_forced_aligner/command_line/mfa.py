@@ -314,6 +314,11 @@ def main():
     parser = create_parser()
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
+    for short in ['-c', '-d']:
+        if short in unknown:
+            print(f'Due to the number of options that `{short}` could refer to, it is not accepted. '
+                  'Please specify the full argument')
+            sys.exit(1)
     try:
         fix_path()
         if args.subcommand in ['align', 'train', 'train_ivector']:

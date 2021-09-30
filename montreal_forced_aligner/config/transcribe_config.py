@@ -14,7 +14,7 @@ class TranscribeConfig(BaseConfig):
         self.silence_weight = 0.01
         self.beam = 10
         self.max_active = 7000
-        self.fmllr = False
+        self.fmllr = True
         self.fmllr_update_type = 'full'
         self.lattice_beam = 6
         self.first_beam = None

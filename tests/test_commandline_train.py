@@ -10,7 +10,7 @@ def test_train_and_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, 
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)
     command = ['train', basic_corpus_dir, sick_dict_path, os.path.join(generated_dir, 'basic_output'),
-               '-t', temp_dir, '--config_path', mono_train_config_path, '-q', '--clean', '-d', '-o', textgrid_output_model_path]
+               '-t', temp_dir, '--config_path', mono_train_config_path, '-q', '--clean', '--debug', '-o', textgrid_output_model_path]
     args, unknown = parser.parse_known_args(command)
     run_train_corpus(args, unknown)
     assert os.path.exists(textgrid_output_model_path)
@@ -21,7 +21,7 @@ def test_train_and_align_basic_speaker_dict(basic_corpus_dir, speaker_dictionary
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)
     command = ['train', basic_corpus_dir, speaker_dictionary_path, os.path.join(generated_dir, 'basic_output'),
-               '-t', temp_dir, '--config_path', mono_train_config_path, '-q', '--clean', '-d', '-o', textgrid_output_model_path]
+               '-t', temp_dir, '--config_path', mono_train_config_path, '-q', '--clean', '--debug', '-o', textgrid_output_model_path]
     args, unknown = parser.parse_known_args(command)
     run_train_corpus(args, unknown)
     assert os.path.exists(textgrid_output_model_path)

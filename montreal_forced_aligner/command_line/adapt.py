@@ -91,6 +91,7 @@ def adapt_model(args, unknown_args=None):
     acoustic_model.log_details(logger)
     training_config = acoustic_model.adaptation_config()
     training_config.training_configs[0].update({'beam': align_config.beam, 'retry_beam': align_config.retry_beam})
+    training_config.update_from_align(align_config)
     logger.debug('ADAPT TRAINING CONFIG:')
     log_config(logger, training_config)
     audio_dir = None

@@ -40,6 +40,7 @@ def align_corpus(args, unknown_args=None):
     if unknown_args:
         train_config.update_from_args(unknown_args)
         align_config.update_from_args(unknown_args)
+    train_config.update_from_align(align_config)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')

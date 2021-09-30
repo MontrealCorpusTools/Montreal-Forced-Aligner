@@ -26,14 +26,6 @@ class Stopped(object):
         self.lock = mp.Lock()
         self._source = mp.Value('i', 0)
 
-    def set_sigint_source(self):
-        with self.lock:
-            self._source.value = 1
-
-    def source(self):
-        with self.lock:
-            return self._source.value
-
     def stop(self):
         with self.lock:
             self.val.value = True
