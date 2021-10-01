@@ -18,6 +18,12 @@ exclude_lines =
 
     except ImportError:
 
+    except KeyboardInterrupt:
+
+    except Exception as e:
+
+    except Exception:
+
     if call_back
     if stop_check
 

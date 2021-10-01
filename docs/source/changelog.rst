@@ -7,6 +7,20 @@
 Changelog
 =========
 
+2.0.0b0
+-------
+
+Beta release!
+
+- Fixed an issue in transcription when using a .ARPA language model rather than one built in MFA
+- Fixed an issue in parsing filenames containing spaces
+- Added a ``mfa configure`` command to set global options.  Users can now specify a new default for arguments like ``--num_jobs``, ``--clean`` or ``--temp_directory``, see :ref:`configuration` for more details.
+- Added a new flag for overwriting output files. By default now, MFA will not output files if the path already exists, and will instead write to a directory in the temporary directory.  You can revert this change by running ``mfa configure --always_overwrite``
+- Added a ``--disable_textgrid_cleanup`` flag to disable for post-processing that MFA has implemented recently (not outputting silence labels and recombining subwords that got split up as part of dictionary look up). You can set this to be the default by running ``mfa configure --disable_textgrid_cleanup``
+- Refactored and optimized the TextGrid export process to use multiple processes by default, you should be significant speed ups.
+- Removed shorthand flags for ``-c`` and ``-d`` since they could represent multiple different flags/arguments.
+
+
 2.0.0a24
 --------
 

@@ -32,13 +32,22 @@ def adapt_model(args, unknown_args=None):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
+    align_config.use_mp = not args.disable_mp
+    align_config.debug = args.debug
+    align_config.overwrite = args.overwrite
+    align_config.cleanup_textgrids = not args.disable_textgrid_cleanup
+
     if unknown_args:
         align_config.update_from_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug('ALIGN CONFIG:')
     log_config(logger, align_config)
     if os.path.exists(conf_path):
@@ -81,6 +90,8 @@ def adapt_model(args, unknown_args=None):
     acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
     acoustic_model.log_details(logger)
     training_config = acoustic_model.adaptation_config()
+    training_config.training_configs[0].update({'beam': align_config.beam, 'retry_beam': align_config.retry_beam})
+    training_config.update_from_align(align_config)
     logger.debug('ADAPT TRAINING CONFIG:')
     log_config(logger, training_config)
     audio_dir = None
@@ -178,14 +189,3 @@ def run_adapt_model(args, unknown_args=None, downloaded_acoustic_models=None, do
 
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     adapt_model(args, unknown_args)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import adapt_parser, fix_path, unfix_path, acoustic_languages, \
-        dict_languages
-
-    adapt_args, unknown = adapt_parser.parse_known_args()
-    fix_path()
-    run_adapt_model(adapt_args, unknown, acoustic_languages, dict_languages)
-    unfix_path()

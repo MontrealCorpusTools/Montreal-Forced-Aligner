@@ -144,6 +144,7 @@ class LmTrainer(object):
             subprocess.call(['ngrammake', '--method={}'.format(self.config.method), cnts_path, mod_path])
             self.logger.info('Done!')
         else:
+            self.logger.info('Parsing large ngram model...')
             temp_text_path = os.path.join(self.temp_directory, 'input.arpa')
             with open(self.source, 'r', encoding='utf8') as inf, open(temp_text_path, 'w', encoding='utf8') as outf:
                 for line in inf:
@@ -151,9 +152,11 @@ class LmTrainer(object):
             subprocess.call(['ngramread', '--ARPA', temp_text_path, mod_path])
             os.remove(temp_text_path)
         if self.supplemental_model_path:
+            self.logger.info('Parsing supplemental ngram model...')
             supplemental_path = os.path.join(self.temp_directory, 'extra.mod')
             merged_path = os.path.join(self.temp_directory, 'merged.mod')
             subprocess.call(['ngramread', '--ARPA', self.supplemental_model_path, supplemental_path])
+            self.logger.info('Merging both ngram models to create final large model...')
             subprocess.call(['ngrammerge', '--normalize',
                              '--alpha={}'.format(self.source_model_weight),
                              '--beta={}'.format(self.supplemental_model_weight),
@@ -162,6 +165,7 @@ class LmTrainer(object):
 
         subprocess.call(['ngramprint', '--ARPA', mod_path, large_model_path])
 
+        self.logger.info('Large ngam model created!')
         directory, filename = os.path.split(self.output_model_path)
         basename, _ = os.path.splitext(filename)
 

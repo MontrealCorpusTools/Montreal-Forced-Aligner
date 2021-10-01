@@ -14,7 +14,7 @@ class TranscribeConfig(BaseConfig):
         self.silence_weight = 0.01
         self.beam = 10
         self.max_active = 7000
-        self.fmllr = False
+        self.fmllr = True
         self.fmllr_update_type = 'full'
         self.lattice_beam = 6
         self.first_beam = None
@@ -32,6 +32,7 @@ class TranscribeConfig(BaseConfig):
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
         self.digraphs = DEFAULT_DIGRAPHS
+        self.overwrite = False
 
     def params(self):
         return {

@@ -27,6 +27,10 @@ class TrainingConfig(BaseConfig):
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
 
+    def update_from_align(self, align_config):
+        self.training_configs[-1].overwrite = align_config.overwrite
+        self.training_configs[-1].cleanup_textgrids = align_config.cleanup_textgrids
+
     def update(self, data):
         for k, v in data.items():
             if k in PARSING_KEYS:
@@ -39,6 +43,8 @@ class TrainingConfig(BaseConfig):
             if not hasattr(self, k):
                 raise ConfigError('No field found for key {}'.format(k))
             setattr(self, k, v)
+        for trainer in self.values():
+            trainer.update(data)
 
     def keys(self):
         return self.training_identifiers

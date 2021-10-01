@@ -32,13 +32,19 @@ def transcribe_corpus(args, unknown_args):
         transcribe_config = transcribe_yaml_to_config(args.config_path)
     else:
         transcribe_config = load_basic_transcribe()
+    transcribe_config.use_mp = not args.disable_mp
+    transcribe_config.overwrite = args.overwrite
     if unknown_args:
         transcribe_config.update_from_args(unknown_args)
     data_directory = os.path.join(temp_dir, corpus_name)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug('TRANSCRIBE CONFIG:')
     log_config(logger, transcribe_config)
     os.makedirs(data_directory, exist_ok=True)
@@ -103,6 +109,11 @@ def transcribe_corpus(args, unknown_args):
                                       no_speakers=transcribe_config.no_speakers, audio_directory=audio_dir)
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)
+        if args.language_model_path.endswith('.arpa'):
+            alternative_name = os.path.splitext(args.language_model_path)[0] + '.zip'
+            logger.warning(f"Using a plain .arpa model requires generating pruned versions of it to decode in a reasonable "
+                           f"amount of time.  If you'd like to generate a reusable language model, consider running "
+                           f"`mfa train_lm {args.language_model_path} {alternative_name}`.")
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
         if args.dictionary_path.lower().endswith('.yaml'):
             dictionary = MultispeakerDictionary(args.dictionary_path, data_directory, logger=logger,
@@ -145,7 +156,7 @@ def transcribe_corpus(args, unknown_args):
             handler.close()
             logger.removeHandler(handler)
         if os.path.exists(data_directory):
-            with open(conf_path, 'w') as f:
+            with open(conf_path, 'w', encoding='utf8') as f:
                 yaml.dump(conf, f)
 
 
@@ -201,13 +212,3 @@ def run_transcribe_corpus(args, unknown=None, downloaded_acoustic_models=None, d
     validate_args(args, downloaded_acoustic_models, download_dictionaries, downloaded_language_models)
     transcribe_corpus(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import transcribe_parser, fix_path, unfix_path, acoustic_languages, \
-        lm_languages, dict_languages
-
-    transcribe_args, unknown_args = transcribe_parser.parse_known_args()
-    fix_path()
-    run_transcribe_corpus(transcribe_args, unknown_args, acoustic_languages, dict_languages, lm_languages)
-    unfix_path()

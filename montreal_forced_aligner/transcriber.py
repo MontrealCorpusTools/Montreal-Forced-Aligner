@@ -3,11 +3,13 @@ import os
 import shutil
 import re
 import multiprocessing as mp
-from praatio import tgio
+from praatio import textgrid
+from praatio.utilities.constants import Interval
 from .config import TEMP_DIR
 from .helper import thirdparty_binary
 from .multiprocessing import transcribe, transcribe_fmllr
 from .corpus import AlignableCorpus
+from .textgrid import construct_output_path
 from .dictionary import MultispeakerDictionary
 from .helper import score, log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -238,6 +240,40 @@ class Transcriber(object):
         out_disambig = os.path.join(self.model_directory,
                                     'disambig_ilabels_{}_{}.int'.format(context_width, central_pos))
 
+        big_arpa_path = self.language_model.carpa_path
+        small_arpa_path = self.language_model.small_arpa_path
+        medium_arpa_path = self.language_model.medium_arpa_path
+        if not os.path.exists(small_arpa_path) or not os.path.exists(medium_arpa_path):
+            self.logger.info('Parsing large ngram model...')
+            mod_path = os.path.join(self.model_directory, 'base_lm.mod')
+            new_carpa_path = os.path.join(self.model_directory, 'base_lm.arpa')
+            with open(big_arpa_path, 'r', encoding='utf8') as inf, open(new_carpa_path, 'w', encoding='utf8') as outf:
+                for line in inf:
+                    outf.write(line.lower())
+            big_arpa_path = new_carpa_path
+            subprocess.call(['ngramread', '--ARPA', big_arpa_path, mod_path])
+
+        if not os.path.exists(small_arpa_path):
+            self.logger.info("Generating small model from the large ARPA with a pruning threshold of 3e-7")
+            small_arpa_path = os.path.join(self.model_directory, 'small.arpa')
+            prune_thresh_small = 0.0000003
+            small_mod_path = mod_path.replace('.mod', '_small.mod')
+            subprocess.call(['ngramshrink', '--method=relative_entropy',
+                             f'--theta={prune_thresh_small}',
+                             mod_path, small_mod_path])
+            subprocess.call(['ngramprint', '--ARPA', small_mod_path, small_arpa_path])
+
+
+        if not os.path.exists(medium_arpa_path):
+            self.logger.info("Generating medium model from the large ARPA with a pruning threshold of 1e-7")
+            medium_arpa_path = os.path.join(self.model_directory, 'medium.arpa')
+            prune_thresh_medium = 0.0000001
+            med_mod_path = mod_path.replace('.mod', '_med.mod')
+            subprocess.call(['ngramshrink', '--method=relative_entropy',
+                             f'--theta={prune_thresh_medium}',
+                             mod_path, med_mod_path])
+            subprocess.call(['ngramprint', '--ARPA', med_mod_path, medium_arpa_path])
+
         try:
 
             with open(log_path, 'w') as log_file:
@@ -262,15 +298,15 @@ class Transcriber(object):
                         #        error
                     if not os.path.exists(small_g_path):
                         self.logger.info('Generating small_G.fst...')
-                        compose_g(self.language_model.small_arpa_path, words_path, small_g_path, log_file)
+                        compose_g(small_arpa_path, words_path, small_g_path, log_file)
                         self.logger.info('Done!')
                     if not os.path.exists(med_g_path):
                         self.logger.info('Generating med_G.fst...')
-                        compose_g(self.language_model.medium_arpa_path, words_path, med_g_path, log_file)
+                        compose_g(medium_arpa_path, words_path, med_g_path, log_file)
                         self.logger.info('Done!')
                     if not os.path.exists(carpa_path):
                         self.logger.info('Generating G.carpa...')
-                        compose_g_carpa(self.language_model.carpa_path, temp_carpa_path, self.dictionary, carpa_path, log_file)
+                        compose_g_carpa(big_arpa_path, temp_carpa_path, self.dictionary, carpa_path, log_file)
                         self.logger.info('Done!')
                     if not os.path.exists(lg_path):
                         self.logger.info('Generating LG.fst...')
@@ -372,7 +408,7 @@ class Transcriber(object):
         os.makedirs(self.log_dir,exist_ok=True)
         try:
             transcribe(self)
-            if self.acoustic_model.feature_config.fmllr and not self.transcribe_config.no_speakers:
+            if self.acoustic_model.feature_config.fmllr and not self.transcribe_config.no_speakers and self.transcribe_config.fmllr:
                 self.logger.info('Performing speaker adjusted transcription...')
                 transcribe_fmllr(self)
         except Exception as e:
@@ -432,7 +468,7 @@ class Transcriber(object):
         lookup = self.dictionary.reversed_word_mapping
         if input_directory is None:
             input_directory = self.transcribe_directory
-            if self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
+            if self.acoustic_model.feature_config.fmllr and self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
                 input_directory = os.path.join(input_directory, 'fmllr')
         for j in range(self.corpus.num_jobs):
             tra_path = os.path.join(input_directory, 'tra.{}'.format(j))
@@ -469,40 +505,39 @@ class Transcriber(object):
         return transcripts
 
     def export_transcriptions(self, output_directory, source=None):
+        backup_output_directory = None
+        if not self.transcribe_config.overwrite:
+            backup_output_directory = os.path.join(self.transcribe_directory, 'transcriptions')
+            os.makedirs(backup_output_directory, exist_ok=True)
         transcripts = self._load_transcripts(source)
+        wav_durations = self.corpus.file_durations
         if not self.corpus.segments:
             for utt, t in transcripts.items():
-                relative = self.corpus.file_directory_mapping[utt]
-                if relative:
-                    speaker_directory = os.path.join(output_directory, relative)
-                else:
-                    speaker_directory = output_directory
-                os.makedirs(speaker_directory, exist_ok=True)
-                outpath = os.path.join(speaker_directory, utt + '.lab')
-                with open(outpath, 'w', encoding='utf8') as f:
+                speaker = self.corpus.utt_speak_mapping[utt]
+                output_name, output_path = construct_output_path(utt, output_directory, self.corpus.file_directory_mapping,
+                                                                 self.corpus.file_name_mapping,
+                                                                 speaker, backup_output_directory)
+                output_path = output_path.replace('.TextGrid', '.lab')
+                with open(output_path, 'w', encoding='utf8') as f:
                     f.write(t)
 
         else:
 
             for filename in self.corpus.file_directory_mapping.keys():
-                maxtime = self.corpus.get_wav_duration(filename)
-                speaker_directory = output_directory
-                try:
-                    if self.corpus.file_directory_mapping[filename]:
-                        speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
-                except KeyError:
-                    pass
-                os.makedirs(speaker_directory, exist_ok=True)
+                output_name, output_path = construct_output_path(filename, output_directory, self.corpus.file_directory_mapping,
+                                                                 self.corpus.file_name_mapping,
+                                                                 backup_output_directory=backup_output_directory)
+                max_time = round(wav_durations[output_name], 4)
                 tiers = {}
                 if self.transcribe_config.no_speakers:
                     speaker = 'speech'
-                    tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=maxtime)
+                    tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=max_time)
                 else:
                     for speaker in self.corpus.speaker_ordering[filename]:
-                        tiers[speaker] = tgio.IntervalTier(speaker, [], minT=0, maxT=maxtime)
+                        tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=max_time)
 
-                tg = tgio.Textgrid()
-                tg.maxTimestamp = maxtime
+                tg = textgrid.Textgrid()
+                tg.maxTimestamp = max_time
                 for utt_name, text in transcripts.items():
                     seg = self.corpus.segments[utt_name]
                     utt_filename, begin, end = seg['file_name'], seg['begin'], seg['end']
@@ -514,7 +549,8 @@ class Transcriber(object):
                         speaker = self.corpus.utt_speak_mapping[utt_name]
                     begin = float(begin)
                     end = float(end)
-                    tiers[speaker].entryList.append((begin, end, text))
+                    tiers[speaker].entryList.append(Interval(start=begin, end=end, label=text))
                 for t in tiers.values():
                     tg.addTier(t)
-                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
+                tg.save(output_path,
+                        includeBlankSpaces=True, format='long_textgrid')

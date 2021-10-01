@@ -24,6 +24,11 @@ def wav_dir(test_dir):
 
 
 @pytest.fixture(scope='session')
+def mp3_test_path(wav_dir):
+    return os.path.join(wav_dir, 'dummy.mp3')
+
+
+@pytest.fixture(scope='session')
 def lab_dir(test_dir):
     return os.path.join(test_dir, 'lab')
 
@@ -64,6 +69,7 @@ def temp_dir(generated_dir):
     return os.path.join(generated_dir, 'temp')
 
 
+
 @pytest.fixture(scope='session')
 def config_dir(generated_dir):
     path = os.path.join(generated_dir, 'configs')
@@ -76,6 +82,14 @@ def english_acoustic_model():
     from montreal_forced_aligner.command_line.download import download_model
     download_model('acoustic', 'english')
     return 'english'
+
+
+@pytest.fixture(scope='session')
+def english_pretrained_dictionary():
+    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.utils import get_dictionary_path
+    download_model('dictionary', 'english')
+    return get_dictionary_path('english')
 
 
 @pytest.fixture(scope='session')
@@ -122,6 +136,11 @@ def transcription_language_model(language_model_dir, generated_dir):
 
 
 @pytest.fixture(scope='session')
+def transcription_language_model_arpa(language_model_dir, generated_dir):
+    return os.path.join(language_model_dir, 'test_lm.arpa')
+
+
+@pytest.fixture(scope='session')
 def corpus_root_dir(generated_dir):
     return os.path.join(generated_dir, 'corpus')
 
@@ -153,8 +172,11 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
         s_dir = os.path.join(path, s)
         os.makedirs(s_dir, exist_ok=True)
         for name in files:
+            space_name = name.replace('_', ' ')
             shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, name + '.wav'))
+            shutil.copyfile(os.path.join(wav_dir, name + '.wav'), os.path.join(s_dir, space_name + '.wav'))
             shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, name + '.lab'))
+            shutil.copyfile(os.path.join(lab_dir, name + '.lab'), os.path.join(s_dir, space_name + '.lab'))
     return path
 
 
@@ -181,7 +203,10 @@ def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
 def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, 'multilingual')
     os.makedirs(path, exist_ok=True)
-    names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
+    names = [('speaker', ['multilingual_ipa','multilingual_ipa_2','multilingual_ipa_3',
+                          'multilingual_ipa_4','multilingual_ipa_5',]),
+             ('speaker_two', ['multilingual_ipa_us','multilingual_ipa_us_2','multilingual_ipa_us_3',
+                          'multilingual_ipa_us_4','multilingual_ipa_us_5']) ]
     for s, files in names:
         s_dir = os.path.join(path, s)
         os.makedirs(s_dir, exist_ok=True)
@@ -193,9 +218,12 @@ def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 @pytest.fixture(scope='session')
 def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
-    path = os.path.join(corpus_root_dir, 'multilingual')
+    path = os.path.join(corpus_root_dir, 'multilingual_tg')
     os.makedirs(path, exist_ok=True)
-    names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
+    names = [('speaker_one', ['multilingual_ipa','multilingual_ipa_2','multilingual_ipa_3',
+                          'multilingual_ipa_4','multilingual_ipa_5',]),
+             ('speaker_two', ['multilingual_ipa_us','multilingual_ipa_us_2','multilingual_ipa_us_3',
+                          'multilingual_ipa_us_4','multilingual_ipa_us_5']) ]
     for s, files in names:
         s_dir = os.path.join(path, s)
         os.makedirs(s_dir, exist_ok=True)
@@ -456,6 +484,7 @@ def output_directory(basic_dir):
 @pytest.fixture(scope='session')
 def acoustic_corpus_textgrid_path(basic_dir):
     return os.path.join(basic_dir, 'acoustic_corpus.TextGrid')
+
 
 
 @pytest.fixture(scope='session')

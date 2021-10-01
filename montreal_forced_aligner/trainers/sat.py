@@ -6,7 +6,7 @@ import time
 
 from ..multiprocessing import (align, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               calc_fmllr, compute_alignment_improvement)
+                               calc_fmllr, compute_alignment_improvement, compile_information)
 from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs, load_scp
 from ..exceptions import KaldiProcessingError
 
@@ -175,18 +175,9 @@ class SatTrainer(TriphoneTrainer):
                       self.dictionary.optional_silence_csl,
                       self.corpus.num_jobs, self, self.align_directory)
 
-                log_like = 0
-                tot_frames = 0
-                for j in range(self.corpus.num_jobs):
-                    score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
-                    scores = load_scp(score_path, data_type=float)
-                    for k, v in scores.items():
-                        log_like += v
-                        tot_frames += self.corpus.utterance_lengths[k]
-                if tot_frames:
-                    self.logger.debug('Before SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
-                else:
-                    self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
+                unaligned, average_log_like = compile_information(self.align_directory, self.corpus,
+                                                                  self.corpus.num_jobs, self)
+                self.logger.debug(f'Before SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
 
                 if not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                     calc_fmllr(self.align_directory, align_data_directory,
@@ -196,18 +187,9 @@ class SatTrainer(TriphoneTrainer):
                           self.corpus.num_jobs, self, self.align_directory)
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
 
-                log_like = 0
-                tot_frames = 0
-                for j in range(self.corpus.num_jobs):
-                    score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
-                    scores = load_scp(score_path, data_type=float)
-                    for k, v in scores.items():
-                        log_like += v
-                        tot_frames += self.corpus.utterance_lengths[k]
-                if tot_frames:
-                    self.logger.debug('Following SAT, average per frame likelihood (this might not actually mean anything): {}'.format(log_like/tot_frames))
-                else:
-                    self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
+                unaligned, average_log_like = compile_information(self.align_directory, self.corpus,
+                                                                  self.corpus.num_jobs, self)
+                self.logger.debug(f'Following SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
             except Exception as e:
                 with open(dirty_path, 'w'):
                     pass

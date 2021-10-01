@@ -33,12 +33,19 @@ def train_dictionary(args, unknown_args=None):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
+    align_config.use_mp = not args.disable_mp
+    align_config.overwrite = args.overwrite
+    align_config.debug = args.debug
     if unknown_args:
         align_config.update_from_args(unknown_args)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug('ALIGN CONFIG:')
     log_config(logger, align_config)
     if os.path.exists(conf_path):
@@ -156,13 +163,3 @@ def run_train_dictionary(args, unknown=None, downloaded_acoustic_models=None, do
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     train_dictionary(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_dictionary_parser, fix_path, unfix_path, \
-        acoustic_languages, dict_languages
-
-    align_args, unknown_args = train_dictionary_parser.parse_known_args()
-    fix_path()
-    run_train_dictionary(align_args, unknown_args, acoustic_languages, dict_languages)
-    unfix_path()

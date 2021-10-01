@@ -12,8 +12,8 @@ from .helper import make_path_safe, run_mp, run_non_mp, thirdparty_binary, parse
 
 
 
-def generate_pronunciations_func(model_directory, dictionary, corpus, job_name):
-    text_int_path = os.path.join(corpus.split_directory(), 'text.{}.int'.format(job_name))
+def generate_pronunciations_func(model_directory, split_directory, phones_dir, job_name):
+    text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
     log_path = os.path.join(model_directory, 'log', 'pronunciation.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
@@ -32,7 +32,7 @@ def generate_pronunciations_func(model_directory, dictionary, corpus, job_name):
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=log_file)
         align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                                       os.path.join(dictionary.phones_dir, 'word_boundary.int'), model_path,
+                                       os.path.join(phones_dir, 'word_boundary.int'), model_path,
                                        'ark:-', 'ark,t:' + aligned_path],
                                       stdin=lin_proc.stdout, stderr=log_file)
         align_proc.communicate()
@@ -48,7 +48,7 @@ def generate_pronunciations(align_config, model_directory, dictionary, corpus, n
     from collections import Counter, defaultdict
     log_directory = os.path.join(model_directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
-    jobs = [(model_directory, dictionary, corpus, x)
+    jobs = [(model_directory, corpus.split_directory(), dictionary.phones_dir, x)
             for x in range(num_jobs)]
     if align_config.use_mp:
         run_mp(generate_pronunciations_func, jobs, log_directory)

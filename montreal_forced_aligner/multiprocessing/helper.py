@@ -24,6 +24,7 @@ class Stopped(object):
     def __init__(self, initval=False):
         self.val = mp.Value('i', initval)
         self.lock = mp.Lock()
+        self._source = mp.Value('i', 0)
 
     def stop(self):
         with self.lock:
@@ -35,11 +36,13 @@ class Stopped(object):
 
 
 class ProcessWorker(mp.Process):
-    def __init__(self, job_q, function, return_dict, stopped):
+    def __init__(self, job_name, job_q, function, return_dict, stopped, return_info = None):
         mp.Process.__init__(self)
+        self.job_name = job_name
         self.function = function
         self.job_q = job_q
         self.return_dict = return_dict
+        self.return_info = return_info
         self.stopped = stopped
 
     def run(self):
@@ -52,7 +55,9 @@ class ProcessWorker(mp.Process):
             if self.stopped.stop_check():
                 continue
             try:
-                _ = self.function(*arguments)
+                result = self.function(*arguments)
+                if self.return_info is not None:
+                    self.return_info[self.job_name] = result
             except Exception as e:
                 self.stopped.stop()
                 self.return_dict['error'] = arguments, Exception(traceback.format_exception(*sys.exc_info()))
@@ -66,7 +71,7 @@ def run_non_mp(function, argument_list, log_directory):
     parse_logs(log_directory)
 
 
-def run_mp(function, argument_list, log_directory):  # pragma: no cover
+def run_mp(function, argument_list, log_directory, return_info=None):  # pragma: no cover
     stopped = Stopped()
     manager = mp.Manager()
     job_queue = manager.Queue()
@@ -75,7 +80,7 @@ def run_mp(function, argument_list, log_directory):  # pragma: no cover
         job_queue.put(a, False)
     procs = []
     for i in range(len(argument_list)):
-        p = ProcessWorker(job_queue, function, return_dict, stopped)
+        p = ProcessWorker(i, job_queue, function, return_dict, stopped, return_info)
         procs.append(p)
         p.start()
 

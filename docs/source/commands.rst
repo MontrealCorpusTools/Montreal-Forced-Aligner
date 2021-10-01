@@ -1,3 +1,5 @@
+
+
 .. _commands:
 
 ********
@@ -40,7 +42,7 @@ Corpus creation
    "create_segments", "Use voice activity detection to create segments", :ref:`create_segments`
    "train_ivector", "Train an ivector extractor for speaker classification", :ref:`train_ivector`
    "classify_speakers", "Use ivector extractor to classify files or cluster them", :ref:`classify_speakers`
-   "annotator", "Run a GUI annotator program for editing and managing corpora", :ref:`annotator`
+   "anchor", "Run the Anchor annotator utility (if installed) for editing and managing corpora", :ref:`annotator`
 
 
 Other utilities
@@ -52,6 +54,7 @@ Other utilities
 
    "download", "Download a model trained by MFA developers", :ref:`pretrained_models`
    "thirdparty", "Download and validate new third party binaries", :ref:`installation`
+   "configure", "Configure MFA to use customized defaults for command line arguments", :ref:`configuration`
 
 
 Grapheme-to-phoneme

@@ -10,6 +10,6 @@ def test_create_segments(basic_corpus_dir, sick_dict_path, english_acoustic_mode
     output_path = os.path.join(generated_dir, 'segment_output')
     command = ['create_segments', basic_corpus_dir,
                output_path,
-               '-t', temp_dir, '-q', '--clean', '-d', '--config', basic_segment_config]
+               '-t', temp_dir, '-q', '--clean', '--debug', '-v', '--config_path', basic_segment_config]
     args, unknown = parser.parse_known_args(command)
     run_create_segments(args)

@@ -4,7 +4,7 @@ from joblib import load
 import numpy as np
 import time
 from decimal import Decimal
-from praatio import tgio
+from praatio import textgrid
 from .config import TEMP_DIR
 from .helper import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -220,12 +220,12 @@ class SpeakerClassifier(object):
                 utts = spk2utt[speak]
                 for u in utts:
                     reanalyze_utts.append(u)
-
-        spk2utt = {k: v for k, v in spk2utt.items() if k in valid_speakers}
-        new_utt2spk = self.classify_utterances(reanalyze_utts, valid_speakers)
-        for u, spk in new_utt2spk.items():
-            utt2spk[u] = spk
-            spk2utt[spk].append(u)
+        if reanalyze_utts:
+            spk2utt = {k: v for k, v in spk2utt.items() if k in valid_speakers}
+            new_utt2spk = self.classify_utterances(reanalyze_utts, valid_speakers)
+            for u, spk in new_utt2spk.items():
+                utt2spk[u] = spk
+                spk2utt[spk].append(u)
         save_scp(([k, v] for k,v in spk2utt.items()), spk2utt_path)
         save_scp(([k, v] for k,v in utt2spk.items()), utt2spk_path)
         self.logger.debug('Analyzing stats and reclassification took {} seconds'.format(time.time() - begin))
@@ -258,7 +258,7 @@ class SpeakerClassifier(object):
                 except KeyError:
                     speaker_directory = output_directory
                 max_time = self.corpus.get_wav_duration(filename)
-                tg = tgio.Textgrid()
+                tg = textgrid.Textgrid()
                 tg.minTimestamp = 0
                 tg.maxTimestamp = max_time
                 for speaker in sorted(speaker_dict.keys()):
@@ -269,7 +269,8 @@ class SpeakerClassifier(object):
                             w[1] = max_time
                         tier.entryList.append(w)
                     tg.addTier(tier)
-                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), useShortForm=False)
+                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'),
+                        includeBlankSpaces=True, format='long_textgrid')
 
         else:
             spk2utt = load_scp(spk2utt_path)

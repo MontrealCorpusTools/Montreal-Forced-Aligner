@@ -1,12 +1,10 @@
 import os
 import sys
-import traceback
 import time
-import itertools
+import signal
+import re
 
-from praatio import tgio
-
-from .base import BaseCorpus, get_wav_info, find_exts
+from .base import BaseCorpus, find_exts
 from ..helper import load_scp
 from ..dictionary import MultispeakerDictionary
 
@@ -14,23 +12,30 @@ from ..exceptions import CorpusError
 from ..multiprocessing import segment_vad
 import multiprocessing as mp
 from queue import Empty
-from ..multiprocessing.helper import Stopped, Counter
-from ..multiprocessing.corpus import CorpusProcessWorker
+from ..multiprocessing.helper import Stopped
+from ..multiprocessing.corpus import CorpusProcessWorker, parse_textgrid_file, parse_wav_file
 
 
 class TranscribeCorpus(BaseCorpus):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
                  num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True, no_speakers=False,
-                 ignore_transcriptions=False, audio_directory=None):
+                 ignore_transcriptions=False, audio_directory=None, skip_load=False):
         super(TranscribeCorpus, self).__init__(directory, output_directory,
                                                speaker_characters,
                                                num_jobs, sample_rate, debug, logger, use_mp,
-                                               audio_directory=audio_directory)
+                                               audio_directory=audio_directory, skip_load=skip_load)
         self.no_speakers = no_speakers
         self.ignore_transcriptions = ignore_transcriptions
         self.vad_segments = {}
+        if self.use_mp:
+            self.stopped = Stopped()
+        else:
+            self.stopped = False
+        if not self.skip_load:
+            self.load()
 
+    def load(self):
         loaded = self._load_from_temp()
         if not loaded:
             if self.use_mp:
@@ -45,6 +50,14 @@ class TranscribeCorpus(BaseCorpus):
 
     def _load_from_temp(self):
         begin_time = time.time()
+        for f in os.listdir(self.output_directory):
+            if f.startswith('split'):
+                old_num_jobs = int(f.replace('split', ''))
+                if old_num_jobs != self.num_jobs:
+                    self.logger.info(f'Found old run with {old_num_jobs} rather than the current {self.num_jobs}, '
+                                     f'setting to {old_num_jobs}.  If you would like to use {self.num_jobs}, re-run the command '
+                                     f'with --clean.')
+                    self.num_jobs = old_num_jobs
         feat_path = os.path.join(self.output_directory, 'feats.scp')
         if not os.path.exists(feat_path):
             return False
@@ -56,9 +69,6 @@ class TranscribeCorpus(BaseCorpus):
             return False
         spk2utt_path = os.path.join(self.output_directory, 'spk2utt')
         if not os.path.exists(spk2utt_path):
-            return False
-        sr_path = os.path.join(self.output_directory, 'sr.scp')
-        if not os.path.exists(sr_path):
             return False
         wav_path = os.path.join(self.output_directory, 'wav.scp')
         if not os.path.exists(wav_path):
@@ -98,241 +108,235 @@ class TranscribeCorpus(BaseCorpus):
         return True
 
     def _load_from_source_mp(self):
+        if self.stopped is None:
+            self.stopped = Stopped()
         begin_time = time.time()
         manager = mp.Manager()
         job_queue = manager.Queue()
         return_queue = manager.Queue()
         return_dict = manager.dict()
-        stopped = Stopped()
-        processed_counter = Counter()
-        max_counter = Counter()
+        finished_adding = Stopped()
 
         all_sound_files = {}
-        audio_paths = {}
-        if self.audio_directory and os.path.exists(self.audio_directory):
-            for root, dirs, files in os.walk(self.audio_directory, followlinks=True):
-                wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-                all_sound_files.update(other_audio_files)
-                all_sound_files.update(wav_files)
-                for k, v in itertools.chain(wav_files.items(), other_audio_files.items()):
-                    audio_paths[k] = os.path.join(root, v)
+        use_audio_directory = False
+        processed = set()
+        try:
+            if self.audio_directory and os.path.exists(self.audio_directory):
+                use_audio_directory = True
+                for root, dirs, files in os.walk(self.audio_directory, followlinks=True):
+                    wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                    wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                    other_audio_files = {k: os.path.join(root, v) for k, v in other_audio_files.items()}
+                    all_sound_files.update(other_audio_files)
+                    all_sound_files.update(wav_files)
 
-        procs = []
-        for i in range(self.num_jobs):
-            p = CorpusProcessWorker(job_queue, return_dict, return_queue, stopped,
-                                    processed_counter, max_counter)
-            procs.append(p)
-            p.start()
+            procs = []
+            for i in range(self.num_jobs):
+                p = CorpusProcessWorker(job_queue, return_dict, return_queue, self.stopped,
+                                        finished_adding)
+                procs.append(p)
+                p.start()
 
-        for root, dirs, files in os.walk(self.directory, followlinks=True):
-            wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-            all_sound_files.update(other_audio_files)
-            all_sound_files.update(wav_files)
-            relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
-            for file_name, f in all_sound_files.items():
-                if file_name in audio_paths:
-                    wav_path = audio_paths[file_name]
-                else:
-                    wav_path = os.path.join(root, f)
-
-                if file_name in textgrid_files and not self.ignore_transcriptions:
-                    tg_name = textgrid_files[file_name]
-                    transcription_path = os.path.join(root, tg_name)
-                else:
-                    transcription_path = None
-                max_counter.increment()
-                job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
-        job_queue.join()
-
-        for p in procs:
-            p.join()
-
-        while True:
-            try:
-                info = return_queue.get(timeout=1)
-            except Empty:
-                for p in procs:
-                    p.stopped.stop()
-                break
-            if 'segments' not in info:  # didn't have a textgrid file
-                utt_name = info['utt_name']
-                speaker_name = info['speaker_name']
-                wav_info = info['wav_info']
-                if utt_name in self.utt_wav_mapping:
-                    ind = 0
-                    fixed_utt_name = utt_name
-                    while fixed_utt_name not in self.utt_wav_mapping:
-                        ind += 1
-                        fixed_utt_name = utt_name + '_{}'.format(ind)
-                    utt_name = fixed_utt_name
-                file_name = utt_name
-
-                if self.no_speakers:
-                    self.utt_speak_mapping[utt_name] = utt_name
-                    self.speak_utt_mapping[utt_name] = [utt_name]
-
-                else:
-                    self.speak_utt_mapping[speaker_name].append(utt_name)
-                    self.utt_speak_mapping[utt_name] = speaker_name
-                if 'sox_string' in info:
-                    self.sox_strings[utt_name] = info['sox_string']
-                self.utt_wav_mapping[utt_name] = info['wav_path']
-                self.file_directory_mapping[utt_name] = info['relative_path']
-            else:
-                wav_info = info['wav_info']
-                file_name = info['recording_name']
-                self.wav_files.append(file_name)
-                self.speaker_ordering[file_name] = info['speaker_ordering']
-                self.segments.update(info['segments'])
-                self.utt_wav_mapping.update(info['utt_wav_mapping'])
-                if 'sox_string' in info:
-                    self.sox_strings.update(info['sox_string'])
-                for utt, words in info['text_mapping'].items():
-                    self.text_mapping[utt] = words
-                if self.no_speakers:
-                    for utt in info['utt_speak_mapping']:
-                        self.utt_speak_mapping[utt] = utt
-                        self.speak_utt_mapping[utt] = [utt]
-                else:
-                    self.utt_speak_mapping.update(info['utt_speak_mapping'])
-                    for speak, utts in info['speak_utt_mapping'].items():
-                        if speak not in self.speak_utt_mapping:
-                            self.speak_utt_mapping[speak] = utts
-                        else:
-                            self.speak_utt_mapping[speak].extend(utts)
-                for fn in info['file_names']:
-                    self.file_directory_mapping[fn] = info['relative_path']
-
-            self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
-
-        for k in ['wav_read_errors', 'unsupported_bit_depths',
-                  'decode_error_files', 'textgrid_read_errors']:
-            if hasattr(self, k):
-                if k in return_dict:
-                    if k == 'textgrid_read_errors':
-                        getattr(self, k).update(return_dict[k])
-                    else:
-                        setattr(self, k, return_dict[k])
-        self.logger.debug(
-            'Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time() - begin_time))
-
-    def _load_from_source(self):
-
-        all_sound_files = {}
-        if self.audio_directory and os.path.exists(self.audio_directory):
             for root, dirs, files in os.walk(self.directory, followlinks=True):
                 wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
+
+                if not use_audio_directory:
+                    all_sound_files = {}
+                    all_sound_files.update(other_audio_files)
+                    all_sound_files.update(wav_files)
+                    for file_name, f in all_sound_files.items():
+                        if self.stopped.stop_check():
+                            break
+                        wav_path = os.path.join(root, f)
+                        transcription_path = None
+                        if file_name in textgrid_files and not self.ignore_transcriptions:
+                            tg_name = textgrid_files[file_name]
+                            transcription_path = os.path.join(root, tg_name)
+                        job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate))
+                else:
+                    for file_name, f in textgrid_files.items():
+                        if file_name in all_sound_files:
+                            wav_path = all_sound_files[file_name]
+                        else:
+                            continue
+                        tg_name = textgrid_files[file_name]
+                        transcription_path = os.path.join(root, tg_name)
+                        job_queue.put((file_name, wav_path, transcription_path, relative_path, self.speaker_characters,
+                                       self.sample_rate))
+            if use_audio_directory:
+                for file_name, f in all_sound_files.items():
+                    if self.stopped.stop_check():
+                        break
+                    if f in processed:
+                        continue
+                    relative_path = os.path.dirname(f).replace(self.directory, '').lstrip('/').lstrip('\\')
+                    wav_path = f
+                    job_queue.put((file_name, wav_path, None, relative_path, self.speaker_characters,
+                                   self.sample_rate))
+
+            finished_adding.stop()
+            self.logger.debug('Finished adding jobs!')
+            job_queue.join()
+
+            self.logger.debug('Waiting for workers to finish...')
+            for p in procs:
+                p.join()
+
+            if 'error' in return_dict:
+                raise return_dict['error'][1]
+
+            self.logger.debug('Beginning processing of results queue...')
+
+            while True:
+                try:
+                    info = return_queue.get(timeout=1)
+                    if self.stopped.stop_check():
+                        continue
+                except Empty:
+                    break
+                if 'segments' not in info:  # didn't have a textgrid file
+                    self._parse_wav_file_info(info)
+                else:
+                    self._parse_textgrid_info(info)
+
+
+            for k in ['wav_read_errors', 'unsupported_bit_depths',
+                      'decode_error_files', 'textgrid_read_errors']:
+                if hasattr(self, k):
+                    if k in return_dict:
+                        if k == 'textgrid_read_errors':
+                            getattr(self, k).update(return_dict[k])
+                        else:
+                            setattr(self, k, return_dict[k])
+        except KeyboardInterrupt:
+            self.logger.info('Detected ctrl-c, please wait a moment while we clean everything up...')
+            self.stopped.stop()
+            finished_adding.stop()
+            job_queue.join()
+            self.stopped.set_sigint_source()
+            while True:
+                try:
+                    info = return_queue.get(timeout=1)
+                    if self.stopped.stop_check():
+                        continue
+                except Empty:
+                    break
+        finally:
+            if self.stopped.stop_check():
+                self.logger.debug('Stopped parsing early ({} seconds)'.format(time.time()-begin_time))
+                if self.stopped.source():
+                    sys.exit(0)
+            else:
+                self.logger.debug(
+                'Parsed corpus directory with {} jobs in {} seconds'.format(self.num_jobs, time.time() - begin_time))
+
+    def _parse_wav_file_info(self, info):
+        utt_name = info['utt_name']
+        speaker_name = info['speaker_name']
+        wav_info = info['wav_info']
+        if utt_name in self.utt_wav_mapping:
+            ind = 0
+            fixed_utt_name = utt_name
+            while fixed_utt_name not in self.utt_wav_mapping:
+                ind += 1
+                fixed_utt_name = utt_name + '_{}'.format(ind)
+            utt_name = fixed_utt_name
+        file_name = info['file_name']
+
+        self.wav_files.append(file_name)
+        if self.no_speakers:
+            self.utt_speak_mapping[utt_name] = utt_name
+            self.speak_utt_mapping[utt_name] = [utt_name]
+
+        else:
+            self.speak_utt_mapping[speaker_name].append(utt_name)
+            self.utt_speak_mapping[utt_name] = speaker_name
+        if 'sox_string' in info:
+            self.sox_strings[utt_name] = info['sox_string']
+        self.utt_wav_mapping[utt_name] = info['wav_path']
+        self.file_directory_mapping[utt_name] = info['relative_path']
+        self.file_name_mapping[utt_name] = info['file_name']
+        self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
+
+    def _parse_textgrid_info(self, info):
+        wav_info = info['wav_info']
+        file_name = info['recording_name']
+        self.wav_files.append(file_name)
+        self.speaker_ordering[file_name] = info['speaker_ordering']
+        self.segments.update(info['segments'])
+        self.utt_wav_mapping.update(info['utt_wav_mapping'])
+        if 'sox_string' in info:
+            self.sox_strings.update(info['sox_string'])
+        for utt, words in info['text_mapping'].items():
+            self.text_mapping[utt] = words
+        if self.no_speakers:
+            for utt in info['utt_speak_mapping']:
+                self.utt_speak_mapping[utt] = utt
+                self.speak_utt_mapping[utt] = [utt]
+        else:
+            self.utt_speak_mapping.update(info['utt_speak_mapping'])
+            for speak, utts in info['speak_utt_mapping'].items():
+                if speak not in self.speak_utt_mapping:
+                    self.speak_utt_mapping[speak] = utts
+                else:
+                    self.speak_utt_mapping[speak].extend(utts)
+        for fn in info['file_names']:
+            self.file_directory_mapping[fn] = info['relative_path']
+        self.wav_info[file_name] = [wav_info['num_channels'], wav_info['sample_rate'], wav_info['duration']]
+
+    def _load_from_source(self):
+        all_sound_files = {}
+        use_audio_directory = False
+        processed = set()
+        if self.audio_directory and os.path.exists(self.audio_directory):
+            use_audio_directory = True
+            for root, dirs, files in os.walk(self.directory, followlinks=True):
+                wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+                wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                other_audio_files = {k: os.path.join(root, v) for k, v in other_audio_files.items()}
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
 
         for root, dirs, files in os.walk(self.directory, followlinks=True):
             wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
-            all_sound_files.update(other_audio_files)
-            all_sound_files.update(wav_files)
-            for file_name, f in all_sound_files.items():
-                wav_path = os.path.join(root, f)
-                try:
-                    wav_info = get_wav_info(wav_path, self.sample_rate)
-                except Exception:
-                    self.wav_read_errors.append(wav_path)
-                    continue
-                wav_max_time = wav_info['duration']
+            relative_path = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
-                if file_name in textgrid_files and not self.ignore_transcriptions:
-                    tg_name = textgrid_files[file_name]
-                    tg_path = os.path.join(root, tg_name)
-                    try:
-                        tg = tgio.openTextgrid(tg_path)
-                    except Exception as e:
-                        exc_type, exc_value, exc_traceback = sys.exc_info()
-                        self.textgrid_read_errors[tg_path] = '\n'.join(
-                            traceback.format_exception(exc_type, exc_value, exc_traceback))
+            if not use_audio_directory:
+                all_sound_files = {}
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
+                for file_name, f in all_sound_files.items():
+                    wav_path = os.path.join(root, f)
+
+                    if file_name in textgrid_files and not self.ignore_transcriptions:
+                        tg_name = textgrid_files[file_name]
+                        tg_path = os.path.join(root, tg_name)
+                        info = parse_textgrid_file(file_name, wav_path, tg_path, relative_path, self.speaker_characters, self.sample_rate)
+                        self._parse_textgrid_info(info)
+                    else:
+                        info = parse_wav_file(file_name, wav_path, None, relative_path, self.speaker_characters, self.sample_rate)
+                        self._parse_wav_file_info(info)
+            else:
+                for file_name, f in textgrid_files.items():
+                    if file_name in all_sound_files:
+                        wav_path = all_sound_files[file_name]
+                    else:
                         continue
-                    n_channels = wav_info['num_channels']
-                    num_tiers = len(tg.tierNameList)
-                    if n_channels > 2:
-                        raise (Exception('More than two channels'))
-                    self.speaker_ordering[file_name] = []
-                    if not self.speaker_directories:
-                        if isinstance(self.speaker_characters, int):
-                            speaker_name = f[:self.speaker_characters]
-                        elif self.speaker_characters == 'prosodylab':
-                            speaker_name = f.split('_')[1]
-                        else:
-                            speaker_name = f
-                        speaker_name = speaker_name.strip().replace(' ', '_')
-                        self.speaker_ordering[file_name].append(speaker_name)
-                    for i, tier_name in enumerate(tg.tierNameList):
-                        ti = tg.tierDict[tier_name]
-                        if tier_name.lower() == 'notes':
-                            continue
-                        if not isinstance(ti, tgio.IntervalTier):
-                            continue
-                        if self.speaker_directories:
-                            speaker_name = tier_name.strip().replace(' ', '_')
-                            self.speaker_ordering[file_name].append(speaker_name)
-                        for begin, end, text in ti.entryList:
-                            text = text.lower().strip()
-                            if not text:
-                                continue
+                    tg_name = textgrid_files[file_name]
+                    transcription_path = os.path.join(root, tg_name)
+                    info = parse_textgrid_file(file_name, wav_path, transcription_path, relative_path, self.speaker_characters, self.sample_rate)
+                    self._parse_textgrid_info(info)
+                    processed.add(wav_path)
+        if use_audio_directory:
+            for file_name, f in all_sound_files.items():
+                if f in processed:
+                    continue
+                relative_path = os.path.dirname(f).replace(self.directory, '').lstrip('/').lstrip('\\')
+                wav_path = f
+                info = parse_wav_file(file_name, wav_path, None, relative_path, self.speaker_characters, self.sample_rate)
+                self._parse_wav_file_info(info)
 
-                            begin, end = round(begin, 4), round(end, 4)
-                            end = min(end, wav_max_time)
-                            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
-                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
-                            self.utt_wav_mapping[file_name] = wav_path
-                            if n_channels == 1:
-                                if self.feat_mapping and utt_name not in self.feat_mapping:
-                                    self.ignored_utterances.append(utt_name)
-                                self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
-                                                           'channel': 0}
-                            else:
-                                if i < num_tiers / 2:
-                                    if self.feat_mapping and utt_name not in self.feat_mapping:
-                                        self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
-                                                               'channel': 0}
-                                else:
-                                    if self.feat_mapping and utt_name not in self.feat_mapping:
-                                        self.ignored_utterances.append(utt_name)
-                                    self.segments[utt_name] = {'file_name': file_name, 'begin': begin, 'end': end,
-                                                               'channel': 1}
-                            self.text_mapping[utt_name] = text
-                            self.utt_speak_mapping[utt_name] = speaker_name
-                            self.speak_utt_mapping[speaker_name].append(utt_name)
-                    if 'sox_string' in wav_info:
-                        self.sox_strings[file_name] = wav_info['sox_string']
-                else:
-
-                    if self.speaker_directories:
-                        speaker_name = os.path.basename(root)
-                    else:
-                        if isinstance(self.speaker_characters, int):
-                            speaker_name = f[:self.speaker_characters]
-                        elif self.speaker_characters == 'prosodylab':
-                            speaker_name = f.split('_')[1]
-                        else:
-                            speaker_name = f
-                    speaker_name = speaker_name.strip().replace(' ', '_')
-                    utt_name = file_name
-                    if utt_name in self.utt_wav_mapping:
-                        ind = 0
-                        fixed_utt_name = utt_name
-                        while fixed_utt_name not in self.utt_wav_mapping:
-                            ind += 1
-                            fixed_utt_name = utt_name + '_{}'.format(ind)
-                        utt_name = fixed_utt_name
-                    utt_name = utt_name.strip().replace(' ', '_')
-                    self.utt_wav_mapping[utt_name] = wav_path
-                    if self.no_speakers:
-                        self.speak_utt_mapping[utt_name].append(utt_name)
-                        self.utt_speak_mapping[utt_name] = utt_name
-                    else:
-                        self.speak_utt_mapping[speaker_name].append(utt_name)
-                        self.utt_speak_mapping[utt_name] = speaker_name
-                    if 'sox_string' in wav_info:
-                        self.sox_strings[utt_name] = wav_info['sox_string']
-                self.file_directory_mapping[file_name] = root.replace(self.directory, '').lstrip('/').lstrip('\\')
 
     def initialize_corpus(self, dictionary=None, feature_config=None):
         if not self.utt_wav_mapping:

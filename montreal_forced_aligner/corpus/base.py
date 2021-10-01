@@ -112,7 +112,7 @@ class BaseCorpus(object):
     def __init__(self, directory, output_directory,
                  speaker_characters=0,
                  num_jobs=3, sample_rate=16000, debug=False, logger=None, use_mp=True,
-                 punctuation=None, clitic_markers=None, audio_directory=None):
+                 punctuation=None, clitic_markers=None, audio_directory=None, skip_load=False):
         self.audio_directory = audio_directory
         self.punctuation = punctuation
         self.clitic_markers = clitic_markers
@@ -175,9 +175,12 @@ class BaseCorpus(object):
         self.ignored_utterances = []
         self.utterance_lengths = {}
         self.sample_rate = sample_rate
-        feat_path = os.path.join(self.output_directory, 'feats.scp')
-        if os.path.exists(feat_path):
-            self.feat_mapping = load_scp(feat_path)
+        self.stopped = None
+        self.skip_load = skip_load
+
+    @property
+    def file_speaker_mapping(self):
+        return {file_name: [self.utt_speak_mapping[u] for u in utts] for file_name, utts in self.file_utt_mapping.items()}
 
     @property
     def speakers(self):
@@ -187,6 +190,9 @@ class BaseCorpus(object):
         if seg is not None:
             self.segments[utterance] = seg
         self.utt_file_mapping[utterance] = file
+        if file not in self.file_utt_mapping:
+            self.file_utt_mapping[file] = []
+            self.speaker_ordering[file] = []
         self.file_utt_mapping[file] = sorted(self.file_utt_mapping[file] + [utterance])
 
         self.utt_speak_mapping[utterance] = speaker
@@ -204,11 +210,15 @@ class BaseCorpus(object):
         file = self.utt_file_mapping[utterance]
         del self.utt_file_mapping[utterance]
         self.file_utt_mapping[file] = [x for x in self.file_utt_mapping[file] if x != utterance]
+        if not self.file_utt_mapping[file]:
+            del self.file_utt_mapping[file]
+            del self.speaker_ordering[file]
 
         speaker = self.utt_speak_mapping[utterance]
         del self.utt_speak_mapping[utterance]
         self.speak_utt_mapping[speaker] = [x for x in self.speak_utt_mapping[speaker] if x != utterance]
-
+        if not self.speak_utt_mapping[speaker]:
+            del self.speak_utt_mapping[speaker]
         if utterance in self.feat_mapping:
             del self.feat_mapping[utterance]
         if utterance in self.utterance_lengths:
@@ -299,15 +309,6 @@ class BaseCorpus(object):
             output.append(output_g)
         return output
 
-    def parse_features_logs(self):
-        line_reg_ex = r'Did not find features for utterance (\w+)'
-        missing_features = []
-        with open(os.path.join(self.features_log_directory, 'cmvn.log'), 'r') as f:
-            for line in f:
-                m = re.search(line_reg_ex, line)
-                if m is not None:
-                    missing_features.append(m.groups()[0])
-
     def speaker_utterance_info(self):
         num_speakers = len(self.speak_utt_mapping.keys())
         if not num_speakers:
@@ -392,58 +393,78 @@ class BaseCorpus(object):
                 wav_path = self.utt_wav_mapping[rec]
         return get_wav_info(wav_path)['duration']
 
+    @property
+    def file_durations(self):
+        return {f: info[2] for f, info in self.wav_info.items()}
+
     def split_directory(self):
         directory = os.path.join(self.output_directory, 'split{}'.format(self.num_jobs))
         return directory
 
     def _write_utt_speak(self):
         utt2spk = os.path.join(self.output_directory, 'utt2spk')
+        if os.path.exists(utt2spk):
+            return
         output_mapping(self.utt_speak_mapping, utt2spk)
 
     def _write_speak_utt(self):
         spk2utt = os.path.join(self.output_directory, 'spk2utt')
+        if os.path.exists(spk2utt):
+            return
         output_mapping(self.speak_utt_mapping, spk2utt)
 
     def _write_utt_file(self):
         utt2file = os.path.join(self.output_directory, 'utt2file')
+        if os.path.exists(utt2file):
+            return
         output_mapping(self.utt_file_mapping, utt2file)
 
     def _write_file_utt(self):
         file2utt = os.path.join(self.output_directory, 'file2utt')
+        if os.path.exists(file2utt):
+            return
         output_mapping(self.file_utt_mapping, file2utt)
 
     def _write_wavscp(self):
         path = os.path.join(self.output_directory, 'wav.scp')
+        if os.path.exists(path):
+            return
         output_mapping(self.utt_wav_mapping, path)
 
     def _write_sox_strings(self):
         path = os.path.join(self.output_directory, 'sox_strings.scp')
+        if os.path.exists(path):
+            return
         output_mapping(self.sox_strings, path)
-
-    def _write_speaker_sr(self):
-        path = os.path.join(self.output_directory, 'sr.scp')
-        output_mapping(self.sample_rates, path)
 
     def _write_wav_info(self):
         path = os.path.join(self.output_directory, 'wav_info.scp')
+        if os.path.exists(path):
+            return
         output_mapping(self.wav_info, path)
 
     def _write_file_directory(self):
         path = os.path.join(self.output_directory, 'file_directory.scp')
+        if os.path.exists(path):
+            return
         output_mapping(self.file_directory_mapping, path)
 
     def _write_file_name(self):
         path = os.path.join(self.output_directory, 'file_name.scp')
+        if os.path.exists(path):
+            return
         output_mapping(self.file_name_mapping, path)
 
     def _write_segments(self):
         if not self.segments:
             return
+        path = os.path.join(self.output_directory, 'segments.scp')
+        if os.path.exists(path):
+            return
         segs = {}
         for k, v in self.segments.items():
             segs[k] = '{file_name} {begin} {end} {channel}'.format(**v)
-        segments = os.path.join(self.output_directory, 'segments.scp')
-        output_mapping(segs, segments)
+        output_mapping(segs, path)
 
     def _split_utt2spk(self, directory):
         pattern = 'utt2spk.{}'
@@ -462,13 +483,6 @@ class BaseCorpus(object):
     def _split_wavs(self, directory):
         pattern = 'wav.{}.scp'
         save_groups(self.grouped_wav, directory, pattern)
-
-    def _split_cmvns(self, directory):
-        if not self.cmvn_mapping:
-            cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
-            self.cmvn_mapping = load_scp(cmvn_path)
-        pattern = 'cmvn.{}.scp'
-        save_groups(self.grouped_cmvn, directory, pattern)
 
     def combine_feats(self):
         self.feat_mapping = {}
@@ -567,7 +581,6 @@ class BaseCorpus(object):
         self._write_segments()
         self._write_wavscp()
         self._write_sox_strings()
-        self._write_speaker_sr()
         self._write_wav_info()
         self._write_file_directory()
         self._write_file_name()

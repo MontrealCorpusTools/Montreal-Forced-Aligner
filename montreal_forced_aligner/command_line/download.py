@@ -69,11 +69,3 @@ def validate_args(args):
 def run_download(args):
     validate_args(args)
     download_model(args.model_type, args.language)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    from montreal_forced_aligner.command_line.mfa import download_parser
-
-    download_args = download_parser.parse_args()
-
-    run_download(download_args)

@@ -11,6 +11,7 @@ class TrainLMConfig(BaseConfig):
         self.count_threshold = 1
         self.prune_thresh_small = 0.0000003
         self.prune_thresh_medium = 0.0000001
+        self.use_mp = True
 
 
 def train_lm_yaml_to_config(path):

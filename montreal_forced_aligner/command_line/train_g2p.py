@@ -20,6 +20,7 @@ def train_g2p(args, unknown_args=None):
         train_config = train_g2p_yaml_to_config(args.config_path)
     else:
         train_config = load_basic_train_g2p_config()
+    train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_args(unknown_args)
     dictionary = Dictionary(args.dictionary_path, '')
@@ -46,11 +47,3 @@ def run_train_g2p(args, unknown, download_dictionaries=None):
     validate(args, download_dictionaries)
     train_g2p(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    from montreal_forced_aligner.command_line.mfa import train_g2p_parser, fix_path, unfix_path, dict_languages
-
-    train_args, unknown_args = train_g2p_parser.parse_known_args()
-    fix_path()
-    run_train_g2p(train_args, unknown_args, dict_languages)
-    unfix_path()

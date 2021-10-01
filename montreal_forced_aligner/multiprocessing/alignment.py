@@ -1,14 +1,25 @@
 import subprocess
 import os
 import re
+import sys
+import time
+import traceback
 from decimal import Decimal
 import statistics
+from collections import defaultdict
+from multiprocessing import Lock
 
 from .helper import make_path_safe, run_mp, run_non_mp, thirdparty_binary
 
-from ..textgrid import ctm_to_textgrid, parse_ctm
+from ..textgrid import parse_from_word, parse_from_word_no_cleanup, parse_from_phone, \
+    ctms_to_textgrids_non_mp, output_textgrid_writing_errors, generate_tiers, export_textgrid, construct_output_path
 
 from ..exceptions import AlignmentError
+import multiprocessing as mp
+from ..multiprocessing.helper import Stopped
+from queue import Empty
+
+queue_polling_timeout = 1
 
 
 def acc_stats_func(directory, iteration, job_name, feature_string):
@@ -18,7 +29,7 @@ def acc_stats_func(directory, iteration, job_name, feature_string):
     ali_path = os.path.join(directory, 'ali.{}'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
         acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-ali'), model_path,
-                                     '{}'.format(feature_string), "ark,t:" + ali_path, acc_path],
+                                     '{}'.format(feature_string), "ark:" + ali_path, acc_path],
                                     stderr=log_file)
         acc_proc.communicate()
 
@@ -85,7 +96,6 @@ def compile_train_graphs_func(directory, lang_directory, split_directory, job_na
             fst_ark_path = os.path.join(directory, 'fsts.{}.{}.ark'.format(job_name, name))
             text_path = os.path.join(split_directory, 'text.{}.{}.int'.format(job_name, name))
             with open(log_path, 'w', encoding='utf8') as log_file:
-
                 proc = subprocess.Popen([thirdparty_binary('compile-train-graphs'),
                                          '--read-disambig-syms={}'.format(
                                              os.path.join(lang_directory, 'phones', 'disambig.int')),
@@ -128,6 +138,8 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, a
     num_jobs : int
         The number of processes to use
     """
+    aligner.logger.info('Compiling training graphs...')
+    begin = time.time()
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
     jobs = [(directory, lang_directory, split_directory, x, aligner.dictionaries_for_job(x), debug)
@@ -136,6 +148,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, a
         run_mp(compile_train_graphs_func, jobs, log_directory)
     else:
         run_non_mp(compile_train_graphs_func, jobs, log_directory)
+    aligner.logger.debug(f'Compiling training graphs took {time.time() - begin}')
 
 
 def mono_align_equal_func(mono_directory, job_name, feature_string):
@@ -204,7 +217,7 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                    '--careful=false',
                    '--write-per-frame-acoustic-loglikes=ark,t:{}'.format(loglike_path),
                    mdl,
-                   "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
+                   "scp:" + fst_path, '{}'.format(feature_string), "ark:" + ali_path,
                    "ark,t:" + score_path]
         else:
             com = [thirdparty_binary('gmm-align-compiled'),
@@ -215,15 +228,13 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
                    '--retry-beam={}'.format(config['retry_beam']),
                    '--careful=false',
                    mdl,
-                   "scp:" + fst_path, '{}'.format(feature_string), "ark,t:" + ali_path,
-                   "ark,t:" + score_path]
+                   "scp:" + fst_path, '{}'.format(feature_string), "ark:" + ali_path]
         align_proc = subprocess.Popen(com,
                                       stderr=log_file)
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None,
-          debug=False):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -250,17 +261,21 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     config : :class:`~aligner.config.MonophoneConfig`, :class:`~aligner.config.TriphoneConfig` or :class:`~aligner.config.TriphoneFmllrConfig`
         Configuration object for training
     """
+    config.logger.info('Performing alignment...')
+    begin = time.time()
     if output_directory is None:
         output_directory = directory
     log_directory = os.path.join(output_directory, 'log')
     mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
-    mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
-                                           config.boost_silence, optional_silence, make_path_safe(mdl_path))
+    if config.boost_silence != 1.0:
+        mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
+                                               config.boost_silence, optional_silence, make_path_safe(mdl_path))
+    else:
+        mdl = mdl_path
 
     jobs = [(directory, iteration, x, mdl, config.align_options,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
-             output_directory) for x in range(num_jobs)]
-
+             output_directory, config.debug) for x in range(num_jobs)]
     if config.use_mp:
         run_mp(align_func, jobs, log_directory)
     else:
@@ -277,52 +292,76 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     if error_logs:
         message = 'There were {} job(s) with errors.  For more information, please see the following logs:\n\n{}'
         raise (AlignmentError(message.format(len(error_logs), '\n'.join(error_logs))))
+    config.logger.debug(f'Alignment round took {time.time() - begin}')
 
 
-def compile_information_func(log_directory, corpus, job_num):
+def compile_information_func(log_directory, split_directory, job_num):
     align_path = os.path.join(log_directory, 'align.final.{}.log'.format(job_num))
-    unaligned = {}
-    output_path = os.path.join(log_directory, 'unaligned.{}.log'.format(job_num))
+
+    log_like_pattern = re.compile(
+        r'^LOG .* Overall log-likelihood per frame is (?P<log_like>[-0-9.]+) over (?P<frames>\d+) frames.*$')
+
+    decode_error_pattern = re.compile(r'^WARNING .* Did not successfully decode file (?P<utt>.*?), .*$')
+
+    feature_pattern = re.compile(r'Segment (?P<utt>.*?) too short')
+    data = {'unaligned': [], 'too_short': [], 'log_like': 0, 'total_frames': 0}
     with open(align_path, 'r', encoding='utf8') as f:
         for line in f:
-            m = re.search(r'Did not successfully decode file (.*?),', line)
-            if m is not None:
-                utt = m.groups()[0]
-                unaligned[utt] = 'Could not decode (beam too narrow)'
-    features_path = os.path.join(corpus.split_directory(), 'log', 'make_mfcc.{}.log'.format(job_num))
+            decode_error_match = re.match(decode_error_pattern, line)
+            if decode_error_match:
+                data['unaligned'].append(decode_error_match.group('utt'))
+                continue
+            log_like_match = re.match(log_like_pattern, line)
+            if log_like_match:
+                log_like = log_like_match.group('log_like')
+                frames = log_like_match.group('frames')
+                data['log_like'] = float(log_like)
+                data['total_frames'] = int(frames)
+    features_path = os.path.join(split_directory, 'log', 'make_mfcc.{}.log'.format(job_num))
     with open(features_path, 'r', encoding='utf8') as f:
         for line in f:
-            m = re.search(r'Segment (.*?) too short', line)
+            m = re.search(feature_pattern, line)
             if m is not None:
-                utt = m.groups()[0]
-                unaligned[utt] = 'Too short to get features'
-    with open(output_path, 'w', encoding='utf8') as f:
-        for k, v in unaligned.items():
-            f.write('{} {}\n'.format(k, v))
+                utt = m.groups('utt')
+                data['too_short'].append(utt)
+    return data
 
 
 def compile_information(model_directory, corpus, num_jobs, config):
+    compile_info_begin = time.time()
     log_dir = os.path.join(model_directory, 'log')
+    manager = mp.Manager()
+    alignment_info = manager.dict()
 
-    jobs = [(log_dir, corpus, x)
+    jobs = [(log_dir, corpus.split_directory(), x)
             for x in range(num_jobs)]
 
-    run_non_mp(compile_information_func, jobs, log_dir)
+    if config.use_mp:
+        run_mp(compile_information_func, jobs, log_dir, alignment_info)
+    else:
+        run_non_mp(compile_information_func, jobs, log_dir)
 
     unaligned = {}
-    for j in jobs:
-        path = os.path.join(log_dir, 'unaligned.{}.log'.format(j[-1]))
-        with open(path, 'r', encoding='utf8') as f:
-            for line in f:
-                line = line.strip()
-                utt, reason = line.split(' ', maxsplit=1)
-                unaligned[utt] = reason
-    return unaligned
+    total_frames = sum(data['total_frames'] for data in alignment_info.values())
+    average_log_like = 0
+    for x, data in alignment_info.items():
+        weight = data['total_frames'] / total_frames
+        average_log_like += data['log_like'] * weight
+        for u in data['unaligned']:
+            unaligned[u] = 'Beam too narrow'
+        for u in data['too_short']:
+            unaligned[u] = 'Segment too short'
+
+    if not total_frames:
+        corpus.logger.warning('No files were aligned, this likely indicates serious problems with the aligner.')
+    corpus.logger.debug(f'Compiling information took {time.time() - compile_info_begin}')
+    return unaligned, average_log_like
 
 
-def compute_alignment_improvement_func(iteration, config, model_directory, job_name):
+def compute_alignment_improvement_func(iteration, data_directory, model_directory, phones_dir, job_name,
+                                       frame_shift, reversed_phone_mapping, positions):
     try:
-        text_int_path = os.path.join(config.data_directory, 'text.{}.int'.format(job_name))
+        text_int_path = os.path.join(data_directory, 'text.{}.int'.format(job_name))
         log_path = os.path.join(model_directory, 'log', 'get_ctm.{}.{}.log'.format(iteration, job_name))
         ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
         model_path = os.path.join(model_directory, '{}.mdl'.format(iteration))
@@ -330,7 +369,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
         if os.path.exists(phone_ctm_path):
             return
 
-        frame_shift = config.feature_config.frame_shift / 1000
+        frame_shift = frame_shift / 1000
         with open(log_path, 'w', encoding='utf8') as log_file:
             lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                          "ark:" + text_int_path,
@@ -341,7 +380,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                                         stdin=lin_proc.stdout, stderr=log_file,
                                         stdout=subprocess.PIPE)
             align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                                           os.path.join(config.dictionary.phones_dir, 'word_boundary.int'), model_path,
+                                           os.path.join(phones_dir, 'word_boundary.int'), model_path,
                                            'ark:-', 'ark:-'],
                                           stdin=det_proc.stdout, stderr=log_file,
                                           stdout=subprocess.PIPE)
@@ -356,7 +395,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                                           stdin=phone_proc.stdout,
                                           stderr=log_file)
             nbest_proc.communicate()
-        mapping = config.dictionary.reversed_phone_mapping
+        mapping = reversed_phone_mapping
         actual_lines = []
         with open(phone_ctm_path, 'r', encoding='utf8') as f:
             for line in f:
@@ -373,7 +412,7 @@ def compute_alignment_improvement_func(iteration, config, model_directory, job_n
                     label = mapping[int(label)]
                 except KeyError:
                     pass
-                for p in config.dictionary.positions:
+                for p in positions:
                     if label.endswith(p):
                         label = label[:-1 * len(p)]
                 actual_lines.append([utt, begin, end, label])
@@ -444,7 +483,9 @@ def compare_alignments(alignments_one, alignments_two, frame_shift):
 
 
 def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
-    jobs = [(iteration, config, model_directory, x) for x in range(num_jobs)]
+    jobs = [(iteration, config.data_directory, model_directory, config.dictionary.phones_dir, x,
+             config.feature_config.frame_shift, config.dictionary.reversed_phone_mapping, config.dictionary.positions)
+            for x in range(num_jobs)]
     if config.use_mp:
         run_mp(compute_alignment_improvement_func, jobs, config.log_directory)
     else:
@@ -479,57 +520,655 @@ def compute_alignment_improvement(iteration, config, model_directory, num_jobs):
             os.remove(phone_ctm_path)
 
 
-def ali_to_textgrid_func(model_directory, word_path, split_directory, job_name, frame_shift):
+def ali_to_ctm_func(model_directory, word_path, split_directory, job_name, frame_shift, word_mode=True):
     text_int_path = os.path.join(split_directory, 'text.{}.int'.format(job_name))
-    log_path = os.path.join(model_directory, 'log', 'get_ctm_align.{}.log'.format(job_name))
     ali_path = os.path.join(model_directory, 'ali.{}'.format(job_name))
     model_path = os.path.join(model_directory, 'final.mdl')
-    aligned_path = os.path.join(model_directory, 'aligned.{}'.format(job_name))
-    nbest_path = os.path.join(model_directory, 'nbest.{}'.format(job_name))
-    word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
-    phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
-    if os.path.exists(word_ctm_path) and os.path.exists(phone_ctm_path):
+    if word_mode:
+        ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(job_name))
+        log_path = os.path.join(model_directory, 'log', 'get_word_ctm_.{}.log'.format(job_name))
+    else:
+        ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(job_name))
+        log_path = os.path.join(model_directory, 'log', 'get_phone_ctm_.{}.log'.format(job_name))
+    if os.path.exists(ctm_path):
         return
 
     with open(log_path, 'w', encoding='utf8') as log_file:
         lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
                                      "ark:" + text_int_path,
-                                     '', '', 'ark,t:' + nbest_path],
-                                    stdout=subprocess.PIPE, stderr=log_file)
-
-        lin_proc.communicate()
-        lin_proc = subprocess.Popen([thirdparty_binary('linear-to-nbest'), "ark:" + ali_path,
-                                     "ark:" + text_int_path,
                                      '', '', 'ark:-'],
                                     stdout=subprocess.PIPE, stderr=log_file)
-        det_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                     'ark:-', 'ark:-'],
-                                    stdin=lin_proc.stdout, stderr=log_file,
-                                    stdout=subprocess.PIPE)
-        align_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
-                                       word_path, model_path,
-                                       'ark:-', 'ark,t:' + aligned_path],
-                                      stdin=det_proc.stdout, stderr=log_file)
-        align_proc.communicate()
-
-        subprocess.call([thirdparty_binary('nbest-to-ctm'),
-                         '--frame-shift={}'.format(frame_shift),
-                         'ark:' + aligned_path,
-                         word_ctm_path],
-                        stderr=log_file)
-        phone_proc = subprocess.Popen([thirdparty_binary('lattice-to-phone-lattice'), model_path,
-                                       'ark:' + aligned_path, "ark:-"],
-                                      stdout=subprocess.PIPE,
-                                      stderr=log_file)
-        nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'),
-                                       '--frame-shift={}'.format(frame_shift),
-                                       "ark:-", phone_ctm_path],
-                                      stdin=phone_proc.stdout,
-                                      stderr=log_file)
+        align_words_proc = subprocess.Popen([thirdparty_binary('lattice-align-words'),
+                                             word_path, model_path,
+                                             'ark:-', 'ark:-'],
+                                            stdin=lin_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+        if word_mode:
+            nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'),
+                                           '--frame-shift={}'.format(frame_shift),
+                                           'ark:-',
+                                           ctm_path],
+                                          stderr=log_file, stdin=align_words_proc.stdout)
+        else:
+            phone_proc = subprocess.Popen([thirdparty_binary('lattice-to-phone-lattice'), model_path,
+                                           'ark:-', "ark:-"],
+                                          stdout=subprocess.PIPE, stdin=align_words_proc.stdout,
+                                          stderr=log_file)
+            nbest_proc = subprocess.Popen([thirdparty_binary('nbest-to-ctm'),
+                                           '--frame-shift={}'.format(frame_shift),
+                                           "ark:-", ctm_path],
+                                          stdin=phone_proc.stdout,
+                                          stderr=log_file)
         nbest_proc.communicate()
 
 
-def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs, config):
+def process_line(line, utt_begin):
+    line = line.split(' ')
+    utt = line[0]
+    begin = round(float(line[2]), 4)
+    duration = float(line[3])
+    end = round(begin + duration, 4)
+    label = line[4]
+    begin += utt_begin
+    end += utt_begin
+    return utt, begin, end, label
+
+
+class NoCleanupWordCtmProcessWorker(mp.Process):
+    def __init__(self, job_name, ctm_path, to_process_queue, stopped, error_catching,
+                 segments, utt_speak_mapping,
+                 reversed_word_mapping, speaker_mapping):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.ctm_path = ctm_path
+        self.to_process_queue = to_process_queue
+        self.stopped = stopped
+        self.error_catching = error_catching
+
+        # Corpus information
+        self.segments = segments
+        self.utt_speak_mapping = utt_speak_mapping
+
+        # Dictionary information
+        self.reversed_word_mapping = reversed_word_mapping
+        self.speaker_mapping = speaker_mapping
+
+    def run(self):
+        current_file_data = {}
+
+        def process_current(cur_utt, cur_file, current_labels):
+            speaker = self.utt_speak_mapping[cur_utt]
+            reversed_word_mapping = self.reversed_word_mapping
+            if self.speaker_mapping is not None:
+                dict_lookup_speaker = speaker
+                if speaker not in self.speaker_mapping:
+                    dict_lookup_speaker = 'default'
+                reversed_word_mapping = self.reversed_word_mapping[self.speaker_mapping[dict_lookup_speaker]]
+
+            actual_labels = parse_from_word_no_cleanup(current_labels, reversed_word_mapping)
+            if speaker not in current_file_data:
+                current_file_data[speaker] = []
+            current_file_data[speaker].extend(actual_labels)
+
+        def process_current_file(cur_file):
+            self.to_process_queue.put(('word', cur_file, current_file_data))
+
+        cur_utt = None
+        cur_file = None
+        utt_begin = 0
+        current_labels = []
+        sum_time = 0
+        count_time = 0
+        try:
+            with open(self.ctm_path, 'r') as word_file:
+                for line in word_file:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    utt, begin, end, label = process_line(line, utt_begin)
+                    if cur_utt is None:
+                        cur_utt = utt
+                        begin_time = time.time()
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            cur_file = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            cur_file = utt
+                        begin += utt_begin
+                        end += utt_begin
+
+                    if utt != cur_utt:
+                        process_current(cur_utt, cur_file, current_labels)
+                        cur_utt = utt
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            file_name = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            file_name = utt
+                        if file_name != cur_file:
+                            process_current_file(cur_file)
+                            current_file_data = {}
+                            sum_time += time.time() - begin_time
+                            count_time += 1
+                            begin_time = time.time()
+                            cur_file = file_name
+                        current_labels = []
+                    current_labels.append([begin, end, label])
+            if current_labels:
+                process_current(cur_utt, cur_file, current_labels)
+                process_current_file(cur_file)
+                sum_time += time.time() - begin_time
+                count_time += 1
+        except Exception as e:
+            self.stopped.stop()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_catching[('word', self.job_name)] = '\n'.join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+
+class CleanupWordCtmProcessWorker(mp.Process):
+    def __init__(self, job_name, ctm_path, to_process_queue, stopped, error_catching,
+                 segments, text_mapping, utt_speak_mapping,
+                 words_mapping, speaker_mapping,
+                 punctuation, clitic_set, clitic_markers, compound_markers, oov_int):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.ctm_path = ctm_path
+        self.to_process_queue = to_process_queue
+        self.stopped = stopped
+        self.error_catching = error_catching
+
+        # Corpus information
+        self.segments = segments
+        self.text_mapping = text_mapping
+        self.utt_speak_mapping = utt_speak_mapping
+
+        # Dictionary information
+        self.words_mapping = words_mapping
+        self.speaker_mapping = speaker_mapping
+        self.punctuation = punctuation
+        self.clitic_set = clitic_set
+        self.clitic_markers = clitic_markers
+        self.compound_markers = compound_markers
+        self.oov_int = oov_int
+
+    def run(self):
+        current_file_data = {}
+
+        def process_current(cur_utt, cur_file, current_labels):
+            text = self.text_mapping[cur_utt].split()
+            speaker = self.utt_speak_mapping[cur_utt]
+            words_mapping = self.words_mapping
+            oov_int = self.oov_int
+            if self.speaker_mapping is not None:
+                dict_lookup_speaker = speaker
+                if speaker not in self.speaker_mapping:
+                    dict_lookup_speaker = 'default'
+                words_mapping = self.words_mapping[self.speaker_mapping[dict_lookup_speaker]]
+                oov_int = self.oov_int[self.speaker_mapping[dict_lookup_speaker]]
+            actual_labels = parse_from_word(current_labels, text, words_mapping, self.punctuation, self.clitic_set,
+                                            self.clitic_markers, self.compound_markers, oov_int)
+            if speaker not in current_file_data:
+                current_file_data[speaker] = []
+            current_file_data[speaker].extend(actual_labels)
+
+        def process_current_file(cur_file):
+            self.to_process_queue.put(('word', cur_file, current_file_data))
+
+        cur_utt = None
+        cur_file = None
+        utt_begin = 0
+        current_labels = []
+        sum_time = 0
+        count_time = 0
+        try:
+            with open(self.ctm_path, 'r') as word_file:
+                for line in word_file:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    utt, begin, end, label = process_line(line, utt_begin)
+                    if cur_utt is None:
+                        cur_utt = utt
+                        begin_time = time.time()
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            cur_file = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            cur_file = utt
+                        begin += utt_begin
+                        end += utt_begin
+
+                    if utt != cur_utt:
+                        process_current(cur_utt, cur_file, current_labels)
+                        cur_utt = utt
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            file_name = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            file_name = utt
+                        if file_name != cur_file:
+                            process_current_file(cur_file)
+                            current_file_data = {}
+                            sum_time += time.time() - begin_time
+                            count_time += 1
+                            begin_time = time.time()
+                            cur_file = file_name
+                        current_labels = []
+                    current_labels.append([begin, end, label])
+            if current_labels:
+                process_current(cur_utt, cur_file, current_labels)
+                process_current_file(cur_file)
+                sum_time += time.time() - begin_time
+                count_time += 1
+        except Exception as e:
+            self.stopped.stop()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_catching[('word', self.job_name)] = '\n'.join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+
+class PhoneCtmProcessWorker(mp.Process):
+    def __init__(self, job_name, ctm_path, to_process_queue, stopped, error_catching,
+                 segments, utt_speak_mapping,
+                 reversed_phone_mapping, speaker_mapping, positions):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.ctm_path = ctm_path
+        self.to_process_queue = to_process_queue
+        self.stopped = stopped
+        self.error_catching = error_catching
+
+        self.segments = segments
+        self.utt_speak_mapping = utt_speak_mapping
+
+        self.reversed_phone_mapping = reversed_phone_mapping
+        self.speaker_mapping = speaker_mapping
+        self.positions = positions
+
+    def run(self):
+        main_begin = time.time()
+        cur_utt = None
+        cur_file = None
+        utt_begin = 0
+        current_labels = []
+        sum_time = 0
+        count_time = 0
+
+        current_file_data = {}
+
+        def process_current_utt(cur_utt, cur_file, current_labels):
+            speaker = self.utt_speak_mapping[cur_utt]
+
+            reversed_phone_mapping = self.reversed_phone_mapping
+            if self.speaker_mapping is not None:
+                dict_lookup_speaker = speaker
+                if speaker not in self.speaker_mapping:
+                    dict_lookup_speaker = 'default'
+                reversed_phone_mapping = self.reversed_phone_mapping[self.speaker_mapping[dict_lookup_speaker]]
+            actual_labels = parse_from_phone(current_labels, reversed_phone_mapping, self.positions)
+            if speaker not in current_file_data:
+                current_file_data[speaker] = []
+            current_file_data[speaker].extend(actual_labels)
+
+        def process_current_file(cur_file):
+            self.to_process_queue.put(('phone', cur_file, current_file_data))
+
+        try:
+            with open(self.ctm_path, 'r') as word_file:
+                for line in word_file:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    utt, begin, end, label = process_line(line, utt_begin)
+                    if cur_utt is None:
+                        cur_utt = utt
+                        begin_time = time.time()
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            cur_file = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            cur_file = utt
+                        begin += utt_begin
+                        end += utt_begin
+
+                    if utt != cur_utt:
+
+                        process_current_utt(cur_utt, cur_file, current_labels)
+
+                        cur_utt = utt
+                        if cur_utt in self.segments:
+                            seg = self.segments[cur_utt]
+                            file_name = seg['file_name']
+                            utt_begin = seg['begin']
+                        else:
+                            utt_begin = 0
+                            file_name = utt
+                        if file_name != cur_file:
+                            process_current_file(cur_file)
+                            current_file_data = {}
+                            sum_time += time.time() - begin_time
+                            count_time += 1
+                            begin_time = time.time()
+                            cur_file = file_name
+                        current_labels = []
+                    current_labels.append([begin, end, label])
+            if current_labels:
+                process_current_utt(cur_utt, cur_file, current_labels)
+                process_current_file(cur_file)
+                sum_time += time.time() - begin_time
+                count_time += 1
+        except Exception as e:
+            self.stopped.stop()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_catching[('phone', self.job_name)] = '\n'.join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+
+class CombineProcessWorker(mp.Process):
+    def __init__(self, job_name, to_process_queue, to_export_queue, stopped, finished_combining, error_catching,
+                 silences, multilingual_ipa, words_mapping, speaker_mapping,
+                 punctuation, clitic_set, clitic_markers, compound_markers, oov_code, words,
+                 strip_diacritics, cleanup_textgrids):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.to_process_queue = to_process_queue
+        self.to_export_queue = to_export_queue
+        self.stopped = stopped
+        self.finished_combining = finished_combining
+        self.error_catching = error_catching
+
+        self.silences = silences
+        self.multilingual_ipa = multilingual_ipa
+        self.words_mapping = words_mapping
+        self.speaker_mapping = speaker_mapping
+        self.punctuation = punctuation
+        self.clitic_set = clitic_set
+        self.clitic_markers = clitic_markers
+        self.compound_markers = compound_markers
+        self.oov_code = oov_code
+        self.words = words
+        self.strip_diacritics = strip_diacritics
+        self.cleanup_textgrids = cleanup_textgrids
+
+    def run(self):
+        sum_time = 0
+        count_time = 0
+        phone_data = {}
+        word_data = {}
+        while True:
+            try:
+                w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
+                begin_time = time.time()
+            except Empty as error:
+                if self.finished_combining.stop_check():
+                    break
+                continue
+            self.to_process_queue.task_done()
+            if self.stopped.stop_check():
+                continue
+            if w_p == 'phone':
+                if file_name in word_data:
+                    word_ctm = word_data.pop(file_name)
+                    phone_ctm = data
+                else:
+                    phone_data[file_name] = data
+                    continue
+            else:
+                if file_name in phone_data:
+                    phone_ctm = phone_data.pop(file_name)
+                    word_ctm = data
+                else:
+                    word_data[file_name] = data
+                    continue
+
+            try:
+                data = generate_tiers(word_ctm, phone_ctm, self.silences, self.multilingual_ipa,
+                                      self.words_mapping, self.speaker_mapping,
+                                      self.punctuation, self.clitic_set, self.clitic_markers, self.compound_markers,
+                                      self.oov_code, self.words,
+                                      self.strip_diacritics, cleanup_textgrids=self.cleanup_textgrids)
+                self.to_export_queue.put((file_name, data))
+            except Exception as e:
+                self.stopped.stop()
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.error_catching[('combining', self.job_name)] = '\n'.join(
+                    traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+            sum_time += time.time() - begin_time
+            count_time += 1
+
+
+class ExportTextGridProcessWorker(mp.Process):
+    def __init__(self, for_write_queue, stopped, finished_processing, textgrid_errors,
+                 out_directory, backup_output_directory, wav_durations,
+                 frame_shift, file_directory_mapping, file_name_mapping, speaker_ordering):
+        mp.Process.__init__(self)
+        self.for_write_queue = for_write_queue
+        self.stopped = stopped
+        self.finished_processing = finished_processing
+        self.textgrid_errors = textgrid_errors
+
+        self.out_directory = out_directory
+        self.backup_output_directory = backup_output_directory
+
+        self.wav_durations = wav_durations
+        self.frame_shift = frame_shift
+        self.file_directory_mapping = file_directory_mapping
+        self.file_name_mapping = file_name_mapping
+        self.speaker_ordering = speaker_ordering
+
+    def run(self):
+        while True:
+            try:
+                file_name, data = self.for_write_queue.get(timeout=queue_polling_timeout)
+            except Empty as error:
+                if self.finished_processing.stop_check():
+                    break
+                continue
+            self.for_write_queue.task_done()
+            if self.stopped.stop_check():
+                continue
+            overwrite = True
+            speaker = None
+            if len(data) == 1:
+                speaker = next(iter(data))
+            output_name, output_path = construct_output_path(file_name, self.out_directory,
+                                                             self.file_directory_mapping, self.file_name_mapping,
+                                                             speaker, self.backup_output_directory)
+            max_time = round(self.wav_durations[output_name], 4)
+            try:
+                export_textgrid(file_name, output_path, data, max_time,
+                                self.frame_shift, self.speaker_ordering, overwrite)
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.textgrid_errors[file_name] = '\n'.join(
+                    traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+
+class ExportPreparationProcessWorker(mp.Process):
+    def __init__(self, to_export_queue, for_write_queue, stopped, finished_combining, file_speaker_mapping):
+        mp.Process.__init__(self)
+        self.to_export_queue = to_export_queue
+        self.for_write_queue = for_write_queue
+        self.stopped = stopped
+        self.finished_combining = finished_combining
+
+        self.file_speaker_mapping = file_speaker_mapping
+
+    def run(self):
+        export_data = {}
+        while True:
+            try:
+                file_name, data = self.to_export_queue.get(timeout=queue_polling_timeout)
+            except Empty as error:
+                if self.finished_combining.stop_check():
+                    break
+                continue
+            self.to_export_queue.task_done()
+            if self.stopped.stop_check():
+                continue
+            if file_name in self.file_speaker_mapping and len(self.file_speaker_mapping[file_name]) > 1:
+                if file_name not in export_data:
+                    export_data[file_name] = data
+                else:
+                    export_data[file_name].update(data)
+                if len(export_data[file_name]) == len(self.file_speaker_mapping[file_name]):
+                    data = export_data.pop(file_name)
+                    self.for_write_queue.put((file_name, data))
+            else:
+                self.for_write_queue.put((file_name, data))
+
+        for k, v in export_data.items():
+            self.for_write_queue.put((k, v))
+
+
+def ctms_to_textgrids_mp(align_config, output_directory, model_directory, dictionary, corpus, num_jobs):
+    frame_shift = align_config.feature_config.frame_shift / 1000
+    export_begin = time.time()
+    manager = mp.Manager()
+    textgrid_errors = manager.dict()
+    error_catching = manager.dict()
+    stopped = Stopped()
+    backup_output_directory = None
+    if not align_config.overwrite:
+        backup_output_directory = os.path.join(model_directory, 'textgrids')
+        os.makedirs(backup_output_directory, exist_ok=True)
+
+    if dictionary.has_multiple:
+        words_mapping = {}
+        words = {}
+        reversed_phone_mapping = {}
+        reversed_word_mapping = {}
+        for name, d in dictionary.dictionary_mapping.items():
+            words_mapping[name] = d.words_mapping
+            words[name] = d.words
+            reversed_phone_mapping[name] = d.reversed_phone_mapping
+            reversed_word_mapping[name] = d.reversed_word_mapping
+        speaker_mapping = dictionary.speaker_mapping
+        oov_int = {name: d.oov_int for name, d in dictionary.dictionary_mapping.items()}
+    else:
+        words_mapping = dictionary.words_mapping
+        words = dictionary.words
+        reversed_phone_mapping = dictionary.reversed_phone_mapping
+        reversed_word_mapping = dictionary.reversed_word_mapping
+        speaker_mapping = None
+        oov_int = dictionary.oov_int
+    punctuation = dictionary.punctuation
+    clitic_set = dictionary.clitic_set
+    clitic_markers = dictionary.clitic_markers
+    compound_markers = dictionary.compound_markers
+
+    corpus.logger.debug('Starting combination process...')
+    silences = dictionary.silences
+    corpus.logger.debug('Starting export process...')
+
+    corpus.logger.debug('Beginning to process ctm files...')
+    ctm_begin_time = time.time()
+    word_procs = []
+    phone_procs = []
+    combine_procs = []
+    finished_signals = [Stopped() for _ in range(num_jobs)]
+    finished_processing = Stopped()
+    to_process_queue = [mp.JoinableQueue() for _ in range(num_jobs)]
+    to_export_queue = mp.JoinableQueue()
+    for_write_queue = mp.JoinableQueue()
+    finished_combining = Stopped()
+    for i in range(num_jobs):
+        word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
+        phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
+        if align_config.cleanup_textgrids:
+            word_p = CleanupWordCtmProcessWorker(i, word_ctm_path, to_process_queue[i], stopped, error_catching,
+                                                 corpus.segments, corpus.text_mapping, corpus.utt_speak_mapping,
+                                                 words_mapping, speaker_mapping,
+                                                 punctuation, clitic_set, clitic_markers, compound_markers, oov_int)
+        else:
+            print('no clean up!')
+            word_p = NoCleanupWordCtmProcessWorker(i, word_ctm_path, to_process_queue[i], stopped, error_catching,
+                                                   corpus.segments, corpus.utt_speak_mapping, reversed_word_mapping,
+                                                   speaker_mapping)
+
+        word_procs.append(word_p)
+        word_p.start()
+
+        phone_p = PhoneCtmProcessWorker(i, phone_ctm_path, to_process_queue[i], stopped, error_catching,
+                                        corpus.segments, corpus.utt_speak_mapping, reversed_phone_mapping,
+                                        speaker_mapping,
+                                        dictionary.positions)
+        phone_p.start()
+        phone_procs.append(phone_p)
+
+        combine_p = CombineProcessWorker(i, to_process_queue[i], to_export_queue, stopped, finished_signals[i],
+                                         error_catching,
+                                         silences,
+                                         dictionary.multilingual_ipa, words_mapping, speaker_mapping,
+                                         punctuation, clitic_set, clitic_markers, compound_markers,
+                                         dictionary.oov_code, words, dictionary.strip_diacritics,
+                                         align_config.cleanup_textgrids)
+        combine_p.start()
+        combine_procs.append(combine_p)
+    preparation_proc = ExportPreparationProcessWorker(to_export_queue, for_write_queue, stopped, finished_combining,
+                                                      corpus.file_speaker_mapping)
+    preparation_proc.start()
+
+    export_procs = []
+    for i in range(num_jobs):
+        export_proc = ExportTextGridProcessWorker(for_write_queue, stopped, finished_processing, textgrid_errors,
+                                                  output_directory, backup_output_directory, corpus.file_durations,
+                                                  frame_shift, corpus.file_directory_mapping, corpus.file_name_mapping,
+                                                  corpus.speaker_ordering)
+        export_proc.start()
+        export_procs.append(export_proc)
+
+    corpus.logger.debug('Waiting for processes to finish...')
+    for i in range(num_jobs):
+        word_procs[i].join()
+        phone_procs[i].join()
+        finished_signals[i].stop()
+
+    corpus.logger.debug(f'Ctm parsers took {time.time() - ctm_begin_time} seconds')
+
+    corpus.logger.debug('Waiting for processes to finish...')
+    for i in range(num_jobs):
+        to_process_queue[i].join()
+        combine_procs[i].join()
+    finished_combining.stop()
+
+    to_export_queue.join()
+    preparation_proc.join()
+
+    corpus.logger.debug(f'Combiners took {time.time() - ctm_begin_time} seconds')
+    corpus.logger.debug('Beginning export...')
+
+    corpus.logger.debug(f'Adding jobs for export took {time.time() - export_begin}')
+    corpus.logger.debug('Waiting for export processes to join...')
+
+    for_write_queue.join()
+    finished_processing.stop()
+    for i in range(num_jobs):
+        export_procs[i].join()
+    for_write_queue.join()
+    corpus.logger.debug(f'Export took {time.time() - export_begin} seconds')
+
+    if error_catching:
+        corpus.logger.error('Error was encountered in processing CTMs')
+        for key, error in error_catching.items():
+            corpus.logger.error(f'{key}:\n\n{error}')
+        raise AlignmentError()
+
+    output_textgrid_writing_errors(output_directory, textgrid_errors)
+
+
+def convert_ali_to_textgrids(align_config, output_directory, model_directory, dictionary, corpus, num_jobs):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -570,55 +1209,23 @@ def convert_ali_to_textgrids(align_config, output_directory, model_directory, di
     log_directory = os.path.join(model_directory, 'log')
     frame_shift = align_config.feature_config.frame_shift / 1000
     word_path = os.path.join(dictionary.phones_dir, 'word_boundary.int')
-    jobs = [(model_directory, word_path, corpus.split_directory(), x, frame_shift)
+    jobs = [(model_directory, word_path, corpus.split_directory(), x, frame_shift, True)  # Word CTM jobs
             for x in range(num_jobs)]
+    jobs += [(model_directory, word_path, corpus.split_directory(), x, frame_shift, False)  # Phone CTM jobs
+             for x in range(num_jobs)]
+    corpus.logger.info('Generating CTMs from alignment...')
     if align_config.use_mp:
-        run_mp(ali_to_textgrid_func, jobs, log_directory)
+        run_mp(ali_to_ctm_func, jobs, log_directory)
     else:
-        run_non_mp(ali_to_textgrid_func, jobs, log_directory)
+        run_non_mp(ali_to_ctm_func, jobs, log_directory)
+    corpus.logger.info('Finished generating CTMs!')
 
-    if not corpus.segments:  # Hack for better memory management for .lab files
-        for i in range(num_jobs):
-            word_ctm = {}
-            phone_ctm = {}
-            word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
-            phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
-            if not os.path.exists(word_ctm_path):
-                continue
-            parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
-            for k, v in parsed.items():
-                if k not in word_ctm:
-                    word_ctm[k] = v
-                else:
-                    word_ctm[k].update(v)
-            parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
-            for k, v in parsed.items():
-                if k not in phone_ctm:
-                    phone_ctm[k] = v
-                else:
-                    phone_ctm[k].update(v)
-            ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
+    corpus.logger.info('Exporting TextGrids from CTMs...')
+    if align_config.use_mp:
+        ctms_to_textgrids_mp(align_config, output_directory, model_directory, dictionary, corpus, num_jobs)
     else:
-        word_ctm = {}
-        phone_ctm = {}
-        for i in range(num_jobs):
-            word_ctm_path = os.path.join(model_directory, 'word_ctm.{}'.format(i))
-            phone_ctm_path = os.path.join(model_directory, 'phone_ctm.{}'.format(i))
-            if not os.path.exists(word_ctm_path):
-                continue
-            parsed = parse_ctm(word_ctm_path, corpus, dictionary, mode='word')
-            for k, v in parsed.items():
-                if k not in word_ctm:
-                    word_ctm[k] = v
-                else:
-                    word_ctm[k].update(v)
-            parsed = parse_ctm(phone_ctm_path, corpus, dictionary, mode='phone')
-            for k, v in parsed.items():
-                if k not in phone_ctm:
-                    phone_ctm[k] = v
-                else:
-                    phone_ctm[k].update(v)
-        ctm_to_textgrid(word_ctm, phone_ctm, output_directory, corpus, dictionary, frame_shift=frame_shift)
+        ctms_to_textgrids_non_mp(align_config, output_directory, model_directory, dictionary, corpus, num_jobs)
+    corpus.logger.info('Finished exporting TextGrids!')
 
 
 def tree_stats_func(directory, ci_phones, mdl, feature_string, ali_path, job_name):
@@ -725,37 +1332,41 @@ def calc_fmllr_func(directory, split_directory, sil_phones, job_name, feature_st
     spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
     if not initial:
         tmp_trans_path = os.path.join(directory, 'trans.temp.{}'.format(job_name))
-        trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
-        cmp_trans_path = os.path.join(directory, 'trans.cmp.{}'.format(job_name))
     else:
         tmp_trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
-    post_path = os.path.join(directory, 'post.{}'.format(job_name))
-    weight_path = os.path.join(directory, 'weight.{}'.format(job_name))
     with open(log_path, 'w', encoding='utf8') as log_file:
-        subprocess.call([thirdparty_binary('ali-to-post'),
-                         "ark:" + ali_path, 'ark:' + post_path], stderr=log_file)
+        post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                      "ark:" + ali_path, 'ark:-'], stderr=log_file, stdout=subprocess.PIPE)
 
-        subprocess.call([thirdparty_binary('weight-silence-post'), '0.0',
-                         sil_phones, mdl_path, 'ark:' + post_path,
-                         'ark:' + weight_path], stderr=log_file)
-
-        subprocess.call([thirdparty_binary('gmm-est-fmllr'),
-                         '--verbose=4',
-                         '--fmllr-update-type={}'.format(config.fmllr_update_type),
-                         '--spk2utt=ark:' + spk2utt_path, mdl_path, '{}'.format(feature_string),
-                         'ark,s,cs:' + weight_path, 'ark:' + tmp_trans_path],
-                        stderr=log_file)
+        weight_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'), '0.0',
+                                        sil_phones, mdl_path, 'ark:-',
+                                        'ark:-'], stderr=log_file, stdin=post_proc.stdout, stdout=subprocess.PIPE)
 
         if not initial:
-            subprocess.call([thirdparty_binary('compose-transforms'),
-                             '--b-is-affine=true',
-                             'ark:' + tmp_trans_path, 'ark:' + trans_path,
-                             'ark:' + cmp_trans_path], stderr=log_file)
-            os.remove(tmp_trans_path)
+            trans_path = os.path.join(directory, 'trans.{}'.format(job_name))
+            cmp_trans_path = os.path.join(directory, 'trans.cmp.{}'.format(job_name))
+            est_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
+                                         '--verbose=4',
+                                         '--fmllr-update-type={}'.format(config.fmllr_update_type),
+                                         '--spk2utt=ark:' + spk2utt_path, mdl_path, '{}'.format(feature_string),
+                                         'ark:-', 'ark:-'],
+                                        stderr=log_file, stdin=weight_proc.stdout, stdout=subprocess.PIPE)
+            comp_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
+                                          '--b-is-affine=true',
+                                          'ark:-', 'ark:' + trans_path,
+                                          'ark:' + cmp_trans_path], stderr=log_file, stdin=est_proc.stdout)
+            comp_proc.communicate()
+
             os.remove(trans_path)
             os.rename(cmp_trans_path, trans_path)
         else:
-            trans_path = tmp_trans_path
+            est_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
+                                         '--verbose=4',
+                                         '--fmllr-update-type={}'.format(config.fmllr_update_type),
+                                         '--spk2utt=ark:' + spk2utt_path, mdl_path, '{}'.format(feature_string),
+                                         'ark,s,cs:-', 'ark:' + tmp_trans_path],
+                                        stderr=log_file, stdin=weight_proc.stdout)
+            est_proc.communicate()
 
 
 def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
@@ -797,6 +1408,8 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         Specifies the current iteration, defaults to None
 
     """
+    config.logger.info('Calculating fMLLR for speaker adaptation...')
+    begin = time.time()
     if iteration is None:
         if initial:
             model_name = '1'
@@ -813,6 +1426,7 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
         run_mp(calc_fmllr_func, jobs, log_directory)
     else:
         run_non_mp(calc_fmllr_func, jobs, log_directory)
+    config.logger.debug(f'Fmllr calculation took {time.time() - begin}')
 
 
 def lda_acc_stats_func(directory, feature_string, align_directory, config, ci_phones, i):

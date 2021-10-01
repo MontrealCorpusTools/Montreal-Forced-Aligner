@@ -36,11 +36,17 @@ def train_ivector(args, unknown_args=None):
     if unknown_args:
         train_config.update_from_args(unknown_args)
         align_config.update_from_args(unknown_args)
+    train_config.use_mp = not args.disable_mp
+    align_config.use_mp = not args.disable_mp
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug('TRAIN CONFIG:')
     log_config(logger, train_config)
     logger.debug('ALIGN CONFIG:')
@@ -169,14 +175,3 @@ def run_train_ivector_extractor(args, unknown=None, downloaded_acoustic_models=N
     validate_args(args, downloaded_acoustic_models, download_dictionaries)
     train_ivector(args, unknown)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import train_ivector_parser, fix_path, unfix_path, acoustic_languages, \
-        dict_languages
-
-    ivector_args, unknown_args = train_ivector_parser.parse_known_args()
-
-    fix_path()
-    run_train_ivector_extractor(ivector_args, unknown_args, acoustic_languages, dict_languages)
-    unfix_path()

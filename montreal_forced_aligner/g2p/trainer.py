@@ -467,6 +467,8 @@ class PyniniTrainer(object):
         self.input_epsilon = input_epsilon
         self.output_epsilon = output_epsilon
         self.num_jobs = num_jobs
+        if not self.train_config.use_mp:
+            self.num_jobs = 1
         self.fst_default_cache_gc = ''
         self.fst_default_cache_gc_limit = ''
         self.train_log_path = os.path.join(self.temp_directory, 'train.log')
@@ -479,12 +481,14 @@ class PyniniTrainer(object):
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+        handler = logging.StreamHandler(sys.stdout)
         if self.verbose:
-            handler = logging.StreamHandler(sys.stdout)
             handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+        else:
+            handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
         self.model_log_path = os.path.join(self.temp_directory, 'model.log')
         self.sym_path = os.path.join(self.temp_directory, 'phones.sym')
         self.output_token_type = None
@@ -545,6 +549,7 @@ class PyniniTrainer(object):
         basename, _ = os.path.splitext(self.model_path)
         model.dump(basename)
         model.clean_up()
+        self.clean_up()
         print('Saved model to {}'.format(self.model_path))
         self.logger.info('Saved model to {}'.format(self.model_path))
 
@@ -609,6 +614,7 @@ class PyniniTrainer(object):
         self.train(training_dictionary)
 
         model = G2PModel(self.model_path, root_directory=self.temp_directory)
+
         gen = PyniniDictionaryGenerator(model, validation_dictionary.keys(),
                                         temp_directory=os.path.join(self.temp_directory, 'validation'),
                                         num_jobs=self.num_jobs, num_pronunciations=self.train_config.num_pronunciations)

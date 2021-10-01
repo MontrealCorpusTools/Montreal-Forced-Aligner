@@ -187,6 +187,8 @@ class CorpusValidator(object):
             fc = self.trainer.feature_config
         try:
             self.corpus.initialize_corpus(self.dictionary, fc)
+            if self.test_transcriptions:
+                self.corpus.initialize_utt_fsts(self.dictionary)
         except CorpusError:
             if self.logger is not None:
                 self.logger.warning('There was an error when initializing the corpus, likely due to missing sound files. Ignoring acoustic generation...')

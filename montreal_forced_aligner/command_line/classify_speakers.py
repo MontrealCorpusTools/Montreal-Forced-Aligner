@@ -31,13 +31,18 @@ def classify_speakers(args, unknown_args=None):
         classification_config = classification_yaml_to_config(args.config_path)
     else:
         classification_config = load_basic_classification()
+    classification_config.use_mp = not args.disable_mp
     if unknown_args:
         classification_config.update_from_args(unknown_args)
     classification_config.use_mp = not args.disable_mp
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
-    logger = setup_logger(command, data_directory)
+    if getattr(args, 'verbose', False):
+        log_level = 'debug'
+    else:
+        log_level = 'info'
+    logger = setup_logger(command, data_directory, console_level=log_level)
     if os.path.exists(conf_path):
         with open(conf_path, 'r') as f:
             conf = yaml.load(f, Loader=yaml.SafeLoader)
@@ -136,12 +141,3 @@ def run_classify_speakers(args, unknown=None, downloaded_ivector_extractors=None
     validate_args(args, downloaded_ivector_extractors)
     classify_speakers(args)
 
-
-if __name__ == '__main__':  # pragma: no cover
-    mp.freeze_support()
-    from montreal_forced_aligner.command_line.mfa import classify_speakers_parser, fix_path, unfix_path, ivector_languages
-
-    classify_speakers_args, unknown_args = classify_speakers_parser.parse_known_args()
-    fix_path()
-    run_classify_speakers(classify_speakers_args, unknown_args, ivector_languages)
-    unfix_path()

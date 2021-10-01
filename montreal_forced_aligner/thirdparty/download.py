@@ -35,6 +35,7 @@ def download_binaries():
     path = os.path.join(base_dir, '{}.zip'.format(plat))
     if os.path.exists(bin_dir):
         shutil.rmtree(bin_dir, ignore_errors=True)
+    os.makedirs(bin_dir, exist_ok=True)
     with tqdm(unit='B', unit_scale=True, miniters=1) as t:
         filename, headers = urlretrieve(download_link, path, reporthook=tqdm_hook(t), data=None)
     shutil.unpack_archive(path, base_dir)

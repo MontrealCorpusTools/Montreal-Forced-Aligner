@@ -1,10 +1,12 @@
 import os
 import logging
+import shutil
 
 from .. import __version__
 from ..multiprocessing import compile_information
 from ..config import TEMP_DIR
 
+from ..multiprocessing import convert_ali_to_textgrids
 from ..dictionary import MultispeakerDictionary
 
 
@@ -82,8 +84,17 @@ class BaseAligner(object):
             return dictionary_names
         return None
 
-    def compile_information(self, model_directory, output_directory):
-        issues = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
+    @property
+    def align_directory(self):
+        return os.path.join(self.temp_directory, 'align')
+
+    @property
+    def backup_output_directory(self):
+        return os.path.join(self.align_directory, 'textgrids')
+
+    def compile_information(self, output_directory):
+        model_directory = self.align_directory
+        issues, average_log_like = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
         errors_path = os.path.join(output_directory, 'output_errors.txt')
         if os.path.exists(errors_path):
             self.logger.warning('There were errors when generating the textgrids. See the output_errors.txt in the '
@@ -95,9 +106,17 @@ class BaseAligner(object):
                     f.write('{}\t{}\n'.format(u, r))
             self.logger.warning('There were {} segments/files not aligned.  Please see {} for more details on why '
                                 'alignment failed for these files.'.format(len(issues), issue_path))
+        if os.path.exists(self.backup_output_directory) and os.listdir(self.backup_output_directory):
+            self.logger.info(f'Some TextGrids were not output in the output directory to avoid overwriting existing files. '
+                             f'You can find them in {self.backup_output_directory}, and if you would like to disable this '
+                             f'behavior, you can rerun with the --overwrite flag or run `mfa configure --always_overwrite`.')
 
     def export_textgrids(self, output_directory):
         """
         Export a TextGrid file for every sound file in the dataset
         """
-        raise NotImplementedError
+        if os.path.exists(self.backup_output_directory):
+            shutil.rmtree(self.backup_output_directory, ignore_errors=True)
+        convert_ali_to_textgrids(self.align_config, output_directory, self.align_directory, self.dictionary,
+                                 self.corpus, self.corpus.num_jobs)
+        self.compile_information(output_directory)
