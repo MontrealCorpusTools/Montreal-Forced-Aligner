@@ -38,6 +38,12 @@ def make_safe(element):
         return ' '.join(map(make_safe, element))
     return str(element)
 
+def make_scp_safe(string):
+
+    return string.replace(' ', '_MFASPACE_')
+
+def load_scp_safe(string):
+    return string.replace('_MFASPACE_', ' ')
 
 def output_mapping(mapping, path):
     with open(path, 'w', encoding='utf8') as f:
@@ -45,7 +51,9 @@ def output_mapping(mapping, path):
             v = mapping[k]
             if isinstance(v, (list, set, tuple)):
                 v = ' '.join(map(str, v))
-            f.write('{} {}\n'.format(k, v))
+            else:
+                v = make_scp_safe(v)
+            f.write(f'{make_scp_safe(k)} {v}\n')
 
 
 def save_scp(scp, path, sort=True, multiline=False):
@@ -100,9 +108,11 @@ def load_scp(path, data_type=str):
             if line == '':
                 continue
             line_list = line.split()
-            key = line_list.pop(0)
+            key = load_scp_safe(line_list.pop(0))
             if len(line_list) == 1:
                 value = data_type(line_list[0])
+                if isinstance(value, str):
+                    value = load_scp_safe(value)
             else:
                 value = [ data_type(x) for x in line_list if x not in ['[', ']']]
             scp[key] = value
@@ -178,7 +188,6 @@ def setup_logger(identifier, output_directory, console_level='info'):
     log_path = os.path.join(output_directory, identifier + '.log')
     if os.path.exists(log_path):
         os.remove(log_path)
-    print(log_path)
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
 

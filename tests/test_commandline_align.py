@@ -33,6 +33,7 @@ def test_align_arguments(basic_corpus_dir, sick_dict_path, generated_dir, large_
     assert align_config.disable_sat
 
 #@pytest.mark.skip(reason='Optimization')
+@pytest.mark.timeout(100)
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
                      basic_align_config, english_acoustic_model):
     command = ['align', basic_corpus_dir, sick_dict_path, 'english', os.path.join(generated_dir, 'basic_output'),
@@ -40,11 +41,55 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
     args, unknown = parser.parse_known_args(command)
     with pytest.raises(PronunciationAcousticMismatchError):
         run_align_corpus(args, unknown)
-
-    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', os.path.join(generated_dir, 'basic_output'),
+    output_directory = os.path.join(generated_dir, 'basic_align_output')
+    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
                '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
+
+    assert os.path.exists(output_directory)
+
+    output_paths = [
+        os.path.join(output_directory, 'michael', 'acoustic corpus.TextGrid'),
+        os.path.join(output_directory, 'michael', 'acoustic_corpus.TextGrid'),
+        os.path.join(output_directory, 'sickmichael', 'cold corpus.TextGrid'),
+        os.path.join(output_directory, 'sickmichael', 'cold_corpus.TextGrid'),
+        os.path.join(output_directory, 'sickmichael', 'cold corpus3.TextGrid'),
+        os.path.join(output_directory, 'sickmichael', 'cold_corpus3.TextGrid'),
+                    ]
+
+    mod_times = {}
+    for path in output_paths:
+        assert os.path.exists(path)
+        mod_times[path] = os.stat(path).st_mtime
+
+    align_temp_dir = os.path.join(temp_dir, 'basic', 'align')
+    assert os.path.exists(align_temp_dir)
+
+    backup_textgrid_dir = os.path.join(align_temp_dir, 'textgrids')
+    assert not os.listdir(backup_textgrid_dir)
+
+    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
+               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--debug', '--disable_mp']
+    args, unknown = parser.parse_known_args(command)
+
+    run_align_corpus(args, unknown)
+    assert os.listdir(backup_textgrid_dir)
+
+    for path in output_paths:
+        assert os.path.exists(path)
+        assert mod_times[path] == os.stat(path).st_mtime
+
+    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
+               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--debug', '--overwrite']
+    args, unknown = parser.parse_known_args(command)
+
+    run_align_corpus(args, unknown)
+    assert not os.path.exists(backup_textgrid_dir) or not os.listdir(backup_textgrid_dir)
+    for path in output_paths:
+        assert os.path.exists(path)
+        assert mod_times[path] != os.stat(path).st_mtime
+
 
 #@pytest.mark.skip(reason='Optimization')
 def test_align_multilingual(multilingual_ipa_corpus_dir, english_uk_ipa_dictionary, generated_dir, temp_dir,

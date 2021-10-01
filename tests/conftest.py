@@ -193,7 +193,10 @@ def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
 def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, 'multilingual')
     os.makedirs(path, exist_ok=True)
-    names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
+    names = [('speaker', ['multilingual_ipa','multilingual_ipa_2','multilingual_ipa_3',
+                          'multilingual_ipa_4','multilingual_ipa_5',]),
+             ('speaker_two', ['multilingual_ipa_us','multilingual_ipa_us_2','multilingual_ipa_us_3',
+                          'multilingual_ipa_us_4','multilingual_ipa_us_5']) ]
     for s, files in names:
         s_dir = os.path.join(path, s)
         os.makedirs(s_dir, exist_ok=True)
@@ -205,7 +208,7 @@ def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 @pytest.fixture(scope='session')
 def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
-    path = os.path.join(corpus_root_dir, 'multilingual')
+    path = os.path.join(corpus_root_dir, 'multilingual_tg')
     os.makedirs(path, exist_ok=True)
     names = [('speaker', ['multilingual_ipa']), ('speaker_two', ['multilingual_ipa_us']) ]
     for s, files in names:

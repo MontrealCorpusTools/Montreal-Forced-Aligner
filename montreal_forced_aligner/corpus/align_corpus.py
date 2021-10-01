@@ -168,12 +168,10 @@ class AlignableCorpus(BaseCorpus):
                 self.file_utt_mapping[file] = [utts]
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
-            if not isinstance(text, list):
-                text = [text]
+            text = text.split()
             for w in text:
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
-            self.text_mapping[utt] = ' '.join(text)
         self.utt_wav_mapping = load_scp(wav_path)
         self.sox_strings = load_scp(sox_strings_path)
         self.wav_info = load_scp(wav_info_path, float)

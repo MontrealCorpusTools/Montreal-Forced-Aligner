@@ -173,6 +173,11 @@ def ctms_to_textgrids_non_mp(align_config, output_directory, model_directory, di
         words = dictionary.words
         speaker_mapping = None
 
+    backup_output_directory = None
+    if not align_config.overwrite:
+        backup_output_directory = os.path.join(model_directory, 'textgrids')
+        os.makedirs(backup_output_directory, exist_ok=True)
+
     def process_current_word_labels(utterance_id):
         if utterance_id in corpus.segments:
             seg = corpus.segments[utterance_id]
@@ -223,8 +228,8 @@ def ctms_to_textgrids_non_mp(align_config, output_directory, model_directory, di
         phone_data[file_name][speaker].extend(actual_labels)
 
     export_errors = {}
+    wav_durations = corpus.file_durations
     for i in range(num_jobs):
-        wav_durations = {}
         word_data = {}
         phone_data = {}
         corpus.logger.debug(f'Parsing ctms for job {i}...')
@@ -313,9 +318,11 @@ def ctms_to_textgrids_non_mp(align_config, output_directory, model_directory, di
                 ctm_to_textgrid(file_name, word_ctm, phone_ctm, output_directory, dictionary.silences, wav_durations, dictionary.multilingual_ipa,
                      frame_shift, words_mapping, speaker_mapping,
                      dictionary.punctuation, dictionary.clitic_set, dictionary.clitic_markers, dictionary.compound_markers, dictionary.oov_code, words,
-                     dictionary.strip_diacritics, corpus.file_directory_mapping, corpus.file_name_mapping, corpus.speaker_ordering, overwrite)
+                     dictionary.strip_diacritics, corpus.file_directory_mapping, corpus.file_name_mapping, corpus.speaker_ordering, overwrite, backup_output_directory)
                 processed_files.add(file_name)
             except Exception as e:
+                if align_config.debug:
+                    raise
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 export_errors[file_name] = '\n'.join(
                     traceback.format_exception(exc_type, exc_value, exc_traceback))

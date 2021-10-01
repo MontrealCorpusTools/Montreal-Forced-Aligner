@@ -33,6 +33,7 @@ def transcribe_corpus(args, unknown_args):
     else:
         transcribe_config = load_basic_transcribe()
     transcribe_config.use_mp = not args.disable_mp
+    transcribe_config.overwrite = args.overwrite
     if unknown_args:
         transcribe_config.update_from_args(unknown_args)
     data_directory = os.path.join(temp_dir, corpus_name)
@@ -155,7 +156,7 @@ def transcribe_corpus(args, unknown_args):
             handler.close()
             logger.removeHandler(handler)
         if os.path.exists(data_directory):
-            with open(conf_path, 'w') as f:
+            with open(conf_path, 'w', encoding='utf8') as f:
                 yaml.dump(conf, f)
 
 

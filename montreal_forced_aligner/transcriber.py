@@ -9,6 +9,7 @@ from .config import TEMP_DIR
 from .helper import thirdparty_binary
 from .multiprocessing import transcribe, transcribe_fmllr
 from .corpus import AlignableCorpus
+from .textgrid import construct_output_path
 from .dictionary import MultispeakerDictionary
 from .helper import score, log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
@@ -467,7 +468,7 @@ class Transcriber(object):
         lookup = self.dictionary.reversed_word_mapping
         if input_directory is None:
             input_directory = self.transcribe_directory
-            if self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
+            if self.acoustic_model.feature_config.fmllr and self.transcribe_config.fmllr and not self.transcribe_config.no_speakers:
                 input_directory = os.path.join(input_directory, 'fmllr')
         for j in range(self.corpus.num_jobs):
             tra_path = os.path.join(input_directory, 'tra.{}'.format(j))
@@ -504,40 +505,39 @@ class Transcriber(object):
         return transcripts
 
     def export_transcriptions(self, output_directory, source=None):
+        backup_output_directory = None
+        if not self.transcribe_config.overwrite:
+            backup_output_directory = os.path.join(self.transcribe_directory, 'transcriptions')
+            os.makedirs(backup_output_directory, exist_ok=True)
         transcripts = self._load_transcripts(source)
+        wav_durations = self.corpus.file_durations
         if not self.corpus.segments:
             for utt, t in transcripts.items():
-                relative = self.corpus.file_directory_mapping[utt]
-                if relative:
-                    speaker_directory = os.path.join(output_directory, relative)
-                else:
-                    speaker_directory = output_directory
-                os.makedirs(speaker_directory, exist_ok=True)
-                outpath = os.path.join(speaker_directory, utt + '.lab')
-                with open(outpath, 'w', encoding='utf8') as f:
+                speaker = self.corpus.utt_speak_mapping[utt]
+                output_name, output_path = construct_output_path(utt, output_directory, self.corpus.file_directory_mapping,
+                                                                 self.corpus.file_name_mapping,
+                                                                 speaker, backup_output_directory)
+                output_path = output_path.replace('.TextGrid', '.lab')
+                with open(output_path, 'w', encoding='utf8') as f:
                     f.write(t)
 
         else:
 
             for filename in self.corpus.file_directory_mapping.keys():
-                maxtime = self.corpus.get_wav_duration(filename)
-                speaker_directory = output_directory
-                try:
-                    if self.corpus.file_directory_mapping[filename]:
-                        speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
-                except KeyError:
-                    pass
-                os.makedirs(speaker_directory, exist_ok=True)
+                output_name, output_path = construct_output_path(filename, output_directory, self.corpus.file_directory_mapping,
+                                                                 self.corpus.file_name_mapping,
+                                                                 backup_output_directory=backup_output_directory)
+                max_time = round(wav_durations[output_name], 4)
                 tiers = {}
                 if self.transcribe_config.no_speakers:
                     speaker = 'speech'
-                    tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=maxtime)
+                    tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=max_time)
                 else:
                     for speaker in self.corpus.speaker_ordering[filename]:
-                        tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=maxtime)
+                        tiers[speaker] = textgrid.IntervalTier(speaker, [], minT=0, maxT=max_time)
 
                 tg = textgrid.Textgrid()
-                tg.maxTimestamp = maxtime
+                tg.maxTimestamp = max_time
                 for utt_name, text in transcripts.items():
                     seg = self.corpus.segments[utt_name]
                     utt_filename, begin, end = seg['file_name'], seg['begin'], seg['end']
@@ -552,5 +552,5 @@ class Transcriber(object):
                     tiers[speaker].entryList.append(Interval(start=begin, end=end, label=text))
                 for t in tiers.values():
                     tg.addTier(t)
-                tg.save(os.path.join(speaker_directory, filename + '.TextGrid'),
+                tg.save(output_path,
                         includeBlankSpaces=True, format='long_textgrid')

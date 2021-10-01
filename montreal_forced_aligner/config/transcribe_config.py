@@ -32,6 +32,7 @@ class TranscribeConfig(BaseConfig):
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
         self.digraphs = DEFAULT_DIGRAPHS
+        self.overwrite = False
 
     def params(self):
         return {

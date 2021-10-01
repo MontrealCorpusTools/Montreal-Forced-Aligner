@@ -461,7 +461,7 @@ def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name,
                                                     stderr=log_file, stdout=subprocess.PIPE)
             latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
                                                '--acoustic-scale={}'.format(config.acoustic_scale),
-                                               'ark:' + lat_path, 'ark:-'],
+                                               'ark:-', 'ark:-'],
                                               stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
             weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
                                                     str(config.silence_weight),
@@ -471,14 +471,13 @@ def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name,
             fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
                                            '--fmllr-update-type={}'.format(config.fmllr_update_type),
                                            '--spk2utt=ark:' + spk2utt_path, mdl, feat_string,
-                                           'ark,s,cs:-', 'ark:' + trans_tmp_path],
+                                           'ark,s,cs:-', 'ark:-'],
                                           stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-            fmllr_proc.communicate()
 
             compose_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
-                                             '--b-is-affine=true', 'ark:' + trans_tmp_path,
+                                             '--b-is-affine=true', 'ark:-',
                                              'ark:' + pre_trans_path, 'ark:' + trans_path],
-                                            stderr=log_file)
+                                            stderr=log_file, stdin=fmllr_proc.stdout)
             compose_proc.communicate()
     else:
         for name in dictionary_names:
@@ -510,7 +509,7 @@ def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name,
                                                         stderr=log_file, stdout=subprocess.PIPE)
                 latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
                                                    '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                   'ark:' + lat_path, 'ark:-'],
+                                                   'ark:-', 'ark:-'],
                                                   stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
                                                   stderr=log_file)
                 weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
@@ -521,14 +520,13 @@ def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name,
                 fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
                                                '--fmllr-update-type={}'.format(config.fmllr_update_type),
                                                '--spk2utt=ark:' + spk2utt_path, mdl, dictionary_feat_string,
-                                               'ark,s,cs:-', 'ark:' + trans_tmp_path],
+                                               'ark,s,cs:-', 'ark:-'],
                                               stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-                fmllr_proc.communicate()
 
                 compose_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
-                                                 '--b-is-affine=true', 'ark:' + trans_tmp_path,
+                                                 '--b-is-affine=true', 'ark:-',
                                                  'ark:' + pre_trans_path, 'ark:' + trans_path],
-                                                stderr=log_file)
+                                                stderr=log_file, stdin=fmllr_proc.stdout)
                 compose_proc.communicate()
 
 
