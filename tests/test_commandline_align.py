@@ -33,7 +33,6 @@ def test_align_arguments(basic_corpus_dir, sick_dict_path, generated_dir, large_
     assert align_config.disable_sat
 
 #@pytest.mark.skip(reason='Optimization')
-@pytest.mark.timeout(100)
 def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
                      basic_align_config, english_acoustic_model):
     command = ['align', basic_corpus_dir, sick_dict_path, 'english', os.path.join(generated_dir, 'basic_output'),
