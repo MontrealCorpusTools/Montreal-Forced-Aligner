@@ -111,9 +111,6 @@ Feature processing API
    :template: function.rst
 
    mfcc
-   apply_cmvn
-   add_deltas
-   apply_lda
 
 .. _multiprocessing_api:
 

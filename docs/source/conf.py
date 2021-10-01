@@ -23,7 +23,8 @@ import sys
 import mock
 
 MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
-                'praatio', 'praatio.tgio',
+                'praatio', 'praatio.tgio', 'praatio.utilities',
+                'praatio.utilities.constants',
                 'tqdm', 'yaml',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',

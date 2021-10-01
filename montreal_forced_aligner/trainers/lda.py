@@ -35,6 +35,8 @@ class LdaTrainer(TriphoneTrainer):
             if i < max_mllt_iter / 2 and i % 2 == 0:
                 self.mllt_iterations.append(i)
         self.mllt_iterations.append(max_mllt_iter)
+        if not self.mllt_iterations:
+            self.mllt_iterations = range(1,4)
         self.random_prune = 4.0
 
         self.feature_config.lda = True

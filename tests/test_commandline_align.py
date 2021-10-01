@@ -80,7 +80,7 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
         assert mod_times[path] == os.stat(path).st_mtime
 
     command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--debug', '--overwrite']
+               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--disable_textgrid_cleanup', '--overwrite']
     args, unknown = parser.parse_known_args(command)
 
     run_align_corpus(args, unknown)
