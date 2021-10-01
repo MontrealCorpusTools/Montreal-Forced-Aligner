@@ -275,15 +275,16 @@ def create_parser():
     config_parser.add_argument('-t', '--temp_directory', type=str, default='',
                                    help=f"Set the default temporary directory, default is {GLOBAL_CONFIG['temp_directory']}")
     config_parser.add_argument('-j', '--num_jobs', type=int,
-                                          help=f"Number of processes to use by default, defaults to {GLOBAL_CONFIG['num_jobs']}")
+                                          help=f"Set the number of processes to use by default, defaults to {GLOBAL_CONFIG['num_jobs']}")
     config_parser.add_argument('--always_clean', help="Always remove files from previous runs by default", action='store_true')
     config_parser.add_argument('--never_clean', help="Don't remove files from previous runs by default", action='store_true')
     config_parser.add_argument('--always_verbose', help="Default to verbose output", action='store_true')
     config_parser.add_argument('--never_verbose', help="Default to non-verbose output", action='store_true')
     config_parser.add_argument('--always_debug', help="Default to running debugging steps", action='store_true')
-    config_parser.add_argument('--never_debug', help="Default to running debugging steps", action='store_true')
+    config_parser.add_argument('--never_debug', help="Default to not running debugging steps", action='store_true')
     config_parser.add_argument('--always_overwrite', help="Always overwrite output files", action='store_true')
-    config_parser.add_argument('--never_overwrite', help="Never overwrite output files (if file already exists, the output will be saved in the temp directory)", action='store_true')
+    config_parser.add_argument('--never_overwrite', help="Never overwrite output files (if file already exists, "
+                                                         "the output will be saved in the temp directory)", action='store_true')
     config_parser.add_argument('--disable_mp', help="Disable all multiprocessing (not recommended as it will usually "
                                                     "increase processing times)", action='store_true')
     config_parser.add_argument('--enable_mp', help="Enable multiprocessing (recommended and enabled by default)",

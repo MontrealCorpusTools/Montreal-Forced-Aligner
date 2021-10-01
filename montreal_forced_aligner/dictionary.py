@@ -506,7 +506,8 @@ class Dictionary(object):
         sanitized = sanitize(item, self.punctuation, self.clitic_markers)
         if sanitized in self.words:
             return True
-        sanitized = self.split_clitics(item)
+
+        sanitized = self.split_clitics(sanitized)
         if all(s in self.words for s in sanitized):
             return True
         return False

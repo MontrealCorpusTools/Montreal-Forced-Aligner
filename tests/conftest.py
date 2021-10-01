@@ -24,6 +24,11 @@ def wav_dir(test_dir):
 
 
 @pytest.fixture(scope='session')
+def mp3_test_path(wav_dir):
+    return os.path.join(wav_dir, 'dummy.mp3')
+
+
+@pytest.fixture(scope='session')
 def lab_dir(test_dir):
     return os.path.join(test_dir, 'lab')
 

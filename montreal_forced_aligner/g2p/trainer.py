@@ -481,12 +481,14 @@ class PyniniTrainer(object):
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+        handler = logging.StreamHandler(sys.stdout)
         if self.verbose:
-            handler = logging.StreamHandler(sys.stdout)
             handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+        else:
+            handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
         self.model_log_path = os.path.join(self.temp_directory, 'model.log')
         self.sym_path = os.path.join(self.temp_directory, 'phones.sym')
         self.output_token_type = None
@@ -547,6 +549,7 @@ class PyniniTrainer(object):
         basename, _ = os.path.splitext(self.model_path)
         model.dump(basename)
         model.clean_up()
+        self.clean_up()
         print('Saved model to {}'.format(self.model_path))
         self.logger.info('Saved model to {}'.format(self.model_path))
 

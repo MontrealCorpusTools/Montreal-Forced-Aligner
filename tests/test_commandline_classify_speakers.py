@@ -5,12 +5,11 @@ from montreal_forced_aligner.command_line.classify_speakers import run_classify_
 from montreal_forced_aligner.command_line.mfa import parser
 
 
-def test_classify(basic_corpus_dir, sick_dict_path, english_ivector_model, generated_dir,
-                    transcription_acoustic_model, transcription_language_model, temp_dir):
+def test_classify(basic_corpus_dir, sick_dict_path, english_ivector_model, generated_dir, temp_dir):
     output_path = os.path.join(generated_dir, 'classify_test')
     command = ['classify_speakers', basic_corpus_dir, 'english_ivector',
                output_path,
-               '-t', temp_dir, '-q', '--clean', '--debug', '-v', '--disable_mp']
+               '-t', temp_dir, '-q', '--clean', '--debug', '-v', '--disable_mp', '-s', '1']
     args, unknown = parser.parse_known_args(command)
     run_classify_speakers(args)
 

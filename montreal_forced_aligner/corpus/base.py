@@ -190,6 +190,9 @@ class BaseCorpus(object):
         if seg is not None:
             self.segments[utterance] = seg
         self.utt_file_mapping[utterance] = file
+        if file not in self.file_utt_mapping:
+            self.file_utt_mapping[file] = []
+            self.speaker_ordering[file] = []
         self.file_utt_mapping[file] = sorted(self.file_utt_mapping[file] + [utterance])
 
         self.utt_speak_mapping[utterance] = speaker
@@ -207,11 +210,15 @@ class BaseCorpus(object):
         file = self.utt_file_mapping[utterance]
         del self.utt_file_mapping[utterance]
         self.file_utt_mapping[file] = [x for x in self.file_utt_mapping[file] if x != utterance]
+        if not self.file_utt_mapping[file]:
+            del self.file_utt_mapping[file]
+            del self.speaker_ordering[file]
 
         speaker = self.utt_speak_mapping[utterance]
         del self.utt_speak_mapping[utterance]
         self.speak_utt_mapping[speaker] = [x for x in self.speak_utt_mapping[speaker] if x != utterance]
-
+        if not self.speak_utt_mapping[speaker]:
+            del self.speak_utt_mapping[speaker]
         if utterance in self.feat_mapping:
             del self.feat_mapping[utterance]
         if utterance in self.utterance_lengths:
@@ -301,15 +308,6 @@ class BaseCorpus(object):
                         done.add(r)
             output.append(output_g)
         return output
-
-    def parse_features_logs(self):
-        line_reg_ex = r'Did not find features for utterance (\w+)'
-        missing_features = []
-        with open(os.path.join(self.features_log_directory, 'cmvn.log'), 'r') as f:
-            for line in f:
-                m = re.search(line_reg_ex, line)
-                if m is not None:
-                    missing_features.append(m.groups()[0])
 
     def speaker_utterance_info(self):
         num_speakers = len(self.speak_utt_mapping.keys())
@@ -485,13 +483,6 @@ class BaseCorpus(object):
     def _split_wavs(self, directory):
         pattern = 'wav.{}.scp'
         save_groups(self.grouped_wav, directory, pattern)
-
-    def _split_cmvns(self, directory):
-        if not self.cmvn_mapping:
-            cmvn_path = os.path.join(self.output_directory, 'cmvn.scp')
-            self.cmvn_mapping = load_scp(cmvn_path)
-        pattern = 'cmvn.{}.scp'
-        save_groups(self.grouped_cmvn, directory, pattern)
 
     def combine_feats(self):
         self.feat_mapping = {}

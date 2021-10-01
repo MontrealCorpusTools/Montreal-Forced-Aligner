@@ -39,6 +39,10 @@ def test_basic_noposition(basic_dict_path, generated_dir):
 def test_frclitics(frclitics_dict_path, generated_dir):
     d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, 'frclitics'))
     d.write()
+    assert not d.check_word('aujourd')
+    assert d.check_word('aujourd\'hui')
+    assert d.check_word('m\'appelle')
+    assert not d.check_word('purple-people-eater')
     assert d.split_clitics('aujourd') == ['aujourd']
     assert d.split_clitics('aujourd\'hui') == ['aujourd\'hui']
     assert d.split_clitics('vingt-six') == ['vingt', 'six']

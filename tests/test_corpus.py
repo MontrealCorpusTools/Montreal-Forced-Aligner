@@ -1,10 +1,40 @@
 import os
 import shutil
+import pytest
 
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
+from montreal_forced_aligner.corpus.base import get_wav_info, SoxError
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.config.train_config import train_yaml_to_config
 
+
+def test_mp3(mp3_test_path):
+    try:
+        info = get_wav_info(mp3_test_path)
+    except SoxError:
+        pytest.skip()
+    assert 'sox_string' in info
+
+
+def test_add(basic_corpus_dir, generated_dir):
+    output_directory = os.path.join(generated_dir, 'basic')
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    c = AlignableCorpus(basic_corpus_dir, output_directory, use_mp=True)
+    assert 'test_add' not in c.utt_speak_mapping
+
+    c.add_utterance('test_add', 'new_speaker', 'test_add', 'blah blah', 'wav_path')
+
+    assert 'test_add' in c.utt_speak_mapping
+    assert c.speak_utt_mapping['new_speaker'] == ['test_add']
+    assert c.file_utt_mapping['test_add'] == ['test_add']
+    assert c.text_mapping['test_add'] == 'blah blah'
+
+    c.delete_utterance('test_add')
+    assert 'test_add' not in c.utt_speak_mapping
+    assert 'new_speaker' not in c.speak_utt_mapping
+    assert 'test_add' not in c.file_utt_mapping
+    assert 'test_add' not in c.text_mapping
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature_config):
     output_directory = os.path.join(generated_dir, 'basic')
