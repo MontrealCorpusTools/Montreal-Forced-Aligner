@@ -7,7 +7,8 @@ import yaml
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
 from montreal_forced_aligner.segmenter import Segmenter
-from montreal_forced_aligner.config import TEMP_DIR, segmentation_yaml_to_config, load_basic_segmentation
+from montreal_forced_aligner.config import TEMP_DIR, segmentation_yaml_to_config, load_basic_segmentation, \
+    load_command_configuration
 from montreal_forced_aligner.helper import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
@@ -41,15 +42,11 @@ def create_segments(args, unknown_args=None):
         log_level = 'info'
     logger = setup_logger(command, data_directory, console_level=log_level)
     log_config(logger, segmentation_config)
-    if os.path.exists(conf_path):
-        with open(conf_path, 'r') as f:
-            conf = yaml.load(f, Loader=yaml.SafeLoader)
-    else:
-        conf = {'dirty': False,
+    conf = load_command_configuration(conf_path, {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
                 'type': command,
-                'corpus_directory': args.corpus_directory}
+                'corpus_directory': args.corpus_directory})
     if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__:
@@ -98,8 +95,7 @@ def create_segments(args, unknown_args=None):
         for handler in handlers:
             handler.close()
             logger.removeHandler(handler)
-        with open(conf_path, 'w') as f:
-            yaml.dump(conf, f)
+        conf.save(conf_path)
 
 
 def validate_args(args):

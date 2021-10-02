@@ -8,7 +8,8 @@ from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
 from montreal_forced_aligner.speaker_classifier import SpeakerClassifier
 from montreal_forced_aligner.models import IvectorExtractor
-from montreal_forced_aligner.config import TEMP_DIR, classification_yaml_to_config, load_basic_classification
+from montreal_forced_aligner.config import TEMP_DIR, classification_yaml_to_config, \
+    load_basic_classification, load_command_configuration
 from montreal_forced_aligner.utils import get_available_ivector_languages, get_pretrained_ivector_path
 from montreal_forced_aligner.helper import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -43,16 +44,12 @@ def classify_speakers(args, unknown_args=None):
     else:
         log_level = 'info'
     logger = setup_logger(command, data_directory, console_level=log_level)
-    if os.path.exists(conf_path):
-        with open(conf_path, 'r') as f:
-            conf = yaml.load(f, Loader=yaml.SafeLoader)
-    else:
-        conf = {'dirty': False,
+    conf = load_command_configuration(conf_path, {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
                 'type': command,
                 'corpus_directory': args.corpus_directory,
-                'ivector_extractor_path': args.ivector_extractor_path}
+                'ivector_extractor_path': args.ivector_extractor_path})
     if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__:
@@ -105,8 +102,7 @@ def classify_speakers(args, unknown_args=None):
         for handler in handlers:
             handler.close()
             logger.removeHandler(handler)
-        with open(conf_path, 'w') as f:
-            yaml.dump(conf, f)
+        conf.save(conf_path)
 
 
 def validate_args(args, downloaded_ivector_extractors):

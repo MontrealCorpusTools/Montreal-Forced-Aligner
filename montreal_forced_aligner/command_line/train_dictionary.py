@@ -9,7 +9,7 @@ from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import PretrainedAligner
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align
+from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align, load_command_configuration
 from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
     get_available_dict_languages, get_dictionary_path
 from montreal_forced_aligner.helper import setup_logger, log_config
@@ -48,18 +48,13 @@ def train_dictionary(args, unknown_args=None):
     logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug('ALIGN CONFIG:')
     log_config(logger, align_config)
-    if os.path.exists(conf_path):
-        with open(conf_path, 'r') as f:
-            conf = yaml.load(f, Loader=yaml.SafeLoader)
-    else:
-        conf = {'dirty': False,
+    conf = load_command_configuration(conf_path, {'dirty': False,
                 'begin': time.time(),
                 'version': __version__,
                 'type': command,
                 'corpus_directory': args.corpus_directory,
                 'dictionary_path': args.dictionary_path,
-                'acoustic_model_path': args.acoustic_model_path
-                }
+                'acoustic_model_path': args.acoustic_model_path})
     if conf['dirty'] or conf['type'] != command \
             or conf['corpus_directory'] != args.corpus_directory \
             or conf['version'] != __version__ \
@@ -118,8 +113,11 @@ def train_dictionary(args, unknown_args=None):
         conf['dirty'] = True
         raise
     finally:
-        with open(conf_path, 'w') as f:
-            yaml.dump(conf, f)
+        handlers = logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            logger.removeHandler(handler)
+        conf.save(conf_path)
 
 
 def validate_args(args, downloaded_acoustic_models, download_dictionaries):

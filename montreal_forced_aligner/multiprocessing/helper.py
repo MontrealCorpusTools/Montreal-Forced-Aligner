@@ -34,6 +34,14 @@ class Stopped(object):
         with self.lock:
             return self.val.value
 
+    def set_sigint_source(self):
+        with self.lock:
+            self._source.value = True
+
+    def source(self):
+        with self.lock:
+            return self._source.value
+
 
 class ProcessWorker(mp.Process):
     def __init__(self, job_name, job_q, function, return_dict, stopped, return_info = None):
