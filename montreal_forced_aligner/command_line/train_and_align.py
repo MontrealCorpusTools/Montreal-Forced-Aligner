@@ -31,7 +31,7 @@ def align_corpus(args, unknown_args=None):
         train_config, align_config = train_yaml_to_config(args.config_path)
     else:
         train_config, align_config = load_basic_train()
-    assert train_config.training_configs[0].beam == 100
+    assert train_config.training_configs[0].beam == 10
     train_config.use_mp = not args.disable_mp
     align_config.use_mp = not args.disable_mp
     align_config.debug = args.debug
