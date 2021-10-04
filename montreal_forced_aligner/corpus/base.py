@@ -177,6 +177,7 @@ class BaseCorpus(object):
         self.sample_rate = sample_rate
         self.stopped = None
         self.skip_load = skip_load
+        self.utterances_time_sorted = False
 
     @property
     def file_speaker_mapping(self):
@@ -193,7 +194,11 @@ class BaseCorpus(object):
         if file not in self.file_utt_mapping:
             self.file_utt_mapping[file] = []
             self.speaker_ordering[file] = []
-        self.file_utt_mapping[file] = sorted(self.file_utt_mapping[file] + [utterance])
+        self.file_utt_mapping[file] = self.file_utt_mapping[file] + [utterance]
+        if self.utterances_time_sorted and len(self.file_utt_mapping[file]) > 1:
+            self.file_utt_mapping[file].sort(key=lambda x: self.segments[x]['begin'])
+        else:
+            self.file_utt_mapping[file].sort()
 
         self.utt_speak_mapping[utterance] = speaker
         self.speak_utt_mapping[speaker] = sorted(self.speak_utt_mapping[speaker] + [utterance])

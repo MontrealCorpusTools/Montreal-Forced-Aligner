@@ -1,11 +1,18 @@
 .. _`PR #194`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/194
 .. _`PR #235`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/235
 .. _`PR #288`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/288
+.. _`PR #337`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/337
 
 .. _changelog:
 
 Changelog
 =========
+
+2.0.0b1
+-------
+
+- Fixed bug in training (`PR #337`_)
+- Fixed bug when using Ctrl-C in loading
 
 2.0.0b0
 -------
