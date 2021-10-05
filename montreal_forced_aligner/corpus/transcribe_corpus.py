@@ -103,7 +103,9 @@ class TranscribeCorpus(BaseCorpus):
         if os.path.exists(text_path):
             self.text_mapping = load_scp(text_path)
             for utt, text in self.text_mapping.items():
-                self.text_mapping[utt] = ' '.join(text)
+                if isinstance(text,list):
+                    text = ' '.join(text)
+                self.text_mapping[utt] = text
         self.logger.debug('Loaded from corpus_data temp directory in {} seconds'.format(time.time() - begin_time))
         return True
 

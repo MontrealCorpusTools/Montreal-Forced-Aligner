@@ -168,10 +168,12 @@ class AlignableCorpus(BaseCorpus):
                 self.file_utt_mapping[file] = [utts]
         self.text_mapping = load_scp(text_path)
         for utt, text in self.text_mapping.items():
-            text = text.split()
+            if isinstance(text, str):
+                text = text.split()
             for w in text:
                 new_w = re.split(r"[-']", w)
                 self.word_counts.update(new_w + [w])
+            self.text_mapping[utt] = ' '.join(text)
         self.utt_wav_mapping = load_scp(wav_path)
         self.sox_strings = load_scp(sox_strings_path)
         self.wav_info = load_scp(wav_info_path, float)
@@ -342,9 +344,8 @@ class AlignableCorpus(BaseCorpus):
                                 text = text.lower().strip()
                                 words = parse_transcription(text, self.punctuation, self.clitic_markers)
 
-                                utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
-                                utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
-                                utt_name = utt_name.replace('_', '-')
+                                utt_name = '{}-{}-{}-{}'.format(file_name, speaker_name, begin, end)
+                                utt_name = utt_name.strip().replace(' ', '-').replace('.', '-').replace('_', '-')
                                 if not words:
                                     continue
                                 for w in words:
@@ -358,7 +359,7 @@ class AlignableCorpus(BaseCorpus):
                                 line = line.strip().lower()
                                 if not line:
                                     continue
-                                utt_name = '{}_{}'.format(file_name, text_ind)
+                                utt_name = '{}-{}'.format(file_name, text_ind)
                                 words = parse_transcription(line, self.punctuation, self.clitic_markers)
                                 for w in words:
                                     new_w = re.split(r"[-']", w)
@@ -612,9 +613,8 @@ class AlignableCorpus(BaseCorpus):
                             text = text.lower().strip()
                             words = parse_transcription(text, self.punctuation, self.clitic_markers)
 
-                            utt_name = '{}_{}_{}_{}'.format(speaker_name, file_name, begin, end)
-                            utt_name = utt_name.strip().replace(' ', '_').replace('.', '_')
-                            utt_name = utt_name.replace('_', '-')
+                            utt_name = '{}-{}-{}-{}'.format(file_name, speaker_name, begin, end)
+                            utt_name = utt_name.strip().replace(' ', '-').replace('.', '-').replace('_', '-')
                             if not words:
                                 continue
                             for w in words:
@@ -628,7 +628,7 @@ class AlignableCorpus(BaseCorpus):
                             line = line.strip().lower()
                             if not line:
                                 continue
-                            utt_name = '{}_{}'.format(file_name, text_ind)
+                            utt_name = '{}-{}'.format(file_name, text_ind)
                             words = parse_transcription(line, self.punctuation, self.clitic_markers)
                             for w in words:
                                 new_w = re.split(r"[-']", w)
