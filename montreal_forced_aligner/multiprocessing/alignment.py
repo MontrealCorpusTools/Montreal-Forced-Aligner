@@ -347,8 +347,9 @@ def compile_information(model_directory, corpus, num_jobs, config):
     total_frames = sum(data['total_frames'] for data in alignment_info.values())
     average_log_like = 0
     for x, data in alignment_info.items():
-        weight = data['total_frames'] / total_frames
-        average_log_like += data['log_like'] * weight
+        if total_frames:
+            weight = data['total_frames'] / total_frames
+            average_log_like += data['log_like'] * weight
         for u in data['unaligned']:
             unaligned[u] = 'Beam too narrow'
         for u in data['too_short']:
