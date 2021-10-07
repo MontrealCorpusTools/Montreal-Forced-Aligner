@@ -138,7 +138,7 @@ def compile_train_graphs(directory, lang_directory, split_directory, num_jobs, a
     num_jobs : int
         The number of processes to use
     """
-    aligner.logger.info('Compiling training graphs...')
+    aligner.logger.debug('Compiling training graphs...')
     begin = time.time()
     log_directory = os.path.join(directory, 'log')
     os.makedirs(log_directory, exist_ok=True)
@@ -234,7 +234,8 @@ def align_func(directory, iteration, job_name, mdl, config, feature_string, outp
         align_proc.communicate()
 
 
-def align(iteration, directory, split_directory, optional_silence, num_jobs, config, output_directory=None):
+def align(iteration, directory, split_directory, optional_silence, num_jobs, config,
+          output_directory=None, speaker_independent=False):
     """
     Multiprocessing function that aligns based on the current model
 
@@ -261,17 +262,18 @@ def align(iteration, directory, split_directory, optional_silence, num_jobs, con
     config : :class:`~aligner.config.MonophoneConfig`, :class:`~aligner.config.TriphoneConfig` or :class:`~aligner.config.TriphoneFmllrConfig`
         Configuration object for training
     """
-    config.logger.info('Performing alignment...')
     begin = time.time()
     if output_directory is None:
         output_directory = directory
     log_directory = os.path.join(output_directory, 'log')
-    mdl_path = os.path.join(directory, '{}.mdl'.format(iteration))
+    align_model_path = os.path.join(directory, '{}.alimdl'.format(iteration))
+    if not speaker_independent or not os.path.exists(align_model_path):
+        align_model_path = os.path.join(directory, '{}.mdl'.format(iteration))
     if config.boost_silence != 1.0:
         mdl = "{} --boost={} {} {} - |".format(thirdparty_binary('gmm-boost-silence'),
-                                               config.boost_silence, optional_silence, make_path_safe(mdl_path))
+                                               config.boost_silence, optional_silence, make_path_safe(align_model_path))
     else:
-        mdl = mdl_path
+        mdl = align_model_path
 
     jobs = [(directory, iteration, x, mdl, config.align_options,
              config.feature_config.construct_feature_proc_string(split_directory, directory, x),
@@ -1427,6 +1429,57 @@ def calc_fmllr(directory, split_directory, sil_phones, num_jobs, config,
     else:
         run_non_mp(calc_fmllr_func, jobs, log_directory)
     config.logger.debug(f'Fmllr calculation took {time.time() - begin}')
+
+
+def acc_stats_two_feats_func(directory, model_path, feature_string, si_feature_string, job_name):
+    log_path = os.path.join(directory, 'log', 'align_model_est.{}.log'.format(job_name))
+    acc_path = os.path.join(directory, 'align_model.{}.acc'.format(job_name))
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        ali_to_post_proc = subprocess.Popen([thirdparty_binary('ali-to-post'),
+                                             'ark:' + os.path.join(directory, 'ali.{}'.format(job_name)),
+                                             'ark:-'],
+                                            stderr=log_file, stdout=subprocess.PIPE)
+        acc_proc = subprocess.Popen([thirdparty_binary('gmm-acc-stats-twofeats'), model_path,
+                                     feature_string, si_feature_string, "ark,s,cs:-", acc_path],
+                                    stderr=log_file, stdin=ali_to_post_proc.stdout)
+        acc_proc.communicate()
+
+
+
+def create_align_model(directory, split_directory, num_jobs, config):
+    config.logger.info('Creating alignment model for speaker-independent features...')
+    begin = time.time()
+    log_directory = os.path.join(directory, 'log')
+
+    model_name = 'final'
+    model_path = os.path.join(directory, '{}.mdl'.format(model_name))
+    align_model_path = os.path.join(directory, '{}.alimdl'.format(model_name))
+    jobs = [(directory, model_path,
+             config.feature_config.construct_feature_proc_string(split_directory, directory, x),
+             config.feature_config.construct_feature_proc_string(split_directory, directory, x, speaker_independent=True),
+             x) for x in range(num_jobs)]
+    if config.use_mp:
+        run_mp(acc_stats_two_feats_func, jobs, log_directory)
+    else:
+        run_non_mp(acc_stats_two_feats_func, jobs, log_directory)
+
+    log_path = os.path.join(directory, 'log', 'align_model_est.final.log')
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        acc_files = [os.path.join(directory, 'align_model.{}.acc'.format(x))
+                     for x in range(num_jobs)]
+        est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
+                                     "--remove-low-count-gaussians=false", '--power=' + str(config.power),
+                                     model_path,
+                                     "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
+                                                       ' '.join(map(make_path_safe, acc_files))),
+                                     align_model_path],
+                                    stderr=log_file)
+        est_proc.communicate()
+        if not config.debug:
+            for f in acc_files:
+                os.remove(f)
+
+    config.logger.debug(f'Alignment model creation took {time.time() - begin}')
 
 
 def lda_acc_stats_func(directory, feature_string, align_directory, config, ci_phones, i):

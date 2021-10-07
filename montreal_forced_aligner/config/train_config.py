@@ -28,8 +28,9 @@ class TrainingConfig(BaseConfig):
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
 
     def update_from_align(self, align_config):
-        self.training_configs[-1].overwrite = align_config.overwrite
-        self.training_configs[-1].cleanup_textgrids = align_config.cleanup_textgrids
+        for tc in self.training_configs:
+            tc.overwrite = align_config.overwrite
+            tc.cleanup_textgrids = align_config.cleanup_textgrids
 
     def update(self, data):
         for k, v in data.items():

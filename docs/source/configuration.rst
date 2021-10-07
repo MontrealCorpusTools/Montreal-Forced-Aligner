@@ -74,13 +74,8 @@ Options available:
 
    Display help message for the command
 
-
-
-Configuration of commands
-=========================
-
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    configuration_align.rst
    configuration_transcription.rst

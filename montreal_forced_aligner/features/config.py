@@ -145,7 +145,8 @@ class FeatureConfig(BaseConfig):
                 log_func('Calculating CMVN...')
                 calc_cmvn(corpus)
 
-    def construct_feature_proc_string(self, data_directory, model_directory, job_name, splice=False, voiced=False, cmvn=True):
+    def construct_feature_proc_string(self, data_directory, model_directory, job_name, splice=False, voiced=False,
+                                      cmvn=True, speaker_independent=False):
         if self.directory is None:
             self.directory = data_directory
         lda_mat_path = None
@@ -190,7 +191,7 @@ class FeatureConfig(BaseConfig):
             elif self.deltas:
                 feats += " add-deltas ark:- ark:- |"
 
-            if fmllr_trans_path is not None:
+            if fmllr_trans_path is not None and not speaker_independent:
                 if not os.path.exists(fmllr_trans_path):
                     raise Exception('Could not find {}'.format(fmllr_trans_path))
                 feats += " transform-feats --utt2spk=ark:{} ark:{} ark:- ark:- |".format(utt2spk_path, fmllr_trans_path)

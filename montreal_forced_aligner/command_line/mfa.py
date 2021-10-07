@@ -1,7 +1,9 @@
+import atexit
 import sys
 import os
 import time
 import argparse
+from datetime import datetime
 import multiprocessing as mp
 
 from montreal_forced_aligner import __version__
@@ -23,9 +25,53 @@ from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpu
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 from montreal_forced_aligner.command_line.create_segments import run_create_segments
 from montreal_forced_aligner.exceptions import MFAError
-from montreal_forced_aligner.config import update_global_config, load_global_config, update_command_history
+from montreal_forced_aligner.config import update_global_config, load_global_config, update_command_history, load_command_history
+
+
+class ExitHooks(object):
+    def __init__(self):
+        self.exit_code = None
+        self.exception = None
+
+    def hook(self):
+        self._orig_exit = sys.exit
+        sys.exit = self.exit
+        sys.excepthook = self.exc_handler
+
+    def exit(self, code=0):
+        self.exit_code = code
+        self._orig_exit(code)
+
+    def exc_handler(self, exc_type, exc, *args):
+        self.exception = exc
+
+hooks = ExitHooks()
+hooks.hook()
 
 BEGIN = time.time()
+BEGIN_DATE = datetime.now()
+
+
+def history_save_handler():
+    history_data = {
+        'command': ' '.join(sys.argv),
+        'execution_time': time.time() - BEGIN,
+        'date': BEGIN_DATE,
+        'version': __version__
+                    }
+
+    if hooks.exit_code is not None:
+        history_data['exit_code'] = hooks.exit_code
+        history_data['exception'] = ''
+    elif hooks.exception is not None:
+        history_data['exit_code'] = 1
+        history_data['exception'] = hooks.exception
+    else:
+        history_data['exception'] = ''
+        history_data['exit_code'] = 0
+    update_command_history(history_data)
+
+atexit.register(history_save_handler)
 
 def fix_path():
     from montreal_forced_aligner.config import TEMP_DIR
@@ -295,6 +341,11 @@ def create_parser():
                                                                   "silences and recombines compound words and clitics",
                                action='store_true')
 
+    history_parser = subparsers.add_parser('history')
+
+    history_parser.add_argument('depth', help='Number of commands to list', nargs='?', default=10)
+    history_parser.add_argument('--verbose', help="Flag for whether to output additional information", action='store_true')
+
     annotator_parser = subparsers.add_parser('annotator')
     anchor_parser = subparsers.add_parser('anchor')
 
@@ -391,6 +442,21 @@ def main():
             update_global_config(args)
             global GLOBAL_CONFIG
             GLOBAL_CONFIG = load_global_config()
+        elif args.subcommand == 'history':
+            depth = args.depth
+            history = load_command_history()[-depth:]
+            for h in history:
+                if args.verbose:
+                    print('command\tDate\tExecution time\tVersion\tExit code\tException')
+                    for h in history:
+                        execution_time = time.strftime('%H:%M:%S', time.gmtime(h['execution_time']))
+                        d = h['date'].isoformat()
+                        print(f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}")
+                    pass
+                else:
+                    for h in history:
+                        print(h['command'])
+
         elif args.subcommand == 'version':
             print(__version__)
     except MFAError as e:

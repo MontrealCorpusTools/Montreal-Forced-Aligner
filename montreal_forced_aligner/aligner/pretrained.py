@@ -86,15 +86,18 @@ class PretrainedAligner(BaseAligner):
             log_dir = os.path.join(self.align_directory, 'log')
             os.makedirs(log_dir, exist_ok=True)
 
+            self.logger.info('Performing first-pass alignment...')
             align('final', self.align_directory, self.align_config.data_directory,
                   self.dictionary.optional_silence_csl,
-                  self.corpus.num_jobs, self.align_config)
+                  self.corpus.num_jobs, self.align_config, speaker_independent=True)
             unaligned, average_log_like = compile_information(self.align_directory, self.corpus, self.corpus.num_jobs, self)
             self.logger.debug(f'Prior to SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
             if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
                     and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
                 calc_fmllr(self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl, self.corpus.num_jobs, self.align_config, initial=True, iteration='final')
+
+                self.logger.info('Performing second-pass alignment...')
                 align('final', self.align_directory, self.align_config.data_directory,
                       self.dictionary.optional_silence_csl,
                       self.corpus.num_jobs, self.align_config)
