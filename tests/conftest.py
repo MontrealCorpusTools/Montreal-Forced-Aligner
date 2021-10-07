@@ -181,6 +181,18 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope='session')
+def xsampa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, 'basic')
+    os.makedirs(path, exist_ok=True)
+
+    s_dir = os.path.join(path, 'michael')
+    os.makedirs(s_dir, exist_ok=True)
+    shutil.copyfile(os.path.join(wav_dir, 'acoustic_corpus.wav'), os.path.join(s_dir, 'xsampa.wav'))
+    shutil.copyfile(os.path.join(lab_dir, 'xsampa.lab'), os.path.join(s_dir, 'xsampa.lab'))
+    return path
+
+
+@pytest.fixture(scope='session')
 def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, 'split')
     audio_path = os.path.join(path, 'audio')
@@ -375,6 +387,11 @@ def extra_annotations_path(dict_dir):
 @pytest.fixture(scope='session')
 def frclitics_dict_path(dict_dir):
     return os.path.join(dict_dir, 'frclitics.txt')
+
+
+@pytest.fixture(scope='session')
+def xsampa_dict_path(dict_dir):
+    return os.path.join(dict_dir, 'xsampa.txt')
 
 
 @pytest.fixture(scope='session')

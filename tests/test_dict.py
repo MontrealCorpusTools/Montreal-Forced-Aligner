@@ -113,6 +113,16 @@ def test_multilingual_ipa():
     assert parse_ipa(input_transcription) == expected
 
 
+def test_xsampa_dir(xsampa_dict_path, generated_dir):
+    d = Dictionary(xsampa_dict_path, os.path.join(generated_dir, 'xsampa'))
+    d.write()
+
+    print(d.words)
+    assert not d.clitic_set
+    assert d.split_clitics('r\{und') == ['r\{und']
+    assert d.split_clitics('{bI5s@`n') == ['{bI5s@`n']
+    assert d.words[r'r\{und']
+
 def test_multispeaker_config(multispeaker_dictionary_config, generated_dir):
     dictionary = MultispeakerDictionary(multispeaker_dictionary_config, os.path.join(generated_dir, 'multispeaker'))
     dictionary.write()

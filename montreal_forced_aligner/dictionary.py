@@ -15,15 +15,9 @@ from .exceptions import DictionaryPathError, DictionaryFileError, DictionaryErro
 
 
 def compile_graphemes(graphemes):
-    if '-' in graphemes:
-        base = r'^\W*([-{}]+)\W*'
-    else:
-        base = r'^\W*([{}]+)\W*'
-    graphemes = list(graphemes)
-    for i in range(len(graphemes)):
-        if graphemes[i] == ']':
-            graphemes[i] = r'\]'
-    string = ''.join(x for x in graphemes if x != '-')
+
+    base = r'^\W*([{}]+)\W*'
+    string = re.escape(''.join(graphemes))
     try:
         return re.compile(base.format(string))
     except Exception:
