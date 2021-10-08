@@ -84,9 +84,8 @@ class Archive(object):
         """
         Write archive to disk, and return the name of final archive
         """
-        print(path, archive_fmt, *os.path.split(self.dirname))
         return make_archive(os.path.splitext(path)[0], archive_fmt,
-                            self.dirname)
+                            *os.path.split(self.dirname))
 
 
 class AcousticModel(Archive):
