@@ -55,6 +55,7 @@ Other utilities
    "download", "Download a model trained by MFA developers", :ref:`pretrained_models`
    "thirdparty", "Download and validate new third party binaries", :ref:`installation`
    "configure", "Configure MFA to use customized defaults for command line arguments", :ref:`configuration`
+   "history", "List previous MFA commands run locally",
 
 
 Grapheme-to-phoneme

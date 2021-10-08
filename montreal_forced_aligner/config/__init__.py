@@ -16,11 +16,32 @@ def generate_config_path():
     return os.path.join(TEMP_DIR, 'global_config.yaml')
 
 def generate_command_history_path():
-    return os.path.join(TEMP_DIR, 'command_history')
+    return os.path.join(TEMP_DIR, 'command_history.yaml')
 
-def update_command_history(command, duration, exit_code, exception):
-    with open(generate_command_history_path(), 'a', encoding='utf8') as f:
-        f.write(f'{command}\t{duration}\t{exit_code}\t{exception}\n')
+def load_command_history():
+    path = generate_command_history_path()
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf8') as f:
+            history = yaml.safe_load(f)
+    else:
+        history = []
+    if not history:
+        history = []
+    return history
+
+
+def update_command_history(command_data):
+    try:
+        if command_data['command'].split(' ')[1] == 'history':
+            return
+    except Exception:
+        return
+    history = load_command_history()
+    path = generate_command_history_path()
+    history.append(command_data)
+    history = history[-50:]
+    with open(path, 'w', encoding='utf8') as f:
+        yaml.safe_dump(history, f)
 
 def update_global_config(args):
     global_configuration_file = generate_config_path()

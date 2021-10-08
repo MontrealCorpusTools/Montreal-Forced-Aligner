@@ -393,4 +393,4 @@ class BaseTrainer(object):
         if directory:
             os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(path)
-        acoustic_model.dump(basename)
+        acoustic_model.dump(path)

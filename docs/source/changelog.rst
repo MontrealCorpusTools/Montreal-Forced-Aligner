@@ -8,6 +8,14 @@
 Changelog
 =========
 
+2.0.0b3
+-------
+
+- Fixed a bug involving non-escaped orthographic characters
+- Improved SAT alignment with speaker-independent alignment model
+- Fixed a bug where models would not function properly if they were renamed
+- Added a history subcommand to list previous commands
+
 2.0.0b1
 -------
 

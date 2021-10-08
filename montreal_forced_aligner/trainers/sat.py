@@ -6,7 +6,8 @@ import time
 
 from ..multiprocessing import (align, compile_train_graphs,
                                acc_stats, tree_stats, convert_alignments,
-                               calc_fmllr, compute_alignment_improvement, compile_information)
+                               calc_fmllr, compute_alignment_improvement, compile_information,
+                               create_align_model)
 from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, parse_logs, load_scp
 from ..exceptions import KaldiProcessingError
 
@@ -111,7 +112,7 @@ class SatTrainer(TriphoneTrainer):
                         os.path.join(self.train_directory, 'final.mdl'))
             shutil.copy(os.path.join(self.train_directory, '{}.occs'.format(self.num_iterations)),
                         os.path.join(self.train_directory, 'final.occs'))
-
+            create_align_model(self.train_directory, self.corpus.split_directory(), self.corpus.num_jobs, self)
             if not self.debug:
                 for i in range(1, self.num_iterations):
                     model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
@@ -159,6 +160,9 @@ class SatTrainer(TriphoneTrainer):
                 shutil.copy(os.path.join(self.train_directory, 'tree'), self.align_directory)
                 shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
                                 os.path.join(self.align_directory, 'final.mdl'))
+                if os.path.exists(os.path.join(self.train_directory, 'final.alimdl')):
+                    shutil.copyfile(os.path.join(self.train_directory, 'final.alimdl'),
+                                    os.path.join(self.align_directory, 'final.alimdl'))
 
                 if os.path.exists(os.path.join(self.train_directory, 'lda.mat')):
                     shutil.copyfile(os.path.join(self.train_directory, 'lda.mat'),
@@ -173,7 +177,7 @@ class SatTrainer(TriphoneTrainer):
                                     os.path.join(self.align_directory, 'trans.{}'.format(i)))
                 align('final', self.align_directory, align_data_directory,
                       self.dictionary.optional_silence_csl,
-                      self.corpus.num_jobs, self, self.align_directory)
+                      self.corpus.num_jobs, self, self.align_directory, speaker_independent=True)
 
                 unaligned, average_log_like = compile_information(self.align_directory, self.corpus,
                                                                   self.corpus.num_jobs, self)

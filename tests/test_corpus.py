@@ -404,3 +404,17 @@ def test_alternate_punctuation(punctuated_dir, temp_dir, sick_dict_path, differe
     print(c.text_mapping['punctuated'])
     assert c.text_mapping['punctuated'] == 'oh yes, they they, you know, they love her and so i mean'
     dictionary.cleanup_logger()
+
+def test_xsampa_corpus(xsampa_corpus_dir, xsampa_dict_path, temp_dir, generated_dir, different_punctuation_config):
+    train_config, align_config = train_yaml_to_config(different_punctuation_config)
+    output_directory = os.path.join(temp_dir, 'xsampa_corpus')
+    shutil.rmtree(output_directory, ignore_errors=True)
+    print(align_config.punctuation)
+    dictionary = Dictionary(xsampa_dict_path, output_directory, punctuation=align_config.punctuation)
+    dictionary.write()
+    c = AlignableCorpus(xsampa_corpus_dir, output_directory, use_mp=False, punctuation=align_config.punctuation)
+    print(c.punctuation)
+    c.initialize_corpus(dictionary)
+    print(c.text_mapping['michael-xsampa'])
+    assert c.text_mapping['michael-xsampa'] == r'@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k'.lower()
+    dictionary.cleanup_logger()

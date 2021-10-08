@@ -1,7 +1,7 @@
 import os
 import yaml
 
-from shutil import copy, copyfile, rmtree, make_archive, unpack_archive
+from shutil import copy, copyfile, rmtree, make_archive, unpack_archive, move
 
 from . import __version__
 from .exceptions import PronunciationAcousticMismatchError
@@ -31,11 +31,15 @@ class Archive(object):
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
         else:
-            base = root_directory
             self.dirname = os.path.join(root_directory, self.name)
             if not os.path.exists(self.dirname):
                 os.makedirs(root_directory, exist_ok=True)
-                unpack_archive(source, base)
+                unpack_archive(source, self.dirname)
+                files = os.listdir(self.dirname)
+                old_dir_path = os.path.join(self.dirname, files[0])
+                if len(files) == 1 and os.path.isdir(old_dir_path): # Backwards compatibility
+                        for f in os.listdir(old_dir_path):
+                            move(os.path.join(old_dir_path, f), os.path.join(self.dirname, f))
 
     @property
     def meta(self):
@@ -76,16 +80,16 @@ class Archive(object):
     def clean_up(self):
         rmtree(self.dirname)
 
-    def dump(self, sink, archive_fmt=FORMAT):
+    def dump(self, path, archive_fmt=FORMAT):
         """
         Write archive to disk, and return the name of final archive
         """
-        return make_archive(sink, archive_fmt,
+        return make_archive(os.path.splitext(path)[0], archive_fmt,
                             *os.path.split(self.dirname))
 
 
 class AcousticModel(Archive):
-    files = ['final.mdl', 'final.occs', 'lda.mat', 'tree']
+    files = ['final.mdl', 'final.alimdl', 'final.occs', 'lda.mat', 'tree']
     def add_meta_file(self, aligner):
         with open(os.path.join(self.dirname, 'meta.yaml'), 'w', encoding='utf8') as f:
             yaml.dump(aligner.meta, f)
