@@ -659,6 +659,8 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
                             begin_time = time.time()
                             cur_file = file_name
                         current_labels = []
+                        begin += utt_begin
+                        end += utt_begin
                     current_labels.append([begin, end, label])
             if current_labels:
                 process_current(cur_utt, cur_file, current_labels)
@@ -765,6 +767,8 @@ class CleanupWordCtmProcessWorker(mp.Process):
                             begin_time = time.time()
                             cur_file = file_name
                         current_labels = []
+                        begin += utt_begin
+                        end += utt_begin
                     current_labels.append([begin, end, label])
             if current_labels:
                 process_current(cur_utt, cur_file, current_labels)
@@ -864,6 +868,8 @@ class PhoneCtmProcessWorker(mp.Process):
                             begin_time = time.time()
                             cur_file = file_name
                         current_labels = []
+                        begin += utt_begin
+                        end += utt_begin
                     current_labels.append([begin, end, label])
             if current_labels:
                 process_current_utt(cur_utt, cur_file, current_labels)
