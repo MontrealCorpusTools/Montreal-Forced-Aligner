@@ -1,12 +1,23 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Callable, Collection
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import DictionaryType
+    from ..config import AlignConfig
+    from logging import Logger
+
 import os
+import time
 import logging
 import shutil
 
 from .. import __version__
-from ..multiprocessing import compile_information
+from ..multiprocessing import (align, compile_train_graphs, convert_ali_to_textgrids,
+                               calc_fmllr, compile_information)
+from ..exceptions import KaldiProcessingError
+from ..utils import log_kaldi_errors
 from ..config import TEMP_DIR
 
-from ..multiprocessing import convert_ali_to_textgrids
 from ..dictionary import MultispeakerDictionary
 
 
@@ -33,8 +44,8 @@ class BaseAligner(object):
         Flag for running in verbose mode, defaults to false
     """
 
-    def __init__(self, corpus, dictionary, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, logger=None):
+    def __init__(self, corpus: AlignableCorpus, dictionary: DictionaryType, align_config: AlignConfig, temp_directory: Optional[str]=None,
+                 call_back: Optional[Callable]=None, debug: bool=False, verbose: bool=False, logger:Optional[Logger]=None):
         self.align_config = align_config
         self.corpus = corpus
         self.dictionary = dictionary
@@ -56,18 +67,27 @@ class BaseAligner(object):
             self.call_back = print
         self.verbose = verbose
         self.debug = debug
+        self.speaker_independent = True
+        self.uses_cmvn = True
+        self.uses_splices = False
+        self.uses_voiced = False
+        self.iteration = None
         self.setup()
 
-    def setup(self):
+    def setup(self) -> None:
+        self.dictionary.set_word_set(self.corpus.word_set)
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary, self.align_config.feature_config)
+        self.align_config.silence_csl = self.dictionary.silence_csl
+        self.data_directory = self.corpus.split_directory
+        self.feature_config = self.align_config.feature_config
 
     @property
-    def use_mp(self):
+    def use_mp(self) -> bool:
         return self.align_config.use_mp
 
     @property
-    def meta(self):
+    def meta(self) -> dict:
         data = {'phones': sorted(self.dictionary.nonsil_phones),
                 'version': __version__,
                 'architecture': 'gmm-hmm',
@@ -75,26 +95,49 @@ class BaseAligner(object):
                 }
         return data
 
-    def dictionaries_for_job(self, job_name):
-        if isinstance(self.dictionary, MultispeakerDictionary):
-            dictionary_names = []
-            for name in self.dictionary.dictionary_mapping.keys():
-                if os.path.exists(os.path.join(self.corpus.split_directory(), 'utt2spk.{}.{}'.format(job_name, name))):
-                    dictionary_names.append(name)
-            return dictionary_names
-        return None
+    @property
+    def align_options(self):
+        options = self.align_config.align_options
+        options['optional_silence_csl'] = self.dictionary.optional_silence_csl
+        return options
 
     @property
-    def align_directory(self):
+    def fmllr_options(self):
+        options = self.align_config.fmllr_options
+        options['silence_csl'] = self.dictionary.silence_csl
+        return options
+
+    @property
+    def align_directory(self) -> str:
         return os.path.join(self.temp_directory, 'align')
 
     @property
-    def backup_output_directory(self):
+    def working_directory(self) -> str:
+        return self.align_directory
+
+    @property
+    def current_model_path(self) -> str:
+        return os.path.join(self.align_directory, 'final.mdl')
+
+    @property
+    def alignment_model_path(self):
+        path = os.path.join(self.working_directory, f'final.alimdl')
+        if self.speaker_independent and os.path.exists(path):
+            return path
+        return os.path.join(self.working_directory, f'final.mdl')
+
+    @property
+    def working_log_directory(self) -> str:
+        return os.path.join(self.align_directory, 'log')
+
+    @property
+    def backup_output_directory(self) -> Optional[str]:
+        if self.align_config.overwrite:
+            return None
         return os.path.join(self.align_directory, 'textgrids')
 
-    def compile_information(self, output_directory):
-        model_directory = self.align_directory
-        issues, average_log_like = compile_information(model_directory, self.corpus, self.corpus.num_jobs, self)
+    def compile_information(self, output_directory: str) -> None:
+        issues, average_log_like = compile_information(self)
         errors_path = os.path.join(output_directory, 'output_errors.txt')
         if os.path.exists(errors_path):
             self.logger.warning('There were errors when generating the textgrids. See the output_errors.txt in the '
@@ -103,20 +146,57 @@ class BaseAligner(object):
             issue_path = os.path.join(output_directory, 'unaligned.txt')
             with open(issue_path, 'w', encoding='utf8') as f:
                 for u, r in sorted(issues.items()):
-                    f.write('{}\t{}\n'.format(u, r))
-            self.logger.warning('There were {} segments/files not aligned.  Please see {} for more details on why '
-                                'alignment failed for these files.'.format(len(issues), issue_path))
-        if os.path.exists(self.backup_output_directory) and os.listdir(self.backup_output_directory):
+                    f.write(f'{u}\t{r}\n')
+            self.logger.warning(f'There were {len(issues)} segments/files not aligned.  Please see {issue_path} for more details on why '
+                                'alignment failed for these files.')
+        if self.backup_output_directory is not None and os.path.exists(self.backup_output_directory) and os.listdir(self.backup_output_directory):
             self.logger.info(f'Some TextGrids were not output in the output directory to avoid overwriting existing files. '
                              f'You can find them in {self.backup_output_directory}, and if you would like to disable this '
                              f'behavior, you can rerun with the --overwrite flag or run `mfa configure --always_overwrite`.')
 
-    def export_textgrids(self, output_directory):
+    def export_textgrids(self, output_directory: str) -> None:
         """
         Export a TextGrid file for every sound file in the dataset
         """
-        if os.path.exists(self.backup_output_directory):
+        begin = time.time()
+        self.textgrid_output = output_directory
+        if self.backup_output_directory is not None and os.path.exists(self.backup_output_directory):
             shutil.rmtree(self.backup_output_directory, ignore_errors=True)
-        convert_ali_to_textgrids(self.align_config, output_directory, self.align_directory, self.dictionary,
-                                 self.corpus, self.corpus.num_jobs)
+        convert_ali_to_textgrids(self)
         self.compile_information(output_directory)
+        self.logger.debug(f'Exported TextGrids in a total of {time.time() - begin} seconds')
+
+    def align(self, subset: Optional[int]=None) -> None:
+        done_path = os.path.join(self.align_directory, 'done')
+        dirty_path = os.path.join(self.align_directory, 'dirty')
+        if os.path.exists(done_path):
+            self.logger.info('Alignment already done, skipping.')
+            return
+        try:
+            compile_train_graphs(self)
+            log_dir = os.path.join(self.align_directory, 'log')
+            os.makedirs(log_dir, exist_ok=True)
+
+            self.logger.info('Performing first-pass alignment...')
+            align(self)
+            unaligned, average_log_like = compile_information(self)
+            self.logger.debug(f'Prior to SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
+            if not self.align_config.disable_sat and self.acoustic_model.feature_config.fmllr \
+                    and not os.path.exists(os.path.join(self.align_directory, 'trans.0')):
+                self.logger.info('Calculating fMLLR for speaker adaptation...')
+                calc_fmllr(self)
+                self.logger.info('Performing second-pass alignment...')
+                align(self)
+
+                unaligned, average_log_like = compile_information(self)
+                self.logger.debug(f'Following SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}')
+
+        except Exception as e:
+            with open(dirty_path, 'w'):
+                pass
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger.handlers[0].baseFilename)
+            raise
+        with open(done_path, 'w'):
+            pass

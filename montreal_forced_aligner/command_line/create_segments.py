@@ -1,19 +1,21 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from argparse import Namespace
 import shutil
 import os
 import time
-import multiprocessing as mp
-import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
 from montreal_forced_aligner.segmenter import Segmenter
 from montreal_forced_aligner.config import TEMP_DIR, segmentation_yaml_to_config, load_basic_segmentation, \
     load_command_configuration
-from montreal_forced_aligner.helper import setup_logger, log_config
+from montreal_forced_aligner.utils import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def create_segments(args, unknown_args=None):
+def create_segments(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'create_segments'
     all_begin = time.time()
     if not args.temp_directory:
@@ -32,7 +34,7 @@ def create_segments(args, unknown_args=None):
         segmentation_config = load_basic_segmentation()
     segmentation_config.use_mp = not args.disable_mp
     if unknown_args:
-        segmentation_config.update_from_args(unknown_args)
+        segmentation_config.update_from_unknown_args(unknown_args)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
         shutil.rmtree(data_directory, ignore_errors=True)
@@ -98,7 +100,9 @@ def create_segments(args, unknown_args=None):
         conf.save(conf_path)
 
 
-def validate_args(args):
+def validate_args(args: Namespace) -> None:
+    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
+    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
@@ -108,9 +112,6 @@ def validate_args(args):
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 
 
-def run_create_segments(args, unknown=None):
-    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
-    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
-
+def run_create_segments(args: Namespace, unknown: Optional[list]=None) -> None:
     validate_args(args)
     create_segments(args, unknown)

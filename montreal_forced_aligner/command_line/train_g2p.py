@@ -1,14 +1,18 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from ..dictionary import Dictionary
+    from argparse import Namespace
 import os
 import shutil
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer as Trainer
 from montreal_forced_aligner.dictionary import Dictionary
-from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
 from montreal_forced_aligner.config.train_g2p_config import train_g2p_yaml_to_config, load_basic_train_g2p_config
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
+from montreal_forced_aligner.command_line.utils import validate_model_arg
 
 
-def train_g2p(args, unknown_args=None):
+def train_g2p(args: Namespace, unknown_args: Optional[list]=None) -> None:
     if not args.temp_directory:
         temp_dir = TEMP_DIR
     else:
@@ -22,7 +26,7 @@ def train_g2p(args, unknown_args=None):
         train_config = load_basic_train_g2p_config()
     train_config.use_mp = not args.disable_mp
     if unknown_args:
-        train_config.update_from_args(unknown_args)
+        train_config.update_from_unknown_args(unknown_args)
     dictionary = Dictionary(args.dictionary_path, '')
     t = Trainer(dictionary, args.output_model_path, temp_directory=temp_dir, train_config=train_config, num_jobs=args.num_jobs,
                 verbose=args.verbose)
@@ -32,18 +36,11 @@ def train_g2p(args, unknown_args=None):
         t.train()
 
 
-def validate(args, download_dictionaries=None):
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
-    if not os.path.exists(args.dictionary_path):
-        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
-    if not os.path.isfile(args.dictionary_path):
-        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
+def validate(args: Namespace) -> None:
+    args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
 
 
-def run_train_g2p(args, unknown, download_dictionaries=None):
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
-    validate(args, download_dictionaries)
+def run_train_g2p(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate(args)
     train_g2p(args, unknown)
 

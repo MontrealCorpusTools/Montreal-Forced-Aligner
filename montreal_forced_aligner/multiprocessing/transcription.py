@@ -1,689 +1,604 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Union, TextIO
+if TYPE_CHECKING:
+    from ..config.transcribe_config import TranscribeConfig, ConfigDict
+    from ..dictionary import MappingType
+    from ..transcriber import Transcriber
+    DictionaryNames = Optional[Union[List[str], str]]
 import subprocess
 import os
 import shutil
 import sys
+import re
 
-from .helper import run_mp, run_non_mp, thirdparty_binary
-from ..dictionary import MultispeakerDictionary
+from ..utils import thirdparty_binary
+from .helper import run_mp, run_non_mp
 
+def compose_lg(model_directory: str, dictionary_path:str,
+               small_g_path: str, lg_path: str, log_file: TextIO) -> None:
+    if os.path.exists(lg_path):
+        return
+    temp_compose_path = lg_path + '.temp'
+    compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'),
+                                     dictionary_path, small_g_path, temp_compose_path],
+                                    stderr=log_file, env=os.environ)
+    compose_proc.communicate()
 
-def decode_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
-                dictionary_names=None):
-    mdl_path = os.path.join(model_directory, 'final.mdl')
-    if dictionary_names is None:
-        lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
-        if os.path.exists(lat_path):
-            return
-        word_symbol_path = os.path.join(model_directory, 'words.txt')
-        hclg_path = os.path.join(model_directory, 'HCLG.fst')
-        if config.fmllr and config.first_beam is not None:
-            beam = config.first_beam
-        else:
-            beam = config.beam
-        if config.fmllr and config.first_max_active is not None and not config.no_speakers:
-            max_active = config.first_max_active
-        else:
-            max_active = config.max_active
-        log_path = os.path.join(output_directory, 'log', 'decode.{}.log'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
-            if num_threads is None:
-                decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
-                                                '--max-active={}'.format(max_active),
-                                                '--beam={}'.format(beam),
-                                                '--lattice-beam={}'.format(config.lattice_beam),
-                                                '--allow-partial=true',
-                                                '--word-symbol-table={}'.format(word_symbol_path),
-                                                '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                mdl_path, hclg_path, feat_string,
-                                                "ark:" + lat_path],
-                                               stderr=log_file)
+    temp2_compose_path = lg_path + '.temp2'
+    determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
+                                         '--use-log=true', temp_compose_path, temp2_compose_path],
+                                        stderr=log_file, env=os.environ)
+    determinize_proc.communicate()
+    os.remove(temp_compose_path)
+
+    minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'),
+                                      temp2_compose_path, temp_compose_path],
+                                     stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+    minimize_proc.communicate()
+    os.remove(temp2_compose_path)
+    push_proc = subprocess.Popen([thirdparty_binary('fstpushspecial'), temp_compose_path, lg_path],
+                                 stderr=log_file, env=os.environ)
+    push_proc.communicate()
+    os.remove(temp_compose_path)
+
+def compose_clg(in_disambig: str, out_disambig: str, context_width: int,
+                central_pos: int, ilabels_temp: str, lg_path: str, clg_path: str,
+                log_file: TextIO) -> None:
+    compose_proc = subprocess.Popen([thirdparty_binary('fstcomposecontext'),
+                                     f'--context-size={context_width}',
+                                     f'--central-position={central_pos}',
+                                     f'--read-disambig-syms={in_disambig}',
+                                     f'--write-disambig-syms={out_disambig}',
+                                     ilabels_temp, lg_path], stdout=subprocess.PIPE, stderr=log_file)
+    sort_proc = subprocess.Popen([thirdparty_binary('fstarcsort'),
+                                  '--sort_type=ilabel', '-', clg_path],
+                                 stdin=compose_proc.stdout, stderr=log_file, env=os.environ)
+    sort_proc.communicate()
+
+def compose_hclg(model_directory: str, ilabels_temp: str,
+                 transition_scale: float, clg_path: str, hclga_path: str, log_file: TextIO) -> None:
+    model_path = os.path.join(model_directory, 'final.mdl')
+    tree_path = os.path.join(model_directory, 'tree')
+    ha_path = hclga_path.replace('HCLGa', 'Ha')
+    ha_out_disambig = os.path.join(model_directory, 'disambig_tid.int')
+    make_h_proc = subprocess.Popen([thirdparty_binary('make-h-transducer'),
+                                    f'--disambig-syms-out={ha_out_disambig}',
+                                    f'--transition-scale={transition_scale}',
+                                    ilabels_temp, tree_path, model_path, ha_path],
+                                   stderr=log_file, stdout=log_file, env=os.environ)
+    make_h_proc.communicate()
+
+    temp_compose_path = hclga_path + '.temp'
+    compose_proc = subprocess.Popen([thirdparty_binary('fsttablecompose'), ha_path,
+                                     clg_path, temp_compose_path], stderr=log_file, env=os.environ)
+    compose_proc.communicate()
+
+    determinize_proc = subprocess.Popen([thirdparty_binary('fstdeterminizestar'),
+                                         '--use-log=true', temp_compose_path],
+                                        stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+    rmsymbols_proc = subprocess.Popen([thirdparty_binary('fstrmsymbols'), ha_out_disambig],
+                                      stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
+                                      stderr=log_file, env=os.environ)
+    rmeps_proc = subprocess.Popen([thirdparty_binary('fstrmepslocal')],
+                                  stdin=rmsymbols_proc.stdout, stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+    minimize_proc = subprocess.Popen([thirdparty_binary('fstminimizeencoded'), '-', hclga_path],
+                                     stdin=rmeps_proc.stdout, stderr=log_file, env=os.environ)
+    minimize_proc.communicate()
+    os.remove(temp_compose_path)
+
+def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) -> None:
+    arpafst_proc = subprocess.Popen([thirdparty_binary('arpa2fst'), '--disambig-symbol=#0',
+                                     f'--read-symbol-table={words_path}',
+                                     arpa_path, g_path], stderr=log_file,
+                                    stdout=log_file)
+    arpafst_proc.communicate()
+
+def compose_g_carpa(in_carpa_path: str, temp_carpa_path: str, words_mapping: MappingType,
+                    carpa_path: str, log_file: TextIO):
+    bos_symbol = words_mapping['<s>']
+    eos_symbol = words_mapping['</s>']
+    unk_symbol = words_mapping['<unk>']
+    with open(in_carpa_path, 'r', encoding='utf8') as f, \
+            open(temp_carpa_path, 'w', encoding='utf8') as outf:
+        current_order = -1
+        num_oov_lines = 0
+        for line in f:
+            line = line.strip()
+            col = line.split()
+            if current_order == -1 and not re.match(r'^\\data\\$', line):
+                continue
+            if re.match(r'^\\data\\$', line):
+                log_file.write(r'Processing data...\n')
+                current_order = 0
+                outf.write(line + '\n')
+            elif re.match(r'^\\[0-9]*-grams:$', line):
+                current_order = int(re.sub(r'\\([0-9]*)-grams:$', r'\1', line))
+                log_file.write(f'Processing {current_order} grams...\n')
+                outf.write(line + '\n')
+            elif re.match(r'^\\end\\$', line):
+                outf.write(line + '\n')
+            elif not line:
+                if current_order >= 1:
+                    outf.write('\n')
             else:
-                decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
-                                                '--max-active={}'.format(max_active),
-                                                '--beam={}'.format(beam),
-                                                '--lattice-beam={}'.format(config.lattice_beam),
-                                                '--allow-partial=true',
-                                                '--word-symbol-table={}'.format(word_symbol_path),
-                                                '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                '--num-threads={}'.format(num_threads),
-                                                mdl_path, hclg_path, feat_string,
-                                                "ark:" + lat_path],
-                                               stderr=log_file)
-            decode_proc.communicate()
+                if current_order == 0:
+                    outf.write(line + '\n')
+                else:
+                    if len(col) > 2 + current_order or len(col) < 1 + current_order:
+                        raise Exception(f'Bad line in arpa lm "{line}"')
+                    prob = col.pop(0)
+                    is_oov = False
+                    for i in range(current_order):
+                        try:
+                            col[i] = str(words_mapping[col[i]])
+                        except KeyError:
+                            is_oov = True
+                            num_oov_lines += 1
+                            break
+                    if not is_oov:
+                        rest_of_line = ' '.join(col)
+                        outf.write(f'{prob}\t{rest_of_line}\n')
+    carpa_proc = subprocess.Popen([thirdparty_binary('arpa-to-const-arpa'),
+                                   f'--bos-symbol={bos_symbol}',
+                                   f'--eos-symbol={eos_symbol}',
+                                   f'--unk-symbol={unk_symbol}',
+                                   temp_carpa_path, carpa_path], stdin=subprocess.PIPE,
+                                  stderr=log_file,
+                                  stdout=log_file, env=os.environ)
+    carpa_proc.communicate()
+    os.remove(temp_carpa_path)
+
+
+def create_hclg_func(
+    log_path: str,
+    working_directory: str,
+    path_template: str,
+    words_path: str,
+    carpa_path: str,
+    small_arpa_path: str,
+    medium_arpa_path: str,
+    big_arpa_path: str,
+    model_path: str,
+        disambig_L_path: str,
+        disambig_int_path: str,
+        hclg_options: ConfigDict,
+words_mapping: MappingType):
+    hclg_path = path_template.format(file_name='HCLG')
+    small_g_path = path_template.format(file_name='G.small')
+    medium_g_path = path_template.format(file_name='G.med')
+    lg_path = path_template.format(file_name='LG')
+    hclga_path = path_template.format(file_name='HCLGa')
+    if os.path.exists(hclg_path):
+        return
+    with open(log_path, 'w') as log_file:
+        context_width = hclg_options['context_width']
+        central_pos = hclg_options['central_pos']
+
+        clg_path = path_template.format(file_name=f'CLG_{context_width}_{central_pos}')
+        ilabels_temp = path_template.format(file_name=f'ilabels_{context_width}_{central_pos}').replace('.fst', '')
+        out_disambig = path_template.format(file_name=f'disambig_ilabels_{context_width}_{central_pos}').replace('.fst', '.int')
+
+        log_file.write('Generating decoding graph...\n')
+        if not os.path.exists(small_g_path):
+            log_file.write('Generating small_G.fst...')
+            compose_g(small_arpa_path, words_path, small_g_path, log_file)
+        if not os.path.exists(medium_g_path):
+            log_file.write('Generating med_G.fst...')
+            compose_g(medium_arpa_path, words_path, medium_g_path, log_file)
+        if not os.path.exists(carpa_path):
+            log_file.write('Generating G.carpa...')
+            temp_carpa_path = carpa_path + '.temp'
+            compose_g_carpa(big_arpa_path, temp_carpa_path, words_mapping, carpa_path, log_file)
+        if not os.path.exists(lg_path):
+            log_file.write('Generating LG.fst...')
+            compose_lg(working_directory, disambig_L_path, small_g_path, lg_path, log_file)
+        if not os.path.exists(clg_path):
+            log_file.write('Generating CLG.fst...')
+            compose_clg(disambig_int_path, out_disambig, context_width, central_pos, ilabels_temp, lg_path, clg_path,
+                        log_file)
+        if not os.path.exists(hclga_path):
+            log_file.write('Generating HCLGa.fst...')
+            compose_hclg(working_directory, ilabels_temp, hclg_options['transition_scale'],
+                         clg_path, hclga_path, log_file)
+        log_file.write('Generating HCLG.fst...')
+        self_loop_proc = subprocess.Popen([thirdparty_binary('add-self-loops'),
+                                           f"--self-loop-scale={hclg_options['self_loop_scale']}",
+                                           '--reorder=true', model_path, hclga_path],
+                                          stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+        convert_proc = subprocess.Popen([thirdparty_binary('fstconvert'), '--fst_type=const', '-', hclg_path],
+                                        stdin=self_loop_proc.stdout, stderr=log_file, env=os.environ)
+        convert_proc.communicate()
+
+def create_hclgs(transcriber: Transcriber):
+    dict_arguments = {}
+
+    for j in transcriber.corpus.jobs:
+        dict_arguments.update(j.create_hclgs_arguments(transcriber))
+    if False and transcriber.transcribe_config.use_mp:
+        run_mp(create_hclg_func, list(dict_arguments.values()), transcriber.working_log_directory)
     else:
-        for name in dictionary_names:
-            lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
+        run_non_mp(create_hclg_func, list(dict_arguments.values()), transcriber.working_log_directory)
+
+def decode_func(
+    log_path: str,
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    decode_options: ConfigDict,
+    model_path: str,
+    lat_paths: Dict[str, str],
+    word_symbol_paths: Dict[str, str],
+    hclg_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            feature_string = feature_strings[dict_name]
+            lat_path = lat_paths[dict_name]
+            word_symbol_path = word_symbol_paths[dict_name]
+            hclg_path = hclg_paths[dict_name]
             if os.path.exists(lat_path):
                 continue
-            word_symbol_path = os.path.join(model_directory, name + '_words.txt')
-            hclg_path = os.path.join(model_directory, name + '_HCLG.fst')
-            if config.fmllr and config.first_beam is not None:
-                beam = config.first_beam
+            if decode_options['fmllr'] and decode_options['first_beam'] is not None:
+                beam = decode_options['first_beam']
             else:
-                beam = config.beam
-            if config.fmllr and config.first_max_active is not None and not config.no_speakers:
-                max_active = config.first_max_active
+                beam = decode_options["beam"]
+            if decode_options['fmllr'] and decode_options["first_max_active"] is not None and not decode_options["no_speakers"]:
+                max_active = decode_options["first_max_active"]
             else:
-                max_active = config.max_active
-            log_path = os.path.join(output_directory, 'log', 'decode.{}.{}.log'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
-                                                         'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
-                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
-                                                                    'utt2spk.{}.{}'.format(job_name, name))
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                if num_threads is None:
-                    decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
-                                                    '--max-active={}'.format(max_active),
-                                                    '--beam={}'.format(beam),
-                                                    '--lattice-beam={}'.format(config.lattice_beam),
-                                                    '--allow-partial=true',
-                                                    '--word-symbol-table={}'.format(word_symbol_path),
-                                                    '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                    mdl_path, hclg_path, dictionary_feat_string,
-                                                    "ark:" + lat_path],
-                                                   stderr=log_file)
-                else:
-                    decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
-                                                    '--max-active={}'.format(max_active),
-                                                    '--beam={}'.format(beam),
-                                                    '--lattice-beam={}'.format(config.lattice_beam),
-                                                    '--allow-partial=true',
-                                                    '--word-symbol-table={}'.format(word_symbol_path),
-                                                    '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                    '--num-threads={}'.format(num_threads),
-                                                    mdl_path, hclg_path, dictionary_feat_string,
-                                                    "ark:" + lat_path],
-                                                   stderr=log_file)
-                decode_proc.communicate()
+                max_active = decode_options["max_active"]
+            decode_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
+                                            f'--max-active={max_active}',
+                                            f'--beam={beam}',
+                                            f"--lattice-beam={decode_options['lattice_beam']}",
+                                            '--allow-partial=true',
+                                            f"--word-symbol-table={word_symbol_path}",
+                                            f"--acoustic-scale={decode_options['acoustic_scale']}",
+                                            model_path, hclg_path, feature_string,
+                                            f"ark:{lat_path}"],
+                                           stderr=log_file, env=os.environ)
+            decode_proc.communicate()
 
 
-def score_func(model_directory, transcribe_directory, job_name, config, output_directory, language_model_weight=None,
-               word_insertion_penalty=None, dictionary_names=None):
-    if language_model_weight is None:
-        language_model_weight = config.language_model_weight
-    if word_insertion_penalty is None:
-        word_insertion_penalty = config.word_insertion_penalty
-    if dictionary_names is None:
-        lat_path = os.path.join(transcribe_directory, 'lat.{}'.format(job_name))
-        rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.rescored'.format(job_name))
-        carpa_rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.carparescored'.format(job_name))
-        if os.path.exists(carpa_rescored_lat_path):
-            lat_path = carpa_rescored_lat_path
-        elif os.path.exists(rescored_lat_path):
-            lat_path = rescored_lat_path
-        words_path = os.path.join(model_directory, 'words.txt')
-        tra_path = os.path.join(output_directory, 'tra.{}'.format(job_name))
-        log_path = os.path.join(output_directory, 'log', 'score.{}.log'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
-            scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
-                                           '--inv-acoustic-scale={}'.format(language_model_weight),
-                                           'ark:' + lat_path, 'ark:-'
-                                           ], stdout=subprocess.PIPE, stderr=log_file)
-            penalty_proc = subprocess.Popen([thirdparty_binary('lattice-add-penalty'),
-                                             '--word-ins-penalty={}'.format(word_insertion_penalty),
-                                             'ark:-', 'ark:-'],
-                                            stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-            best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
-                                               '--word-symbol-table={}'.format(words_path),
-                                               'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout,
-                                              stderr=log_file)
-            best_path_proc.communicate()
-    else:
-        for name in dictionary_names:
-            lat_path = os.path.join(transcribe_directory, 'lat.{}.{}'.format(job_name, name))
-            rescored_lat_path = os.path.join(transcribe_directory, 'lat.{}.{}.rescored'.format(job_name, name))
-            carpa_rescored_lat_path = os.path.join(transcribe_directory,
-                                                   'lat.{}.{}.carparescored'.format(job_name, name))
+def score_func(log_path: str,
+    dictionaries: List[str],
+    score_options: ConfigDict,
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    carpa_rescored_lat_paths: Dict[str, str],
+    words_paths: Dict[str, str],
+    tra_paths: Dict[str, str]) -> None:
+
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            language_model_weight = score_options['language_model_weight']
+            word_insertion_penalty = score_options['word_insertion_penalty']
+            carpa_rescored_lat_path =carpa_rescored_lat_paths[dict_name]
+            rescored_lat_path =rescored_lat_paths[dict_name]
+            lat_path = lat_paths[dict_name]
+            words_path = words_paths[dict_name]
+            tra_path = tra_paths[dict_name]
             if os.path.exists(carpa_rescored_lat_path):
                 lat_path = carpa_rescored_lat_path
             elif os.path.exists(rescored_lat_path):
                 lat_path = rescored_lat_path
-            words_path = os.path.join(model_directory, name + '_words.txt')
-            tra_path = os.path.join(output_directory, 'tra.{}.{}'.format(job_name, name))
-            log_path = os.path.join(output_directory, 'log', 'score.{}.{}.log'.format(job_name, name))
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
-                                               '--inv-acoustic-scale={}'.format(language_model_weight),
-                                               'ark:' + lat_path, 'ark:-'
-                                               ], stdout=subprocess.PIPE, stderr=log_file)
-                penalty_proc = subprocess.Popen([thirdparty_binary('lattice-add-penalty'),
-                                                 '--word-ins-penalty={}'.format(word_insertion_penalty),
-                                                 'ark:-', 'ark:-'],
-                                                stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-                best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
-                                                   '--word-symbol-table={}'.format(words_path),
-                                                   'ark:-', 'ark,t:' + tra_path], stdin=penalty_proc.stdout,
-                                                  stderr=log_file)
-                best_path_proc.communicate()
+            scale_proc = subprocess.Popen([thirdparty_binary('lattice-scale'),
+                                           f'--inv-acoustic-scale={language_model_weight}',
+                                           f'ark:{lat_path}', 'ark:-'
+                                           ], stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+            penalty_proc = subprocess.Popen([thirdparty_binary('lattice-add-penalty'),
+                                             f'--word-ins-penalty={word_insertion_penalty}',
+                                             'ark:-', 'ark:-'],
+                                            stdin=scale_proc.stdout, stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+            best_path_proc = subprocess.Popen([thirdparty_binary('lattice-best-path'),
+                                               f'--word-symbol-table={words_path}',
+                                               'ark:-', f'ark,t:{tra_path}'], stdin=penalty_proc.stdout,
+                                              stderr=log_file, env=os.environ)
+            best_path_proc.communicate()
 
 
-def lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
-                    dictionary_names=None):
-    if sys.platform == 'win32':
-        project_type_arg = '--project_output=true'
-    else:
-        project_type_arg = '--project_type=output'
-    if dictionary_names is None:
-        rescored_lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
-        lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
-        old_g_path = os.path.join(model_directory, 'small_G.fst')
-        new_g_path = os.path.join(model_directory, 'med_G.fst')
-        log_path = os.path.join(output_directory, 'log', 'lm_rescore.{}.log'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
+def lm_rescore_func(
+    log_path: str,
+    dictionaries: List[str],
+    lm_rescore_options: ConfigDict,
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    old_g_paths: Dict[str, str],
+    new_g_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            lat_path = lat_paths[dict_name]
+            rescored_lat_path = rescored_lat_paths[dict_name]
+            old_g_path = old_g_paths[dict_name]
+            new_g_path = new_g_paths[dict_name]
+            if sys.platform == 'win32':
+                project_type_arg = '--project_output=true'
+            else:
+                project_type_arg = '--project_type=output'
+            if os.path.exists(rescored_lat_path):
+                continue
+
             lattice_scale_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-pruned'),
-                                                   '--acoustic-scale={}'.format(config.acoustic_scale),
+                                                   f"--acoustic-scale={lm_rescore_options['acoustic_scale']}",
                                                    f"fstproject {project_type_arg} {old_g_path} |",
                                                    f"fstproject {project_type_arg} {new_g_path} |",
-                                                   'ark:' + lat_path, 'ark:' + rescored_lat_path], stderr=log_file)
+                                                   f'ark:{lat_path}', f'ark:{rescored_lat_path}'], stderr=log_file, env=os.environ)
             lattice_scale_proc.communicate()
-    else:
-        for name in dictionary_names:
-            rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.lmrescored'.format(job_name, name))
-            lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
-            old_g_path = os.path.join(model_directory, name + '_small_G.fst')
-            new_g_path = os.path.join(model_directory, name + '_med_G.fst')
-            log_path = os.path.join(output_directory, 'log', 'lm_rescore.{}.{}.log'.format(job_name, name))
-
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                lattice_scale_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-pruned'),
-                                                       '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                       f"fstproject {project_type_arg} {old_g_path} |",
-                                                       f"fstproject {project_type_arg} {new_g_path} |",
-                                                       'ark:' + lat_path, 'ark:' + rescored_lat_path], stderr=log_file)
-                lattice_scale_proc.communicate()
 
 
-def carpa_lm_rescore_func(model_directory, job_name, config, feat_string, output_directory, num_threads=None,
-                          dictionary_names=None):
-    if sys.platform == 'win32':
-        project_type_arg = '--project_output=true'
-    else:
-        project_type_arg = '--project_type=output'
-    if dictionary_names is None:
-        lat_path = os.path.join(output_directory, 'lat.{}.lmrescored'.format(job_name))
-        rescored_lat_path = os.path.join(output_directory, 'lat.{}.carparescored'.format(job_name))
-        if os.path.exists(rescored_lat_path):
-            return
-        old_g_path = os.path.join(model_directory, 'med_G.fst')
-        new_g_path = os.path.join(model_directory, 'G.carpa')
-        log_path = os.path.join(output_directory, 'log', 'carpa_lm_rescore.{}.log'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
+def carpa_lm_rescore_func(
+    log_path: str,
+    dictionaries: List[str],
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    old_g_paths: Dict[str, str],
+    new_g_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            if sys.platform == 'win32':
+                project_type_arg = '--project_output=true'
+            else:
+                project_type_arg = '--project_type=output'
+            lat_path = lat_paths[dict_name]
+            rescored_lat_path = rescored_lat_paths[dict_name]
+            old_g_path = old_g_paths[dict_name]
+            new_g_path = new_g_paths[dict_name]
+            if os.path.exists(rescored_lat_path):
+                continue
+            project_proc = subprocess.Popen([thirdparty_binary('fstproject'),
+                                             project_type_arg,
+                                             old_g_path
+                                             ], stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
             lmrescore_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore'),
-                                               '--lm-scale=-1.0', 'ark:' + lat_path,
-                                               f"fstproject {project_type_arg} {old_g_path} |",
-                                               'ark:-'], stdout=subprocess.PIPE, stderr=log_file)
+                                               '--lm-scale=-1.0', f'ark:{lat_path}',
+                                               "-",
+                                               'ark:-'], stdout=subprocess.PIPE, stdin=project_proc.stdout, stderr=log_file, env=os.environ)
             lmrescore_const_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-const-arpa'),
                                                      '--lm-scale=1.0', 'ark:-',
                                                      new_g_path,
-                                                     'ark:' + rescored_lat_path], stdin=lmrescore_proc.stdout,
-                                                    stderr=log_file)
+                                                     f'ark:{rescored_lat_path}'], stdin=lmrescore_proc.stdout,
+                                                    stderr=log_file, env=os.environ)
             lmrescore_const_proc.communicate()
-    else:
-        for name in dictionary_names:
-            lat_path = os.path.join(output_directory, 'lat.{}.{}.lmrescored'.format(job_name, name))
-            rescored_lat_path = os.path.join(output_directory, 'lat.{}.{}.carparescored'.format(job_name, name))
-            if os.path.exists(rescored_lat_path):
-                continue
-            old_g_path = os.path.join(model_directory, name + '_med_G.fst')
-            new_g_path = os.path.join(model_directory, name + '_G.carpa')
-            log_path = os.path.join(output_directory, 'log', 'carpa_lm_rescore.{}.{}.log'.format(job_name, name))
-
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                lmrescore_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore'),
-                                                   '--lm-scale=-1.0', 'ark:' + lat_path,
-                                                   f"fstproject {project_type_arg} {old_g_path} |",
-                                                   'ark:-'], stdout=subprocess.PIPE, stderr=log_file)
-                lmrescore_const_proc = subprocess.Popen([thirdparty_binary('lattice-lmrescore-const-arpa'),
-                                                         '--lm-scale=1.0', 'ark:-',
-                                                         new_g_path,
-                                                         'ark:' + rescored_lat_path], stdin=lmrescore_proc.stdout,
-                                                        stderr=log_file)
-                lmrescore_const_proc.communicate()
 
 
-def transcribe(transcriber):
+def transcribe(transcriber: Transcriber) -> None:
     """
     """
-    model_directory = transcriber.model_directory
-    decode_directory = transcriber.transcribe_directory
-    log_directory = os.path.join(decode_directory, 'log')
     config = transcriber.transcribe_config
-    corpus = transcriber.corpus
-    num_jobs = corpus.num_jobs
 
-    jobs = [(model_directory, x, config,
-             config.feature_config.construct_feature_proc_string(corpus.split_directory(), model_directory, x),
-             decode_directory, corpus.original_num_jobs, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
+    jobs = [x.decode_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
 
-    run_non_mp(decode_func, jobs, log_directory)
 
     if config.use_mp:
-        run_mp(lm_rescore_func, jobs, log_directory)
+        run_mp(decode_func, jobs, transcriber.working_log_directory)
     else:
-        run_non_mp(lm_rescore_func, jobs, log_directory)
+        run_non_mp(decode_func, jobs, transcriber.working_log_directory)
+
+    jobs = [x.lm_rescore_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
 
     if config.use_mp:
-        run_mp(carpa_lm_rescore_func, jobs, log_directory)
+        run_mp(lm_rescore_func, jobs, transcriber.working_log_directory)
     else:
-        run_non_mp(carpa_lm_rescore_func, jobs, log_directory)
+        run_non_mp(lm_rescore_func, jobs, transcriber.working_log_directory)
 
+    jobs = [x.carpa_lm_rescore_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
+
+    if config.use_mp:
+        run_mp(carpa_lm_rescore_func, jobs, transcriber.working_log_directory)
+    else:
+        run_non_mp(carpa_lm_rescore_func, jobs, transcriber.working_log_directory)
+
+
+
+def score_transcriptions(transcriber: Transcriber):
     if transcriber.evaluation_mode:
         best_wer = 10000
         best = None
         for lmwt in range(transcriber.min_language_model_weight, transcriber.max_language_model_weight):
             for wip in transcriber.word_insertion_penalties:
-                out_dir = os.path.join(decode_directory, 'eval_{}_{}'.format(lmwt, wip))
-                log_dir = os.path.join(out_dir, 'log')
-                os.makedirs(log_dir, exist_ok=True)
+                transcriber.transcribe_config.language_model_weight = lmwt
+                transcriber.transcribe_config.word_insertion_penalty = wip
+                os.makedirs(transcriber.evaluation_log_directory, exist_ok=True)
 
-                jobs = [(model_directory, decode_directory, x, config, out_dir, lmwt, wip,
-                         transcriber.dictionaries_for_job(x))
-                        for x in range(num_jobs)]
-                if config.use_mp:
-                    run_mp(score_func, jobs, log_dir)
+                jobs = [x.score_arguments(transcriber)
+                        for x in transcriber.corpus.jobs]
+                if transcriber.transcribe_config.use_mp:
+                    run_mp(score_func, jobs, transcriber.evaluation_log_directory)
                 else:
-                    run_non_mp(score_func, jobs, log_dir)
-                ser, wer = transcriber.evaluate(out_dir, out_dir)
+                    run_non_mp(score_func, jobs, transcriber.evaluation_log_directory)
+                ser, wer = transcriber.evaluate()
                 if wer < best_wer:
                     best = (lmwt, wip)
         transcriber.transcribe_config.language_model_weight = best[0]
         transcriber.transcribe_config.word_insertion_penalty = best[1]
+        for j in transcriber.corpus.jobs:
+            score_args =j.score_arguments(transcriber)
+            for p in score_args.tra_paths.values():
+                shutil.copyfile(p, p.replace(transcriber.evaluation_directory, transcriber.transcribe_directory))
     else:
-        jobs = [(model_directory, decode_directory, x, config, decode_directory, None, None,
-                 transcriber.dictionaries_for_job(x))
-                for x in range(num_jobs)]
-        if config.use_mp:
-            run_mp(score_func, jobs, log_directory)
+        jobs = [x.score_arguments(transcriber)
+                for x in transcriber.corpus.jobs]
+        if transcriber.transcribe_config.use_mp:
+            run_mp(score_func, jobs, transcriber.working_log_directory)
         else:
-            run_non_mp(score_func, jobs, log_directory)
+            run_non_mp(score_func, jobs, transcriber.working_log_directory)
 
+def initial_fmllr_func(log_path: str,
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    model_path: str,
+    fmllr_options: ConfigDict,
+    trans_paths: Dict[str, str],
+    lat_paths: Dict[str, str],
+    spk2utt_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            lat_path = lat_paths[dict_name]
+            feature_string = feature_strings[dict_name]
+            spk2utt_path = spk2utt_paths[dict_name]
+            trans_path = trans_paths[dict_name]
 
-def initial_fmllr_func(initial_directory, split_directory, sil_phones, job_name, mdl, config, feat_string,
-                       output_directory,
-                       num_threads=None, dictionary_names=None):
-    if dictionary_names is None:
-        log_path = os.path.join(output_directory, 'log', 'initial_fmllr.{}.log'.format(job_name))
-        pre_trans_path = os.path.join(output_directory, 'pre_trans.{}'.format(job_name))
-        lat_path = os.path.join(initial_directory, 'lat.{}'.format(job_name))
-        spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
-
-        with open(log_path, 'w', encoding='utf8') as log_file:
             latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
-                                               '--acoustic-scale={}'.format(config.acoustic_scale),
-                                               'ark:' + lat_path, 'ark:-'], stdout=subprocess.PIPE,
-                                              stderr=log_file)
+                                               f"--acoustic-scale={fmllr_options['acoustic_scale']}",
+                                               f'ark:{lat_path}', 'ark:-'], stdout=subprocess.PIPE,
+                                              stderr=log_file, env=os.environ)
             weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                    str(config.silence_weight),
-                                                    sil_phones, mdl, 'ark:-', 'ark:-'],
+                                                    f"{fmllr_options['silence_weight']}",
+                                                    fmllr_options['sil_phones'], model_path, 'ark:-', 'ark:-'],
                                                    stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
-                                                   stderr=log_file)
+                                                   stderr=log_file, env=os.environ)
             gmm_gpost_proc = subprocess.Popen([thirdparty_binary('gmm-post-to-gpost'),
-                                               mdl, feat_string, 'ark:-', 'ark:-'],
+                                               model_path, feature_string, 'ark:-', 'ark:-'],
                                               stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE,
-                                              stderr=log_file)
+                                              stderr=log_file, env=os.environ)
             fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr-gpost'),
-                                           '--fmllr-update-type={}'.format(config.fmllr_update_type),
-                                           '--spk2utt=ark:' + spk2utt_path, mdl, feat_string,
-                                           'ark,s,cs:-', 'ark:' + pre_trans_path],
-                                          stdin=gmm_gpost_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                           f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
+                                           f'--spk2utt=ark:{spk2utt_path}', model_path, feature_string,
+                                           'ark,s,cs:-', f'ark:{trans_path}'],
+                                          stdin=gmm_gpost_proc.stdout, stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
             fmllr_proc.communicate()
-    else:
-        for name in dictionary_names:
-            log_path = os.path.join(output_directory, 'log', 'initial_fmllr.{}.{}.log'.format(job_name, name))
-            pre_trans_path = os.path.join(output_directory, 'pre_trans.{}.{}'.format(job_name, name))
-            lat_path = os.path.join(initial_directory, 'lat.{}.{}'.format(job_name, name))
-            spk2utt_path = os.path.join(split_directory, 'spk2utt.{}.{}'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
-                                                         'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
-                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
-                                                                    'utt2spk.{}.{}'.format(job_name, name))
-
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
-                                                   '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                   'ark:' + lat_path, 'ark:-'], stdout=subprocess.PIPE,
-                                                  stderr=log_file)
-                weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                        str(config.silence_weight),
-                                                        sil_phones, mdl, 'ark:-', 'ark:-'],
-                                                       stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
-                                                       stderr=log_file)
-                gmm_gpost_proc = subprocess.Popen([thirdparty_binary('gmm-post-to-gpost'),
-                                                   mdl, dictionary_feat_string, 'ark:-', 'ark:-'],
-                                                  stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE,
-                                                  stderr=log_file)
-                fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr-gpost'),
-                                               '--fmllr-update-type={}'.format(config.fmllr_update_type),
-                                               '--spk2utt=ark:' + spk2utt_path, mdl, dictionary_feat_string,
-                                               'ark,s,cs:-', 'ark:' + pre_trans_path],
-                                              stdin=gmm_gpost_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-                fmllr_proc.communicate()
 
 
-def lat_gen_fmllr_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string,
-                       output_directory,
-                       num_threads=None, dictionary_names=None):
-    if dictionary_names is None:
-        log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.log'.format(job_name))
-        word_symbol_path = os.path.join(model_directory, 'words.txt')
-        hclg_path = os.path.join(model_directory, 'HCLG.fst')
-        tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
-            if num_threads is None:
-                lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
-                                                 '--max-active={}'.format(config.max_active),
-                                                 '--beam={}'.format(config.beam),
-                                                 '--lattice-beam={}'.format(config.lattice_beam),
-                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                 '--determinize-lattice=false',
-                                                 '--allow-partial=true',
-                                                 '--word-symbol-table={}'.format(word_symbol_path),
-                                                 mdl, hclg_path, feat_string, 'ark:' + tmp_lat_path
-                                                 ], stderr=log_file)
-            else:
-                lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
-                                                 '--max-active={}'.format(config.max_active),
-                                                 '--beam={}'.format(config.beam),
-                                                 '--lattice-beam={}'.format(config.lattice_beam),
-                                                 '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                 '--determinize-lattice=false',
-                                                 '--allow-partial=true',
-                                                 '--num-threads={}'.format(num_threads),
-                                                 '--word-symbol-table={}'.format(word_symbol_path),
-                                                 mdl, hclg_path, feat_string, 'ark:' + tmp_lat_path
-                                                 ], stderr=log_file)
+def lat_gen_fmllr_func(
+    log_path: str,
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    model_path: str,
+    decode_options: ConfigDict,
+    words_paths: Dict[str, str],
+    hclg_paths: Dict[str, str],
+    tmp_lat_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            feature_string = feature_strings[dict_name]
+            words_path = words_paths[dict_name]
+            hclg_path = hclg_paths[dict_name]
+            tmp_lat_path = tmp_lat_paths[dict_name]
+            lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
+                                             f"--max-active={decode_options['max_active']}",
+                                             f"--beam={decode_options['beam']}",
+                                             f"--lattice-beam={decode_options['lattice_beam']}",
+                                             f"--acoustic-scale={decode_options['acoustic_scale']}",
+                                             '--determinize-lattice=false',
+                                             '--allow-partial=true',
+                                             f"--word-symbol-table={words_path}",
+                                             model_path, hclg_path, feature_string, f'ark:{tmp_lat_path}'
+                                             ], stderr=log_file, env=os.environ)
+
             lat_gen_proc.communicate()
-    else:
-        for name in dictionary_names:
-            log_path = os.path.join(output_directory, 'log', 'lat_gen.{}.{}.log'.format(job_name, name))
-            word_symbol_path = os.path.join(model_directory, name + '_words.txt')
-            hclg_path = os.path.join(model_directory, name + '_HCLG.fst')
-            tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}.{}'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
-                                                         'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
-                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
-                                                                    'utt2spk.{}.{}'.format(job_name, name))
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                if num_threads is None:
-                    lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster'),
-                                                     '--max-active={}'.format(config.max_active),
-                                                     '--beam={}'.format(config.beam),
-                                                     '--lattice-beam={}'.format(config.lattice_beam),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--determinize-lattice=false',
-                                                     '--allow-partial=true',
-                                                     '--word-symbol-table={}'.format(word_symbol_path),
-                                                     mdl, hclg_path, dictionary_feat_string, 'ark:' + tmp_lat_path
-                                                     ], stderr=log_file)
-                else:
-                    lat_gen_proc = subprocess.Popen([thirdparty_binary('gmm-latgen-faster-parallel'),
-                                                     '--max-active={}'.format(config.max_active),
-                                                     '--beam={}'.format(config.beam),
-                                                     '--lattice-beam={}'.format(config.lattice_beam),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--determinize-lattice=false',
-                                                     '--allow-partial=true',
-                                                     '--num-threads={}'.format(num_threads),
-                                                     '--word-symbol-table={}'.format(word_symbol_path),
-                                                     mdl, hclg_path, dictionary_feat_string, 'ark:' + tmp_lat_path
-                                                     ], stderr=log_file)
-                lat_gen_proc.communicate()
 
 
-def final_fmllr_est_func(model_directory, split_directory, sil_phones, job_name, mdl, config, feat_string, si_directory,
-                         fmllr_directory, num_threads=None, dictionary_names=None):
-    if dictionary_names is None:
-        log_path = os.path.join(fmllr_directory, 'log', 'final_fmllr.{}.log'.format(job_name))
-        pre_trans_path = os.path.join(fmllr_directory, 'pre_trans.{}'.format(job_name))
-        trans_tmp_path = os.path.join(fmllr_directory, 'trans_tmp.{}'.format(job_name))
-        trans_path = os.path.join(fmllr_directory, 'trans.{}'.format(job_name))
-        lat_path = os.path.join(si_directory, 'lat.{}'.format(job_name))
-        spk2utt_path = os.path.join(split_directory, 'spk2utt.{}'.format(job_name))
-        tmp_lat_path = os.path.join(fmllr_directory, 'lat.tmp.{}'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
-            if num_threads is None:
-                determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
-                                                    stderr=log_file, stdout=subprocess.PIPE)
-            else:
-                determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--num-threads={}'.format(num_threads),
-                                                     '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
-                                                    stderr=log_file, stdout=subprocess.PIPE)
+def final_fmllr_est_func(log_path: str,
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    model_path: str,
+    fmllr_options: ConfigDict,
+    trans_paths: Dict[str, str],
+    spk2utt_paths: Dict[str, str],
+    tmp_lat_paths: Dict[str, str]) -> None:
+
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            feature_string = feature_strings[dict_name]
+            trans_path = trans_paths[dict_name]
+            temp_trans_path = trans_path + '.temp'
+            spk2utt_path = spk2utt_paths[dict_name]
+            tmp_lat_path = tmp_lat_paths[dict_name]
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                           f"--acoustic-scale={fmllr_options['acoustic_scale']}",
+                                                 '--beam=4.0', f'ark:{tmp_lat_path}', 'ark:-'],
+                                                stderr=log_file, stdout=subprocess.PIPE, env=os.environ)
+
             latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
-                                               '--acoustic-scale={}'.format(config.acoustic_scale),
+                                               f"--acoustic-scale={fmllr_options['acoustic_scale']}",
                                                'ark:-', 'ark:-'],
-                                              stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                              stdin=determinize_proc.stdout, stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
             weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                    str(config.silence_weight),
-                                                    sil_phones, mdl, 'ark:-', 'ark:-'],
+                                                    f"{fmllr_options['silence_weight']}",
+                                                    fmllr_options['sil_phones'], model_path, 'ark:-', 'ark:-'],
                                                    stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
-                                                   stderr=log_file)
+                                                   stderr=log_file, env=os.environ)
             fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
-                                           '--fmllr-update-type={}'.format(config.fmllr_update_type),
-                                           '--spk2utt=ark:' + spk2utt_path, mdl, feat_string,
+                                           f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
+                                           f'--spk2utt=ark:{spk2utt_path}', model_path, feature_string,
                                            'ark,s,cs:-', 'ark:-'],
-                                          stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
+                                          stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
 
             compose_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
                                              '--b-is-affine=true', 'ark:-',
-                                             'ark:' + pre_trans_path, 'ark:' + trans_path],
-                                            stderr=log_file, stdin=fmllr_proc.stdout)
+                                             f'ark:{trans_path}', f'ark:{temp_trans_path}'],
+                                            stderr=log_file, stdin=fmllr_proc.stdout, env=os.environ)
             compose_proc.communicate()
-    else:
-        for name in dictionary_names:
-            log_path = os.path.join(fmllr_directory, 'log', 'final_fmllr.{}.{}.log'.format(job_name, name))
-            pre_trans_path = os.path.join(fmllr_directory, 'pre_trans.{}.{}'.format(job_name, name))
-            trans_tmp_path = os.path.join(fmllr_directory, 'trans_tmp.{}.{}'.format(job_name, name))
-            trans_path = os.path.join(fmllr_directory, 'trans.{}.{}'.format(job_name, name))
-            lat_path = os.path.join(si_directory, 'lat.{}.{}'.format(job_name, name))
-            spk2utt_path = os.path.join(split_directory, 'spk2utt.{}.{}'.format(job_name, name))
-            tmp_lat_path = os.path.join(fmllr_directory, 'lat.tmp.{}.{}'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
-                                                         'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
-                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
-                                                                    'utt2spk.{}.{}'.format(job_name, name))
-
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                if num_threads is None:
-                    determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                                         '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                         '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
-                                                        stderr=log_file, stdout=subprocess.PIPE)
-                else:
-                    determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
-                                                         '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                         '--num-threads={}'.format(num_threads),
-                                                         '--beam=4.0', 'ark:' + tmp_lat_path, 'ark:-'],
-                                                        stderr=log_file, stdout=subprocess.PIPE)
-                latt_post_proc = subprocess.Popen([thirdparty_binary('lattice-to-post'),
-                                                   '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                   'ark:-', 'ark:-'],
-                                                  stdin=determinize_proc.stdout, stdout=subprocess.PIPE,
-                                                  stderr=log_file)
-                weight_silence_proc = subprocess.Popen([thirdparty_binary('weight-silence-post'),
-                                                        str(config.silence_weight),
-                                                        sil_phones, mdl, 'ark:-', 'ark:-'],
-                                                       stdin=latt_post_proc.stdout, stdout=subprocess.PIPE,
-                                                       stderr=log_file)
-                fmllr_proc = subprocess.Popen([thirdparty_binary('gmm-est-fmllr'),
-                                               '--fmllr-update-type={}'.format(config.fmllr_update_type),
-                                               '--spk2utt=ark:' + spk2utt_path, mdl, dictionary_feat_string,
-                                               'ark,s,cs:-', 'ark:-'],
-                                              stdin=weight_silence_proc.stdout, stdout=subprocess.PIPE, stderr=log_file)
-
-                compose_proc = subprocess.Popen([thirdparty_binary('compose-transforms'),
-                                                 '--b-is-affine=true', 'ark:-',
-                                                 'ark:' + pre_trans_path, 'ark:' + trans_path],
-                                                stderr=log_file, stdin=fmllr_proc.stdout)
-                compose_proc.communicate()
+            os.remove(trans_path)
+            os.rename(temp_trans_path, trans_path)
 
 
-def fmllr_rescore_func(directory, split_directory, sil_phones, job_name, mdl, config, feat_string, output_directory,
-                       num_threads=None, dictionary_names=None):
-    if dictionary_names is None:
-        log_path = os.path.join(output_directory, 'log', 'fmllr_rescore.{}.log'.format(job_name))
-        tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}'.format(job_name))
-        final_lat_path = os.path.join(output_directory, 'lat.{}'.format(job_name))
-        with open(log_path, 'w', encoding='utf8') as log_file:
+def fmllr_rescore_func(
+    log_path: str,
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    model_path: str,
+    fmllr_options: ConfigDict,
+    tmp_lat_paths: Dict[str, str],
+    final_lat_paths: Dict[str, str]) -> None:
+    with open(log_path, 'w', encoding='utf8') as log_file:
+        for dict_name in dictionaries:
+            feature_string = feature_strings[dict_name]
+            tmp_lat_path = tmp_lat_paths[dict_name]
+            final_lat_path = final_lat_paths[dict_name]
             rescore_proc = subprocess.Popen([thirdparty_binary('gmm-rescore-lattice'),
-                                             mdl, 'ark:' + tmp_lat_path,
-                                             feat_string, 'ark:-'],
-                                            stdout=subprocess.PIPE, stderr=log_file)
-            if num_threads is None:
-                determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--beam={}'.format(config.lattice_beam),
-                                                     'ark:-', 'ark:' + final_lat_path
-                                                     ], stdin=rescore_proc.stdout, stderr=log_file)
-            else:
-                determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
-                                                     '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                     '--beam={}'.format(config.lattice_beam),
-                                                     '--num-threads={}'.format(num_threads),
-                                                     'ark:-', 'ark:' + final_lat_path
-                                                     ], stdin=rescore_proc.stdout, stderr=log_file)
+                                             model_path, f'ark:{tmp_lat_path}',
+                                             feature_string, 'ark:-'],
+                                            stdout=subprocess.PIPE, stderr=log_file, env=os.environ)
+            determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
+                                           f"--acoustic-scale={fmllr_options['acoustic_scale']}",
+                                           f"--beam={fmllr_options['lattice_beam']}",
+                                                 'ark:-', f'ark:{final_lat_path}'
+                                                 ], stdin=rescore_proc.stdout, stderr=log_file, env=os.environ)
+
             determinize_proc.communicate()
+
+
+def transcribe_fmllr(transcriber: Transcriber) -> None:
+
+    jobs = [x.initial_fmllr_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
+
+    run_non_mp(initial_fmllr_func, jobs, transcriber.working_log_directory)
+    transcriber.speaker_independent = False
+
+    jobs = [x.lat_gen_fmllr_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
+
+    run_non_mp(lat_gen_fmllr_func, jobs, transcriber.working_log_directory)
+
+    jobs = [x.final_fmllr_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
+
+    run_non_mp(final_fmllr_est_func, jobs, transcriber.working_log_directory)
+
+    jobs = [x.fmllr_rescore_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
+
+    if transcriber.transcribe_config.use_mp:
+        run_mp(fmllr_rescore_func, jobs, transcriber.working_log_directory)
     else:
-        for name in dictionary_names:
-            log_path = os.path.join(output_directory, 'log', 'fmllr_rescore.{}.{}.log'.format(job_name, name))
-            tmp_lat_path = os.path.join(output_directory, 'lat.tmp.{}.{}'.format(job_name, name))
-            final_lat_path = os.path.join(output_directory, 'lat.{}.{}'.format(job_name, name))
-            dictionary_feat_string = feat_string.replace('feats.{}.scp'.format(job_name),
-                                                         'feats.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('cmvn.{}.scp'.format(job_name),
-                                                                    'cmvn.{}.{}.scp'.format(job_name, name))
-            dictionary_feat_string = dictionary_feat_string.replace('utt2spk.{}'.format(job_name),
-                                                                    'utt2spk.{}.{}'.format(job_name, name))
-            with open(log_path, 'w', encoding='utf8') as log_file:
-                rescore_proc = subprocess.Popen([thirdparty_binary('gmm-rescore-lattice'),
-                                                 mdl, 'ark:' + tmp_lat_path,
-                                                 dictionary_feat_string, 'ark:-'],
-                                                stdout=subprocess.PIPE, stderr=log_file)
-                if num_threads is None:
-                    determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned'),
-                                                         '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                         '--beam={}'.format(config.lattice_beam),
-                                                         'ark:-', 'ark:' + final_lat_path
-                                                         ], stdin=rescore_proc.stdout, stderr=log_file)
-                else:
-                    determinize_proc = subprocess.Popen([thirdparty_binary('lattice-determinize-pruned-parallel'),
-                                                         '--acoustic-scale={}'.format(config.acoustic_scale),
-                                                         '--beam={}'.format(config.lattice_beam),
-                                                         '--num-threads={}'.format(num_threads),
-                                                         'ark:-', 'ark:' + final_lat_path
-                                                         ], stdin=rescore_proc.stdout, stderr=log_file)
-                determinize_proc.communicate()
+        run_non_mp(fmllr_rescore_func, jobs, transcriber.working_log_directory)
 
+    jobs = [x.lm_rescore_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
 
-def transcribe_fmllr(transcriber):
-    model_directory = transcriber.model_directory
-    output_directory = transcriber.transcribe_directory
-    config = transcriber.transcribe_config
-    corpus = transcriber.corpus
-    num_jobs = corpus.num_jobs
-    split_directory = corpus.split_directory()
-    sil_phones = transcriber.dictionary.optional_silence_csl
-
-    fmllr_directory = os.path.join(output_directory, 'fmllr')
-    log_dir = os.path.join(fmllr_directory, 'log')
-    os.makedirs(log_dir, exist_ok=True)
-    mdl_path = os.path.join(model_directory, 'final.mdl')
-
-    if num_jobs > 1:
-        num_threads = None
+    if transcriber.transcribe_config.use_mp:
+        run_mp(lm_rescore_func, jobs, transcriber.working_log_directory)
     else:
-        num_threads = corpus.original_num_jobs
+        run_non_mp(lm_rescore_func, jobs, transcriber.working_log_directory)
 
-    jobs = [(output_directory, split_directory, sil_phones, x, mdl_path, config,
-             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
-             fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
+    jobs = [x.carpa_lm_rescore_arguments(transcriber)
+            for x in transcriber.corpus.jobs]
 
-    run_non_mp(initial_fmllr_func, jobs, log_dir)
-
-    jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
-             fmllr_directory, corpus.original_num_jobs, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
-
-    run_non_mp(lat_gen_fmllr_func, jobs, log_dir)
-
-    jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
-             output_directory, fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
-
-    run_non_mp(final_fmllr_est_func, jobs, log_dir)
-
-    jobs = [(model_directory, split_directory, sil_phones, x, mdl_path, config,
-             config.feature_config.construct_feature_proc_string(split_directory, model_directory, x),
-             fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
-
-    if config.use_mp:
-        run_mp(fmllr_rescore_func, jobs, log_dir)
+    if transcriber.transcribe_config.use_mp:
+        run_mp(carpa_lm_rescore_func, jobs, transcriber.working_log_directory)
     else:
-        run_non_mp(fmllr_rescore_func, jobs, log_dir)
+        run_non_mp(carpa_lm_rescore_func, jobs, transcriber.working_log_directory)
 
-    jobs = [(model_directory, x, config,
-             config.feature_config.construct_feature_proc_string(corpus.split_directory(), model_directory, x),
-             fmllr_directory, num_threads, transcriber.dictionaries_for_job(x))
-            for x in range(num_jobs)]
-
-    if config.use_mp:
-        run_mp(lm_rescore_func, jobs, log_dir)
-    else:
-        run_non_mp(lm_rescore_func, jobs, log_dir)
-
-    if config.use_mp:
-        run_mp(carpa_lm_rescore_func, jobs, log_dir)
-    else:
-        run_non_mp(carpa_lm_rescore_func, jobs, log_dir)
-
-    if transcriber.evaluation_mode:
-        best_wer = 10000
-        best = None
-        for lmwt in range(transcriber.min_language_model_weight, transcriber.max_language_model_weight):
-            for wip in transcriber.word_insertion_penalties:
-                out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(lmwt, wip))
-                log_dir = os.path.join(out_dir, 'log')
-                os.makedirs(log_dir, exist_ok=True)
-                jobs = [(model_directory, fmllr_directory, x, config, out_dir, lmwt, wip,
-                         transcriber.dictionaries_for_job(x))
-                        for x in range(num_jobs)]
-                if config.use_mp:
-                    run_mp(score_func, jobs, log_dir)
-                else:
-                    run_non_mp(score_func, jobs, log_dir)
-                ser, wer = transcriber.evaluate(out_dir, out_dir)
-                if wer < best_wer:
-                    best = (lmwt, wip)
-        transcriber.transcribe_config.language_model_weight = best[0]
-        transcriber.transcribe_config.word_insertion_penalty = best[1]
-        out_dir = os.path.join(fmllr_directory, 'eval_{}_{}'.format(best[0], best[1]))
-        for filename in os.listdir(out_dir):
-            if not filename.startswith('tra'):
-                continue
-            tra_path = os.path.join(out_dir, filename)
-            saved_tra_path = os.path.join(fmllr_directory, filename)
-            shutil.copyfile(tra_path, saved_tra_path)
-    else:
-        jobs = [(model_directory, fmllr_directory, x, config, fmllr_directory, None, None,
-                 transcriber.dictionaries_for_job(x))
-                for x in range(num_jobs)]
-        if config.use_mp:
-            run_mp(score_func, jobs, log_dir)
-        else:
-            run_non_mp(score_func, jobs, log_dir)

@@ -1,50 +1,54 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Union, Callable, Dict, Optional, List, Any, Tuple
 import multiprocessing as mp
 from queue import Empty
 import traceback
+import os
 import sys
 
-from ..helper import parse_logs, thirdparty_binary, make_path_safe
+from ..utils import parse_logs
 
 
 class Counter(object):
-    def __init__(self, initval=0):
-        self.val = mp.Value('i', initval)
+    def __init__(self, init_val: int=0):
+        self.val = mp.Value('i', init_val)
         self.lock = mp.Lock()
 
-    def increment(self):
+    def increment(self) -> None:
         with self.lock:
             self.val.value += 1
 
-    def value(self):
+    def value(self) -> int:
         with self.lock:
             return self.val.value
 
 
 class Stopped(object):
-    def __init__(self, initval=False):
+    def __init__(self, initval: Union[bool, int]=False):
         self.val = mp.Value('i', initval)
         self.lock = mp.Lock()
         self._source = mp.Value('i', 0)
 
-    def stop(self):
+    def stop(self) -> None:
         with self.lock:
             self.val.value = True
 
-    def stop_check(self):
+    def stop_check(self) -> int:
         with self.lock:
             return self.val.value
 
-    def set_sigint_source(self):
+    def set_sigint_source(self) -> None:
         with self.lock:
             self._source.value = True
 
-    def source(self):
+    def source(self) -> int:
         with self.lock:
             return self._source.value
 
 
 class ProcessWorker(mp.Process):
-    def __init__(self, job_name, job_q, function, return_dict, stopped, return_info = None):
+    def __init__(self, job_name: int, job_q: mp.Queue, function: Callable,
+                 return_dict: Dict, stopped: Stopped, return_info: Optional[Dict[str, Any]] = None):
         mp.Process.__init__(self)
         self.job_name = job_name
         self.function = function
@@ -53,7 +57,9 @@ class ProcessWorker(mp.Process):
         self.return_info = return_info
         self.stopped = stopped
 
-    def run(self):
+    def run(self) -> None:
+        os.environ['OPENBLAS_NUM_THREADS'] = '1'
+        os.environ['MKL_NUM_THREADS'] = '1'
         while True:
             try:
                 arguments = self.job_q.get(timeout=1)
@@ -72,14 +78,25 @@ class ProcessWorker(mp.Process):
         return
 
 
-def run_non_mp(function, argument_list, log_directory):
+def run_non_mp(function: Callable,
+               argument_list: List[Tuple[Any, ...]],
+               log_directory: str,
+               return_info: Optional[Dict[str, Any]]=None) -> Optional[Dict[Any, Any]]:
+    if return_info is not None:
+        for i, args in enumerate(argument_list):
+            return_info[i] = function(*args)
+        parse_logs(log_directory)
+        return return_info
+
     for args in argument_list:
         function(*args)
-
     parse_logs(log_directory)
 
 
-def run_mp(function, argument_list, log_directory, return_info=None):  # pragma: no cover
+def run_mp(function: Callable,
+           argument_list: List[Tuple[Any, ...]],
+           log_directory: str,
+           return_info: Optional[Dict[str, Any]]=None) -> None:  # pragma: no cover
     stopped = Stopped()
     manager = mp.Manager()
     job_queue = manager.Queue()
@@ -96,7 +113,6 @@ def run_mp(function, argument_list, log_directory, return_info=None):  # pragma:
         p.join()
     if 'error' in return_dict:
         element, exc = return_dict['error']
-        print(element)
         raise exc
 
     parse_logs(log_directory)

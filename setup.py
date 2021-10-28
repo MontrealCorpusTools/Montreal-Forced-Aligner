@@ -107,7 +107,8 @@ if __name__ == '__main__':
               'librosa',
               'requests',
               'scikit-learn==0.24.1',
-              'joblib'
+              'joblib',
+              'colorama'
           ],
           python_requires='>=3.8',
           entry_points={
@@ -120,7 +121,7 @@ if __name__ == '__main__':
               'install': PostInstallCommand,
           },
           extras_require={
-              'testing': ['pytest'],
+              'testing': ['pytest', 'pytest-mypy', 'coveralls', 'coverage'],
               'anchor': ['pyqt5', 'pyqtgraph', 'anchor-annotator']
           }
           )

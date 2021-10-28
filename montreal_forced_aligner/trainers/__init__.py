@@ -1,3 +1,4 @@
+from .base import BaseTrainer
 from .monophone import MonophoneTrainer
 from .triphone import TriphoneTrainer
 from .lda import LdaTrainer

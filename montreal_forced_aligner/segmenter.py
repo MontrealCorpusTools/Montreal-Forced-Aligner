@@ -1,11 +1,19 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, List, Dict, Optional
+if TYPE_CHECKING:
+    from .corpus import TranscribeCorpus
+    from .config import SegmentationConfig, ConfigDict
+    from logging import Logger
 import os
 import shutil
 from decimal import Decimal
 from praatio import textgrid
 from .config import TEMP_DIR
-from .helper import log_kaldi_errors, parse_logs
+from .utils import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
+from .multiprocessing.ivector import segment_vad
 
+SegmentationType = List[Dict[str, float]]
 
 class Segmenter(object):
     """
@@ -20,51 +28,44 @@ class Segmenter(object):
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
         If not specified, it will be set to ``~/Documents/MFA``
-    call_back : callable, optional
-        Specifies a call back function for segmentation
     debug : bool
         Flag for running in debug mode, defaults to false
     verbose : bool
         Flag for running in verbose mode, defaults to false
     """
 
-    def __init__(self, corpus, segmentation_config,
-                 temp_directory=None, call_back=None, debug=False, verbose=False, logger=None):
+    def __init__(self, corpus: TranscribeCorpus, segmentation_config: SegmentationConfig,
+                 temp_directory: Optional[str]=None, debug: Optional[bool]=False, verbose: Optional[bool]=False,
+                 logger: Optional[Logger]=None):
         self.corpus = corpus
         self.segmentation_config = segmentation_config
 
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
-        self.call_back = call_back
-        if self.call_back is None:
-            self.call_back = print
         self.debug = debug
         self.verbose = verbose
         self.logger = logger
+        self.uses_cmvn = False
+        self.uses_slices = False
+        self.uses_vad = False
+        self.speaker_independent = True
         self.setup()
 
     @property
-    def segmenter_directory(self):
+    def segmenter_directory(self) -> str:
         return os.path.join(self.temp_directory, 'segmentation')
 
     @property
-    def vad_options(self):
+    def vad_options(self) -> ConfigDict:
         return {'energy_threshold': self.segmentation_config.energy_threshold,
                 'energy_mean_scale': self.segmentation_config.energy_mean_scale}
 
     @property
-    def segmentation_options(self):
-        return {'max_segment_length': self.segmentation_config.max_segment_length,
-                'min_pause_duration': self.segmentation_config.min_pause_duration,
-                'snap_boundary_threshold': self.segmentation_config.snap_boundary_threshold,
-                'frame_shift': round(self.segmentation_config.feature_config.frame_shift / 1000, 2)}
-
-    @property
-    def use_mp(self):
+    def use_mp(self) -> bool:
         return self.segmentation_config.use_mp
 
-    def setup(self):
+    def setup(self) -> None:
         done_path = os.path.join(self.segmenter_directory, 'done')
         if os.path.exists(done_path):
             self.logger.info('Classification already done, skipping initialization.')
@@ -75,9 +76,7 @@ class Segmenter(object):
         log_dir = os.path.join(self.segmenter_directory, 'log')
         os.makedirs(log_dir, exist_ok=True)
         try:
-            self.corpus.initialize_corpus(None, None)
-            fc = self.segmentation_config.feature_config
-            fc.generate_features(self.corpus, logger=self.logger, cmvn=False)
+            self.corpus.initialize_corpus(None, self.segmentation_config.feature_config)
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
@@ -86,7 +85,7 @@ class Segmenter(object):
                 e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
 
-    def segment(self):
+    def segment(self) -> None:
         log_directory = os.path.join(self.segmenter_directory, 'log')
         dirty_path = os.path.join(self.segmenter_directory, 'dirty')
         done_path = os.path.join(self.segmenter_directory, 'done')
@@ -94,9 +93,9 @@ class Segmenter(object):
             self.logger.info('Classification already done, skipping.')
             return
         try:
-            fc = self.segmentation_config.feature_config
-            fc.compute_vad(self.corpus, logger=self.logger, vad_config=self.vad_options)
-            self.corpus.create_vad_segments(self)
+            self.corpus.compute_vad(self.vad_options)
+            self.uses_vad = True
+            segment_vad(self)
             parse_logs(log_directory)
         except Exception as e:
             with open(dirty_path, 'w'):
@@ -108,7 +107,7 @@ class Segmenter(object):
         with open(done_path, 'w'):
             pass
 
-    def export_segments(self, output_directory):
+    def export_segments(self, output_directory: str) -> None:
         file_dict = {}
         for utt, segment in self.corpus.vad_segments.items():
             filename, utt_begin, utt_end = segment
@@ -140,4 +139,5 @@ class Segmenter(object):
                     entry_list.append(w)
                 tier = textgrid.IntervalTier(speaker, entry_list, minT=0, maxT=max_time)
                 tg.addTier(tier)
-            tg.save(os.path.join(speaker_directory, filename + '.TextGrid'), includeBlankSpaces=True, format='long_textgrid')
+            tg.save(os.path.join(speaker_directory, f'{filename}.TextGrid'),
+                    includeBlankSpaces=True, format='long_textgrid')

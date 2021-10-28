@@ -1,8 +1,10 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from argparse import Namespace
 import shutil
 import os
 import time
-import multiprocessing as mp
-import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.transcribe_corpus import TranscribeCorpus
@@ -10,12 +12,12 @@ from montreal_forced_aligner.speaker_classifier import SpeakerClassifier
 from montreal_forced_aligner.models import IvectorExtractor
 from montreal_forced_aligner.config import TEMP_DIR, classification_yaml_to_config, \
     load_basic_classification, load_command_configuration
-from montreal_forced_aligner.utils import get_available_ivector_languages, get_pretrained_ivector_path
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.utils import setup_logger
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def classify_speakers(args, unknown_args=None):
+def classify_speakers(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'classify_speakers'
     all_begin = time.time()
     if not args.temp_directory:
@@ -33,8 +35,9 @@ def classify_speakers(args, unknown_args=None):
     else:
         classification_config = load_basic_classification()
     classification_config.use_mp = not args.disable_mp
+    classification_config.overwrite = args.overwrite
     if unknown_args:
-        classification_config.update_from_args(unknown_args)
+        classification_config.update_from_unknown_args(unknown_args)
     classification_config.use_mp = not args.disable_mp
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -105,7 +108,9 @@ def classify_speakers(args, unknown_args=None):
         conf.save(conf_path)
 
 
-def validate_args(args, downloaded_ivector_extractors):
+def validate_args(args: Namespace) -> None:
+    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
+    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
     if args.cluster and not args.num_speakers:
         raise ArgumentError('If using clustering, num_speakers must be specified')
     if not os.path.exists(args.corpus_directory):
@@ -116,24 +121,10 @@ def validate_args(args, downloaded_ivector_extractors):
     if args.corpus_directory == args.output_directory:
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 
-    if args.ivector_extractor_path.lower() in downloaded_ivector_extractors:
-        args.ivector_extractor_path = get_pretrained_ivector_path(args.ivector_extractor_path.lower())
-    elif args.ivector_extractor_path.lower().endswith(IvectorExtractor.extension):
-        if not os.path.exists(args.ivector_extractor_path):
-            raise ArgumentError('The specified model path does not exist: ' + args.ivector_extractor_path)
-    else:
-        raise ArgumentError(
-            'The language \'{}\' is not currently included in the distribution, '
-            'please align via training or specify one of the following language names: {}.'.format(
-                args.ivector_extractor_path.lower(), ', '.join(downloaded_ivector_extractors)))
+    args.ivector_extractor_path = validate_model_arg(args.ivector_extractor_path, 'ivector')
 
 
-def run_classify_speakers(args, unknown=None, downloaded_ivector_extractors=None):
-    if downloaded_ivector_extractors is None:
-        downloaded_ivector_extractors = get_available_ivector_languages()
-    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
-    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
-
-    validate_args(args, downloaded_ivector_extractors)
+def run_classify_speakers(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate_args(args)
     classify_speakers(args)
 

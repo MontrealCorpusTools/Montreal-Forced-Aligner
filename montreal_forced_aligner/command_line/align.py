@@ -1,8 +1,12 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Collection
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import Dictionary
+    from argparse import Namespace
 import shutil
 import os
 import time
-import multiprocessing as mp
-import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
@@ -10,13 +14,12 @@ from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionar
 from montreal_forced_aligner.aligner import PretrainedAligner
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.config import TEMP_DIR, align_yaml_to_config, load_basic_align, load_command_configuration
-from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
-    get_available_dict_languages, validate_dictionary_arg
-from montreal_forced_aligner.helper import setup_logger, log_config
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.utils import setup_logger, log_config
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def align_corpus(args, unknown_args=None):
+def align_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'align'
     all_begin = time.time()
     if not args.temp_directory:
@@ -32,12 +35,9 @@ def align_corpus(args, unknown_args=None):
         align_config = align_yaml_to_config(args.config_path)
     else:
         align_config = load_basic_align()
-    align_config.use_mp = not args.disable_mp
-    align_config.overwrite = args.overwrite
-    align_config.debug = args.debug
-    align_config.cleanup_textgrids = not args.disable_textgrid_cleanup
+    align_config.update_from_args(args)
     if unknown_args:
-        align_config.update_from_args(unknown_args)
+        align_config.update_from_unknown_args(unknown_args)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -143,40 +143,26 @@ def align_corpus(args, unknown_args=None):
             logger.removeHandler(handler)
         conf.save(conf_path)
 
-def validate_args(args, downloaded_acoustic_models, download_dictionaries):
-    if not os.path.exists(args.corpus_directory):
-        raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
-    if not os.path.isdir(args.corpus_directory):
-        raise ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory))
-
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
-
-    args.dictionary_path = validate_dictionary_arg(args.dictionary_path, download_dictionaries)
-
-    if args.acoustic_model_path.lower() in downloaded_acoustic_models:
-        args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
-    elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
-        if not os.path.exists(args.acoustic_model_path):
-            raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
-    else:
-        raise ArgumentError(
-            'The language \'{}\' is not currently included in the distribution, '
-            'please align via training or specify one of the following language names: {}.'.format(
-                args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
-
-
-def run_align_corpus(args, unknown_args=None, downloaded_acoustic_models=None, download_dictionaries=None):
-    if downloaded_acoustic_models is None:
-        downloaded_acoustic_models = get_available_acoustic_languages()
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
+def validate_args(args: Namespace) -> None:
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
     args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
     args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+    if not os.path.exists(args.corpus_directory):
+        raise ArgumentError(f'Could not find the corpus directory {args.corpus_directory}.')
+    if not os.path.isdir(args.corpus_directory):
+        raise ArgumentError(f'The specified corpus directory ({args.corpus_directory}) is not a directory.')
 
-    validate_args(args, downloaded_acoustic_models, download_dictionaries)
+    if args.corpus_directory == args.output_directory:
+        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
+
+    args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
+    args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, 'acoustic')
+
+
+
+def run_align_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
+    validate_args(args)
     align_corpus(args, unknown_args)

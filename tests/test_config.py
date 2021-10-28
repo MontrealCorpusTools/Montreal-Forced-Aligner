@@ -84,4 +84,4 @@ def test_multilingual_ipa(config_directory):
     train, align = train_yaml_to_config(path)
     assert align.multilingual_ipa
     assert set(align.strip_diacritics) == set(DEFAULT_STRIP_DIACRITICS)
-    assert align.digraphs == ['[dt][szʒʃʐʑʂɕç]', '[a][i][u]']
+    assert align.digraphs == ['[dt][szʒʃʐʑʂɕç]', '[a][job_name][u]']

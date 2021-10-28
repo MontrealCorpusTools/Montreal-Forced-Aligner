@@ -1,8 +1,9 @@
+from __future__ import annotations
 import sys
 import warnings
 
 
-def run_anchor(args):  # pragma: no cover
+def run_anchor() -> None:  # pragma: no cover
     try:
         from anchor import MainWindow, Application, QtWidgets
     except ImportError:

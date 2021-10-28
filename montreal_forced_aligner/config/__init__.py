@@ -1,3 +1,10 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Collection, Dict, Any
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import Dictionary
+    from argparse import Namespace
+    ConfigDict = Dict[str, Any]
 import os
 import yaml
 from .base_config import BaseConfig, save_config, ConfigError
@@ -12,13 +19,13 @@ from .command_config import load_command_configuration
 
 TEMP_DIR = os.path.expanduser('~/Documents/MFA')
 
-def generate_config_path():
+def generate_config_path() -> str:
     return os.path.join(TEMP_DIR, 'global_config.yaml')
 
-def generate_command_history_path():
+def generate_command_history_path() -> str:
     return os.path.join(TEMP_DIR, 'command_history.yaml')
 
-def load_command_history():
+def load_command_history() -> list:
     path = generate_command_history_path()
     if os.path.exists(path):
         with open(path, 'r', encoding='utf8') as f:
@@ -30,7 +37,7 @@ def load_command_history():
     return history
 
 
-def update_command_history(command_data):
+def update_command_history(command_data: dict) -> None:
     try:
         if command_data['command'].split(' ')[1] == 'history':
             return
@@ -43,13 +50,15 @@ def update_command_history(command_data):
     with open(path, 'w', encoding='utf8') as f:
         yaml.safe_dump(history, f)
 
-def update_global_config(args):
+def update_global_config(args: Namespace) -> None:
     global_configuration_file = generate_config_path()
     default_config = {
         'clean': False,
         'verbose': False,
         'debug': False,
         'overwrite': False,
+        'terminal_colors': True,
+        'terminal_width': 120,
         'cleanup_textgrids': True,
         'num_jobs': 3,
         'use_mp': True,
@@ -83,21 +92,29 @@ def update_global_config(args):
         default_config['cleanup_textgrids'] = False
     if args.enable_textgrid_cleanup:
         default_config['cleanup_textgrids'] = True
+    if args.disable_terminal_colors:
+        default_config['terminal_colors'] = False
+    if args.enable_terminal_colors:
+        default_config['terminal_colors'] = True
     if args.num_jobs and args.num_jobs > 0:
         default_config['num_jobs'] = args.num_jobs
+    if args.terminal_width and args.terminal_width > 0:
+        default_config['terminal_width'] = args.terminal_width
     if args.temp_directory:
         default_config['temp_directory'] = args.temp_directory
     with open(global_configuration_file, 'w', encoding='utf8') as f:
         yaml.dump(default_config, f)
 
 
-def load_global_config():
+def load_global_config()  -> dict:
     global_configuration_file = generate_config_path()
     default_config = {
         'clean': False,
         'verbose': False,
         'debug': False,
         'overwrite': False,
+        'terminal_colors': True,
+        'terminal_width': 120,
         'cleanup_textgrids': True,
         'num_jobs': 3,
         'use_mp': True,
@@ -109,3 +126,4 @@ def load_global_config():
             default_config.update(data)
     return default_config
 
+USE_COLORS = load_global_config().get('terminal_colors', True)

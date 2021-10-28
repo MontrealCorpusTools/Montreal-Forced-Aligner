@@ -25,7 +25,7 @@ import mock
 MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
                 'praatio', 'praatio.tgio', 'praatio.utilities',
                 'praatio.utilities.constants',
-                'tqdm', 'yaml',
+                'tqdm', 'yaml', 'colorama',
                 'numpy', 'resampy', 'audioread',
                 'scipy', 'scipy.signal', 'scipy.io',
                 'librosa', 'librosa.core.spectrum', 'matplotlib',

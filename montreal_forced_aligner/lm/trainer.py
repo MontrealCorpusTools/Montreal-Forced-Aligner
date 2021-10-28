@@ -1,9 +1,14 @@
+from __future__ import annotations
+from typing import Collection, TYPE_CHECKING, Optional, Union, List, Dict, Tuple
+if TYPE_CHECKING:
+    from ..config.train_lm_config import TrainLMConfig
+    from ..dictionary import DictionaryType
 import os
 import re
+import logging
 import subprocess
 from ..models import LanguageModel
 from ..corpus import AlignableCorpus
-from ..exceptions import LMError
 from ..config import TEMP_DIR
 
 
@@ -30,18 +35,28 @@ class LmTrainer(object):
         Weight of supplemental model when merging, defaults to 1
     """
 
-    def __init__(self, source, config, output_model_path, dictionary=None, temp_directory=None,
-                 supplemental_model_path=None, supplemental_model_weight=1, debug=False, logger=None):
+    def __init__(self, source: Union[AlignableCorpus, str], config: TrainLMConfig, output_model_path: str,
+                 dictionary: Optional[DictionaryType]=None, temp_directory: Optional[str]=None,
+                 supplemental_model_path: Optional[str]=None, supplemental_model_weight: int=1, debug: bool=False,
+                 logger: Optional[logging.Logger] = None):
         if not temp_directory:
             temp_directory = TEMP_DIR
-        self.logger = logger
         temp_directory = os.path.join(temp_directory, 'LM')
         self.debug = debug
         self.name, _ = os.path.splitext(os.path.basename(output_model_path))
         self.temp_directory = os.path.join(temp_directory, self.name)
         self.models_temp_dir = os.path.join(self.temp_directory, 'models')
         self.log_directory = os.path.join(self.temp_directory, 'logs')
+        self.log_file = os.path.join(self.log_directory, 'train_lm.log')
         os.makedirs(self.log_directory, exist_ok=True)
+        if logger is None:
+            self.logger = logging.getLogger('train_lm')
+            self.logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(self.log_file, 'w', 'utf-8')
+            handler.setFormatter = logging.Formatter('%(name)s %(message)s')
+            self.logger.addHandler(handler)
+        else:
+            self.logger = logger
         self.source = source
         self.dictionary = dictionary
         self.output_model_path = output_model_path
@@ -51,7 +66,7 @@ class LmTrainer(object):
         self.supplemental_model_weight = supplemental_model_weight
 
     @property
-    def meta(self):
+    def meta(self) -> Dict[str, Union[str, int, float]]:
         from .. import __version__
         return {'type': 'ngram',
                     'order': self.config.order,
@@ -59,7 +74,7 @@ class LmTrainer(object):
                     'prune': self.config.prune,
                     'version': __version__}
 
-    def evaluate(self):
+    def evaluate(self) -> None:
         log_path = os.path.join(self.log_directory, 'evaluate.log')
         mod_path = os.path.join(self.temp_directory, self.name + '.mod')
         far_path = os.path.join(self.temp_directory, self.name + '.far')
@@ -112,25 +127,23 @@ class LmTrainer(object):
                 m = re.search(r'perplexity = ([\d.]+)', line)
                 if m:
                     perplexity = m.group(0)
-            self.logger.info('Perplexity of small model: {}'.format(perplexity))
+            self.logger.info(f'Perplexity of small model: {perplexity}')
 
-
-
-    def train(self):
-        mod_path = os.path.join(self.temp_directory, self.name + '.mod')
-        large_model_path = os.path.join(self.temp_directory, self.name + '.arpa')
+    def train(self) -> None:
+        mod_path = os.path.join(self.temp_directory, f'{self.name}.mod')
+        large_model_path = os.path.join(self.temp_directory, f'{self.name}.arpa')
         small_output_path = large_model_path.replace('.arpa', '_small.arpa')
         med_output_path = large_model_path.replace('.arpa', '_med.arpa')
         if isinstance(self.source, AlignableCorpus):
             self.logger.info('Beginning training large ngram model...')
-            sym_path = os.path.join(self.temp_directory, self.name + '.sym')
-            far_path = os.path.join(self.temp_directory, self.name + '.far')
-            cnts_path = os.path.join(self.temp_directory, self.name + '.cnts')
+            sym_path = os.path.join(self.temp_directory, f'{self.name}.sym')
+            far_path = os.path.join(self.temp_directory, f'{self.name}.far')
+            cnts_path = os.path.join(self.temp_directory, f'{self.name}.cnts')
             training_path = os.path.join(self.temp_directory, 'training.txt')
 
             with open(training_path, 'w', encoding='utf8') as f:
                 for text in self.source.normalized_text_iter(self.dictionary, self.config.count_threshold):
-                    f.write(text + "\n")
+                    f.write(f"{text}\n")
 
             if self.dictionary is not None:
                 self.dictionary.save_oovs_found(self.temp_directory)
@@ -191,7 +204,6 @@ class LmTrainer(object):
             model.add_arpa_file(small_output_path)
         basename, _ = os.path.splitext(self.output_model_path)
         model.dump(basename)
-        print(model.dirname)
         #model.clean_up()
 
 

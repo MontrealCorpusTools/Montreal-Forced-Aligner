@@ -1,7 +1,9 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from argparse import Namespace
 import shutil
 import os
-import multiprocessing as mp
-import yaml
 import time
 
 from montreal_forced_aligner import __version__
@@ -9,13 +11,13 @@ from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.config import TEMP_DIR, train_yaml_to_config, load_basic_train, load_command_configuration
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path, validate_dictionary_arg
-from montreal_forced_aligner.helper import setup_logger, log_config
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.utils import setup_logger, log_config
 
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def align_corpus(args, unknown_args=None):
+def align_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'train_and_align'
     all_begin = time.time()
     if not args.temp_directory:
@@ -37,8 +39,8 @@ def align_corpus(args, unknown_args=None):
     align_config.overwrite = args.overwrite
     align_config.cleanup_textgrids = not args.disable_textgrid_cleanup
     if unknown_args:
-        train_config.update_from_args(unknown_args)
-        align_config.update_from_args(unknown_args)
+        train_config.update_from_unknown_args(unknown_args)
+        align_config.update_from_unknown_args(unknown_args)
     train_config.update_from_align(align_config)
     conf_path = os.path.join(data_directory, 'config.yml')
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
@@ -83,7 +85,6 @@ def align_corpus(args, unknown_args=None):
 
     os.makedirs(data_directory, exist_ok=True)
     model_directory = os.path.join(data_directory, 'acoustic_models')
-    os.makedirs(args.output_directory, exist_ok=True)
     audio_dir = None
     if args.audio_directory:
         audio_dir = args.audio_directory
@@ -103,10 +104,10 @@ def align_corpus(args, unknown_args=None):
                                 multilingual_ipa=align_config.multilingual_ipa,
                                 strip_diacritics=align_config.strip_diacritics,
                                 digraphs=align_config.digraphs)
-        utt_oov_path = os.path.join(corpus.split_directory(), 'utterance_oovs.txt')
+        utt_oov_path = os.path.join(corpus.split_directory, 'utterance_oovs.txt')
         if os.path.exists(utt_oov_path):
             shutil.copy(utt_oov_path, args.output_directory)
-        oov_path = os.path.join(corpus.split_directory(), 'oovs_found.txt')
+        oov_path = os.path.join(corpus.split_directory, 'oovs_found.txt')
         if os.path.exists(oov_path):
             shutil.copy(oov_path, args.output_directory)
         a = TrainableAligner(corpus, dictionary, train_config, align_config,
@@ -114,13 +115,21 @@ def align_corpus(args, unknown_args=None):
                              debug=getattr(args, 'debug', False))
         a.verbose = args.verbose
         begin = time.time()
-        a.train()
-        logger.debug('Training took {} seconds'.format(time.time() - begin))
+        generate_final_alignments = True
+        if args.output_directory is None:
+            generate_final_alignments = False
+        else:
+            os.makedirs(args.output_directory, exist_ok=True)
+
+        a.train(generate_final_alignments)
+        logger.debug(f'Training took {time.time() - begin} seconds')
         if args.output_model_path is not None:
             a.save(args.output_model_path, root_directory=model_directory)
-        a.export_textgrids(args.output_directory)
+
+        if args.output_directory is not None:
+            a.export_textgrids(args.output_directory)
         logger.info('All done!')
-        logger.debug('Done! Everything took {} seconds'.format(time.time() - all_begin))
+        logger.debug(f'Done! Everything took {time.time() - all_begin} seconds')
     except Exception as _:
         conf['dirty'] = True
         raise
@@ -132,33 +141,36 @@ def align_corpus(args, unknown_args=None):
         conf.save(conf_path)
 
 
-def validate_args(args, download_dictionaries):
-    if args.corpus_directory == args.output_directory:
-        raise Exception('Corpus directory and output directory cannot be the same folder.')
-    if not os.path.exists(args.corpus_directory):
-        raise (ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory)))
-    if not os.path.isdir(args.corpus_directory):
-        raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
-
-    args.dictionary_path = validate_dictionary_arg(args.dictionary_path, download_dictionaries)
-    if not os.path.exists(args.dictionary_path):
-        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
-    if not os.path.isfile(args.dictionary_path):
-        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
-
-
-def run_train_corpus(args, unknown_args=None, download_dictionaries=None):
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
+def validate_args(args: Namespace) -> None:
     try:
         args.speaker_characters = int(args.speaker_characters)
     except ValueError:
         pass
+
+    args.output_directory = None
     if not args.output_model_path:
         args.output_model_path = None
-    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
-    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+    output_paths = args.output_paths
+    if len(output_paths) > 2:
+        raise ArgumentError(f'Got more arguments for output_paths than 2: {output_paths}')
+    for path in output_paths:
+        if path.endswith('.zip'):
+            args.output_model_path = path
+        else:
+            args.output_directory = path.rstrip('/').rstrip('\\')
 
-    validate_args(args, download_dictionaries)
+    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+    if args.corpus_directory == args.output_directory:
+        raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
+    if not os.path.exists(args.corpus_directory):
+        raise (ArgumentError(f'Could not find the corpus directory "{args.corpus_directory}".'))
+    if not os.path.isdir(args.corpus_directory):
+        raise (ArgumentError(f'The specified corpus directory "{args.corpus_directory}" is not a directory.'))
+
+    args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
+
+
+def run_train_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
+    validate_args(args)
     align_corpus(args, unknown_args)
 

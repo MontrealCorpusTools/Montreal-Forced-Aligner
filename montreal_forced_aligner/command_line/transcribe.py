@@ -1,24 +1,24 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Collection
+if TYPE_CHECKING:
+    from argparse import Namespace
 import shutil
 import os
 import time
-import multiprocessing as mp
-import yaml
 
 from montreal_forced_aligner import __version__
 from montreal_forced_aligner.corpus import AlignableCorpus, TranscribeCorpus
 from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
 from montreal_forced_aligner.transcriber import Transcriber
-from montreal_forced_aligner.models import AcousticModel, LanguageModel, FORMAT
-from montreal_forced_aligner.helper import setup_logger, log_config
+from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.utils import setup_logger, log_config
 from montreal_forced_aligner.config import TEMP_DIR, transcribe_yaml_to_config, \
     load_basic_transcribe, save_config, load_command_configuration
-from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
-    get_available_lm_languages, get_pretrained_language_model_path, \
-    get_available_dict_languages, validate_dictionary_arg
+from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
 
 
-def transcribe_corpus(args, unknown_args):
+def transcribe_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'transcribe'
     all_begin = time.time()
     if not args.temp_directory:
@@ -36,7 +36,7 @@ def transcribe_corpus(args, unknown_args):
     transcribe_config.use_mp = not args.disable_mp
     transcribe_config.overwrite = args.overwrite
     if unknown_args:
-        transcribe_config.update_from_args(unknown_args)
+        transcribe_config.update_from_unknown_args(unknown_args)
     data_directory = os.path.join(temp_dir, corpus_name)
     if getattr(args, 'clean', False) and os.path.exists(data_directory):
         print('Cleaning old directory!')
@@ -136,7 +136,7 @@ def transcribe_corpus(args, unknown_args):
         t.transcribe()
         logger.debug('Performed transcribing in {} seconds'.format(time.time() - begin))
         if args.evaluate:
-            t.evaluate(args.output_directory)
+            t.evaluate()
             best_config_path = os.path.join(args.output_directory, 'best_transcribe_config.yaml')
             save_config(t.transcribe_config, best_config_path)
             t.export_transcriptions(args.output_directory)
@@ -156,8 +156,18 @@ def transcribe_corpus(args, unknown_args):
         conf.save(conf_path)
 
 
-def validate_args(args, downloaded_acoustic_models, download_dictionaries,  downloaded_language_models):
-    validate_dictionary_arg(args.dictionary_path, download_dictionaries)
+def validate_args(args: Namespace) -> None:
+    try:
+        args.speaker_characters = int(args.speaker_characters)
+    except ValueError:
+        pass
+    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
+    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
+
+    args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
+    args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, 'acoustic')
+    args.language_model_path = validate_model_arg(args.language_model_path, 'language_model')
+
     if not os.path.exists(args.corpus_directory):
         raise ArgumentError('Could not find the corpus directory {}.'.format(args.corpus_directory))
     if not os.path.isdir(args.corpus_directory):
@@ -166,45 +176,8 @@ def validate_args(args, downloaded_acoustic_models, download_dictionaries,  down
     if args.corpus_directory == args.output_directory:
         raise ArgumentError('Corpus directory and output directory cannot be the same folder.')
 
-    if args.acoustic_model_path.lower() in downloaded_acoustic_models:
-        args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
-    elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
-        if not os.path.exists(args.acoustic_model_path):
-            raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
-    else:
-        raise ArgumentError(
-            'The acoustic model \'{}\' is not currently downloaded, '
-            'please download a pretrained model, align via training or specify one of the following language names: {}.'.format(
-                args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
 
-    if args.language_model_path.lower() in downloaded_language_models:
-        args.language_model_path = get_pretrained_language_model_path(args.language_model_path.lower())
-    elif args.language_model_path.lower().endswith(LanguageModel.extension) or \
-            args.language_model_path.lower().endswith(FORMAT):
-        if not os.path.exists(args.language_model_path):
-            raise ArgumentError('The specified model path does not exist: ' + args.language_model_path)
-    else:
-        raise ArgumentError(
-            'The language model \'{}\' is not currently downloaded, '
-            'please download, train a new model, or specify one of the following language names: {}.'.format(
-                args.language_model_path.lower(), ', '.join(downloaded_language_models)))
-
-
-def run_transcribe_corpus(args, unknown=None, downloaded_acoustic_models=None, download_dictionaries=None,
-                          downloaded_language_models=None):
-    if downloaded_acoustic_models is None:
-        downloaded_acoustic_models = get_available_acoustic_languages()
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
-    if downloaded_language_models is None:
-        downloaded_language_models = get_available_lm_languages()
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
-    args.output_directory = args.output_directory.rstrip('/').rstrip('\\')
-    args.corpus_directory = args.corpus_directory.rstrip('/').rstrip('\\')
-
-    validate_args(args, downloaded_acoustic_models, download_dictionaries, downloaded_language_models)
+def run_transcribe_corpus(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate_args(args)
     transcribe_corpus(args, unknown)
 

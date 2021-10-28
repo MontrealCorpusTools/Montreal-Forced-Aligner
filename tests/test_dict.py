@@ -40,6 +40,14 @@ def test_basic_noposition(basic_dict_path, generated_dir):
 def test_frclitics(frclitics_dict_path, generated_dir):
     d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, 'frclitics'))
     d.write()
+    data = d.data()
+    assert(d.silences == data.silences)
+    assert(d.multilingual_ipa == data.multilingual_ipa)
+    assert(d.words_mapping == data.words_mapping)
+    assert(d.punctuation == data.punctuation)
+    assert(d.clitic_markers == data.clitic_markers)
+    assert(d.oov_int == data.oov_int)
+    assert(d.words == data.words)
     assert not d.check_word('aujourd')
     assert d.check_word('aujourd\'hui')
     assert d.check_word('m\'appelle')
@@ -104,8 +112,8 @@ def test_multilingual_ipa():
     expected = tuple('m æ ŋ ɡ o ʊ d ʒ a ɪ'.split())
     assert parse_ipa(input_transcription) == expected
 
-    input_transcription = 'n ɔː ɹ i'.split()
-    expected = tuple('n ɔ ɹ i'.split())
+    input_transcription = 'n ɔː ɹ job_name'.split()
+    expected = tuple('n ɔ ɹ job_name'.split())
     assert parse_ipa(input_transcription) == expected
 
     input_transcription = 't ʌ tʃ ə b l̩'.split()

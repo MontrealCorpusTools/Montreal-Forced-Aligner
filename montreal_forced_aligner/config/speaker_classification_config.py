@@ -1,3 +1,4 @@
+from __future__ import annotations
 import yaml
 import os
 from .base_config import BaseConfig
@@ -13,9 +14,10 @@ class SpeakerClassificationConfig(BaseConfig):
         self.first_pass_max_utterances = 32767
         self.rttm_channel = 0
         self.read_costs = False
+        self.overwrite = False
 
 
-def classification_yaml_to_config(path):
+def classification_yaml_to_config(path: str) -> SpeakerClassificationConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         classification_config = SpeakerClassificationConfig()
@@ -24,7 +26,7 @@ def classification_yaml_to_config(path):
         return classification_config
 
 
-def load_basic_classification():
+def load_basic_classification() -> SpeakerClassificationConfig:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     classification_config = classification_yaml_to_config(os.path.join(base_dir, 'basic_classification.yaml'))
     return classification_config

@@ -1,62 +1,129 @@
+from __future__ import annotations
 import os
-import shutil
 import numpy
-from typing import Any, List, Tuple
-import logging
+from typing import TYPE_CHECKING, Any, List, Tuple, Collection, Union, Optional, Type
+if TYPE_CHECKING:
+    from .config import ConfigDict
+    from .corpus import CorpusMappingType, CorpusGroupedType, ScpType
+
 import sys
-import yaml
-from .exceptions import ThirdpartyError, KaldiProcessingError
+import textwrap
+from colorama import Fore, Style
 
 Labels = List[Any]
 
 
-def thirdparty_binary(binary_name):
-    bin_path = shutil.which(binary_name)
-    if bin_path is None:
-        if binary_name in ['fstcompile', 'fstarcsort', 'fstconvert'] and sys.platform != 'win32':
-            raise ThirdpartyError("Could not find '{}'.  Please ensure that you are in an environment that has the "
-                                  "openfst conda package installed, or that the openfst binaries are on your path "
-                                  "if you compiled them yourself.".format(binary_name))
+class TerminalPrinter(object):
+    def __init__(self):
+        from .config import load_global_config
+        c = load_global_config()
+        self.colors = {}
+        self.colors['bright'] = ''
+        self.colors['green'] = ''
+        self.colors['red'] = ''
+        self.colors['blue'] = ''
+        self.colors['cyan'] = ''
+        self.colors['yellow'] = ''
+        self.colors['reset'] = ''
+        self.colors['normal'] = ''
+        self.width = c['terminal_width']
+        if c['terminal_colors']:
+            self.colors['bright'] = Style.BRIGHT
+            self.colors['green'] = Fore.GREEN
+            self.colors['red'] = Fore.RED
+            self.colors['blue'] = Fore.BLUE
+            self.colors['cyan'] = Fore.CYAN
+            self.colors['yellow'] = Fore.YELLOW
+            self.colors['reset'] = Style.RESET_ALL
+            self.colors['normal'] = Style.NORMAL
+
+    def colorize(self, text: str, color: str) -> str:
+        return f"{self.colors[color]}{text}{self.colors['reset']}"
+
+    def print_block(self, block:dict, starting_level:int = 1) -> None:
+        for k, v in block.items():
+            value_color = None
+            key_color = None
+            value = ''
+            if isinstance(k, tuple):
+                k, key_color = k
+
+            if isinstance(v, tuple):
+                value, value_color = v
+            elif not isinstance(v, dict):
+                value = v
+            self.print_information_line(k, value, key_color, value_color, starting_level)
+            if isinstance(v, dict):
+                self.print_block(v, starting_level=starting_level+1)
+        print()
+
+    def print_config(self, configuration: ConfigDict) -> None:
+        for k, v in configuration.items():
+            if 'name' in v:
+                name = v['name']
+                name_color = None
+                if isinstance(name, tuple):
+                    name, name_color = name
+                self.print_information_line(k, name, value_color=name_color, level=0)
+            if 'data' in v:
+                self.print_block(v['data'])
+
+    def print_information_line(self, key: str, value: Union[str, list, tuple, set, bool],
+                               key_color: Optional[str]=None, value_color: Optional[str]=None, level: int=1) -> None:
+        if key_color is None:
+            key_color = 'bright'
+        if value_color is None:
+            value_color = 'yellow'
+            if isinstance(value, bool):
+                if value:
+                    value_color = 'green'
+                else:
+                    value_color = 'red'
+        if isinstance(value, (list, tuple, set)):
+            value = comma_join([self.colorize(x, value_color) for x in sorted(value)])
         else:
-            raise ThirdpartyError("Could not find '{}'.  Please ensure that you have downloaded the "
-                                  "correct binaries.".format(binary_name))
-    return bin_path
+            value = self.colorize(value, value_color)
+        indent = ('  ' * level) + '-'
+        subsequent_indent = ('  ' * (level+1))
+        if key:
+            key = f" {key}:"
+            subsequent_indent += ' '*(len(key))
+        wrapper = textwrap.TextWrapper(initial_indent=indent, subsequent_indent=subsequent_indent, width=self.width)
+        print(wrapper.fill(f"{self.colorize(key, key_color)} {value}"))
 
 
-def make_path_safe(path):
-    return '"{}"'.format(path)
+
+def comma_join(sequence: Collection[Any]) -> str:
+    if len(sequence) < 3:
+        return ' and '.join(sequence)
+    return f"{', '.join(sequence[:-1])}, and {sequence[-1]}"
 
 
-def load_text(path):
-    with open(path, 'r', encoding='utf8') as f:
-        text = f.read().strip().lower()
-    return text
-
-
-def make_safe(element):
+def make_safe(element: Any) -> str:
     if isinstance(element, list):
         return ' '.join(map(make_safe, element))
     return str(element)
 
-def make_scp_safe(string):
-
+def make_scp_safe(string: str) -> str:
     return string.replace(' ', '_MFASPACE_')
 
-def load_scp_safe(string):
+def load_scp_safe(string: str) -> str:
     return string.replace('_MFASPACE_', ' ')
 
-def output_mapping(mapping, path):
+def output_mapping(mapping: CorpusMappingType, path: str, skip_safe:bool = False) -> None:
+    if not mapping:
+        return
     with open(path, 'w', encoding='utf8') as f:
         for k in sorted(mapping.keys()):
             v = mapping[k]
             if isinstance(v, (list, set, tuple)):
                 v = ' '.join(map(str, v))
-            else:
+            elif not skip_safe:
                 v = make_scp_safe(v)
             f.write(f'{make_scp_safe(k)} {v}\n')
 
 
-def save_scp(scp, path, sort=True, multiline=False):
+def save_scp(scp: ScpType, path: str, sort: Optional[bool]=True, multiline: Optional[bool]=False) -> None:
     if sys.platform == 'win32':
         newline = ''
     else:
@@ -68,20 +135,22 @@ def save_scp(scp, path, sort=True, multiline=False):
             scp = sorted(scp)
         for line in scp:
             if multiline:
-                f.write('{}\n{}\n'.format(make_safe(line[0]), make_safe(line[1])))
+                f.write(f'{make_safe(line[0])}\n{make_safe(line[1])}\n')
             else:
-                f.write('{}\n'.format(' '.join(map(make_safe, line))))
+                f.write(f"{' '.join(map(make_safe, line))}\n")
 
 
-def save_groups(groups, seg_dir, pattern, multiline=False):
+def save_groups(groups: CorpusGroupedType, seg_dir: str, pattern: str, multiline: Optional[bool]=False) -> None:
     for i, g in enumerate(groups):
         path = os.path.join(seg_dir, pattern.format(i))
         if os.path.exists(path):
             continue
+        if not g:
+            continue
         save_scp(g, path, multiline=multiline)
 
 
-def load_scp(path, data_type=str):
+def load_scp(path: str, data_type: Optional[Type]=str) -> CorpusMappingType:
     """
     Load a Kaldi script file (.scp)
 
@@ -119,7 +188,7 @@ def load_scp(path, data_type=str):
     return scp
 
 
-def filter_scp(uttlist, scp, exclude=False):
+def filter_scp(uttlist: List[str], scp: Union[str, List[str]], exclude: Optional[bool]=False) -> List[str]:
     # Modelled after https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/utils/filter_scp.pl
     # Used in DNN recipes
     # Scp could be either a path or just the list
@@ -181,66 +250,3 @@ def score(gold : Labels, hypo: (Labels, List)) -> Tuple[int, int]:
     else:
         edits = edit_distance(gold, hypo)
     return edits, len(gold)
-
-
-def setup_logger(identifier, output_directory, console_level='info'):
-    os.makedirs(output_directory, exist_ok=True)
-    log_path = os.path.join(output_directory, identifier + '.log')
-    if os.path.exists(log_path):
-        os.remove(log_path)
-    logger = logging.getLogger(identifier)
-    logger.setLevel(logging.DEBUG)
-
-    handler = logging.FileHandler(log_path, encoding='utf8')
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, console_level.upper()))
-    formatter = logging.Formatter('%(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    return logger
-
-
-def log_config(logger, config):
-    stream = yaml.dump(config)
-    logger.debug(stream)
-
-
-def parse_logs(log_directory):
-    error_logs = []
-    for name in os.listdir(log_directory):
-        log_path = os.path.join(log_directory, name)
-        with open(log_path, 'r', encoding='utf8') as f:
-            for line in f:
-                line = line.strip()
-                if 'error while loading shared libraries: libopenblas.so.0' in line:
-                    raise ThirdpartyError('There was a problem locating libopenblas.so.0. '
-                                          'Try installing openblas via system package manager?')
-                if 'GLIBC_2.27' in line or'GLIBCXX_3.4.20' in line:
-                    raise ThirdpartyError('There was a problem with the version of system libraries that Kaldi was linked against. '
-                                          'Try compiling Kaldi on your machine and collecting the binaries via '
-                                          'the `mfa thirdparty kaldi` command.')
-                if 'sox FAIL formats' in line:
-                    f = line.split(' ')[-1]
-                    raise ThirdpartyError('Your version of sox does not support the file format in your corpus. '
-                                          'Try installing another version of sox with support for {}.'.format(f))
-                if line.startswith('ERROR') or line.startswith('ASSERTION_FAILED'):
-                    error_logs.append(log_path)
-                    break
-    if error_logs:
-        raise KaldiProcessingError(error_logs)
-
-
-def log_kaldi_errors(error_logs, logger):
-    logger.debug('There were {} kaldi processing files that had errors:'.format(len(error_logs)))
-    for path in error_logs:
-        logger.debug('')
-        logger.debug(path)
-        with open(path, 'r', encoding='utf8') as f:
-            for line in f:
-                logger.debug('\t' + line.strip())

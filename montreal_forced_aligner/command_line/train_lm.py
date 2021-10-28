@@ -1,7 +1,10 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from argparse import Namespace
 import os
 import time
 import shutil
-import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
@@ -11,11 +14,11 @@ from montreal_forced_aligner.config import TEMP_DIR, train_lm_yaml_to_config, lo
 from montreal_forced_aligner.exceptions import ArgumentError
 
 from montreal_forced_aligner.lm.trainer import LmTrainer
-from montreal_forced_aligner.utils import get_available_dict_languages, get_dictionary_path
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.utils import setup_logger
 
 
-def train_lm(args, unknown_args=None):
+def train_lm(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'train_lm'
     all_begin = time.time()
     if not args.temp_directory:
@@ -28,7 +31,7 @@ def train_lm(args, unknown_args=None):
         train_config = load_basic_train_lm()
     train_config.use_mp = not args.disable_mp
     if unknown_args:
-        train_config.update_from_args(unknown_args)
+        train_config.update_from_unknown_args(unknown_args)
     corpus_name = os.path.basename(args.source_path)
     if corpus_name == '':
         args.source_path = os.path.dirname(args.source_path)
@@ -52,7 +55,7 @@ def train_lm(args, unknown_args=None):
     if not args.source_path.lower().endswith('.arpa'):
         source = AlignableCorpus(args.source_path, data_directory, num_jobs=args.num_jobs, use_mp=train_config.use_mp,
                                  parse_text_only_files=True, debug=args.debug)
-        if args.dictionary_path is not None:
+        if args.dictionary_path:
             dictionary = Dictionary(args.dictionary_path, data_directory, debug=args.debug, word_set=source.word_set)
             dictionary.generate_mappings()
         else:
@@ -72,9 +75,10 @@ def train_lm(args, unknown_args=None):
         logger.removeHandler(handler)
 
 
-def validate_args(args, download_dictionaries=None):
-    if args.dictionary_path is not None and args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
+def validate_args(args: Namespace) -> None:
+    args.source_path = args.source_path.rstrip('/').rstrip('\\')
+    if args.dictionary_path:
+        args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
     if not args.source_path.endswith('.arpa'):
         if not os.path.exists(args.source_path):
             raise (ArgumentError('Could not find the corpus directory {}.'.format(args.source_path)))
@@ -89,13 +93,7 @@ def validate_args(args, download_dictionaries=None):
         raise (ArgumentError('Could not find the model file {}.'.format(args.model_path)))
 
 
-def run_train_lm(args, unknown=None, download_dictionaries=None):
-    if not args.dictionary_path:
-        args.dictionary_path = None
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
-    args.source_path = args.source_path.rstrip('/').rstrip('\\')
-
-    validate_args(args, download_dictionaries)
+def run_train_lm(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate_args(args)
     train_lm(args, unknown)
 

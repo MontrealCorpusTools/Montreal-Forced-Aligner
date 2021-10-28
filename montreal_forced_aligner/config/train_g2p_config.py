@@ -1,4 +1,4 @@
-import os
+from __future__ import annotations
 import yaml
 from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
 
@@ -21,7 +21,7 @@ class TrainG2PConfig(BaseConfig):
         self.model_size = 1000000
         self.use_mp = True
 
-    def update(self, data):
+    def update(self, data: dict) -> None:
         for k, v in data.items():
             if k in ['punctuation', 'clitic_markers', 'compound_markers']:
                 if not v:
@@ -35,7 +35,7 @@ class TrainG2PConfig(BaseConfig):
             setattr(self, k, v)
 
 
-def train_g2p_yaml_to_config(path):
+def train_g2p_yaml_to_config(path: str) -> TrainG2PConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -46,5 +46,5 @@ def train_g2p_yaml_to_config(path):
         return g2p_config
 
 
-def load_basic_train_g2p_config():
+def load_basic_train_g2p_config() -> TrainG2PConfig:
     return TrainG2PConfig()

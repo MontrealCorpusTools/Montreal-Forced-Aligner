@@ -1,11 +1,12 @@
-
+from __future__ import annotations
+from typing import List, Iterator, Tuple
 import os
 import yaml
 from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS, PARSING_KEYS
 from ..features.config import FeatureConfig
 from collections import Counter
 
-from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer, IvectorExtractorTrainer
+from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer, IvectorExtractorTrainer, BaseTrainer
 
 from .align_config import AlignConfig
 
@@ -27,12 +28,12 @@ class TrainingConfig(BaseConfig):
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
 
-    def update_from_align(self, align_config):
+    def update_from_align(self, align_config: AlignConfig) -> None:
         for tc in self.training_configs:
             tc.overwrite = align_config.overwrite
             tc.cleanup_textgrids = align_config.cleanup_textgrids
 
-    def update(self, data):
+    def update(self, data: dict) -> None:
         for k, v in data.items():
             if k in PARSING_KEYS:
                 if not v:
@@ -47,36 +48,36 @@ class TrainingConfig(BaseConfig):
         for trainer in self.values():
             trainer.update(data)
 
-    def keys(self):
+    def keys(self) -> List:
         return self.training_identifiers
 
-    def values(self):
+    def values(self) -> List[BaseTrainer]:
         return self.training_configs
 
-    def items(self):
+    def items(self) -> Iterator:
         return zip(self.training_identifiers, self.training_configs)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> BaseTrainer:
         if item not in self.training_identifiers:
             raise KeyError('{} not a valid training identifier'.format(item))
         return self.training_configs[self.training_identifiers.index(item)]
 
     @property
-    def uses_lda(self):
+    def uses_lda(self) -> bool:
         for k in self.keys():
             if k.startswith('lda'):
                 return True
         return False
 
     @property
-    def uses_sat(self):
+    def uses_sat(self) -> bool:
         for k in self.keys():
             if k.startswith('sat'):
                 return True
         return False
 
 
-def train_yaml_to_config(path, require_mono=True):
+def train_yaml_to_config(path: str, require_mono: bool=True) -> Tuple[TrainingConfig, AlignConfig]:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -116,22 +117,19 @@ def train_yaml_to_config(path, require_mono=True):
                 t.update(training_params[i])
                 t.feature_config.update(global_feature_params)
             training_config = TrainingConfig(training)
-        align_config.feature_config.lda = training_config.uses_lda
-        if training_config.uses_lda:
-            align_config.feature_config.set_features_to_use_lda()
         align_config.feature_config.fmllr = training_config.uses_sat
         if align_config.beam >= align_config.retry_beam:
             raise ConfigError('Retry beam must be greater than beam.')
         return training_config, align_config
 
 
-def load_basic_train():
+def load_basic_train() -> Tuple[TrainingConfig, AlignConfig]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train.yaml'))
     return training_config, align_config
 
 
-def load_sat_adapt():
+def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_sat.yaml'), require_mono=False)
     training_config.training_configs[0].fmllr_iterations = range(0, training_config.training_configs[0].num_iterations)
@@ -139,20 +137,20 @@ def load_sat_adapt():
     return training_config, align_config
 
 
-def load_no_sat_adapt():
+def load_no_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_nosat.yaml'), require_mono=False)
     training_config.training_configs[0].realignment_iterations = range(0, training_config.training_configs[0].num_iterations)
     return training_config, align_config
 
 
-def load_basic_train_ivector():
+def load_basic_train_ivector() -> Tuple[TrainingConfig, AlignConfig]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train_ivector.yaml'))
     return training_config, align_config
 
 
-def load_test_config():
+def load_test_config() -> Tuple[TrainingConfig, AlignConfig]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'test_config.yaml'))
     return training_config, align_config

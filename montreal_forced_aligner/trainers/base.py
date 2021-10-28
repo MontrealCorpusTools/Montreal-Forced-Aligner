@@ -1,3 +1,13 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Dict, Any, Optional, Union, Callable, List
+if TYPE_CHECKING:
+    from ..config import ConfigDict
+    from ..corpus import AlignableCorpus, CorpusType
+    from ..dictionary import DictionaryType
+    from ..trainers import BaseTrainer
+    from ..aligner import PretrainedAligner
+    from ..models import MetaDict
+    TrainerType = Union[BaseTrainer, PretrainedAligner]
 import os
 import re
 import time
@@ -7,9 +17,9 @@ import shutil
 
 from .. import __version__
 from ..exceptions import TrainerError, KaldiProcessingError
-from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors, load_scp
+from ..utils import thirdparty_binary, log_kaldi_errors, parse_logs
 
-from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids,
+from ..multiprocessing import (align, acc_stats, convert_ali_to_textgrids, compile_information,
                                compute_alignment_improvement, compile_train_graphs)
 
 from ..models import AcousticModel
@@ -45,8 +55,10 @@ class BaseTrainer(object):
         Exponent for number of gaussians according to occurrence counts, defaults to 0.25
     """
 
-    def __init__(self, default_feature_config):
+    def __init__(self, default_feature_config: FeatureConfig):
         self.logger = None
+        self.corpus = None
+        self.dictionary = None
         self.transition_scale = 1.0
         self.acoustic_scale = 0.1
         self.self_loop_scale = 0.1
@@ -65,72 +77,125 @@ class BaseTrainer(object):
         self.initial_gaussians = None  # Gets set later
         self.temp_directory = None
         self.identifier = None
-        self.corpus = None
+        self.corpus: Optional[AlignableCorpus] = None
         self.data_directory = None
-        self.dictionary = None
         self.debug = False
         self.use_mp = True
-
-    def compute_calculated_properties(self):
-        pass
+        self.current_gaussians = None
+        self.iteration = 0
+        self.training_complete = False
+        self.speaker_independent = True
+        self.uses_cmvn = True
+        self.uses_splices = False
+        self.uses_voiced = False
+        self.previous_trainer: Optional[BaseTrainer] = None
 
     @property
-    def feature_file_base_name(self):
-        return self.feature_config.feature_id
-
-    @property
-    def train_directory(self):
+    def train_directory(self) -> str:
         return os.path.join(self.temp_directory, self.identifier)
 
     @property
-    def log_directory(self):
+    def log_directory(self) -> str:
         return os.path.join(self.train_directory, 'log')
 
     @property
-    def align_directory(self):
-        return os.path.join(self.temp_directory, self.identifier + '_ali')
+    def align_directory(self) -> str:
+        return os.path.join(self.temp_directory, f'{self.identifier}_ali')
 
     @property
-    def align_log_directory(self):
+    def align_log_directory(self) -> str:
         return os.path.join(self.align_directory, 'log')
 
     @property
-    def train_type(self):
+    def working_directory(self) -> str:
+        if self.training_complete:
+            return self.align_directory
+        return self.train_directory
+
+    @property
+    def working_log_directory(self) -> str:
+        if self.training_complete:
+            return self.align_log_directory
+        return self.log_directory
+
+    @property
+    def fmllr_options(self) -> ConfigDict:
         raise NotImplementedError
 
     @property
-    def phone_type(self):
+    def lda_options(self) -> ConfigDict:
         raise NotImplementedError
 
     @property
-    def final_gaussian_iteration(self):
+    def tree_path(self):
+        return os.path.join(self.working_directory, 'tree')
+
+    @property
+    def current_model_path(self):
+        if self.training_complete or self.iteration is None or self.iteration > self.num_iterations:
+            return os.path.join(self.working_directory, f'final.mdl')
+        return os.path.join(self.working_directory, f'{self.iteration}.mdl')
+
+    @property
+    def next_model_path(self):
+        if self.iteration > self.num_iterations:
+            return os.path.join(self.working_directory, f'final.mdl')
+        return os.path.join(self.working_directory, f'{self.iteration + 1}.mdl')
+
+    @property
+    def next_occs_path(self):
+        if self.training_complete:
+            return os.path.join(self.working_directory, f'final.occs')
+        return os.path.join(self.working_directory, f'{self.iteration + 1}.occs')
+
+    @property
+    def alignment_model_path(self):
+        path = os.path.join(self.working_directory, f'final.alimdl')
+        if self.speaker_independent and os.path.exists(path):
+            return path
+        if not self.training_complete:
+            return self.current_model_path
+        return os.path.join(self.working_directory, f'final.mdl')
+
+
+    def compute_calculated_properties(self) -> None:
+        pass
+
+    @property
+    def train_type(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def phone_type(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def final_gaussian_iteration(self) -> int:
         return self.num_iterations - 10
 
     @property
-    def gaussian_increment(self):
+    def gaussian_increment(self) -> int:
         return int((self.max_gaussians - self.initial_gaussians) / self.final_gaussian_iteration)
 
     @property
-    def align_options(self):
+    def align_options(self) -> ConfigDict:
+        options_silence_csl = ''
+        if self.dictionary:
+            options_silence_csl = self.dictionary.optional_silence_csl
         return {'beam': self.beam, 'retry_beam': self.retry_beam, 'transition_scale': self.transition_scale,
-                'acoustic_scale': self.acoustic_scale, 'self_loop_scale': self.self_loop_scale}
+                'acoustic_scale': self.acoustic_scale, 'self_loop_scale': self.self_loop_scale,
+                'boost_silence': self.boost_silence, 'debug': self.debug,
+                'optional_silence_csl': options_silence_csl}
 
-    def analyze_align_stats(self):
+    def analyze_align_stats(self) -> None:
+        unaligned, log_like = compile_information(self)
 
-        log_like = 0
-        tot_frames = 0
-        for j in range(self.corpus.num_jobs):
-            score_path = os.path.join(self.align_directory, 'ali.{}.scores'.format(j))
-            scores = load_scp(score_path, data_type=float)
-            for k, v in scores.items():
-                log_like += v
-                tot_frames += self.corpus.utterance_lengths[k]
-        if tot_frames:
-            self.logger.debug('Average per frame likelihood (this might not actually mean anything) for {}: {}'.format(self.identifier, log_like/tot_frames))
-        else:
-            self.logger.debug('No files were aligned, this likely indicates serious problems with the aligner.')
+        self.logger.debug(f'Average per frame likelihood (this might not actually mean anything) '
+                          f'for {self.identifier}: {log_like}')
+        self.logger.debug(f'Number of unaligned files '
+                          f'for {self.identifier}: {len(unaligned)}')
 
-    def update(self, data):
+    def update(self, data: Dict[str, Any]) -> None:
         from ..config.base_config import PARSING_KEYS
         for k, v in data.items():
             if k == 'use_mp':
@@ -140,12 +205,13 @@ class BaseTrainer(object):
             elif k in PARSING_KEYS:
                 continue
             elif not hasattr(self, k):
-                raise TrainerError('No field found for key {}'.format(k))
+                raise TrainerError(f'No field found for key {k}')
             else:
                 setattr(self, k, v)
         self.compute_calculated_properties()
 
-    def _setup_for_init(self, identifier, temporary_directory, corpus, dictionary, logger=None):
+    def _setup_for_init(self, identifier: str, temporary_directory: str, corpus: AlignableCorpus,
+                        dictionary: DictionaryType, previous_trainer: Optional[TrainerType]) -> None:
         begin = time.time()
         self.temp_directory = temporary_directory
         self.identifier = identifier
@@ -153,12 +219,13 @@ class BaseTrainer(object):
         done_path = os.path.join(self.align_directory, 'done')
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.train_directory)
-        if self.logger is None and logger is not None:
-            self.logger = logger
-        self.logger.info('Initializing training for {}...'.format(identifier))
+        self.logger.info(f'Initializing training for {identifier}...')
         self.corpus = corpus
         self.dictionary = dictionary
+        self.previous_trainer = previous_trainer
         if os.path.exists(done_path):
+            self.training_complete = True
+            self.iteration = None
             return
         os.makedirs(self.train_directory, exist_ok=True)
         os.makedirs(self.align_directory, exist_ok=True)
@@ -169,82 +236,57 @@ class BaseTrainer(object):
                                 'using full corpus for this training block.')
 
         try:
-            self.data_directory = corpus.split_directory()
-            self.feature_config.generate_features(self.corpus, logger=self.logger)
+            self.data_directory = corpus.split_directory
+            self.corpus.generate_features()
             if self.subset is not None:
-                self.data_directory = corpus.subset_directory(self.subset, self.feature_config)
+                self.data_directory = corpus.subset_directory(self.subset)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
                 e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
-        self.logger.debug('Setup for initialization took {} seconds'.format(time.time() - begin))
+        self.logger.debug(f'Setup for initialization took {time.time() - begin} seconds')
 
-    def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
+    def increment_gaussians(self):
+        self.current_gaussians += self.gaussian_increment
+
+    def init_training(self, identifier: str, temporary_directory: str, corpus: AlignableCorpus, dictionary: DictionaryType,
+                      previous_trainer: Optional[TrainerType]) -> None:
         raise NotImplementedError
 
-    def parse_log_directory(self, directory, iteration, num_jobs, call_back):
-        """
-        Parse error files and relate relevant information about unaligned files
-        """
-        if call_back is None:
-            return
+    def get_unaligned_utterances(self) -> List[str]:
         error_regex = re.compile(r'Did not successfully decode file (\w+),')
         error_files = []
-        for i in range(num_jobs):
-            path = os.path.join(directory, 'align.{}.{}.log'.format(iteration - 1, i))
+        for j in self.corpus.jobs:
+            path = os.path.join(self.align_directory, 'log', f'align.{j.name}.log')
             if not os.path.exists(path):
                 continue
             with open(path, 'r') as f:
                 error_files.extend(error_regex.findall(f.read()))
         return error_files
 
-    def get_unaligned_utterances(self):
-        error_regex = re.compile(r'Did not successfully decode file (\w+),')
-        error_files = []
-        for i in range(self.corpus.num_jobs):
-            path = os.path.join(self.align_directory, 'log', 'align.final.{}.log'.format(i))
-            if not os.path.exists(path):
-                continue
-            with open(path, 'r') as f:
-                error_files.extend(error_regex.findall(f.read()))
-        return error_files
-
-    def align(self, subset, call_back=None):
+    def align(self, subset: Optional[int]=None) -> None:
         dirty_path = os.path.join(self.align_directory, 'dirty')
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.align_directory)
         done_path = os.path.join(self.align_directory, 'done')
         if not os.path.exists(done_path):
-            message = 'Generating alignments using {} models'.format(self.identifier)
+            message = f'Generating alignments using {self.identifier} models'
             if subset:
-                message += ' using {} utterances...'.format(subset)
+                message += f' using {subset} utterances...'
             else:
                 message += ' for the whole corpus...'
             self.logger.info(message)
             begin = time.time()
-            self.logger.debug('Using {} as the feature name'.format(self.feature_file_base_name))
             if subset is None:
-                align_data_directory = self.corpus.split_directory()
+                self.data_directory = self.corpus.split_directory
             else:
-                align_data_directory = self.corpus.subset_directory(subset, self.feature_config)
+                self.data_directory = self.corpus.subset_directory(subset)
             try:
-                log_dir = os.path.join(self.align_directory, 'log')
-                os.makedirs(log_dir, exist_ok=True)
-                shutil.copy(os.path.join(self.train_directory, 'tree'), self.align_directory)
-                shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
-                                os.path.join(self.align_directory, 'final.mdl'))
-
-                if os.path.exists(os.path.join(self.train_directory, 'lda.mat')):
-                    shutil.copyfile(os.path.join(self.train_directory, 'lda.mat'),
-                                    os.path.join(self.align_directory, 'lda.mat'))
-                shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
-                                os.path.join(self.align_directory, 'final.occs'))
-                compile_train_graphs(self.align_directory, self.dictionary.output_directory,
-                                     align_data_directory, self.corpus.num_jobs, self)
-                align('final', self.align_directory, align_data_directory,
-                      self.dictionary.optional_silence_csl,
-                      self.corpus.num_jobs, self, self.align_directory)
+                self.iteration = None
+                compile_train_graphs(self)
+                align(self)
+                self.analyze_align_stats()
                 self.save(os.path.join(self.align_directory, 'acoustic_model.zip'))
             except Exception as e:
                 with open(dirty_path, 'w'):
@@ -255,75 +297,38 @@ class BaseTrainer(object):
                 raise
             with open(done_path, 'w'):
                 pass
-            self.logger.debug('Alignment took {} seconds'.format(time.time() - begin))
+            self.logger.debug(f'Alignment took {time.time() - begin} seconds')
         else:
-            self.logger.info('Alignments using {} models already done'.format(self.identifier))
-        if self.debug:
-            self.export_textgrids()
+            self.logger.info(f'Alignments using {self.identifier} models already done')
 
-    def train(self, call_back=None):
+    def training_iteration(self):
+        if os.path.exists(self.next_model_path):
+            self.iteration += 1
+            return
+        if self.iteration in self.realignment_iterations:
+            align(self)
+            if self.debug:
+                compute_alignment_improvement(self)
+        acc_stats(self)
+
+        parse_logs(self.log_directory)
+        if self.iteration < self.final_gaussian_iteration:
+            self.increment_gaussians()
+        self.iteration += 1
+
+    def train(self):
         done_path = os.path.join(self.train_directory, 'done')
         dirty_path = os.path.join(self.train_directory, 'dirty')
         if os.path.exists(done_path):
-            self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
+            self.logger.info(f'{self.identifier} training already done, skipping initialization.')
             return
         begin = time.time()
-        final_mdl_path = os.path.join(self.train_directory, 'final.mdl')
-        num_gauss = self.initial_gaussians
-        if call_back == print:
-            iters = tqdm(range(1, self.num_iterations))
-        else:
-            iters = range(1, self.num_iterations)
         try:
-            for i in iters:
-                model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
-                occs_path = os.path.join(self.train_directory, '{}.occs'.format(i + 1))
-                next_model_path = os.path.join(self.train_directory, '{}.mdl'.format(i + 1))
-                if os.path.exists(next_model_path):
-                    continue
-                if i in self.realignment_iterations:
-                    align(i, self.train_directory, self.data_directory,
-                          self.dictionary.optional_silence_csl,
-                          self.corpus.num_jobs, self)
-                    if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.num_jobs, self)
-                log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
-                with open(log_path, 'w') as logf:
-                    acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(self.corpus.num_jobs)]
-                    est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
-                                                 '--write-occs=' + occs_path,
-                                                 '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
-                                                 model_path,
-                                                 "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                                                   ' '.join(map(make_path_safe, acc_files))),
-                                                 next_model_path],
-                                                stderr=logf)
-                    est_proc.communicate()
-                if not self.debug:
-                    for f in acc_files:
-                        os.remove(f)
-                if not os.path.exists(next_model_path):
-                    raise (Exception('There was an error training in iteration {}, please check the logs.'.format(i)))
-                self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
-                if i < self.final_gaussian_iteration:
-                    num_gauss += self.gaussian_increment
-            shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
-                        final_mdl_path)
-            shutil.copy(os.path.join(self.train_directory, '{}.occs'.format(self.num_iterations)),
-                        os.path.join(self.train_directory, 'final.occs'))
-            if not self.debug:
-                for i in range(1, self.num_iterations):
-                    model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
-                    try:
-                        os.remove(model_path)
-                    except FileNotFoundError:
-                        pass
-                    try:
-                        os.remove(os.path.join(self.train_directory, '{}.occs'.format(i)))
-                    except FileNotFoundError:
-                        pass
+            with tqdm(total=self.num_iterations) as pbar:
+                while self.iteration < self.num_iterations + 1:
+                    self.training_iteration()
+                    pbar.update(1)
+            self.finalize_training()
         except Exception as e:
             with open(dirty_path, 'w'):
                 pass
@@ -334,13 +339,45 @@ class BaseTrainer(object):
         with open(done_path, 'w'):
             pass
         self.logger.info('Training complete!')
-        self.logger.debug('Training took {} seconds'.format(time.time() - begin))
+        self.logger.debug(f'Training took {time.time() - begin} seconds')
+
+    def finalize_training(self):
+        shutil.copy(os.path.join(self.train_directory, f'{self.num_iterations}.mdl'),
+                    self.next_model_path)
+        shutil.copy(os.path.join(self.train_directory, f'{self.num_iterations}.occs'),
+                    os.path.join(self.train_directory, 'final.occs'))
+        log_dir = os.path.join(self.align_directory, 'log')
+        os.makedirs(log_dir, exist_ok=True)
+        shutil.copy(os.path.join(self.train_directory, 'tree'), self.align_directory)
+        shutil.copyfile(os.path.join(self.train_directory, 'final.mdl'),
+                        os.path.join(self.align_directory, 'final.mdl'))
+
+        if os.path.exists(os.path.join(self.train_directory, 'lda.mat')):
+            shutil.copyfile(os.path.join(self.train_directory, 'lda.mat'),
+                            os.path.join(self.align_directory, 'lda.mat'))
+        shutil.copyfile(os.path.join(self.train_directory, 'final.occs'),
+                        os.path.join(self.align_directory, 'final.occs'))
+        if not self.debug:
+            for i in range(1, self.num_iterations):
+                model_path = os.path.join(self.train_directory, f'{i}.mdl')
+                try:
+                    os.remove(model_path)
+                except FileNotFoundError:
+                    pass
+                try:
+                    os.remove(os.path.join(self.train_directory, f'{i}.occs'))
+                except FileNotFoundError:
+                    pass
+        self.training_complete = True
+        self.iteration = None
 
     @property
-    def meta(self):
+    def meta(self) -> MetaDict:
+        from datetime import datetime
         data = {'phones': sorted(self.dictionary.nonsil_phones),
                 'version': __version__,
                 'architecture': self.architecture,
+                'train_date': str(datetime.now()),
                 'features': self.feature_config.params(),
                 'multilingual_ipa': self.dictionary.multilingual_ipa
                 }
@@ -349,32 +386,21 @@ class BaseTrainer(object):
             data['digraphs'] = self.dictionary.digraphs
         return data
 
-    def dictionaries_for_job(self, job_name):
-        from ..dictionary import MultispeakerDictionary
-        if isinstance(self.dictionary, MultispeakerDictionary):
-            dictionary_names = []
-            for name in self.dictionary.dictionary_mapping.keys():
-                if os.path.exists(os.path.join(self.corpus.split_directory(), 'utt2spk.{}.{}'.format(job_name, name))):
-                    dictionary_names.append(name)
-            return dictionary_names
-        return None
-
-    def export_textgrids(self):
+    def export_textgrids(self) -> None:
         """
         Export a TextGrid file for every sound file in the dataset
         """
         begin = time.time()
         try:
-            convert_ali_to_textgrids(self, os.path.join(self.align_directory, 'textgrids'), self.align_directory,
-                                     self.dictionary, self.corpus, self.corpus.num_jobs)
+            convert_ali_to_textgrids(self)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
                 e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
-        self.logger.debug('Exporting textgrids took {} seconds'.format(time.time() - begin))
+        self.logger.debug(f'Exporting textgrids took {time.time() - begin} seconds')
 
-    def save(self, path, root_directory=None):
+    def save(self, path: str, root_directory: Optional[str]=None) -> None:
         """
         Output an acoustic model and dictionary to the specified path
 

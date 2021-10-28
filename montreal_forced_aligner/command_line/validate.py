@@ -1,20 +1,24 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Collection
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import Dictionary
+    from argparse import Namespace
 import shutil
 import os
 import time
-import multiprocessing as mp
 
 from montreal_forced_aligner.corpus.align_corpus import AlignableCorpus
 from montreal_forced_aligner.dictionary import Dictionary
 from montreal_forced_aligner.validator import CorpusValidator
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
-from montreal_forced_aligner.utils import get_available_acoustic_languages, get_pretrained_acoustic_path, \
-    get_available_dict_languages, get_dictionary_path
-from montreal_forced_aligner.helper import setup_logger
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.utils import setup_logger
 from montreal_forced_aligner.models import AcousticModel
 
 
-def validate_corpus(args, unknown_args=None):
+def validate_corpus(args: Namespace, unknown_args: Optional[list]=None) -> None:
     command = 'validate'
     all_begin = time.time()
     if not args.temp_directory:
@@ -62,7 +66,11 @@ def validate_corpus(args, unknown_args=None):
         logger.removeHandler(handler)
 
 
-def validate_args(args, downloaded_acoustic_models=None, download_dictionaries=None):
+def validate_args(args: Namespace) -> None:
+    try:
+        args.speaker_characters = int(args.speaker_characters)
+    except ValueError:
+        pass
     if args.test_transcriptions and args.ignore_acoustics:
         raise ArgumentError('Cannot test transcriptions without acoustic feature generation.')
     if not os.path.exists(args.corpus_directory):
@@ -70,35 +78,12 @@ def validate_args(args, downloaded_acoustic_models=None, download_dictionaries=N
     if not os.path.isdir(args.corpus_directory):
         raise (ArgumentError('The specified corpus directory ({}) is not a directory.'.format(args.corpus_directory)))
 
-    if args.dictionary_path.lower() in download_dictionaries:
-        args.dictionary_path = get_dictionary_path(args.dictionary_path.lower())
-    if not os.path.exists(args.dictionary_path):
-        raise (ArgumentError('Could not find the dictionary file {}'.format(args.dictionary_path)))
-    if not os.path.isfile(args.dictionary_path):
-        raise (ArgumentError('The specified dictionary path ({}) is not a text file.'.format(args.dictionary_path)))
-
+    args.dictionary_path = validate_model_arg(args.dictionary_path, 'dictionary')
     if args.acoustic_model_path:
-        if args.acoustic_model_path.lower() in downloaded_acoustic_models:
-            args.acoustic_model_path = get_pretrained_acoustic_path(args.acoustic_model_path.lower())
-        elif args.acoustic_model_path.lower().endswith(AcousticModel.extension):
-            if not os.path.exists(args.acoustic_model_path):
-                raise ArgumentError('The specified model path does not exist: ' + args.acoustic_model_path)
-        else:
-            raise ArgumentError(
-                'The language \'{}\' is not currently included in the distribution, '
-                'please align via training or specify one of the following language names: {}.'.format(
-                    args.acoustic_model_path.lower(), ', '.join(downloaded_acoustic_models)))
+        args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, 'acoustic')
 
 
-def run_validate_corpus(args, unknown=None, downloaded_acoustic_models=None, download_dictionaries=None):
-    if downloaded_acoustic_models is None:
-        downloaded_acoustic_models = get_available_acoustic_languages()
-    if download_dictionaries is None:
-        download_dictionaries = get_available_dict_languages()
-    try:
-        args.speaker_characters = int(args.speaker_characters)
-    except ValueError:
-        pass
-    validate_args(args, downloaded_acoustic_models, download_dictionaries)
+def run_validate_corpus(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate_args(args)
     validate_corpus(args, unknown)
 

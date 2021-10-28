@@ -1,3 +1,9 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Collection
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import Dictionary
+    from argparse import Namespace, ArgumentParser
 import atexit
 import sys
 import os
@@ -16,16 +22,20 @@ from montreal_forced_aligner.command_line.train_and_align import run_train_corpu
 from montreal_forced_aligner.command_line.g2p import run_g2p
 from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
 from montreal_forced_aligner.command_line.validate import run_validate_corpus
-from montreal_forced_aligner.command_line.download import run_download
+from montreal_forced_aligner.command_line.model import run_model
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
-from montreal_forced_aligner.command_line.thirdparty import run_thirdparty
 from montreal_forced_aligner.command_line.train_ivector_extractor import run_train_ivector_extractor
 from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 from montreal_forced_aligner.command_line.create_segments import run_create_segments
 from montreal_forced_aligner.exceptions import MFAError
+from montreal_forced_aligner.models import MODEL_TYPES
 from montreal_forced_aligner.config import update_global_config, load_global_config, update_command_history, load_command_history
+
+
+BEGIN = time.time()
+BEGIN_DATE = datetime.now()
 
 
 class ExitHooks(object):
@@ -45,14 +55,7 @@ class ExitHooks(object):
     def exc_handler(self, exc_type, exc, *args):
         self.exception = exc
 
-hooks = ExitHooks()
-hooks.hook()
-
-BEGIN = time.time()
-BEGIN_DATE = datetime.now()
-
-
-def history_save_handler():
+def history_save_handler() -> None:
     history_data = {
         'command': ' '.join(sys.argv),
         'execution_time': time.time() - BEGIN,
@@ -65,33 +68,13 @@ def history_save_handler():
         history_data['exception'] = ''
     elif hooks.exception is not None:
         history_data['exit_code'] = 1
-        history_data['exception'] = hooks.exception
+        history_data['exception'] = str(hooks.exception)
     else:
         history_data['exception'] = ''
         history_data['exit_code'] = 0
     update_command_history(history_data)
-
-atexit.register(history_save_handler)
-
-def fix_path():
-    from montreal_forced_aligner.config import TEMP_DIR
-    thirdparty_dir = os.path.join(TEMP_DIR, 'thirdparty', 'bin')
-    old_path = os.environ.get('PATH', '')
-    if sys.platform == 'win32':
-        os.environ['PATH'] = thirdparty_dir + ';' + old_path
-    else:
-        os.environ['PATH'] = thirdparty_dir + ':' + old_path
-        os.environ['LD_LIBRARY_PATH'] = thirdparty_dir + ':' + os.environ.get('LD_LIBRARY_PATH', '')
-
-
-def unfix_path():
-    if sys.platform == 'win32':
-        sep = ';'
-        os.environ['PATH'] = sep.join(os.environ['PATH'].split(sep)[1:])
-    else:
-        sep = ':'
-        os.environ['PATH'] = sep.join(os.environ['PATH'].split(sep)[1:])
-        os.environ['LD_LIBRARY_PATH'] = sep.join(os.environ['PATH'].split(sep)[1:])
+    if hooks.exception:
+        raise hooks.exception
 
 
 acoustic_languages = get_available_acoustic_languages()
@@ -100,7 +83,7 @@ lm_languages = get_available_lm_languages()
 g2p_languages = get_available_g2p_languages()
 dict_languages = get_available_dict_languages()
 
-def create_parser():
+def create_parser() -> ArgumentParser:
 
     GLOBAL_CONFIG = load_global_config()
     def add_global_options(subparser, textgrid_output=False):
@@ -153,8 +136,13 @@ def create_parser():
     adapt_parser.add_argument('dictionary_path', help="Full path to the pronunciation dictionary to use")
     adapt_parser.add_argument('acoustic_model_path',
                               help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_languages)})")
-    adapt_parser.add_argument('output_model_path',
-                              help="Full path to save adapted_model")
+    adapt_parser.add_argument('output_paths', nargs='+',
+                              help="Path to directory for aligned TextGrids, zip path to export acoustic model, or both")
+    adapt_parser.add_argument('-o', '--output_model_path', type=str, default='',
+                              help="Full path to save adapted acoustic model")
+    adapt_parser.add_argument('--full_train', action='store_true',
+                              help="Specify whether to do a round of speaker-adapted training rather than the default "
+                                   "remapping approach to adaptation")
     adapt_parser.add_argument('--config_path', type=str, default='',
                               help="Path to config file to use for alignment")
     adapt_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
@@ -168,12 +156,12 @@ def create_parser():
     train_parser.add_argument('corpus_directory', help="Full path to the source directory to align")
     train_parser.add_argument('dictionary_path', help="Full path to the pronunciation dictionary to use",
                               default='')
-    train_parser.add_argument('output_directory',
-                              help="Full path to output directory, will be created if it doesn't exist")
+    train_parser.add_argument('output_paths', nargs='+',
+                              help="Path to directory for aligned TextGrids, zip path to export acoustic model, or both")
     train_parser.add_argument('--config_path', type=str, default='',
                               help="Path to config file to use for training and alignment")
     train_parser.add_argument('-o', '--output_model_path', type=str, default='',
-                              help="Full path to save resulting acoustic and dictionary model")
+                              help="Full path to save resulting acoustic model")
     train_parser.add_argument('-s', '--speaker_characters', type=str, default='0',
                               help="Number of characters of filenames to use for determining speaker, "
                                    'default is to use directory names')
@@ -204,7 +192,7 @@ def create_parser():
     g2p_parser.add_argument("input_path",
                             help="Corpus to base word list on or a text file of words to generate pronunciations")
     g2p_parser.add_argument("output_path", help="Path to save output dictionary")
-    g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, i.e. [...], (...), <...>",
+    g2p_parser.add_argument('--include_bracketed', help="Included words enclosed by brackets, job_name.e. [...], (...), <...>",
                             action='store_true')
     g2p_parser.add_argument('--config_path', type=str, default='',
                               help="Path to config file to use for G2P")
@@ -221,11 +209,31 @@ def create_parser():
                                        "most of the data and validating on an unseen subset")
     add_global_options(train_g2p_parser)
 
-    download_parser = subparsers.add_parser('download')
-    download_parser.add_argument("model_type",
-                                 help="Type of model to download, one of 'acoustic', 'g2p', or 'dictionary'")
-    download_parser.add_argument("language", help="Name of language code to download, if not specified, "
+    model_parser = subparsers.add_parser('model')
+
+    model_subparsers = model_parser.add_subparsers(dest="action")
+    model_subparsers.required = True
+    model_download_parser = model_subparsers.add_parser('download')
+    model_download_parser.add_argument("model_type",
+                                 help=f"Type of model to download, options: {', '.join(MODEL_TYPES)}")
+    model_download_parser.add_argument("name", help="Name of language code to download, if not specified, "
                                                   "will list all available languages", nargs='?')
+
+    model_list_parser = model_subparsers.add_parser('list')
+    model_list_parser.add_argument("model_type", nargs='?',
+                                 help=f"Type of model to list, options: {', '.join(MODEL_TYPES)}")
+
+    model_inspect_parser = model_subparsers.add_parser('inspect')
+    model_inspect_parser.add_argument("model_type", nargs='?',
+                                 help=f"Type of model to download, options: {', '.join(MODEL_TYPES)}")
+    model_inspect_parser.add_argument("name", help="Name of pretrained model or path to MFA model to inspect")
+
+    model_save_parser = model_subparsers.add_parser('save')
+    model_save_parser.add_argument("path", help="Path to MFA model to save for invoking with just its name")
+    model_save_parser.add_argument("--name", help="Name to use as reference (defaults to the name of the zip file", type=str,
+                                   default='')
+    model_save_parser.add_argument("--overwrite", help="Flag to overwrite existing pretrained models with the same name (and model type)",
+                                   action='store_true')
 
     train_lm_parser = subparsers.add_parser('train_lm')
     train_lm_parser.add_argument('source_path', help="Full path to the source directory to train from, alternatively "
@@ -340,6 +348,12 @@ def create_parser():
     config_parser.add_argument('--enable_textgrid_cleanup', help="Enable postprocessing of TextGrids that cleans up "
                                                                   "silences and recombines compound words and clitics",
                                action='store_true')
+    config_parser.add_argument('--disable_terminal_colors', help="Turn off colored text in output", action='store_true')
+    config_parser.add_argument('--enable_terminal_colors', help="Turn on colored text in output",
+                               action='store_true')
+    config_parser.add_argument('--terminal_width', help=f"Set width of terminal output, "
+                                                        f"currently set to {GLOBAL_CONFIG['terminal_width']}",
+                               default=GLOBAL_CONFIG['terminal_width'], type=int)
 
     history_parser = subparsers.add_parser('history')
 
@@ -349,19 +363,12 @@ def create_parser():
     annotator_parser = subparsers.add_parser('annotator')
     anchor_parser = subparsers.add_parser('anchor')
 
-    thirdparty_parser = subparsers.add_parser('thirdparty')
-
-    thirdparty_parser.add_argument("command",
-                                   help="One of 'download', 'validate', or 'kaldi'")
-    thirdparty_parser.add_argument('local_directory',
-                                   help="Full path to the built executables to collect", nargs="?",
-                                   default='')
     return parser
 
 parser = create_parser()
 
 
-def main():
+def main() -> None:
 
     parser = create_parser()
     mp.freeze_support()
@@ -372,35 +379,9 @@ def main():
                   'Please specify the full argument')
             sys.exit(1)
     try:
-        fix_path()
-        if args.subcommand in ['align', 'train', 'train_ivector']:
-            from montreal_forced_aligner.thirdparty.kaldi import validate_alignment_binaries
-            if not validate_alignment_binaries():
-                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                      "on why this check failed.")
-                sys.exit(1)
-        elif args.subcommand in ['transcribe']:
-            from montreal_forced_aligner.thirdparty.kaldi import validate_transcribe_binaries
-            if not validate_transcribe_binaries():
-                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                      "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
-                      "via the download command do not contain the transcription ones.  To get this functionality working "
-                      "for the time being, please build kaldi locally and follow the instructions for running the "
-                      "'mfa thirdparty kaldi' command.")
-                sys.exit(1)
-        elif args.subcommand in ['train_dictionary']:
-            from montreal_forced_aligner.thirdparty.kaldi import validate_train_dictionary_binaries
-            if not validate_train_dictionary_binaries():
-                print("There was an issue validating Kaldi binaries, please ensure you've downloaded them via the "
-                      "'mfa thirdparty download' command.  See 'mfa thirdparty validate' for more detailed information "
-                      "on why this check failed.  If you are on MacOS, please note that the thirdparty binaries available "
-                      "via the download command do not contain the train_dictionary ones.  To get this functionality working "
-                      "for the time being, please build kaldi locally and follow the instructions for running the "
-                      "'mfa thirdparty kaldi' command.")
-                sys.exit(1)
-        elif args.subcommand in ['g2p', 'train_g2p']:
+        #fix_path()
+
+        if args.subcommand in ['g2p', 'train_g2p']:
             try:
                 import pynini
             except ImportError:
@@ -408,19 +389,19 @@ def main():
                       "please use the Windows Subsystem for Linux to use g2p functionality.")
                 sys.exit(1)
         if args.subcommand == 'align':
-            run_align_corpus(args, unknown, acoustic_languages)
+            run_align_corpus(args, unknown)
         elif args.subcommand == 'adapt':
-            run_adapt_model(args, unknown, acoustic_languages)
+            run_adapt_model(args, unknown)
         elif args.subcommand == 'train':
             run_train_corpus(args, unknown)
         elif args.subcommand == 'g2p':
-            run_g2p(args, unknown, g2p_languages)
+            run_g2p(args, unknown)
         elif args.subcommand == 'train_g2p':
             run_train_g2p(args, unknown)
         elif args.subcommand == 'validate':
             run_validate_corpus(args, unknown)
-        elif args.subcommand == 'download':
-            run_download(args)
+        elif args.subcommand == 'model':
+            run_model(args)
         elif args.subcommand == 'train_lm':
             run_train_lm(args, unknown)
         elif args.subcommand == 'train_dictionary':
@@ -431,9 +412,7 @@ def main():
             run_classify_speakers(args, unknown)
         elif args.subcommand in ['annotator', 'anchor']:
             from montreal_forced_aligner.command_line.anchor import run_anchor
-            run_anchor(args)
-        elif args.subcommand == 'thirdparty':
-            run_thirdparty(args)
+            run_anchor()
         elif args.subcommand == 'transcribe':
             run_transcribe_corpus(args, unknown)
         elif args.subcommand == 'create_segments':
@@ -464,9 +443,14 @@ def main():
             raise
         print(e)
         sys.exit(1)
-    finally:
-        unfix_path()
+    #finally:
+    #    unfix_path()
 
 
 if __name__ == '__main__':
+    hooks = ExitHooks()
+    hooks.hook()
+    atexit.register(history_save_handler)
+    from colorama import init
+    init()
     main()

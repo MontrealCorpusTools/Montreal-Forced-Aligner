@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Dict, Any
+if TYPE_CHECKING:
+    from ..config import ConfigDict
 import os
 import yaml
 from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, \
@@ -6,7 +10,7 @@ from ..features.config import FeatureConfig
 
 
 class TranscribeConfig(BaseConfig):
-    def __init__(self, feature_config):
+    def __init__(self, feature_config: FeatureConfig):
         self.transition_scale = 1.0
         self.acoustic_scale = 0.083333
         self.self_loop_scale = 0.1
@@ -34,7 +38,7 @@ class TranscribeConfig(BaseConfig):
         self.digraphs = DEFAULT_DIGRAPHS
         self.overwrite = False
 
-    def params(self):
+    def params(self) -> ConfigDict:
         return {
             'transition_scale': self.transition_scale,
             'acoustic_scale': self.acoustic_scale,
@@ -54,10 +58,45 @@ class TranscribeConfig(BaseConfig):
                 }
 
     @property
-    def feature_file_base_name(self):
+    def decode_options(self) -> ConfigDict:
+        return {
+            'fmllr': self.fmllr,
+            'no_speakers': self.no_speakers,
+            'first_beam': self.first_beam,
+            'beam': self.beam,
+            'first_max_active': self.first_max_active,
+            'max_active': self.max_active,
+            'lattice_beam': self.lattice_beam,
+            'acoustic_scale': self.acoustic_scale,
+        }
+
+    @property
+    def score_options(self) -> ConfigDict:
+        return {
+            'language_model_weight': self.language_model_weight,
+            'word_insertion_penalty': self.word_insertion_penalty,
+        }
+
+    @property
+    def fmllr_options(self) -> ConfigDict:
+        return {
+            'fmllr_update_type': self.fmllr_update_type,
+            'acoustic_scale': self.acoustic_scale,
+            'silence_weight': self.silence_weight,
+            'lattice_beam': self.lattice_beam,
+        }
+
+    @property
+    def lm_rescore_options(self) -> ConfigDict:
+        return {
+            'acoustic_scale': self.acoustic_scale,
+        }
+
+    @property
+    def feature_file_base_name(self) -> str:
         return self.feature_config.feature_id
 
-    def update(self, data):
+    def update(self, data: dict) -> None:
         for k, v in data.items():
             if k == 'use_mp':
                 self.feature_config.use_mp = v
@@ -66,7 +105,7 @@ class TranscribeConfig(BaseConfig):
             setattr(self, k, v)
 
 
-def transcribe_yaml_to_config(path):
+def transcribe_yaml_to_config(path: str) -> TranscribeConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -81,7 +120,7 @@ def transcribe_yaml_to_config(path):
         return config
 
 
-def load_basic_transcribe():
+def load_basic_transcribe() -> TranscribeConfig:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config = transcribe_yaml_to_config(os.path.join(base_dir, 'basic_transcribe.yaml'))
     return config

@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from argparse import Namespace
 import os
 import shutil
 
@@ -7,13 +11,12 @@ from montreal_forced_aligner.config.g2p_config import load_basic_g2p_config, g2p
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.dictionary import check_bracketed
-from montreal_forced_aligner.utils import get_pretrained_g2p_path, get_available_g2p_languages
+from montreal_forced_aligner.command_line.utils import validate_model_arg
 
-from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.config import TEMP_DIR
 
 
-def generate_dictionary(args, unknown_args=None):
+def generate_dictionary(args: Namespace, unknown_args: Optional[list]=None) -> None:
     print("Generating pronunciations from G2P model")
     if not args.temp_directory:
         temp_dir = TEMP_DIR
@@ -29,7 +32,7 @@ def generate_dictionary(args, unknown_args=None):
         g2p_config = load_basic_g2p_config()
     g2p_config.use_mp = not args.disable_mp
     if unknown_args:
-        g2p_config.update_from_args(unknown_args)
+        g2p_config.update_from_unknown_args(unknown_args)
     if os.path.isdir(args.input_path):
         input_dir = os.path.expanduser(args.input_path)
         corpus_name = os.path.basename(args.input_path)
@@ -68,7 +71,7 @@ def generate_dictionary(args, unknown_args=None):
                 f.write('{} {}\n'.format(word, ' '.join(pronunciation)))
 
 
-def get_word_set(corpus, include_bracketed=False):
+def get_word_set(corpus: AlignableCorpus, include_bracketed: bool=False) -> list:
     word_set = corpus.word_set
     print('Generating transcriptions for the {} word types found in the corpus...'.format(len(word_set)))
     if not include_bracketed:
@@ -76,22 +79,13 @@ def get_word_set(corpus, include_bracketed=False):
     return word_set
 
 
-def validate(args, pretrained_languages):
+def validate(args: Namespace) -> None:
     if not args.g2p_model_path:
         args.g2p_model_path = None
-    elif args.g2p_model_path in pretrained_languages:
-        args.g2p_model_path = get_pretrained_g2p_path(args.g2p_model_path)
-    if args.g2p_model_path and not os.path.exists(args.g2p_model_path):
-        raise (ArgumentError('Could not find the G2P model file {}.'.format(args.g2p_model_path)))
-    if args.g2p_model_path and (not os.path.isfile(args.g2p_model_path) or not args.g2p_model_path.endswith('.zip')):
-        raise (ArgumentError('The specified G2P model path ({}) is not a zip file.'.format(args.g2p_model_path)))
-
-    if not os.path.exists(args.input_path):
-        raise (ArgumentError('Could not find the input path {}.'.format(args.input_path)))
+    else:
+        args.g2p_model_path = validate_model_arg(args.g2p_model_path, 'g2p')
 
 
-def run_g2p(args, unknown=None, pretrained=None):
-    if pretrained is None:
-        pretrained = get_available_g2p_languages()
-    validate(args, pretrained)
+def run_g2p(args: Namespace, unknown: Optional[list]=None) -> None:
+    validate(args)
     generate_dictionary(args, unknown)

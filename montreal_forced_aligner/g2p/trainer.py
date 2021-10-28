@@ -1,3 +1,8 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Set, NamedTuple, Optional, Any, List, Tuple, Dict, Callable
+if TYPE_CHECKING:
+    from ..dictionary import Dictionary, DictionaryEntryType
+    from ..config.train_g2p_config import TrainG2PConfig
 import subprocess
 import os
 import random
@@ -12,7 +17,6 @@ import shutil
 import traceback
 import sys
 import tqdm
-from typing import Set, NamedTuple, Optional, Any, List, Tuple
 
 try:
     import pynini
@@ -54,7 +58,9 @@ class RandomStart(NamedTuple):
 
 
 
-def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
+def compute_validation_errors(gold_values: Dict[str, List[Dict[str, str]]],
+                              hypothesis_values: Dict[str, List[str]],
+                              num_jobs: int=3):
     # Word-level measures.
     correct = 0
     incorrect = 0
@@ -88,7 +94,11 @@ def compute_validation_errors(gold_values, hypothesis_values, num_jobs=3):
 
 
 class RandomStartWorker(mp.Process):
-    def __init__(self, job_q, return_dict, function, counter, stopped):
+    def __init__(self, job_q: mp.Queue,
+                 return_dict: Dict,
+                 function: Callable,
+                 counter: Counter,
+                 stopped: Stopped):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
@@ -96,7 +106,7 @@ class RandomStartWorker(mp.Process):
         self.counter = counter
         self.stopped = stopped
 
-    def run(self):
+    def run(self) -> None:
         while True:
             try:
                 args = self.job_q.get(timeout=1)
@@ -122,7 +132,7 @@ class PairNGramAligner:
         convert, fst_type="compact_string"
     )
 
-    def __init__(self, temp_directory):
+    def __init__(self, temp_directory: str):
         self.tempdir = temp_directory
         self.g_path = os.path.join(self.tempdir, "g.far")
         self.p_path = os.path.join(self.tempdir, "p.far")
@@ -246,7 +256,7 @@ class PairNGramAligner:
         g_side = self._label_union(g_labels, input_epsilon)
         self.logger.info("%d unique phones", len(p_labels))
         p_side = self._label_union(p_labels, output_epsilon)
-        # The covering grammar is given by (G x P)^*.
+        # The covering grammar is given by (G job_name P)^*.
         covering = pynini.cross(g_side, p_side).closure().optimize()
         assert covering.num_states() == 1, "Covering grammar FST is ill-formed"
         self.logger.info(
@@ -444,9 +454,9 @@ class PairNGramAligner:
 
 
 class PyniniTrainer(object):
-    def __init__(self, dictionary, model_path, train_config, temp_directory=None,
-                 input_epsilon=True, output_epsilon=True, num_jobs=3,
-                 verbose=False):
+    def __init__(self, dictionary: Dictionary, model_path: str, train_config: TrainG2PConfig, temp_directory: Optional[str]=None,
+                 input_epsilon: bool=True, output_epsilon: bool=True, num_jobs: int=3,
+                 verbose: bool=False):
         super(PyniniTrainer, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -493,7 +503,7 @@ class PyniniTrainer(object):
         self.sym_path = os.path.join(self.temp_directory, 'phones.sym')
         self.output_token_type = None
 
-    def clean_up(self):
+    def clean_up(self) -> None:
         for name in os.listdir(self.temp_directory):
             path = os.path.join(self.temp_directory, name)
             if os.path.isdir(path):
@@ -501,7 +511,7 @@ class PyniniTrainer(object):
             elif not name.endswith('.log'):
                 os.remove(path)
 
-    def generate_model(self):
+    def generate_model(self) -> None:
         assert os.path.exists(self.far_path)
         with open(self.model_log_path, 'w', encoding='utf8') as logf:
             ngram_count_path = os.path.join(self.temp_directory, 'ngram.count')
@@ -553,7 +563,7 @@ class PyniniTrainer(object):
         print('Saved model to {}'.format(self.model_path))
         self.logger.info('Saved model to {}'.format(self.model_path))
 
-    def train(self, word_dict=None):
+    def train(self, word_dict: Optional[Dict[str, DictionaryEntryType]]=None) -> None:
         input_path = os.path.join(self.temp_directory, 'input.txt')
         phones_path = os.path.join(self.temp_directory, 'phones_only.txt')
         if word_dict is None:
@@ -595,7 +605,7 @@ class PyniniTrainer(object):
         self.generate_model()
         self.logger.debug('Generating model for {} words took {} seconds'.format(len(word_dict), time.time() - begin))
 
-    def validate(self):
+    def validate(self) -> None:
         from .generator import PyniniDictionaryGenerator
         from ..models import G2PModel
         word_dict = self.dictionary.actual_words

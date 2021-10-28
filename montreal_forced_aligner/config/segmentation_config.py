@@ -1,3 +1,4 @@
+from __future__ import annotations
 import yaml
 import os
 from .base_config import BaseConfig, ConfigError
@@ -15,7 +16,7 @@ class SegmentationConfig(BaseConfig):
         self.feature_config = feature_config
         self.feature_config.use_energy = True
 
-    def update(self, data):
+    def update(self, data: dict) -> None:
         for k, v in data.items():
             if k == 'use_mp':
                 self.feature_config.use_mp = v
@@ -23,8 +24,15 @@ class SegmentationConfig(BaseConfig):
                 raise ConfigError('No field found for key {}'.format(k))
             setattr(self, k, v)
 
+    @property
+    def segmentation_options(self):
+        return {'max_segment_length': self.max_segment_length,
+                'min_pause_duration': self.min_pause_duration,
+                'snap_boundary_threshold': self.snap_boundary_threshold,
+                'frame_shift': round(self.feature_config.frame_shift / 1000, 2)}
 
-def segmentation_yaml_to_config(path):
+
+def segmentation_yaml_to_config(path: str) -> SegmentationConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -39,7 +47,7 @@ def segmentation_yaml_to_config(path):
         return segmentation_config
 
 
-def load_basic_segmentation():
+def load_basic_segmentation() -> SegmentationConfig:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     segmentation_config = segmentation_yaml_to_config(os.path.join(base_dir, 'basic_segmentation.yaml'))
     return segmentation_config

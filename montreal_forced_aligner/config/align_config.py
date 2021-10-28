@@ -1,5 +1,10 @@
+from __future__ import annotations
 import os
 import yaml
+from typing import TYPE_CHECKING, Collection
+if TYPE_CHECKING:
+    from argparse import Namespace
+    from . import ConfigDict
 from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, \
     DEFAULT_COMPOUND_MARKERS, DEFAULT_DIGRAPHS, DEFAULT_STRIP_DIACRITICS
 from ..features.config import FeatureConfig
@@ -35,7 +40,7 @@ class AlignConfig(BaseConfig):
         Flag for whether to use multiprocessing in feature generation
     """
 
-    def __init__(self, feature_config):
+    def __init__(self, feature_config: FeatureConfig):
         self.transition_scale = 1.0
         self.acoustic_scale = 0.1
         self.self_loop_scale = 0.1
@@ -57,21 +62,31 @@ class AlignConfig(BaseConfig):
         self.debug = False
         self.overwrite = False
         self.cleanup_textgrids = True
+        self.initial_fmllr = True
+        self.iteration = None
 
     @property
-    def feature_file_base_name(self):
-        return self.feature_config.feature_id
-
-    @property
-    def align_options(self):
+    def align_options(self) -> ConfigDict:
         return {'transition_scale': self.transition_scale,
                 'acoustic_scale': self.acoustic_scale,
                 'self_loop_scale': self.self_loop_scale,
                 'beam': self.beam,
                 'retry_beam': self.retry_beam,
+                'boost_silence': self.boost_silence,
+                'debug': self.debug
                 }
 
-    def update(self, data):
+    @property
+    def fmllr_options(self) -> ConfigDict:
+        return {
+            'fmllr_update_type': self.fmllr_update_type,
+            'debug': self.debug,
+            'use_fmllr_mp': self.use_fmllr_mp,
+            'initial': self.initial_fmllr,
+            'iteration': self.iteration,
+        }
+
+    def update(self, data: dict) -> None:
         for k, v in data.items():
             if k == 'use_mp':
                 self.feature_config.use_mp = v
@@ -83,17 +98,21 @@ class AlignConfig(BaseConfig):
                 if ']' in v and r'\]' not in v:
                     v = v.replace(']', r'\]')
             elif not hasattr(self, k):
-                raise ConfigError('No field found for key {}'.format(k))
+                raise ConfigError(f'No field found for key {k}')
             setattr(self, k, v)
 
-    def update_from_args(self, args):
+    def update_from_args(self, args: Namespace):
         super(AlignConfig, self).update_from_args(args)
         self.feature_config.update_from_args(args)
+
+    def update_from_unknown_args(self, args: Collection[str]):
+        super(AlignConfig, self).update_from_unknown_args(args)
+        self.feature_config.update_from_unknown_args(args)
         if self.retry_beam <= self.beam:
             self.retry_beam = self.beam * 4
 
 
-def align_yaml_to_config(path):
+def align_yaml_to_config(path: str) -> AlignConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -110,7 +129,7 @@ def align_yaml_to_config(path):
         return align_config
 
 
-def load_basic_align():
+def load_basic_align() -> AlignConfig:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     align_config = align_yaml_to_config(os.path.join(base_dir, 'basic_align.yaml'))
     return align_config

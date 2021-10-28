@@ -1,6 +1,12 @@
-from montreal_forced_aligner.command_line.mfa import fix_path
+from __future__ import annotations
+#from montreal_forced_aligner.command_line.mfa import fix_path
 
-fix_path()
+#fix_path()
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from montreal_forced_aligner.features.config import FeatureConfig
 
 import os
 import shutil
@@ -50,13 +56,13 @@ def language_model_dir(test_dir):
 
 @pytest.fixture(scope='session')
 def generated_dir(test_dir):
-    from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
-    if not validate_kaldi_binaries():
-        from montreal_forced_aligner.thirdparty.download import download_binaries
-        download_binaries()
-    actually_working = validate_kaldi_binaries()
-    if not actually_working:
-        raise Exception('Kaldi binaries are not correctly found or functioning.')
+    #from montreal_forced_aligner.thirdparty.kaldi import validate_kaldi_binaries
+    #if not validate_kaldi_binaries():
+    #    from montreal_forced_aligner.thirdparty.download import download_binaries
+    #    download_binaries()
+    #actually_working = validate_kaldi_binaries()
+    #if not actually_working:
+    #    raise Exception('Kaldi binaries are not correctly found or functioning.')
     generated = os.path.join(test_dir, 'generated')
     shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):
@@ -79,14 +85,14 @@ def config_dir(generated_dir):
 
 @pytest.fixture(scope='session')
 def english_acoustic_model():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('acoustic', 'english')
     return 'english'
 
 
 @pytest.fixture(scope='session')
 def english_pretrained_dictionary():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     from montreal_forced_aligner.utils import get_dictionary_path
     download_model('dictionary', 'english')
     return get_dictionary_path('english')
@@ -94,34 +100,34 @@ def english_pretrained_dictionary():
 
 @pytest.fixture(scope='session')
 def english_ipa_acoustic_model():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('acoustic', 'english_ipa')
     return 'english_ipa'
 
 
 @pytest.fixture(scope='session')
 def english_us_ipa_dictionary():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('dictionary', 'english_us_ipa')
     return 'english_us_ipa'
 
 
 @pytest.fixture(scope='session')
 def english_uk_ipa_dictionary():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('dictionary', 'english_uk_ipa')
     return 'english_uk_ipa'
 
 
 @pytest.fixture(scope='session')
 def english_ivector_model():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('ivector', 'english_ivector')
 
 
 @pytest.fixture(scope='session')
 def english_g2p_model():
-    from montreal_forced_aligner.command_line.download import download_model
+    from montreal_forced_aligner.command_line.model import download_model
     download_model('g2p', 'english_g2p')
 
 
@@ -156,7 +162,7 @@ def mono_align_model_path(output_model_dir):
 
 
 @pytest.fixture(scope='session')
-def default_feature_config():
+def default_feature_config() -> FeatureConfig:
     from montreal_forced_aligner.features.config import FeatureConfig
     fc = FeatureConfig()
     fc.use_mp = False
@@ -182,7 +188,7 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 @pytest.fixture(scope='session')
 def xsampa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
-    path = os.path.join(corpus_root_dir, 'basic')
+    path = os.path.join(corpus_root_dir, 'xsampa')
     os.makedirs(path, exist_ok=True)
 
     s_dir = os.path.join(path, 'michael')

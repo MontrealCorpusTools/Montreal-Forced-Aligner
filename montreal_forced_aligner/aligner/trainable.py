@@ -1,4 +1,13 @@
-from ..multiprocessing import convert_ali_to_textgrids
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Callable, Collection
+if TYPE_CHECKING:
+    from ..corpus import AlignableCorpus
+    from ..dictionary import Dictionary
+    from ..config import AlignConfig
+    from ..config import TrainingConfig
+    from ..aligner.pretrained import PretrainedAligner
+    from logging import Logger
+
 from .base import BaseAligner
 
 
@@ -23,8 +32,10 @@ class TrainableAligner(BaseAligner):
         Specifies a call back function for alignment
     """
 
-    def __init__(self, corpus, dictionary, training_config, align_config, temp_directory=None,
-                 call_back=None, debug=False, verbose=False, logger=None, pretrained_aligner=None):
+    def __init__(self, corpus: AlignableCorpus, dictionary: Dictionary, training_config: TrainingConfig,
+                 align_config: AlignConfig, temp_directory: Optional[str]=None,
+                 call_back: Optional[Callable]=None, debug: bool=False, verbose: bool=False,
+                 logger: Optional[Logger]=None, pretrained_aligner: Optional[PretrainedAligner]=None):
         self.training_config = training_config
         self.pretrained_aligner = pretrained_aligner
         super(TrainableAligner, self).__init__(corpus, dictionary, align_config, temp_directory,
@@ -32,14 +43,7 @@ class TrainableAligner(BaseAligner):
         for trainer in self.training_config.training_configs:
             trainer.logger = self.logger
 
-    def setup(self):
-        if self.dictionary is not None:
-            self.dictionary.set_word_set(self.corpus.word_set)
-            self.dictionary.write()
-        first_trainer = list(self.training_config.items())[0][1]
-        self.corpus.initialize_corpus(self.dictionary, first_trainer.feature_config)
-
-    def save(self, path, root_directory=None):
+    def save(self, path: str, root_directory: Optional[str]=None) -> None:
         """
         Output an acoustic model and dictionary to the specified path
 
@@ -54,7 +58,7 @@ class TrainableAligner(BaseAligner):
         self.logger.info('Saved model to {}'.format(path))
 
     @property
-    def meta(self):
+    def meta(self) -> dict:
         from .. import __version__
         data = {'phones': sorted(self.dictionary.nonsil_phones),
                 'version': __version__,
@@ -64,7 +68,7 @@ class TrainableAligner(BaseAligner):
                 }
         return data
 
-    def train(self):
+    def train(self, generate_final_alignments: bool=True) -> None:
         previous = self.pretrained_aligner
         for identifier, trainer in self.training_config.items():
             trainer.debug = self.debug
@@ -72,10 +76,11 @@ class TrainableAligner(BaseAligner):
             if previous is not None:
                 previous.align(trainer.subset)
             trainer.init_training(identifier, self.temp_directory, self.corpus, self.dictionary, previous)
-            trainer.train(call_back=print)
+            trainer.train()
             previous = trainer
-        previous.align(None)
+        if generate_final_alignments:
+            previous.align(None)
 
     @property
-    def align_directory(self):
+    def align_directory(self) -> str:
         return self.training_config.values()[-1].align_directory

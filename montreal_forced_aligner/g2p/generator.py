@@ -1,5 +1,11 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Union, Dict, Any, Text, Tuple, List, Collection
+if TYPE_CHECKING:
+    SpeakerCharacterType = Union[str, int]
+    from ..corpus import CorpusType
+    from ..models import G2PModel
+
 import os
-import re
 import logging
 import functools
 import multiprocessing as mp
@@ -28,7 +34,7 @@ from ..exceptions import G2PError
 from ..multiprocessing import Stopped, Counter
 
 
-class Rewriter:
+class Rewriter(object):
     """Helper object for rewriting."""
 
     def __init__(
@@ -54,7 +60,12 @@ class Rewriter:
 
 
 class RewriterWorker(mp.Process):
-    def __init__(self, job_q, return_dict, rewriter, counter, stopped):
+    def __init__(self,
+                 job_q: mp.Queue,
+                 return_dict: Dict[Text, Union[Text, Exception]],
+                 rewriter: Rewriter,
+                 counter: Counter,
+                 stopped: Stopped):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
@@ -62,7 +73,7 @@ class RewriterWorker(mp.Process):
         self.counter = counter
         self.stopped = stopped
 
-    def run(self):
+    def run(self) -> None:
         while True:
             try:
                 word = self.job_q.get(timeout=1)
@@ -84,7 +95,7 @@ class RewriterWorker(mp.Process):
         return
 
 
-def clean_up_word(word, graphemes):
+def clean_up_word(word: Text, graphemes: set) -> Tuple[Text, List[Text]]:
     new_word = []
     missing_graphemes = []
     for c in word:
@@ -96,7 +107,11 @@ def clean_up_word(word, graphemes):
 
 
 class PyniniDictionaryGenerator(object):
-    def __init__(self, g2p_model, word_set, temp_directory=None, num_jobs=3, num_pronunciations=1):
+    def __init__(self, g2p_model: G2PModel,
+                 word_set: Collection[Text],
+                 temp_directory: Optional[Text]=None,
+                 num_jobs: int=3,
+                 num_pronunciations:int=1):
         super(PyniniDictionaryGenerator, self).__init__()
         if not temp_directory:
             temp_directory = TEMP_DIR
@@ -116,7 +131,7 @@ class PyniniDictionaryGenerator(object):
         self.num_jobs = num_jobs
         self.num_pronunciations = num_pronunciations
 
-    def generate(self):
+    def generate(self) -> Dict[Text, Text]:
         if self.model.meta['architecture'] == 'phonetisaurus':
             raise G2PError('Previously trained Phonetisaurus models from 1.1 and earlier are not currently supported. '
                            'Please retrain your model using 2.0+')
@@ -200,7 +215,7 @@ class PyniniDictionaryGenerator(object):
         self.logger.debug('Processed {} in {} seconds'.format(num_words, time.time() - begin))
         return to_return
 
-    def output(self, outfile):
+    def output(self, outfile: Text) -> None:
         results = self.generate()
         with open(outfile, "w", encoding='utf8') as f:
             for (word, pronunciation) in results.items():

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import yaml
 from .base_config import BaseConfig
@@ -14,7 +15,7 @@ class TrainLMConfig(BaseConfig):
         self.use_mp = True
 
 
-def train_lm_yaml_to_config(path):
+def train_lm_yaml_to_config(path: str) -> TrainLMConfig:
     with open(path, 'r', encoding='utf8') as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         config = TrainLMConfig()
@@ -22,7 +23,7 @@ def train_lm_yaml_to_config(path):
     return config
 
 
-def load_basic_train_lm():
+def load_basic_train_lm() -> TrainLMConfig:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config = train_lm_yaml_to_config(os.path.join(base_dir, 'basic_train_lm.yaml'))
     return training_config

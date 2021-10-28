@@ -23,8 +23,9 @@ def test_sick_mono(sick_dict, sick_corpus, generated_dir, mono_train_config, mon
     model = AcousticModel(mono_align_model_path)
     data_directory = os.path.join(generated_dir, 'temp', 'mono_align_test')
     shutil.rmtree(data_directory, ignore_errors=True)
+    mono_align_config.debug = True
     a = PretrainedAligner(sick_corpus, sick_dict, model, mono_align_config,
-                          temp_directory=data_directory)
+                          temp_directory=data_directory, debug=True)
     a.align()
     a.export_textgrids(mono_output_directory)
 
