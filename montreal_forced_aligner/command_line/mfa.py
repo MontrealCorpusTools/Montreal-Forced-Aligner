@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime
 
-from montreal_forced_aligner import __version__
+from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.command_line.adapt import run_adapt_model
 from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.anchor import run_anchor
@@ -87,7 +87,7 @@ def history_save_handler() -> None:
         "command": " ".join(sys.argv),
         "execution_time": time.time() - BEGIN,
         "date": BEGIN_DATE,
-        "version": __version__,
+        "version": get_mfa_version(),
     }
 
     if hooks.exit_code is not None:
@@ -791,7 +791,7 @@ def main() -> None:
                     print(h["command"])
 
         elif args.subcommand == "version":
-            print(__version__)
+            print(get_mfa_version())
     except MFAError as e:
         if getattr(args, "debug", False):
             raise

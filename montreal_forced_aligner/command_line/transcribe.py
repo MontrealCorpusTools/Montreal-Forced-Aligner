@@ -10,7 +10,7 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import __version__
+from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import (
     TEMP_DIR,
@@ -78,7 +78,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
         {
             "dirty": False,
             "begin": time.time(),
-            "version": __version__,
+            "version": get_mfa_version(),
             "type": "transcribe",
             "corpus_directory": args.corpus_directory,
             "dictionary_path": args.dictionary_path,
@@ -91,7 +91,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
         conf["dirty"]
         or conf["type"] != command
         or conf["corpus_directory"] != args.corpus_directory
-        or conf["version"] != __version__
+        or conf["version"] != get_mfa_version()
         or conf["dictionary_path"] != args.dictionary_path
         or conf["language_model_path"] != args.language_model_path
         or conf["acoustic_model_path"] != args.acoustic_model_path
@@ -111,8 +111,10 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
                 "Previous run used source directory "
                 f"path {conf['corpus_directory']} (new run: {args.corpus_directory})"
             )
-        if conf["version"] != __version__:
-            logger.debug(f"Previous run was on {conf['version']} version (new run: {__version__})")
+        if conf["version"] != get_mfa_version():
+            logger.debug(
+                f"Previous run was on {conf['version']} version (new run: {get_mfa_version()})"
+            )
         if conf["dictionary_path"] != args.dictionary_path:
             logger.debug(
                 f"Previous run used dictionary path {conf['dictionary_path']} "

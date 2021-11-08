@@ -10,7 +10,7 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import __version__
+from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import (
     TEMP_DIR,
@@ -72,7 +72,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
         {
             "dirty": False,
             "begin": time.time(),
-            "version": __version__,
+            "version": get_mfa_version(),
             "type": command,
             "corpus_directory": args.corpus_directory,
             "ivector_extractor_path": args.ivector_extractor_path,
@@ -82,7 +82,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
         conf["dirty"]
         or conf["type"] != command
         or conf["corpus_directory"] != args.corpus_directory
-        or conf["version"] != __version__
+        or conf["version"] != get_mfa_version()
     ):
         logger.warning(
             "WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no "
@@ -92,23 +92,21 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
             logger.debug("Previous run ended in an error (maybe ctrl-c?)")
         if conf["type"] != command:
             logger.debug(
-                "Previous run was a different subcommand than {} (was {})".format(
-                    command, conf["type"]
-                )
+                f"Previous run was a different subcommand than {command} (was {conf['type']})"
             )
         if conf["corpus_directory"] != args.corpus_directory:
             logger.debug(
                 "Previous run used source directory "
-                "path {} (new run: {})".format(conf["corpus_directory"], args.corpus_directory)
+                f"path {conf['corpus_directory']} (new run: {args.corpus_directory})"
             )
-        if conf["version"] != __version__:
+        if conf["version"] != get_mfa_version():
             logger.debug(
-                "Previous run was on {} version (new run: {})".format(conf["version"], __version__)
+                f"Previous run was on {conf['version']} version (new run: {get_mfa_version()})"
             )
         if conf["ivector_extractor_path"] != args.ivector_extractor_path:
             logger.debug(
-                "Previous run used ivector extractor path {} "
-                "(new run: {})".format(conf["ivector_extractor_path"], args.ivector_extractor_path)
+                f"Previous run used ivector extractor path {conf['ivector_extractor_path']} "
+                f"(new run: {args.ivector_extractor_path})"
             )
 
     os.makedirs(data_directory, exist_ok=True)

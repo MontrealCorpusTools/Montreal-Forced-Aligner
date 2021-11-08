@@ -5,7 +5,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "montreal_forced_aligner/version.py"
+write_to = "montreal_forced_aligner/_version.py"
 
 [tool.black]
 line-length = 99

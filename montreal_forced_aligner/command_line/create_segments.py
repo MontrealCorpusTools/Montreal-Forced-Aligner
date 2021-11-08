@@ -10,7 +10,7 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import __version__
+from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.config import (
     TEMP_DIR,
     load_basic_segmentation,
@@ -69,7 +69,7 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
         {
             "dirty": False,
             "begin": time.time(),
-            "version": __version__,
+            "version": get_mfa_version(),
             "type": command,
             "corpus_directory": args.corpus_directory,
         },
@@ -78,7 +78,7 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
         conf["dirty"]
         or conf["type"] != command
         or conf["corpus_directory"] != args.corpus_directory
-        or conf["version"] != __version__
+        or conf["version"] != get_mfa_version()
     ):
         logger.warning(
             "WARNING: Using old temp directory, this might not be ideal for you, use the --clean flag to ensure no "
@@ -95,8 +95,10 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
                 "Previous run used source directory "
                 f"path {conf['corpus_directory']} (new run: {args.corpus_directory})"
             )
-        if conf["version"] != __version__:
-            logger.debug(f"Previous run was on {conf['version']} version (new run: {__version__})")
+        if conf["version"] != get_mfa_version():
+            logger.debug(
+                f"Previous run was on {conf['version']} version (new run: {get_mfa_version()})"
+            )
 
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)

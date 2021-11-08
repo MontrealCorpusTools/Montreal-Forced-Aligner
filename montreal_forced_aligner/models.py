@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import Optional
 
-from . import __version__
+from . import get_mfa_version
 from .exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -344,7 +344,7 @@ class AcousticModel(Archive):
         printer = TerminalPrinter()
         configuration_data = {"Acoustic model": {"name": (self.name, "green"), "data": {}}}
         version_color = "green"
-        if self.meta["version"] != __version__:
+        if self.meta["version"] != get_mfa_version():
             version_color = "red"
         configuration_data["Acoustic model"]["data"]["Version"] = (
             self.meta["version"],
@@ -521,7 +521,7 @@ class G2PModel(Archive):
                 "phones": sorted(dictionary.nonsil_phones),
                 "graphemes": sorted(dictionary.graphemes),
                 "architecture": architecture,
-                "version": __version__,
+                "version": get_mfa_version(),
             }
             yaml.dump(meta, f)
 
