@@ -35,13 +35,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools setuptools_scm[toml] wheel
           pip install tox tox-gh-actions tox-conda twine build
-      - name: Test with tox
-        run: tox
-      - name: "Upload coverage to Codecov"
-        uses: "codecov/codecov-action@v2.0.3"
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: true
       - name: Build a binary wheel and a source tarball
         run: >-
           python -m
@@ -50,6 +43,13 @@ jobs:
           --wheel
           --outdir dist/
           .
+      - name: Test with tox
+        run: tox
+      - name: "Upload coverage to Codecov"
+        uses: "codecov/codecov-action@v2.0.3"
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true
       - name: "List result"
         run: "ls -l dist"
       - name: "Check long_description"
