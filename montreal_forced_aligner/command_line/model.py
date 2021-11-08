@@ -77,7 +77,7 @@ def download_model(model_type: str, name: str) -> None:
     try:
         mc = MODEL_TYPES[model_type]
         extension = mc.extensions[0]
-        out_path = get_pretrained_path(model_type, name)
+        out_path = get_pretrained_path(model_type, name, enforce_existence=False)
     except KeyError:
         raise NotImplementedError(
             f"{model_type} models are not currently supported for downloading"
