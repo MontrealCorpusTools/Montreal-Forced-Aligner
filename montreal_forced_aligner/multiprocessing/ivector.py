@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from ..segmenter import SegmentationType
     from ..segmenter import Segmenter
     from ..config import ConfigDict
-    from ..corpus.classes import Utterance, File, Speaker
+    from ..corpus.classes import Utterance, File, Speaker  # noqa
 
 import multiprocessing as mp
 import os
@@ -716,6 +716,8 @@ def segment_vad_func(
     """
 
     utterances = {}
+    from ..corpus.classes import File, Speaker, Utterance  # noqa
+
     speaker = Speaker("speech")
     for dict_name in dictionaries:
         vad_path = vad_paths[dict_name]
@@ -748,6 +750,8 @@ def segment_vad(segmenter: Segmenter) -> None:
     segmenter: Segmenter
         Segmenter
     """
+
+    from ..corpus.classes import Speaker  # noqa
 
     jobs = [x.segments_vad_arguments(segmenter) for x in segmenter.corpus.jobs]
     if segmenter.segmentation_config.use_mp:
