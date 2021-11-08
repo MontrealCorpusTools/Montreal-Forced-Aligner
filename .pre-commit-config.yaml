@@ -1,11 +1,6 @@
 default_language_version:
   python: python3.8
 repos:
-  - repo: https://github.com/econchick/interrogate
-    rev: 1.5.0
-    hooks:
-      - id: interrogate
-        args: [ --quiet, --fail-under=95 ]
   - repo: https://github.com/psf/black
     rev: 21.8b0
     hooks:
