@@ -188,7 +188,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
             evaluation_mode=args.evaluate,
             logger=logger,
         )
-        logger.debug(f"Setup pretrained aligner in {time.time() - begin} seconds")
+        logger.debug(f"Setup transcriber in {time.time() - begin} seconds")
 
         begin = time.time()
         t.transcribe()

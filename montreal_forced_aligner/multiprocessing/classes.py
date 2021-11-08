@@ -414,6 +414,10 @@ class CreateHclgArguments(NamedTuple):
     hclg_options: ConfigDict
     words_mapping: MappingType
 
+    @property
+    def hclg_path(self):
+        return self.path_template.format(file_name="HCLG")
+
 
 class DecodeArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.decode_func`"""

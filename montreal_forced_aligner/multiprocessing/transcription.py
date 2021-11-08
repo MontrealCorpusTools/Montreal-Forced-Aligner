@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 
+from ..exceptions import KaldiProcessingError
 from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
 
@@ -479,12 +480,20 @@ def create_hclgs(transcriber: Transcriber):
 
     for j in transcriber.corpus.jobs:
         dict_arguments.update(j.create_hclgs_arguments(transcriber))
+    dict_arguments = list(dict_arguments.values())
     if transcriber.transcribe_config.use_mp:
-        run_mp(create_hclg_func, list(dict_arguments.values()), transcriber.working_log_directory)
+        run_mp(create_hclg_func, dict_arguments, transcriber.working_log_directory)
     else:
-        run_non_mp(
-            create_hclg_func, list(dict_arguments.values()), transcriber.working_log_directory
-        )
+        run_non_mp(create_hclg_func, dict_arguments, transcriber.working_log_directory)
+    error_logs = []
+    for arg in dict_arguments:
+        if not os.path.exists(arg.hclg_path):
+            error_logs.append(arg.log_path)
+            with open(arg.log_path, "r", encoding="utf8") as f:
+                for line in f:
+                    transcriber.logger.error(line)
+    if error_logs:
+        raise KaldiProcessingError(error_logs)
 
 
 def decode_func(
