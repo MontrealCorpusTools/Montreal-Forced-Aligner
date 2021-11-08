@@ -1,9 +1,24 @@
-from .helper import run_mp, run_non_mp, Stopped, Counter
-from .alignment import align, compute_alignment_improvement, convert_ali_to_textgrids, compile_information, acc_stats, \
-    lda_acc_stats, mono_align_equal, compile_train_graphs, tree_stats, convert_alignments, calc_lda_mllt, calc_fmllr, \
-    create_align_model, train_map
-
-from .transcription import transcribe, transcribe_fmllr
-from .ivector import gmm_gselect, acc_global_stats, acc_ivector_stats, extract_ivectors, gauss_to_post, segment_vad, \
-    classify_speakers
-from .pronunciations import generate_pronunciations
+"""Multiprocessing functions and classes for Montreal Forced Aligner"""
+from .alignment import acc_stats  # noqa
+from .alignment import align  # noqa
+from .alignment import calc_fmllr  # noqa
+from .alignment import calc_lda_mllt  # noqa
+from .alignment import compile_information  # noqa
+from .alignment import compile_train_graphs  # noqa
+from .alignment import compute_alignment_improvement  # noqa
+from .alignment import convert_ali_to_textgrids  # noqa
+from .alignment import convert_alignments  # noqa
+from .alignment import create_align_model  # noqa
+from .alignment import lda_acc_stats  # noqa
+from .alignment import mono_align_equal  # noqa
+from .alignment import train_map  # noqa
+from .alignment import tree_stats  # noqa; noqa
+from .helper import Counter, Stopped, run_mp, run_non_mp  # noqa
+from .ivector import acc_global_stats  # noqa
+from .ivector import acc_ivector_stats  # noqa
+from .ivector import extract_ivectors  # noqa
+from .ivector import gauss_to_post  # noqa
+from .ivector import gmm_gselect  # noqa
+from .ivector import segment_vad  # noqa
+from .pronunciations import generate_pronunciations  # noqa
+from .transcription import transcribe, transcribe_fmllr  # noqa

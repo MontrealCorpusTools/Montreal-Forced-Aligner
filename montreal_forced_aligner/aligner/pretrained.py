@@ -1,5 +1,8 @@
+"""Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional, Callable, Collection
+
+from typing import TYPE_CHECKING, Optional
+
 if TYPE_CHECKING:
     from ..corpus import AlignableCorpus
     from ..dictionary import Dictionary
@@ -8,33 +11,12 @@ if TYPE_CHECKING:
     from logging import Logger
 
 import os
-import re
 from collections import Counter
 
-from .base import BaseAligner
 from ..multiprocessing import generate_pronunciations
+from .base import BaseAligner
 
-
-def parse_transitions(path, phones_path):
-    state_extract_pattern = re.compile(r'Transition-state (\d+): phone = (\w+)')
-    id_extract_pattern = re.compile(r'Transition-id = (\d+)')
-    cur_phone = None
-    current = 0
-    with open(path, encoding='utf8') as f, open(phones_path, 'w', encoding='utf8') as outf:
-        outf.write('{} {}\n'.format('<eps>', 0))
-        for line in f:
-            line = line.strip()
-            if line.startswith('Transition-state'):
-                m = state_extract_pattern.match(line)
-                _, phone = m.groups()
-                if phone != cur_phone:
-                    current = 0
-                    cur_phone = phone
-            else:
-                m = id_extract_pattern.match(line)
-                transition_id = m.groups()[0]
-                outf.write('{}_{} {}\n'.format(phone, current, transition_id))
-                current += 1
+__all__ = ["PretrainedAligner"]
 
 
 class PretrainedAligner(BaseAligner):
@@ -43,7 +25,7 @@ class PretrainedAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
@@ -54,40 +36,76 @@ class PretrainedAligner(BaseAligner):
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
         If not specified, it will be set to ``~/Documents/MFA``
-    call_back : callable, optional
-        Specifies a call back function for alignment
+    debug: bool
+        Flag for debug mode, default is False
+    verbose: bool
+        Flag for verbose mode, default is False
+    logger: logging.Logger
+        Logger to use
     """
 
-    def __init__(self, corpus: AlignableCorpus, dictionary: Dictionary, acoustic_model: AcousticModel, align_config: AlignConfig,
-                 temp_directory: Optional[str]=None,
-                 call_back: Optional[Callable]=None, debug: bool=False, verbose: bool=False, logger: Optional[Logger]=None):
-        self.acoustic_model = acoustic_model
-        super().__init__(corpus, dictionary, align_config, temp_directory,
-                                                call_back, debug, verbose, logger)
+    def __init__(
+        self,
+        corpus: AlignableCorpus,
+        dictionary: Dictionary,
+        acoustic_model: AcousticModel,
+        align_config: AlignConfig,
+        temp_directory: Optional[str] = None,
+        debug: bool = False,
+        verbose: bool = False,
+        logger: Optional[Logger] = None,
+    ):
+        super().__init__(
+            corpus,
+            dictionary,
+            align_config,
+            temp_directory,
+            debug,
+            verbose,
+            logger,
+            acoustic_model=acoustic_model,
+        )
         self.data_directory = corpus.split_directory
-        log_dir = os.path.join(self.align_directory, 'log')
+        log_dir = os.path.join(self.align_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         self.align_config.logger = self.logger
-        self.logger.info('Done with setup!')
+        self.logger.info("Done with setup!")
 
     @property
     def model_directory(self) -> str:
-        return os.path.join(self.temp_directory, 'model')
+        """Model directory"""
+        return os.path.join(self.temp_directory, "model")
 
     def setup(self) -> None:
-        self.dictionary.nonsil_phones = self.acoustic_model.meta['phones']
+        """Set up aligner"""
+        self.dictionary.nonsil_phones = self.acoustic_model.meta["phones"]
         super(PretrainedAligner, self).setup()
         self.acoustic_model.export_model(self.align_directory)
 
     @property
     def ali_paths(self):
+        """Alignment archive paths"""
         jobs = [x.align_arguments(self) for x in self.corpus.jobs]
         ali_paths = []
         for j in jobs:
             ali_paths.extend(j.ali_paths.values())
         return ali_paths
 
-    def generate_pronunciations(self, output_path: str, calculate_silence_probs: bool=False, min_count: int=1) -> None:
+    def generate_pronunciations(
+        self, output_path: str, calculate_silence_probs: bool = False, min_count: int = 1
+    ) -> None:
+        """
+        Generate pronunciation probabilities for the dictionary
+
+        Parameters
+        ----------
+        output_path: str
+            Path to save new dictionary
+        calculate_silence_probs: bool
+            Flag for whether to calculate silence probabilities, default is False
+        min_count: int
+            Specifies the minimum count of words to include in derived probabilities, default is 1
+        """
         pron_counts, utt_mapping = generate_pronunciations(self)
         if self.dictionary.has_multiple:
             dictionary_mapping = self.dictionary.dictionary_mapping()
@@ -101,8 +119,8 @@ class PretrainedAligner(BaseAligner):
                 nonsil_before_counts = Counter()
                 sil_after_counts = Counter()
                 nonsil_after_counts = Counter()
-                sils = ['<s>', '</s>', '<eps>']
-                for u, v in mapping.items():
+                sils = ["<s>", "</s>", "<eps>"]
+                for v in mapping.values():
                     for i, w in enumerate(v):
                         if w in sils:
                             continue
@@ -121,23 +139,23 @@ class PretrainedAligner(BaseAligner):
             for word, prons in dictionary.words.items():
                 if word not in counts:
                     for p in prons:
-                        p['probability'] = 1
+                        p["probability"] = 1
                 else:
                     total = 0
                     best_pron = 0
                     best_count = 0
                     for p in prons:
-                        p['probability'] = min_count
-                        if p['pronunciation'] in counts[word]:
-                            p['probability'] += counts[word][p['pronunciation']]
-                        total += p['probability']
-                        if p['probability'] > best_count:
-                            best_pron = p['pronunciation']
-                            best_count = p['probability']
+                        p["probability"] = min_count
+                        if p["pronunciation"] in counts[word]:
+                            p["probability"] += counts[word][p["pronunciation"]]
+                        total += p["probability"]
+                        if p["probability"] > best_count:
+                            best_pron = p["pronunciation"]
+                            best_count = p["probability"]
                     for p in prons:
-                        if p['pronunciation'] == best_pron:
-                            p['probability'] = 1
+                        if p["pronunciation"] == best_pron:
+                            p["probability"] = 1
                         else:
-                            p['probability'] /= total
+                            p["probability"] /= total
                     dictionary.words[word] = prons
             dictionary.export_lexicon(output_path, probability=True)

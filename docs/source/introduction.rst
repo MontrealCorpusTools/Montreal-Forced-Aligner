@@ -69,7 +69,7 @@ mel frequency cepstrum coefficients (MFCC) features for each speaker.  See the `
 for more detail on these final passes.
 The Montreal Forced Aligner can also train using deep neural networks (DNNs).
 
-For more technical information about the structure of the aligner, see :ref:`alignment_techniques` and
+For more technical information about the structure of the aligner, see
 :ref:`api_reference`.
 
 If you run into any issues, please check the `mailing list`_ for fixes/workarounds or to post a new issue.
@@ -147,4 +147,3 @@ Funding
 =======
 
 We acknowledge funding from Social Sciences and Humanities Research Council (SSHRC) #430-2014-00018, Fonds de Recherche du Québec – Société et Culture (FRQSC) #183356 and Canada Foundation for Innovation (CFI) #32451 to Morgan Sonderegger.
-

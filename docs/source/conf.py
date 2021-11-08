@@ -20,74 +20,60 @@
 import os
 import sys
 
-import mock
-
-MOCK_MODULES = ['textgrid', 'textgrid.textgrid',
-                'praatio', 'praatio.tgio', 'praatio.utilities',
-                'praatio.utilities.constants',
-                'tqdm', 'yaml', 'colorama',
-                'numpy', 'resampy', 'audioread',
-                'scipy', 'scipy.signal', 'scipy.io',
-                'librosa', 'librosa.core.spectrum', 'matplotlib',
-                'soundfile',
-                'pyqt5', 'pyqtgraph', 'requests', 'requests.exceptions',
-                'sklearn', 'joblib', 'sklearn.naive_bayes']
-
-for mod_name in MOCK_MODULES:
-    sys.modules[mod_name] = mock.Mock()
-
-sys.path.insert(0, os.path.abspath('../../'))
-import montreal_forced_aligner
+sys.path.insert(0, os.path.abspath("../../"))
+import montreal_forced_aligner  # noqa
 
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
 #
-#needs_sphinx = '1.4'
+# needs_sphinx = '1.4'
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.ifconfig',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.autosummary',
-    'numpydoc',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
+    "sphinx.ext.ifconfig",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.autosummary",
+    "sphinx_automodapi.automodapi",
+    "numpydoc",
 ]
-autosummary_generate = True
-autodoc_default_flags = ['members']
-numpydoc_show_class_members = False
 
+
+numpydoc_show_class_members = False
+numpydoc_class_members_toctree = False
+autosummary_imported_members = False
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = '.rst'
+source_suffix = ".rst"
 
 # The encoding of source files.
 #
 # source_encoding = 'utf-8-sig'
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = "index"
 
 # General information about the project.
-project = 'Montreal Forced Aligner'
-copyright = '2018, Montreal Corpus Tools'
-author = 'Montreal Corpus Tools'
+project = "Montreal Forced Aligner"
+copyright = "2018, Montreal Corpus Tools"
+author = "Montreal Corpus Tools"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = '{}.{}'.format(montreal_forced_aligner.__ver_major__, montreal_forced_aligner.__ver_minor__)
+version = ".".join(montreal_forced_aligner.__version__.split(".", maxsplit=2)[:2])
 # The full version, including alpha/beta/rc tags.
 release = montreal_forced_aligner.__version__
 
@@ -132,7 +118,7 @@ exclude_patterns = []
 # show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = "sphinx"
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
@@ -149,15 +135,15 @@ todo_include_todos = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme'
+html_theme = "sphinx_rtd_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-#html_theme_options = {
+# html_theme_options = {
 #    'page_width': 'auto',
-#}
+# }
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []
@@ -185,7 +171,7 @@ html_theme = 'sphinx_rtd_theme'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -206,7 +192,7 @@ html_static_path = ['_static']
 
 # Custom sidebar templates, maps document names to template names.
 #
-#html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
+# html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
@@ -265,34 +251,36 @@ html_static_path = ['_static']
 # html_search_scorer = 'scorer.js'
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'MontrealForcedAlignerdoc'
+htmlhelp_basename = "MontrealForcedAlignerdoc"
 
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
-     # The paper size ('letterpaper' or 'a4paper').
-     #
-     # 'papersize': 'letterpaper',
-
-     # The font size ('10pt', '11pt' or '12pt').
-     #
-     # 'pointsize': '10pt',
-
-     # Additional stuff for the LaTeX preamble.
-     #
-     # 'preamble': '',
-
-     # Latex figure (float) alignment
-     #
-     # 'figure_align': 'htbp',
+    # The paper size ('letterpaper' or 'a4paper').
+    #
+    # 'papersize': 'letterpaper',
+    # The font size ('10pt', '11pt' or '12pt').
+    #
+    # 'pointsize': '10pt',
+    # Additional stuff for the LaTeX preamble.
+    #
+    # 'preamble': '',
+    # Latex figure (float) alignment
+    #
+    # 'figure_align': 'htbp',
 }
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'MontrealForcedAligner.tex', 'Montreal Forced Aligner Documentation',
-     'Montreal Corpus Tools', 'manual'),
+    (
+        master_doc,
+        "MontrealForcedAligner.tex",
+        "Montreal Forced Aligner Documentation",
+        "Montreal Corpus Tools",
+        "manual",
+    ),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -327,8 +315,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'montrealforcedaligner', 'Montreal Forced Aligner Documentation',
-     [author], 1)
+    (master_doc, "montrealforcedaligner", "Montreal Forced Aligner Documentation", [author], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -342,9 +329,15 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'MontrealForcedAligner', 'Montreal Forced Aligner Documentation',
-     author, 'MontrealForcedAligner', 'One line description of project.',
-     'Miscellaneous'),
+    (
+        master_doc,
+        "MontrealForcedAligner",
+        "Montreal Forced Aligner Documentation",
+        author,
+        "MontrealForcedAligner",
+        "One line description of project.",
+        "Miscellaneous",
+    ),
 ]
 
 # Documents to append as an appendix to all manuals.

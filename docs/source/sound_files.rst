@@ -46,5 +46,3 @@ or silent pauses (i.e., not associated with a stop closure) to separate the audi
 setting the beam and retry beam higher than their defaults will allow them to be aligned.  The default beam/retry beam is very
 conservative 10/40, so something like 400/1000 will allow for much longer sequences to be aligned.  See :ref:`configuration`
 for more details.
-
-

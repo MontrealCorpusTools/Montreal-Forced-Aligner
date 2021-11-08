@@ -26,8 +26,7 @@ Contents:
    annotator.rst
    pretrained_models.rst
    changelog.rst
-   alignment_techniques.rst
-   apireference.rst
+   api_index.rst
 
 
 Indices and tables
@@ -36,4 +35,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

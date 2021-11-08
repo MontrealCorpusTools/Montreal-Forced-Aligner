@@ -303,4 +303,3 @@ Major changes to system, see :ref:`whats_new_1_1`.
 - TextGrid format supported
 - Align using pretrained models supported
 - Train models and align concurrently supported
-

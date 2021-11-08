@@ -15,4 +15,3 @@ training:
       max_gaussians: 40000
       power: 0.25
       boost_silence: 1.25
-

@@ -22,5 +22,3 @@ training:
       subset: 3000
       boost_silence: 1.25
       power: 0.25
-
-

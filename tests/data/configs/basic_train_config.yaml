@@ -40,5 +40,3 @@ training:
       subset: 1000
       features:
           lda: true
-
-

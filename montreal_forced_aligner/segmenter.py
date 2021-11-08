@@ -1,19 +1,28 @@
+"""Class definitions for Segmentation based on voice activity in MFA"""
 from __future__ import annotations
-from typing import TYPE_CHECKING, List, Dict, Optional
+
+from typing import TYPE_CHECKING, Dict, List, Optional
+
 if TYPE_CHECKING:
     from .corpus import TranscribeCorpus
     from .config import SegmentationConfig, ConfigDict
     from logging import Logger
+
 import os
 import shutil
 from decimal import Decimal
+
 from praatio import textgrid
+
 from .config import TEMP_DIR
-from .utils import log_kaldi_errors, parse_logs
 from .exceptions import KaldiProcessingError
 from .multiprocessing.ivector import segment_vad
+from .utils import log_kaldi_errors, parse_logs
 
 SegmentationType = List[Dict[str, float]]
+
+__all__ = ["Segmenter"]
+
 
 class Segmenter(object):
     """
@@ -32,11 +41,19 @@ class Segmenter(object):
         Flag for running in debug mode, defaults to false
     verbose : bool
         Flag for running in verbose mode, defaults to false
+    logger : logging.Logger, optional
+        Logger to use
     """
 
-    def __init__(self, corpus: TranscribeCorpus, segmentation_config: SegmentationConfig,
-                 temp_directory: Optional[str]=None, debug: Optional[bool]=False, verbose: Optional[bool]=False,
-                 logger: Optional[Logger]=None):
+    def __init__(
+        self,
+        corpus: TranscribeCorpus,
+        segmentation_config: SegmentationConfig,
+        temp_directory: Optional[str] = None,
+        debug: Optional[bool] = False,
+        verbose: Optional[bool] = False,
+        logger: Optional[Logger] = None,
+    ):
         self.corpus = corpus
         self.segmentation_config = segmentation_config
 
@@ -54,31 +71,44 @@ class Segmenter(object):
 
     @property
     def segmenter_directory(self) -> str:
-        return os.path.join(self.temp_directory, 'segmentation')
+        """Temporary directory for segmentation"""
+        return os.path.join(self.temp_directory, "segmentation")
 
     @property
     def vad_options(self) -> ConfigDict:
-        return {'energy_threshold': self.segmentation_config.energy_threshold,
-                'energy_mean_scale': self.segmentation_config.energy_mean_scale}
+        """Options for performing VAD"""
+        return {
+            "energy_threshold": self.segmentation_config.energy_threshold,
+            "energy_mean_scale": self.segmentation_config.energy_mean_scale,
+        }
 
     @property
     def use_mp(self) -> bool:
+        """Flag for whether to use multiprocessing"""
         return self.segmentation_config.use_mp
 
     def setup(self) -> None:
-        done_path = os.path.join(self.segmenter_directory, 'done')
+        """
+        Sets up the corpus and segmenter for performing VAD
+
+        Raises
+        ------
+        KaldiProcessingError
+            If there were any errors in running Kaldi binaries
+        """
+        done_path = os.path.join(self.segmenter_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info('Classification already done, skipping initialization.')
+            self.logger.info("Classification already done, skipping initialization.")
             return
-        dirty_path = os.path.join(self.segmenter_directory, 'dirty')
+        dirty_path = os.path.join(self.segmenter_directory, "dirty")
         if os.path.exists(dirty_path):
             shutil.rmtree(self.segmenter_directory)
-        log_dir = os.path.join(self.segmenter_directory, 'log')
+        log_dir = os.path.join(self.segmenter_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         try:
             self.corpus.initialize_corpus(None, self.segmentation_config.feature_config)
         except Exception as e:
-            with open(dirty_path, 'w'):
+            with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
@@ -86,47 +116,60 @@ class Segmenter(object):
             raise
 
     def segment(self) -> None:
-        log_directory = os.path.join(self.segmenter_directory, 'log')
-        dirty_path = os.path.join(self.segmenter_directory, 'dirty')
-        done_path = os.path.join(self.segmenter_directory, 'done')
+        """
+        Performs VAD and segmentation into utterances
+
+        Raises
+        ------
+        KaldiProcessingError
+            If there were any errors in running Kaldi binaries
+        """
+        log_directory = os.path.join(self.segmenter_directory, "log")
+        dirty_path = os.path.join(self.segmenter_directory, "dirty")
+        done_path = os.path.join(self.segmenter_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info('Classification already done, skipping.')
+            self.logger.info("Classification already done, skipping.")
             return
         try:
-            self.corpus.compute_vad(self.vad_options)
+            self.corpus.compute_vad()
             self.uses_vad = True
             segment_vad(self)
             parse_logs(log_directory)
         except Exception as e:
-            with open(dirty_path, 'w'):
+            with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
                 e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
-        with open(done_path, 'w'):
+        with open(done_path, "w"):
             pass
 
     def export_segments(self, output_directory: str) -> None:
+        """
+        Export the results of segmentation as TextGrids
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save segmentation TextGrids
+        """
         file_dict = {}
-        for utt, segment in self.corpus.vad_segments.items():
+        for segment in self.corpus.vad_segments.values():
             filename, utt_begin, utt_end = segment
             utt_begin = Decimal(utt_begin)
             utt_end = Decimal(utt_end)
             if filename not in file_dict:
                 file_dict[filename] = {}
-            speaker = 'segments'
-            text = 'speech'
+            speaker = "segments"
+            text = "speech"
             if speaker not in file_dict[filename]:
                 file_dict[filename][speaker] = []
             file_dict[filename][speaker].append([utt_begin, utt_end, text])
         for filename, speaker_dict in file_dict.items():
-            try:
-                speaker_directory = os.path.join(output_directory, self.corpus.file_directory_mapping[filename])
-            except KeyError:
-                speaker_directory = output_directory
-            os.makedirs(speaker_directory, exist_ok=True)
-            max_time = self.corpus.get_wav_duration(filename)
+            file = self.corpus.files[filename]
+            output_path = file.construct_output_path(output_directory)
+            max_time = file.duration
             tg = textgrid.Textgrid()
             tg.minTimestamp = 0
             tg.maxTimestamp = max_time
@@ -139,5 +182,8 @@ class Segmenter(object):
                     entry_list.append(w)
                 tier = textgrid.IntervalTier(speaker, entry_list, minT=0, maxT=max_time)
                 tg.addTier(tier)
-            tg.save(os.path.join(speaker_directory, f'{filename}.TextGrid'),
-                    includeBlankSpaces=True, format='long_textgrid')
+            tg.save(
+                output_path,
+                includeBlankSpaces=True,
+                format="long_textgrid",
+            )

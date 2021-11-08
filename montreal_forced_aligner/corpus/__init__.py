@@ -1,12 +1,13 @@
+"""Class definitions for corpora"""
 from __future__ import annotations
-from typing import TYPE_CHECKING, Union, Dict, List, Tuple, Any
-from .align_corpus import AlignableCorpus
-from .transcribe_corpus import TranscribeCorpus
+
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
+
+from .base import Corpus  # noqa
 
 if TYPE_CHECKING:
-    from .transcribe_corpus import BaseCorpus
-    CorpusType = BaseCorpus
-    SegmentsType = Dict[str, Dict[str, Union[str,float, int]]]
+
+    SegmentsType = Dict[str, Dict[str, Union[str, float, int]]]
     OneToOneMappingType = Dict[str, str]
     OneToManyMappingType = Dict[str, List[str]]
 

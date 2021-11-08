@@ -31,5 +31,3 @@ training:
       silence_weight: 0.0
       fmllr_update_type: "full"
       subset: 1000
-
-

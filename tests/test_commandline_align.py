@@ -1,9 +1,10 @@
 import os
+
 import pytest
 from praatio import textgrid as tgio
-from montreal_forced_aligner.command_line.align import run_align_corpus, load_basic_align
-from montreal_forced_aligner.command_line.mfa import parser
 
+from montreal_forced_aligner.command_line.align import load_basic_align, run_align_corpus
+from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.exceptions import PronunciationAcousticMismatchError
 
 
@@ -11,19 +12,36 @@ def assert_export_exist(old_directory, new_directory):
     for root, dirs, files in os.walk(old_directory):
         new_root = root.replace(old_directory, new_directory)
         for d in dirs:
-            assert (os.path.exists(os.path.join(new_root, d)))
+            assert os.path.exists(os.path.join(new_root, d))
         for f in files:
-            if not f.endswith('.wav'):
+            if not f.endswith(".wav"):
                 continue
-            new_f = f.replace('.wav', '.TextGrid')
-            assert (os.path.exists(os.path.join(new_root, new_f)))
+            new_f = f.replace(".wav", ".TextGrid")
+            assert os.path.exists(os.path.join(new_root, new_f))
 
 
-def test_align_arguments(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
-                         english_acoustic_model):
+def test_align_arguments(
+    basic_corpus_dir,
+    sick_dict_path,
+    generated_dir,
+    large_dataset_dictionary,
+    temp_dir,
+    english_acoustic_model,
+):
 
-    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', os.path.join(generated_dir, 'basic_output'),
-               '-t', temp_dir, '-q', '--clean', '--debug', '--disable_sat']
+    command = [
+        "align",
+        basic_corpus_dir,
+        large_dataset_dictionary,
+        "english",
+        os.path.join(generated_dir, "basic_output"),
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "--disable_sat",
+    ]
     args, unknown_args = parser.parse_known_args(command)
     print(args, unknown_args)
     align_config = load_basic_align()
@@ -32,44 +50,88 @@ def test_align_arguments(basic_corpus_dir, sick_dict_path, generated_dir, large_
         align_config.update_from_unknown_args(unknown_args)
     assert align_config.disable_sat
 
-#@pytest.mark.skip(reason='Optimization')
-def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
-                     basic_align_config, english_acoustic_model):
-    command = ['align', basic_corpus_dir, sick_dict_path, 'english', os.path.join(generated_dir, 'basic_output'),
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+
+# @pytest.mark.skip(reason='Optimization')
+def test_align_basic(
+    basic_corpus_dir,
+    sick_dict_path,
+    generated_dir,
+    large_dataset_dictionary,
+    temp_dir,
+    basic_align_config,
+    english_acoustic_model,
+):
+    command = [
+        "align",
+        basic_corpus_dir,
+        sick_dict_path,
+        "english",
+        os.path.join(generated_dir, "basic_output"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     with pytest.raises(PronunciationAcousticMismatchError):
         run_align_corpus(args, unknown)
-    output_directory = os.path.join(generated_dir, 'basic_align_output')
-    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+    output_directory = os.path.join(generated_dir, "basic_align_output")
+    command = [
+        "align",
+        basic_corpus_dir,
+        large_dataset_dictionary,
+        "english",
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
     assert os.path.exists(output_directory)
 
     output_paths = [
-        os.path.join(output_directory, 'michael', 'acoustic corpus.TextGrid'),
-        os.path.join(output_directory, 'michael', 'acoustic_corpus.TextGrid'),
-        os.path.join(output_directory, 'sickmichael', 'cold corpus.TextGrid'),
-        os.path.join(output_directory, 'sickmichael', 'cold_corpus.TextGrid'),
-        os.path.join(output_directory, 'sickmichael', 'cold corpus3.TextGrid'),
-        os.path.join(output_directory, 'sickmichael', 'cold_corpus3.TextGrid'),
-                    ]
+        os.path.join(output_directory, "michael", "acoustic corpus.TextGrid"),
+        os.path.join(output_directory, "michael", "acoustic_corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold_corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold corpus3.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold_corpus3.TextGrid"),
+    ]
 
     mod_times = {}
     for path in output_paths:
         assert os.path.exists(path)
         mod_times[path] = os.stat(path).st_mtime
 
-    align_temp_dir = os.path.join(temp_dir, 'basic', 'align')
+    align_temp_dir = os.path.join(temp_dir, "basic", "align")
     assert os.path.exists(align_temp_dir)
 
-    backup_textgrid_dir = os.path.join(align_temp_dir, 'textgrids')
+    backup_textgrid_dir = os.path.join(align_temp_dir, "textgrids")
     assert not os.listdir(backup_textgrid_dir)
 
-    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--debug', '--disable_mp']
+    command = [
+        "align",
+        basic_corpus_dir,
+        large_dataset_dictionary,
+        "english",
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--debug",
+        "--disable_mp",
+    ]
     args, unknown = parser.parse_known_args(command)
 
     run_align_corpus(args, unknown)
@@ -79,8 +141,21 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
         assert os.path.exists(path)
         assert mod_times[path] == os.stat(path).st_mtime
 
-    command = ['align', basic_corpus_dir, large_dataset_dictionary, 'english', output_directory,
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--disable_textgrid_cleanup', '--clean', '--overwrite']
+    command = [
+        "align",
+        basic_corpus_dir,
+        large_dataset_dictionary,
+        "english",
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--disable_textgrid_cleanup",
+        "--clean",
+        "--overwrite",
+    ]
     args, unknown = parser.parse_known_args(command)
 
     run_align_corpus(args, unknown)
@@ -89,46 +164,147 @@ def test_align_basic(basic_corpus_dir, sick_dict_path, generated_dir, large_data
         assert os.path.exists(path)
         assert mod_times[path] != os.stat(path).st_mtime
 
-def test_align_multilingual(multilingual_ipa_corpus_dir, english_uk_ipa_dictionary, generated_dir, temp_dir,
-                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
 
-    command = ['align', multilingual_ipa_corpus_dir, english_uk_ipa_dictionary, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual'),
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+def test_align_multilingual(
+    multilingual_ipa_corpus_dir,
+    english_uk_ipa_dictionary,
+    generated_dir,
+    temp_dir,
+    basic_align_config,
+    english_acoustic_model,
+    english_ipa_acoustic_model,
+):
+
+    command = [
+        "align",
+        multilingual_ipa_corpus_dir,
+        english_uk_ipa_dictionary,
+        english_ipa_acoustic_model,
+        os.path.join(generated_dir, "multilingual"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-def test_align_multilingual_speaker_dict(multilingual_ipa_corpus_dir, ipa_speaker_dict_path, generated_dir, temp_dir,
-                     basic_align_config,  english_ipa_acoustic_model):
 
-    command = ['align', multilingual_ipa_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual_speaker_dict'),
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+def test_align_multilingual_speaker_dict(
+    multilingual_ipa_corpus_dir,
+    ipa_speaker_dict_path,
+    generated_dir,
+    temp_dir,
+    basic_align_config,
+    english_ipa_acoustic_model,
+):
+
+    command = [
+        "align",
+        multilingual_ipa_corpus_dir,
+        ipa_speaker_dict_path,
+        english_ipa_acoustic_model,
+        os.path.join(generated_dir, "multilingual_speaker_dict"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-def test_align_multilingual_tg_speaker_dict(multilingual_ipa_tg_corpus_dir, ipa_speaker_dict_path, generated_dir, temp_dir,
-                     basic_align_config,  english_ipa_acoustic_model):
 
-    command = ['align', multilingual_ipa_tg_corpus_dir, ipa_speaker_dict_path, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual_speaker_dict_tg'),
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+def test_align_multilingual_tg_speaker_dict(
+    multilingual_ipa_tg_corpus_dir,
+    ipa_speaker_dict_path,
+    generated_dir,
+    temp_dir,
+    basic_align_config,
+    english_ipa_acoustic_model,
+):
+
+    command = [
+        "align",
+        multilingual_ipa_tg_corpus_dir,
+        ipa_speaker_dict_path,
+        english_ipa_acoustic_model,
+        os.path.join(generated_dir, "multilingual_speaker_dict_tg"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-def test_align_split(basic_split_dir, english_us_ipa_dictionary, generated_dir, temp_dir,
-                     basic_align_config, english_acoustic_model,  english_ipa_acoustic_model):
+
+def test_align_split(
+    basic_split_dir,
+    english_us_ipa_dictionary,
+    generated_dir,
+    temp_dir,
+    basic_align_config,
+    english_acoustic_model,
+    english_ipa_acoustic_model,
+):
     audio_dir, text_dir = basic_split_dir
-    command = ['align', text_dir, english_us_ipa_dictionary, english_ipa_acoustic_model, os.path.join(generated_dir, 'multilingual'),
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug', '--audio_directory', audio_dir]
+    command = [
+        "align",
+        text_dir,
+        english_us_ipa_dictionary,
+        english_ipa_acoustic_model,
+        os.path.join(generated_dir, "multilingual"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+        "--audio_directory",
+        audio_dir,
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-def test_align_stereo(stereo_corpus_dir, sick_dict_path, generated_dir, large_dataset_dictionary, temp_dir,
-                     basic_align_config, english_acoustic_model):
-    output_dir = os.path.join(generated_dir, 'stereo_output')
-    command = ['align', stereo_corpus_dir, large_dataset_dictionary, 'english', output_dir,
-               '-t', temp_dir, '--config_path', basic_align_config, '-q', '--clean', '--debug']
+
+def test_align_stereo(
+    stereo_corpus_dir,
+    sick_dict_path,
+    generated_dir,
+    large_dataset_dictionary,
+    temp_dir,
+    basic_align_config,
+    english_acoustic_model,
+):
+    output_dir = os.path.join(generated_dir, "stereo_output")
+    command = [
+        "align",
+        stereo_corpus_dir,
+        large_dataset_dictionary,
+        "english",
+        output_dir,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
 
-    tg = tgio.openTextgrid(os.path.join(output_dir, 'michaelandsickmichael.TextGrid'), includeEmptyIntervals=False)
+    tg = tgio.openTextgrid(
+        os.path.join(output_dir, "michaelandsickmichael.TextGrid"), includeEmptyIntervals=False
+    )
     assert len(tg.tierNameList) == 4
-

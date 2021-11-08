@@ -13,5 +13,3 @@ training:
       num_iterations: 3
       max_gaussians: 500
       subset: 1000
-
-

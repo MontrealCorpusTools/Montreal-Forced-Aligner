@@ -1,9 +1,25 @@
+"""Class definitions for configuring G2P generation"""
 from __future__ import annotations
+
 import yaml
-from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS
+
+from .base_config import (
+    DEFAULT_CLITIC_MARKERS,
+    DEFAULT_COMPOUND_MARKERS,
+    DEFAULT_PUNCTUATION,
+    BaseConfig,
+    ConfigError,
+)
+
+__all__ = ["G2PConfig", "g2p_yaml_to_config", "load_basic_g2p_config"]
 
 
 class G2PConfig(BaseConfig):
+    """
+    Configuration class for generating pronunciations
+
+    """
+
     def __init__(self):
         self.punctuation = DEFAULT_PUNCTUATION
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
@@ -12,21 +28,35 @@ class G2PConfig(BaseConfig):
         self.use_mp = True
 
     def update(self, data: dict) -> None:
+        """Update configuration"""
         for k, v in data.items():
-            if k in ['punctuation', 'clitic_markers', 'compound_markers']:
+            if k in ["punctuation", "clitic_markers", "compound_markers"]:
                 if not v:
                     continue
-                if '-' in v:
-                    v = '-' + v.replace('-', '')
-                if ']' in v and r'\]' not in v:
-                    v = v.replace(']', r'\]')
+                if "-" in v:
+                    v = "-" + v.replace("-", "")
+                if "]" in v and r"\]" not in v:
+                    v = v.replace("]", r"\]")
             elif not hasattr(self, k):
-                raise ConfigError('No field found for key {}'.format(k))
+                raise ConfigError("No field found for key {}".format(k))
             setattr(self, k, v)
 
 
 def g2p_yaml_to_config(path: str) -> G2PConfig:
-    with open(path, 'r', encoding='utf8') as f:
+    """
+    Helper function to load G2P configurations
+
+    Parameters
+    ----------
+    path: str
+        Path to yaml file
+
+    Returns
+    -------
+    G2PConfig
+        G2P configuration
+    """
+    with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
         for k, v in data.items():
@@ -37,4 +67,12 @@ def g2p_yaml_to_config(path: str) -> G2PConfig:
 
 
 def load_basic_g2p_config() -> G2PConfig:
+    """
+    Helper function to load the default parameters
+
+    Returns
+    -------
+    G2PConfig
+        Default G2P configuration
+    """
     return G2PConfig()

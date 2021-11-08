@@ -5,5 +5,3 @@ use_mp: false
 features:
   type: "mfcc"
   frame_shift: 10
-
-
