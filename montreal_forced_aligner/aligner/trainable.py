@@ -91,11 +91,11 @@ class TrainableAligner(BaseAligner):
     @property
     def meta(self) -> dict:
         """Acoustic model parameters"""
-        from .. import __version__
+        from .. import get_mfa_version
 
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),
-            "version": __version__,
+            "version": get_mfa_version(),
             "architecture": self.training_config.values()[-1].architecture,
             "phone_type": self.training_config.values()[-1].phone_type,
             "features": self.align_config.feature_config.params(),

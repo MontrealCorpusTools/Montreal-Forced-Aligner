@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from montreal_forced_aligner import __version__
+from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.config.train_g2p_config import load_basic_train_g2p_config
 from montreal_forced_aligner.dictionary import check_bracketed
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
@@ -38,7 +38,7 @@ def test_training(sick_dict, sick_g2p_model_path, temp_dir):
 
     trainer.train()
     model = G2PModel(sick_g2p_model_path, root_directory=temp_dir)
-    assert model.meta["version"] == __version__
+    assert model.meta["version"] == get_mfa_version()
     assert model.meta["architecture"] == "pynini"
     assert model.meta["phones"] == sick_dict.nonsil_phones
 

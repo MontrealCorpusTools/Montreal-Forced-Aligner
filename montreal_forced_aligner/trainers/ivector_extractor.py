@@ -91,10 +91,10 @@ class IvectorExtractorTrainer(BaseTrainer):
     @property
     def meta(self) -> MetaDict:
         """Metadata information for IvectorExtractor"""
-        from .. import __version__
+        from .. import get_mfa_version
 
         return {
-            "version": __version__,
+            "version": get_mfa_version(),
             "ivector_dimension": self.ivector_dimension,
             "apply_cmn": self.apply_cmn,
             "num_gselect": self.num_gselect,

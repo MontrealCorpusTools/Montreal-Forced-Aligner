@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 import os
 
-from .. import __version__
+from .. import get_mfa_version
 from ..exceptions import KaldiProcessingError
 from ..models import AcousticModel
 from ..multiprocessing import (
@@ -180,7 +180,7 @@ class AdaptingAligner(BaseAligner):
 
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),
-            "version": __version__,
+            "version": get_mfa_version(),
             "architecture": self.acoustic_model.meta["architecture"],
             "train_date": str(datetime.now()),
             "features": self.previous_aligner.align_config.feature_config.params(),

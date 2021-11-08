@@ -19,7 +19,7 @@ import time
 
 from tqdm import tqdm
 
-from .. import __version__
+from .. import get_mfa_version
 from ..config import FeatureConfig
 from ..exceptions import KaldiProcessingError, TrainerError
 from ..models import AcousticModel
@@ -533,7 +533,7 @@ class BaseTrainer(object):
 
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),
-            "version": __version__,
+            "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_config.params(),

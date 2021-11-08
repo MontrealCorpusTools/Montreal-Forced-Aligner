@@ -12,8 +12,6 @@ import montreal_forced_aligner.models as models  # noqa
 import montreal_forced_aligner.multiprocessing as multiprocessing  # noqa
 import montreal_forced_aligner.textgrid as textgrid  # noqa
 
-from ._version import version as __version__  # noqa
-
 
 def get_mfa_version():
     try:
