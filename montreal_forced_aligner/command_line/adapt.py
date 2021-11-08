@@ -10,7 +10,6 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.aligner import AdaptingAligner, PretrainedAligner, TrainableAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import (
@@ -23,7 +22,7 @@ from montreal_forced_aligner.corpus import Corpus
 from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.utils import log_config, setup_logger
+from montreal_forced_aligner.utils import get_mfa_version, log_config, setup_logger
 
 __all__ = ["adapt_model", "validate_args", "run_adapt_model"]
 

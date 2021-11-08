@@ -10,7 +10,6 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.aligner import TrainableAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import (
@@ -38,6 +37,8 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[list] = None) -
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
     """
+    from montreal_forced_aligner.utils import get_mfa_version
+
     command = "train_acoustic_model"
     all_begin = time.time()
     if not args.temp_directory:

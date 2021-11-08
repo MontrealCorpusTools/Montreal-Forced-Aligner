@@ -87,7 +87,7 @@ class LmTrainer(object):
     @property
     def meta(self) -> Dict[str, Union[str, int, float]]:
         """Metadata information for the language model"""
-        from .. import get_mfa_version
+        from ..utils import get_mfa_version
 
         return {
             "type": "ngram",

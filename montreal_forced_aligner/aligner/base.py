@@ -15,7 +15,6 @@ import os
 import shutil
 import time
 
-from .. import get_mfa_version
 from ..config import TEMP_DIR
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
@@ -110,6 +109,8 @@ class BaseAligner(object):
     @property
     def meta(self) -> dict:
         """Metadata for the trained model"""
+        from ..utils import get_mfa_version
+
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),
             "version": get_mfa_version(),

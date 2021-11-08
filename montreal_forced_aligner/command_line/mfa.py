@@ -13,7 +13,6 @@ import sys
 import time
 from datetime import datetime
 
-from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.command_line.adapt import run_adapt_model
 from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.anchor import run_anchor
@@ -83,6 +82,8 @@ def history_save_handler() -> None:
     Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
     an exception was encountered, when the command was executed, and how long it took to run
     """
+    from montreal_forced_aligner.utils import get_mfa_version
+
     history_data = {
         "command": " ".join(sys.argv),
         "execution_time": time.time() - BEGIN,
@@ -791,6 +792,8 @@ def main() -> None:
                     print(h["command"])
 
         elif args.subcommand == "version":
+            from montreal_forced_aligner.utils import get_mfa_version
+
             print(get_mfa_version())
     except MFAError as e:
         if getattr(args, "debug", False):

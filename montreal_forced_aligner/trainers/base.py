@@ -19,7 +19,6 @@ import time
 
 from tqdm import tqdm
 
-from .. import get_mfa_version
 from ..config import FeatureConfig
 from ..exceptions import KaldiProcessingError, TrainerError
 from ..models import AcousticModel
@@ -530,6 +529,8 @@ class BaseTrainer(object):
     def meta(self) -> MetaDict:
         """Generate metadata for the acoustic model that was trained"""
         from datetime import datetime
+
+        from ..utils import get_mfa_version
 
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),

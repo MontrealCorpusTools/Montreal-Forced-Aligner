@@ -10,7 +10,6 @@ import os
 import shutil
 import time
 
-from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.config import (
     TEMP_DIR,
     load_basic_segmentation,
@@ -36,6 +35,8 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
     """
+    from montreal_forced_aligner.utils import get_mfa_version
+
     command = "create_segments"
     all_begin = time.time()
     if not args.temp_directory:

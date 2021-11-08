@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 import os
 
-from .. import get_mfa_version
 from ..exceptions import KaldiProcessingError
 from ..models import AcousticModel
 from ..multiprocessing import (
@@ -177,6 +176,8 @@ class AdaptingAligner(BaseAligner):
     def meta(self) -> MetaDict:
         """Acoustic model metadata"""
         from datetime import datetime
+
+        from ..utils import get_mfa_version
 
         data = {
             "phones": sorted(self.dictionary.nonsil_phones),

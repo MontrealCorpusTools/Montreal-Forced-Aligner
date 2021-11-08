@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import Optional
 
-from . import get_mfa_version
 from .exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -341,6 +340,8 @@ class AcousticModel(Archive):
         """
         Prints the metadata information to the terminal
         """
+        from .utils import get_mfa_version
+
         printer = TerminalPrinter()
         configuration_data = {"Acoustic model": {"name": (self.name, "green"), "data": {}}}
         version_color = "green"
@@ -514,6 +515,8 @@ class G2PModel(Archive):
         architecture: str, optional
             Architecture of the G2P model, defaults to "pynini"
         """
+        from .utils import get_mfa_version
+
         if architecture is None:
             architecture = "pynini"
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:

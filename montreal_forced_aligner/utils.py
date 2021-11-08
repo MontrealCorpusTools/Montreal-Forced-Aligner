@@ -42,6 +42,14 @@ __all__ = [
 ]
 
 
+def get_mfa_version():
+    try:
+        from .version import version as __version__  # noqa
+    except ImportError:
+        __version__ = "2.0.0"
+    return __version__
+
+
 def thirdparty_binary(binary_name: str) -> str:
     """
     Generate full path to a given binary name

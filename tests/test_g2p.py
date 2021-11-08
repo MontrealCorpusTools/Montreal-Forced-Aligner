@@ -2,13 +2,12 @@ import os
 
 import pytest
 
-from montreal_forced_aligner import get_mfa_version
 from montreal_forced_aligner.config.train_g2p_config import load_basic_train_g2p_config
 from montreal_forced_aligner.dictionary import check_bracketed
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator, clean_up_word
 from montreal_forced_aligner.g2p.trainer import G2P_DISABLED, PyniniTrainer
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import get_pretrained_g2p_path
+from montreal_forced_aligner.utils import get_mfa_version, get_pretrained_g2p_path
 
 
 def test_clean_up_word():
