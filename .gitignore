@@ -79,3 +79,5 @@ target/
 \.pytest_cache/
 
 docs/source/api/
+
+montreal_forced_aligner/_version.py
