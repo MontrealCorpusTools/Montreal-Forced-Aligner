@@ -17,4 +17,4 @@ dependencies:
   - pynini
   - pip
   - pip:
-      praatio >= 5.0
+      - praatio >= 5.0

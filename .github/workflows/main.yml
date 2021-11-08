@@ -26,19 +26,15 @@ jobs:
         uses: pre-commit/action@v2.0.3
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.8]
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+      - uses: "actions/checkout@v2"
+      - uses: "actions/setup-python@v2"
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.8"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools setuptools_scm[toml] wheel
-          pip install tox tox-gh-actions tox-conda
+          pip install tox tox-gh-actions tox-conda twine build
       - name: Test with tox
         run: tox
       - name: "Upload coverage to Codecov"
@@ -46,21 +42,6 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: true
-
-  package:
-    name: "Build & Verify Package on Ubuntu"
-    runs-on: "ubuntu-latest"
-    steps:
-      - uses: "actions/checkout@v2"
-      - uses: "actions/setup-python@v2"
-        with:
-          python-version: "3.8"
-      - name: Install pypa/build
-        run: >-
-          python -m
-          pip install
-          build
-          --user
       - name: Build a binary wheel and a source tarball
         run: >-
           python -m
