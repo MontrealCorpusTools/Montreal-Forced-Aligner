@@ -1,4 +1,4 @@
-name: montreal-forced-aligner
+name: mfa
 channels:
   - conda-forge
 dependencies:
