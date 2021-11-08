@@ -489,9 +489,10 @@ def create_hclgs(transcriber: Transcriber):
     for arg in dict_arguments:
         if not os.path.exists(arg.hclg_path):
             error_logs.append(arg.log_path)
+        else:
             with open(arg.log_path, "r", encoding="utf8") as f:
                 for line in f:
-                    transcriber.logger.error(line)
+                    transcriber.logger.warning(line)
     if error_logs:
         raise KaldiProcessingError(error_logs)
 
