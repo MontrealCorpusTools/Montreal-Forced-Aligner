@@ -10,8 +10,3 @@ sphinx:
 
 conda:
   environment: rtd_environment.yml
-
-python:
-  install:
-    - requirements: requirements.txt
-    - requirements: rtd_requirements.txt
