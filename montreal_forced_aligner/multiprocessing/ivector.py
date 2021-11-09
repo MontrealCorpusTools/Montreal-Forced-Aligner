@@ -735,7 +735,7 @@ def segment_vad_func(
             )
             for seg in merged:
                 utterances[recording] = Utterance(
-                    speaker, file, begin=seg["begin"], end=seg["end"]
+                    speaker, file, begin=seg["begin"], end=seg["end"], text="speech"
                 )
     return utterances
 
@@ -761,14 +761,25 @@ def segment_vad(segmenter: Segmenter) -> None:
         segment_info = run_non_mp(
             segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
         )
-
+    print(segment_info)
+    print(segmenter.corpus.utterances)
+    print(segmenter.corpus.speakers)
     for j in range(segmenter.corpus.num_jobs):
         for old_utt, utterance in segment_info[j].items():
             old_utt = segmenter.corpus.utterances[old_utt]
             file = old_utt.file
-            if utterance.speaker_name not in segmenter.corpus.speakers:
-                segmenter.corpus.speakers[utterance.speaker_name] = Speaker(utterance.speaker_name)
-            speaker = segmenter.corpus.speakers[utterance.speaker_name]
+            if segmenter.corpus.no_speakers:
+                if utterance.speaker_name not in segmenter.corpus.speakers:
+                    segmenter.corpus.speakers[utterance.speaker_name] = Speaker(
+                        utterance.speaker_name
+                    )
+                speaker = segmenter.corpus.speakers[utterance.speaker_name]
+            else:
+                speaker = old_utt.speaker
             utterance.file = file
             utterance.set_speaker(speaker)
             segmenter.corpus.delete_utterance(old_utt)
+            segmenter.corpus.add_utterance(utterance)
+    print(segmenter.corpus.utterances)
+    print(segmenter.corpus.files)
+    print(segmenter.corpus.speakers)

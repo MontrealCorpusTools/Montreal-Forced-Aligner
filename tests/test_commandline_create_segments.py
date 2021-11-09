@@ -6,11 +6,7 @@ from montreal_forced_aligner.command_line.mfa import parser
 
 def test_create_segments(
     basic_corpus_dir,
-    sick_dict_path,
-    english_acoustic_model,
     generated_dir,
-    transcription_acoustic_model,
-    transcription_language_model,
     temp_dir,
     basic_segment_config,
 ):
@@ -30,3 +26,4 @@ def test_create_segments(
     ]
     args, unknown = parser.parse_known_args(command)
     run_create_segments(args)
+    assert os.path.exists(os.path.join(output_path, "michael", "acoustic_corpus.TextGrid"))

@@ -25,6 +25,7 @@ class SegmentationConfig(BaseConfig):
         self.snap_boundary_threshold = 0.15
         self.feature_config = feature_config
         self.feature_config.use_energy = True
+        self.overwrite = True
 
     def update(self, data: dict) -> None:
         """Update configuration parameters"""

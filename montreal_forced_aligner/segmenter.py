@@ -4,15 +4,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from .corpus import TranscribeCorpus
+    from .corpus import Corpus
     from .config import SegmentationConfig, ConfigDict
     from logging import Logger
 
 import os
 import shutil
-from decimal import Decimal
-
-from praatio import textgrid
 
 from .config import TEMP_DIR
 from .exceptions import KaldiProcessingError
@@ -47,7 +44,7 @@ class Segmenter(object):
 
     def __init__(
         self,
-        corpus: TranscribeCorpus,
+        corpus: Corpus,
         segmentation_config: SegmentationConfig,
         temp_directory: Optional[str] = None,
         debug: Optional[bool] = False,
@@ -154,36 +151,9 @@ class Segmenter(object):
         output_directory: str
             Directory to save segmentation TextGrids
         """
-        file_dict = {}
-        for segment in self.corpus.vad_segments.values():
-            filename, utt_begin, utt_end = segment
-            utt_begin = Decimal(utt_begin)
-            utt_end = Decimal(utt_end)
-            if filename not in file_dict:
-                file_dict[filename] = {}
-            speaker = "segments"
-            text = "speech"
-            if speaker not in file_dict[filename]:
-                file_dict[filename][speaker] = []
-            file_dict[filename][speaker].append([utt_begin, utt_end, text])
-        for filename, speaker_dict in file_dict.items():
-            file = self.corpus.files[filename]
-            output_path = file.construct_output_path(output_directory)
-            max_time = file.duration
-            tg = textgrid.Textgrid()
-            tg.minTimestamp = 0
-            tg.maxTimestamp = max_time
-            for speaker in sorted(speaker_dict.keys()):
-                words = speaker_dict[speaker]
-                entry_list = []
-                for w in words:
-                    if w[1] > max_time:
-                        w[1] = max_time
-                    entry_list.append(w)
-                tier = textgrid.IntervalTier(speaker, entry_list, minT=0, maxT=max_time)
-                tg.addTier(tier)
-            tg.save(
-                output_path,
-                includeBlankSpaces=True,
-                format="long_textgrid",
-            )
+        backup_output_directory = None
+        if not self.segmentation_config.overwrite:
+            backup_output_directory = os.path.join(self.segmenter_directory, "transcriptions")
+            os.makedirs(backup_output_directory, exist_ok=True)
+        for f in self.corpus.files.values():
+            f.save(output_directory, backup_output_directory)

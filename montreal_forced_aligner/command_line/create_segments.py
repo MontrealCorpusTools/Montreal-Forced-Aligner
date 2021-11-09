@@ -53,7 +53,7 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
         segmentation_config = segmentation_yaml_to_config(args.config_path)
     else:
         segmentation_config = load_basic_segmentation()
-    segmentation_config.use_mp = not args.disable_mp
+    segmentation_config.update_from_args(args)
     if unknown_args:
         segmentation_config.update_from_unknown_args(unknown_args)
     if getattr(args, "clean", False) and os.path.exists(data_directory):

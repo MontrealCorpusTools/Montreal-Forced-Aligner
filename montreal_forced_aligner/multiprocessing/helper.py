@@ -210,7 +210,7 @@ def run_mp(
     if return_info:
         info = manager.dict()
     for a in argument_list:
-        job_queue.put(a, False)
+        job_queue.put(a)
     procs = []
     for i in range(len(argument_list)):
         p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
