@@ -1,13 +1,9 @@
 """Command line functions for interacting with MFA models"""
 from __future__ import annotations
 
+import os
 import shutil
 from typing import TYPE_CHECKING, List, Optional, Union
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-import os
 
 import requests
 
@@ -26,6 +22,10 @@ from montreal_forced_aligner.utils import (
     get_pretrained_path,
     guess_model_type,
 )
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+
 
 __all__ = [
     "list_downloadable_models",
@@ -167,13 +167,23 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
+    :class:`~montreal_forced_aligner.exceptions.ModelTypeNotSupportedError`
+        If the type of model is not supported
+    :class:`~montreal_forced_aligner.exceptions.FileArgumentNotFoundError`
+        If the file specified is not found
+    :class:`~montreal_forced_aligner.exceptions.PretrainedModelNotFoundError`
+        If the pretrained model specified is not found
+    :class:`~montreal_forced_aligner.exceptions.ModelExtensionError`
+        If the extension is not valid for the specified model type
+    :class:`~montreal_forced_aligner.exceptions.MultipleModelTypesFoundError`
+        If multiple model types match the name
     """
     if args.action == "download":
         if args.model_type not in MODEL_TYPES:
@@ -229,7 +239,7 @@ def run_model(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

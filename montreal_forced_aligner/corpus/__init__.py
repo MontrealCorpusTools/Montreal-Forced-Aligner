@@ -16,3 +16,5 @@ if TYPE_CHECKING:
     CorpusGroupedOneToOne = List[List[Tuple[str, str]]]
     CorpusGroupedOneToMany = List[List[Tuple[str, List[Any]]]]
     CorpusGroupedType = Union[CorpusGroupedOneToMany, CorpusGroupedOneToOne]
+
+__all__ = ["Corpus"]

@@ -3,15 +3,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from .base import BaseAligner
+
 if TYPE_CHECKING:
-    from ..corpus import AlignableCorpus
-    from ..dictionary import Dictionary
-    from ..config import AlignConfig
-    from ..config import TrainingConfig
-    from ..aligner.pretrained import PretrainedAligner
     from logging import Logger
 
-from .base import BaseAligner
+    from ..aligner.pretrained import PretrainedAligner
+    from ..config import AlignConfig, TrainingConfig
+    from ..corpus import Corpus
+    from ..dictionary import Dictionary
 
 __all__ = ["TrainableAligner"]
 
@@ -22,13 +22,13 @@ class TrainableAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
     training_config : :class:`~montreal_forced_aligner.config.TrainingConfig`
         Configuration to train a model
-    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -37,15 +37,15 @@ class TrainableAligner(BaseAligner):
         Flag for debug mode, default is False
     verbose: bool
         Flag for verbose mode, default is False
-    logger: logging.Logger
+    logger: :class:`~logging.Logger`
         Logger to use
-    pretrained_aligner: PretrainedAligner, optional
+    pretrained_aligner: :class:`~montreal_forced_aligner.aligner.pretrained.PretrainedAligner`, optional
         Pretrained aligner to use as input to training
     """
 
     def __init__(
         self,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: Dictionary,
         training_config: TrainingConfig,
         align_config: AlignConfig,

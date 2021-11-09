@@ -1,20 +1,19 @@
 """Multiprocessing functions for generating features"""
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from typing import TYPE_CHECKING, Dict, List, Union
+
+from ..helper import load_scp, make_safe
+from ..multiprocessing import run_mp, run_non_mp
+from ..utils import thirdparty_binary
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
     from ..corpus import Corpus
     from ..corpus.classes import ConfigDict
-
-import os
-import shutil
-import subprocess
-
-from ..helper import load_scp, make_safe
-from ..multiprocessing import run_mp, run_non_mp
-from ..utils import thirdparty_binary
 
 __all__ = ["mfcc", "compute_vad", "calc_cmvn"]
 
@@ -117,7 +116,7 @@ def mfcc(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus : Corpus
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus to generate MFCC features for
     """
     log_directory = os.path.join(corpus.split_directory, "log")
@@ -136,7 +135,7 @@ def calc_cmvn(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus: Corpus
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus to run CMVN calculation
     """
     spk2utt = os.path.join(corpus.output_directory, "spk2utt.scp")
@@ -210,7 +209,7 @@ def compute_vad(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus: Corpus
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus to compute VAD
     """
     log_directory = os.path.join(corpus.split_directory, "log")

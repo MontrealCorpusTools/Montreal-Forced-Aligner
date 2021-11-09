@@ -1,7 +1,11 @@
 """Class definitions for multiprocessing Jobs"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Set, Tuple, Union
+import os
+from typing import TYPE_CHECKING, Collection, Dict, List, NamedTuple, Set, Tuple, Union
+
+from ..corpus.classes import File, Speaker, Utterance
+from ..helper import output_mapping, save_scp
 
 if TYPE_CHECKING:
     from ..aligner.adapting import AdaptingAligner
@@ -30,12 +34,49 @@ if TYPE_CHECKING:
 
     AlignerType = Union[BaseTrainer, BaseAligner]
 
-import os
-
-from ..corpus.classes import File, Speaker, Utterance
-from ..helper import output_mapping, save_scp
-
-__all__ = ["Job"]
+__all__ = [
+    "Job",
+    "AlignArguments",
+    "VadArguments",
+    "SegmentVadArguments",
+    "CreateHclgArguments",
+    "AccGlobalStatsArguments",
+    "AccStatsArguments",
+    "AccIvectorStatsArguments",
+    "AccStatsTwoFeatsArguments",
+    "AliToCtmArguments",
+    "MfccArguments",
+    "ScoreArguments",
+    "DecodeArguments",
+    "PhoneCtmArguments",
+    "CombineCtmArguments",
+    "CleanupWordCtmArguments",
+    "NoCleanupWordCtmArguments",
+    "LmRescoreArguments",
+    "AlignmentImprovementArguments",
+    "ConvertAlignmentsArguments",
+    "CalcFmllrArguments",
+    "CalcLdaMlltArguments",
+    "GmmGselectArguments",
+    "FinalFmllrArguments",
+    "LatGenFmllrArguments",
+    "FmllrRescoreArguments",
+    "TreeStatsArguments",
+    "LdaAccStatsArguments",
+    "MapAccStatsArguments",
+    "GaussToPostArguments",
+    "ClassifySpeakersArguments",
+    "InitialFmllrArguments",
+    "ExtractIvectorsArguments",
+    "ExportTextGridArguments",
+    "CompileTrainGraphsArguments",
+    "CompileInformationArguments",
+    "CompileUtteranceTrainGraphsArguments",
+    "MonoAlignEqualArguments",
+    "TestUtterancesArguments",
+    "CarpaLmRescoreArguments",
+    "GeneratePronunciationsArguments",
+]
 
 
 class VadArguments(NamedTuple):
@@ -369,7 +410,6 @@ class TestUtterancesArguments(NamedTuple):
 class SegmentVadArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.segment_vad_func`"""
 
-    log_path: str
     dictionaries: List[str]
     vad_paths: Dict[str, str]
     segmentation_options: ConfigDict
@@ -415,7 +455,7 @@ class CreateHclgArguments(NamedTuple):
     words_mapping: MappingType
 
     @property
-    def hclg_path(self):
+    def hclg_path(self) -> str:
         return self.path_template.format(file_name="HCLG")
 
 
@@ -519,7 +559,7 @@ class FmllrRescoreArguments(NamedTuple):
     final_lat_paths: Dict[str, str]
 
 
-class Job(object):
+class Job:
     """
     Class representing information about corpus jobs that will be run in parallel.
     Jobs have a set of speakers that they will process, along with all files and utterances associated with that speaker.
@@ -533,16 +573,16 @@ class Job(object):
 
     Attributes
     ----------
-    speakers: List[Speaker]
+    speakers: List[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
         List of speakers associated with this job
-    dictionaries: Set[Dictionary]
+    dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.Dictionary`]
         Set of dictionaries that the job's speakers use
-    subset_utts: Set[Utterance]
+    subset_utts: Set[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
         When trainers are just using a subset of the corpus, the subset of utterances on each job will be set and used to
         filter the job's utterances
-    subset_speakers: Set[Speaker]
+    subset_speakers: Set[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
         When subset_utts is set, this property will be calculated as the subset of speakers that the utterances correspond to
-    subset_dictionaries: Set[Dictionary]
+    subset_dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.Dictionary`]
         Subset of dictionaries that the subset of speakers use
 
     """
@@ -562,19 +602,19 @@ class Job(object):
 
         Parameters
         ----------
-        speaker: Speaker
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Speaker to add
         """
         self.speakers.append(speaker)
         self.dictionaries.add(speaker.dictionary)
 
-    def set_subset(self, subset_utts: List[Utterance]) -> None:
+    def set_subset(self, subset_utts: Collection[Utterance]) -> None:
         """
         Set the current subset for the trainer
 
         Parameters
         ----------
-        subset_utts: List[Utterance]
+        subset_utts: List[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
             Subset of utterances for this job to use
         """
         if subset_utts is None:
@@ -583,10 +623,8 @@ class Job(object):
             self.subset_dictionaries = set()
         else:
             self.subset_utts = set(subset_utts)
-            self.subset_speakers = set(
-                u.speaker for u in subset_utts if u.speaker in self.speakers
-            )
-            self.subset_dictionaries = set(s.dictionary for s in self.subset_speakers)
+            self.subset_speakers = {u.speaker for u in subset_utts if u.speaker in self.speakers}
+            self.subset_dictionaries = {s.dictionary for s in self.subset_speakers}
 
     def text_scp_data(self) -> Dict[str, Dict[str, List[str]]]:
         """
@@ -764,12 +802,12 @@ class Job(object):
 
     def cmvn_scp_data(self) -> Dict[str, Dict[str, str]]:
         """
-        Generate the job's data for Kaldi's cmvn scp files
+        Generate the job's data for Kaldi's CMVN scp files
 
         Returns
         -------
         Dict[str, Dict[str, str]]
-            Speaker to cmvn mapping, per dictionary name
+            Speaker to CMVN mapping, per dictionary name
         """
         data = {}
         for s in self.speakers:
@@ -896,7 +934,7 @@ class Job(object):
 
         Parameters
         ----------
-        feature_config: FeatureConfig
+        feature_config: :class:`~montreal_forced_aligner.config.features.FeatureConfig`
             Feature configuration
         """
         self.feature_config = feature_config
@@ -909,7 +947,7 @@ class Job(object):
 
         Parameters
         ----------
-        corpus: Corpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use as the source
         all_feats: bool
             Flag for whether all features across all jobs should be taken into account
@@ -950,7 +988,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: Union[AlignerType, SpeakerClassifier, Transcriber]
+        aligner: Union[AlignerType, :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier`, :class:`~montreal_forced_aligner.transcriber.Transcriber`]
             Aligner, Transcriber or other main utility class that uses the features
         speaker_independent: bool
             Flag for whether features should be speaker-independent regardless of the presence of fMLLR transforms
@@ -1023,7 +1061,7 @@ class Job(object):
 
         Parameters
         ----------
-        validator: CorpusValidator
+        validator: :class:`~montreal_forced_aligner.validator.CorpusValidator`
             Validator
 
         Returns
@@ -1060,7 +1098,7 @@ class Job(object):
 
         Parameters
         ----------
-        validator: CorpusValidator
+        validator: :class:`~montreal_forced_aligner.validator.CorpusValidator`
             Validator
 
         Returns
@@ -1092,7 +1130,7 @@ class Job(object):
 
         Parameters
         ----------
-        ivector_extractor: SpeakerClassifier
+        ivector_extractor: :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier`
             Speaker classifier
 
         Returns
@@ -1121,7 +1159,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1156,7 +1194,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1181,7 +1219,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1208,7 +1246,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1234,7 +1272,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1259,7 +1297,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1284,7 +1322,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1309,7 +1347,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1334,7 +1372,7 @@ class Job(object):
 
         Parameters
         ----------
-        transcriber: Transcriber
+        transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
             Transcriber
 
         Returns
@@ -1358,7 +1396,7 @@ class Job(object):
 
         Parameters
         ----------
-        corpus: Corpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus
 
         Returns
@@ -1380,7 +1418,7 @@ class Job(object):
 
         Parameters
         ----------
-        segmenter: Segmenter
+        segmenter: :class:`~montreal_forced_aligner.segmenter.Segmenter`
             Segmenter
 
         Returns
@@ -1389,7 +1427,6 @@ class Job(object):
             Arguments for processing
         """
         return SegmentVadArguments(
-            os.path.join(segmenter.corpus.split_directory, "log", f"segment_vad.{self.name}.log"),
             self.current_dictionary_names,
             self.construct_path_dictionary(segmenter.corpus.split_directory, "vad", "scp"),
             segmenter.segmentation_config.segmentation_options,
@@ -1401,7 +1438,7 @@ class Job(object):
 
         Parameters
         ----------
-        corpus: Corpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus
 
         Returns
@@ -1425,7 +1462,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1452,7 +1489,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1476,7 +1513,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1508,7 +1545,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1742,7 +1779,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1770,7 +1807,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1799,7 +1836,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1825,7 +1862,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1891,7 +1928,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1912,7 +1949,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1933,7 +1970,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1969,7 +2006,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -1990,7 +2027,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2011,7 +2048,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2035,7 +2072,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2061,7 +2098,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2087,7 +2124,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2111,7 +2148,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: LdaTrainer
+        aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
             Aligner
 
         Returns
@@ -2137,7 +2174,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: LdaTrainer
+        aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
             Aligner
 
         Returns
@@ -2163,7 +2200,7 @@ class Job(object):
 
         Parameters
         ----------
-        trainer: IvectorExtractorTrainer
+        trainer: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
             Aligner
 
         Returns
@@ -2187,7 +2224,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AdaptingAligner
+        aligner: :class:`~montreal_forced_aligner.aligner.AdaptingAligner`
             Aligner
 
         Returns
@@ -2210,7 +2247,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: IvectorExtractorTrainer
+        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
             Aligner
 
         Returns
@@ -2235,7 +2272,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: IvectorExtractorTrainer
+        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
             Aligner
 
         Returns
@@ -2264,7 +2301,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: IvectorExtractorTrainer
+        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
             Aligner
 
         Returns
@@ -2287,7 +2324,7 @@ class Job(object):
 
         Parameters
         ----------
-        aligner: AlignerType
+        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
             Aligner
 
         Returns
@@ -2323,7 +2360,7 @@ class Job(object):
 
         Parameters
         ----------
-        corpus: BaseCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to generate data for
         num_frequent_words: int
             Number of frequent words to include in the unigram language model
@@ -2365,7 +2402,7 @@ class Job(object):
 
         Parameters
         ----------
-        corpus: Corpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to generate FSTs for
         num_frequent_words: int
             Number of frequent words

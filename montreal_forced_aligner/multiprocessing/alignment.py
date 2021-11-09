@@ -1,7 +1,31 @@
 """Multiprocessing files for alignment functions in MFA"""
 from __future__ import annotations
 
+import multiprocessing as mp
+import os
+import re
+import statistics
+import subprocess
+import sys
+import time
+import traceback
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+from ..exceptions import AlignmentError, AlignmentExportError
+from ..multiprocessing.helper import Stopped
+from ..textgrid import (
+    ctms_to_textgrids_non_mp,
+    export_textgrid,
+    generate_tiers,
+    output_textgrid_writing_errors,
+    parse_from_phone,
+    parse_from_word,
+    parse_from_word_no_cleanup,
+    process_ctm_line,
+)
+from ..utils import thirdparty_binary
+from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
     from ..aligner.adapting import AdaptingAligner
@@ -25,30 +49,6 @@ if TYPE_CHECKING:
 
     AlignerType = Union[BaseTrainer, BaseAligner]
     CtmType = List[CtmInterval]
-import multiprocessing as mp
-import os
-import re
-import statistics
-import subprocess
-import sys
-import time
-import traceback
-from queue import Empty
-
-from ..exceptions import AlignmentError, AlignmentExportError
-from ..multiprocessing.helper import Stopped
-from ..textgrid import (
-    ctms_to_textgrids_non_mp,
-    export_textgrid,
-    generate_tiers,
-    output_textgrid_writing_errors,
-    parse_from_phone,
-    parse_from_word,
-    parse_from_word_no_cleanup,
-    process_ctm_line,
-)
-from ..utils import thirdparty_binary
-from .helper import run_mp, run_non_mp
 
 CtmErrorDict = Dict[Tuple[str, int], str]
 
@@ -136,7 +136,7 @@ def acc_stats(aligner: AlignerType):
 
     Parameters
     ----------
-    aligner : AlignerType
+    aligner : :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Trainer
     """
     arguments = [j.acc_stats_arguments(aligner) for j in aligner.corpus.jobs]
@@ -274,7 +274,7 @@ def compile_train_graphs(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     aligner.logger.debug("Compiling training graphs...")
@@ -307,7 +307,8 @@ def mono_align_equal_func(
         Path to save log output
     dictionaries: List[str]
         List of dictionary names
-    feature_strings
+    feature_strings: Dict[str, str]
+        Dictionary of feature strings per dictionary name
     fst_scp_paths: Dict[str, str]
         Dictionary of utterance FST scp files per dictionary name
     ali_ark_paths: Dict[str, str]
@@ -361,7 +362,7 @@ def mono_align_equal(aligner: MonophoneTrainer):
 
     Parameters
     ----------
-    aligner: MonophoneTrainer
+    aligner: :class:`~montreal_forced_aligner.trainer.MonophoneTrainer`
         Monophone trainer
     """
 
@@ -423,7 +424,8 @@ def align_func(
         Path to save log output
     dictionaries: List[str]
         List of dictionary names
-    fst_scp_paths
+    fst_scp_paths: Dict[str, str]
+        Dictionary of FST scp file paths per dictionary name
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
     model_path: str
@@ -492,7 +494,7 @@ def align(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     begin = time.time()
@@ -571,7 +573,7 @@ def compile_information(aligner: AlignerType) -> Tuple[Dict[str, str], float]:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
 
     Returns
@@ -723,30 +725,30 @@ def compute_alignment_improvement_func(
                     env=os.environ,
                 )
                 nbest_proc.communicate()
-            mapping = reversed_phone_mappings[dict_name]
-            actual_lines = []
-            with open(phone_ctm_path, "r", encoding="utf8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line == "":
-                        continue
-                    line = line.split(" ")
-                    utt = line[0]
-                    begin = float(line[2])
-                    duration = float(line[3])
-                    end = begin + duration
-                    label = line[4]
-                    try:
-                        label = mapping[int(label)]
-                    except KeyError:
-                        pass
-                    for p in positions[dict_name]:
-                        if label.endswith(p):
-                            label = label[: -1 * len(p)]
-                    actual_lines.append([utt, begin, end, label])
-            with open(phone_ctm_path, "w", encoding="utf8") as f:
-                for line in actual_lines:
-                    f.write(f"{' '.join(map(str, line))}\n")
+                mapping = reversed_phone_mappings[dict_name]
+                actual_lines = []
+                with open(phone_ctm_path, "r", encoding="utf8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line == "":
+                            continue
+                        line = line.split(" ")
+                        utt = line[0]
+                        begin = float(line[2])
+                        duration = float(line[3])
+                        end = begin + duration
+                        label = line[4]
+                        try:
+                            label = mapping[int(label)]
+                        except KeyError:
+                            pass
+                        for p in positions[dict_name]:
+                            if label.endswith(p):
+                                label = label[: -1 * len(p)]
+                        actual_lines.append([utt, begin, end, label])
+                with open(phone_ctm_path, "w", encoding="utf8") as f:
+                    for line in actual_lines:
+                        f.write(f"{' '.join(map(str, line))}\n")
     except Exception as e:
         raise (Exception(str(e)))
 
@@ -759,7 +761,7 @@ def parse_iteration_alignments(
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     iteration: IterationType
         Iteration to compute over
@@ -858,7 +860,8 @@ def compute_alignment_improvement(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        Aligner
     """
     jobs = [x.alignment_improvement_arguments(aligner) for x in aligner.corpus.jobs]
     if aligner.use_mp:
@@ -934,10 +937,6 @@ def ali_to_ctm_func(
         Dictionary of CTM files per dictionary name
     word_mode: bool
         Flag for whether to parse words or phones
-
-    Returns
-    -------
-
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -1015,13 +1014,13 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
     ----------
     job_name: int
         Job name
-    to_process_queue: multiprocessing.Queue
+    to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
         Dictionary for storing errors encountered
-    arguments: NoCleanupWordCtmArguments
+    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.NoCleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -1062,7 +1061,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
 
         def process_current_file(cur_file: str):
             """Process current file and add to return queue"""
-            self.to_process_queue.put(("word", dict_name, cur_file, current_file_data))
+            self.to_process_queue.put(("word", cur_file, current_file_data))
 
         cur_utt = None
         cur_file = None
@@ -1113,13 +1112,13 @@ class CleanupWordCtmProcessWorker(mp.Process):
     ----------
     job_name: int
         Job name
-    to_process_queue: multiprocessing.Queue
+    to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
         Dictionary for storing errors encountered
-    arguments: CleanupWordCtmArguments
+    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -1160,7 +1159,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
 
         def process_current_file(cur_file: str) -> None:
             """Process current file and add to return queue"""
-            self.to_process_queue.put(("word", dict_name, cur_file, current_file_data))
+            self.to_process_queue.put(("word", cur_file, current_file_data))
 
         cur_utt = None
         cur_file = None
@@ -1213,13 +1212,13 @@ class PhoneCtmProcessWorker(mp.Process):
     ----------
     job_name: int
         Job name
-    to_process_queue: multiprocessing.Queue
+    to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
         Dictionary for storing errors encountered
-    arguments: PhoneCtmArguments
+    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.PhoneCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -1262,7 +1261,7 @@ class PhoneCtmProcessWorker(mp.Process):
 
         def process_current_file(cur_file: str) -> None:
             """Process current file and add to return queue"""
-            self.to_process_queue.put(("phone", dict_name, cur_file, current_file_data))
+            self.to_process_queue.put(("phone", cur_file, current_file_data))
 
         try:
             for dict_name in self.dictionaries:
@@ -1313,17 +1312,17 @@ class CombineProcessWorker(mp.Process):
     ----------
     job_name: int
         Job name
-    to_process_queue: multiprocessing.Queue
+    to_process_queue: :class:`~multiprocessing.Queue`
         Input queue of phone and word ctms to combine
-    to_export_queue: multiprocessing.Queue
+    to_export_queue: :class:`~multiprocessing.Queue`
         Export queue of combined CTMs
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
-    finished_combining: Stopped
+    finished_combining: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Signal that this worker has finished combining all CTMs
     error_catching: CtmErrorDict
         Dictionary for storing errors encountered
-    arguments: CombineCtmArguments
+    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CombineCtmArguments`
         Arguments to pass to the CTM combining function
     """
 
@@ -1357,9 +1356,7 @@ class CombineProcessWorker(mp.Process):
         word_data = {}
         while True:
             try:
-                w_p, dict_name, file_name, data = self.to_process_queue.get(
-                    timeout=queue_polling_timeout
-                )
+                w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
                 begin_time = time.time()
             except Empty:
                 if self.finished_combining.stop_check():
@@ -1408,15 +1405,15 @@ class ExportTextGridProcessWorker(mp.Process):
 
     Parameters
     ----------
-    for_write_queue: multiprocessing.Queue
+    for_write_queue: :class:`~multiprocessing.Queue`
         Input queue of files to export
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
-    finished_processing: Stopped
+    finished_processing: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Input signal that all jobs have been added and no more new ones will come in
     textgrid_errors: CtmErrorDict
         Dictionary for storing errors encountered
-    arguments: ExportTextGridArguments
+    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.ExportTextGridArguments`
         Arguments to pass to the TextGrid export function
     """
 
@@ -1473,13 +1470,13 @@ class ExportPreparationProcessWorker(mp.Process):
 
     Parameters
     ----------
-    to_export_queue: multiprocessing.Queue
+    to_export_queue: :class:`~multiprocessing.Queue`
         Input queue of combined CTMs
-    for_write_queue: multiprocessing.Queue
+    for_write_queue: :class:`~multiprocessing.Queue`
         Export queue of files to export
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check for processing
-    finished_combining: Stopped
+    finished_combining: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Input signal that all CTMs have been combined
     files: Dict[str, File]
         Files in corpus
@@ -1540,7 +1537,7 @@ def ctms_to_textgrids_mp(aligner: AlignerType):
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     export_begin = time.time()
@@ -1687,7 +1684,7 @@ def convert_ali_to_textgrids(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     log_directory = aligner.working_log_directory
@@ -1765,7 +1762,7 @@ def tree_stats(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
 
@@ -1849,7 +1846,7 @@ def convert_alignments(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
 
@@ -2030,7 +2027,7 @@ def calc_fmllr(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     begin = time.time()
@@ -2110,7 +2107,7 @@ def create_align_model(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     aligner.logger.info("Creating alignment model for speaker-independent features...")
@@ -2247,7 +2244,7 @@ def lda_acc_stats(aligner: LdaTrainer) -> None:
 
     Parameters
     ----------
-    aligner: LdaTrainer
+    aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
         Trainer
     """
     arguments = [x.lda_acc_stats_arguments(aligner) for x in aligner.corpus.jobs]
@@ -2369,7 +2366,7 @@ def calc_lda_mllt(aligner: LdaTrainer) -> None:
 
     Parameters
     ----------
-    aligner: LdaTrainer
+    aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
         Trainer
     """
     jobs = [x.calc_lda_mllt_arguments(aligner) for x in aligner.corpus.jobs]
@@ -2477,7 +2474,7 @@ def train_map(aligner: AdaptingAligner) -> None:
 
     Parameters
     ----------
-    aligner: AdaptingAligner
+    aligner: :class:`~montreal_forced_aligner.aligner.AdaptingAligner`
         Adapting aligner
     """
     begin = time.time()

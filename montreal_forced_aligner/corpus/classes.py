@@ -1,7 +1,16 @@
 """Class definitions for Speakers, Files, Utterances and Jobs"""
 from __future__ import annotations
 
+import os
+import sys
+import traceback
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+
+from praatio import textgrid
+from praatio.utilities.constants import Interval
+
+from ..exceptions import CorpusError, TextGridParseError, TextParseError
+from .helper import get_wav_info, load_text, parse_transcription
 
 if TYPE_CHECKING:
     from ..aligner.base import BaseAligner
@@ -18,15 +27,6 @@ if TYPE_CHECKING:
 
     AlignerType = Union[BaseTrainer, BaseAligner]
 
-import os
-import sys
-import traceback
-
-from praatio import textgrid
-from praatio.utilities.constants import Interval
-
-from ..exceptions import CorpusError, TextGridParseError, TextParseError
-from .helper import get_wav_info, load_text, parse_transcription
 
 __all__ = ["parse_file", "File", "Speaker", "Utterance"]
 
@@ -68,7 +68,7 @@ def parse_file(
 
     Returns
     -------
-    File
+    :class:`~montreal_forced_aligner.corpus.classes.File`
         Parsed file
     """
     file = File(wav_path, text_path, relative_path=relative_path)
@@ -97,7 +97,7 @@ def parse_file(
     return file
 
 
-class Speaker(object):
+class Speaker:
     """
     Class representing information about a speaker
 
@@ -108,7 +108,7 @@ class Speaker(object):
 
     Attributes
     ----------
-    utterances: Dict[str, Utterance]
+    utterances: Dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
         Utterances that the speaker is associated with
     cmvn: str, optional
         String pointing to any CMVN that has been calculated for this speaker
@@ -147,7 +147,7 @@ class Speaker(object):
         """Check if a Speaker is equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name == self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name == other
         raise NotImplementedError
 
@@ -155,7 +155,7 @@ class Speaker(object):
         """Check if a Speaker is less than another Speaker"""
         if isinstance(other, Speaker):
             return other.name < self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name < other
         raise NotImplementedError
 
@@ -163,7 +163,7 @@ class Speaker(object):
         """Check if a Speaker is less than or equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name <= self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name <= other
         raise NotImplementedError
 
@@ -171,7 +171,7 @@ class Speaker(object):
         """Check if a Speaker is greater than another Speaker"""
         if isinstance(other, Speaker):
             return other.name > self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name > other
         raise NotImplementedError
 
@@ -179,7 +179,7 @@ class Speaker(object):
         """Check if a Speaker is greater than or equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name >= self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name >= other
         raise NotImplementedError
 
@@ -193,7 +193,7 @@ class Speaker(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance
         """
         utterance.speaker = self
@@ -205,7 +205,7 @@ class Speaker(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to be deleted
         """
         identifier = utterance.name
@@ -218,7 +218,7 @@ class Speaker(object):
 
         Parameters
         ----------
-        speaker: Speaker
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Other speaker to take utterances from
         """
         for u in speaker.utterances.values():
@@ -246,7 +246,7 @@ class Speaker(object):
 
         Parameters
         ----------
-        dictionary: Dictionary
+        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
             Dictionary to associate with the speaker
         """
         self.dictionary = dictionary
@@ -272,7 +272,7 @@ class Speaker(object):
         return data
 
 
-class File(object):
+class File:
     """
     File class for representing metadata and associations of Files
 
@@ -287,7 +287,7 @@ class File(object):
 
     Raises
     ------
-    CorpusError
+    :class:`~montreal_forced_aligner.exceptions.CorpusError`
         If both wav_path and text_path are None
     """
 
@@ -443,8 +443,7 @@ class File(object):
         if self.has_text_file:
             if os.path.splitext(self.text_path)[1].lower() == ".textgrid":
                 return "textgrid"
-            else:
-                return "lab"
+            return "lab"
         return None
 
     def construct_output_path(
@@ -500,7 +499,7 @@ class File(object):
 
         Parameters
         ----------
-        root_speaker: Speaker, optional
+        root_speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`, optional
             Speaker derived from the root directory, ignored for TextGrids
         punctuation: str
             Orthographic characters to treat as punctuation
@@ -567,7 +566,7 @@ class File(object):
 
         Parameters
         ----------
-        speaker: Speaker
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Speaker to add
         """
         if speaker not in self.speaker_ordering:
@@ -579,7 +578,7 @@ class File(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
         utterance.file = self
@@ -592,7 +591,7 @@ class File(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to remove
         """
         identifier = utterance.name
@@ -652,13 +651,13 @@ class File(object):
         return self.wav_path
 
 
-class Utterance(object):
+class Utterance:
     """
     Class for information about specific utterances
 
     Parameters
     ----------
-    speaker: Speaker
+    speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
         Speaker of the utterance
     file: File
         File that the utterance belongs to
@@ -775,7 +774,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        other: Utterance or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -790,7 +789,7 @@ class Utterance(object):
         """
         if isinstance(other, Utterance):
             return other.name == self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name == other
         raise NotImplementedError
 
@@ -800,7 +799,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        other: Utterance or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -814,7 +813,7 @@ class Utterance(object):
             If other is not an Utterance or a str"""
         if isinstance(other, Utterance):
             return other.name < self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name < other
         raise NotImplementedError
 
@@ -824,7 +823,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        other: Utterance or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -838,7 +837,7 @@ class Utterance(object):
             If other is not an Utterance or a str"""
         if isinstance(other, Utterance):
             return other.name <= self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name <= other
         raise NotImplementedError
 
@@ -848,7 +847,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        other: Utterance or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -863,7 +862,7 @@ class Utterance(object):
         """
         if isinstance(other, Utterance):
             return other.name > self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name > other
         raise NotImplementedError
 
@@ -873,7 +872,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        other: Utterance or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -887,7 +886,7 @@ class Utterance(object):
             If other is not an Utterance or a str"""
         if isinstance(other, Utterance):
             return other.name >= self.name
-        elif isinstance(other, str):
+        if isinstance(other, str):
             return self.name >= other
         raise NotImplementedError
 
@@ -923,7 +922,7 @@ class Utterance(object):
 
         Parameters
         ----------
-        speaker: Speaker
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             New speaker
         """
         self.speaker = speaker
@@ -959,8 +958,7 @@ class Utterance(object):
             return
         text = self.text_for_scp()
         new_text = []
-        for i in range(len(text)):
-            t = text[i]
+        for i, t in enumerate(text):
             lookup = self.speaker.dictionary.to_int(t)
             for w in lookup:
                 if w == self.speaker.dictionary.oov_int:

@@ -51,7 +51,7 @@ def load_command_configuration(conf_path: str, default: dict) -> CommandConfig:
 
     Returns
     -------
-    CommandConfig
+    :class:`~montreal_forced_aligner.config.command_config.CommandConfig`
         Command configuration
     """
     if os.path.exists(conf_path):

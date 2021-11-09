@@ -1,23 +1,21 @@
 """Utility functions for Montreal Forced Aligner"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Union
-
-if TYPE_CHECKING:
-    from .config.base_config import BaseConfig
-
 import logging
 import os
 import shutil
 import sys
 import textwrap
-from typing import List
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 import yaml
 from colorama import Fore, Style
 
 from .exceptions import KaldiProcessingError, ThirdpartyError
 from .models import MODEL_TYPES
+
+if TYPE_CHECKING:
+    from .config.base_config import BaseConfig
 
 __all__ = [
     "thirdparty_binary",
@@ -121,7 +119,7 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
     ----------
     error_logs: List[str]
         Kaldi log files with errors
-    logger: logging.Logger
+    logger: :class:`~logging.Logger`
         Logger to output to
     """
     logger.debug("There were {} kaldi processing files that had errors:".format(len(error_logs)))
@@ -426,7 +424,7 @@ def setup_logger(
 
     Returns
     -------
-    logging.Logger
+    :class:`~logging.Logger`
         Logger to use
     """
     os.makedirs(output_directory, exist_ok=True)
@@ -456,7 +454,7 @@ def log_config(logger: logging.Logger, config: Union[Dict[str, Any], BaseConfig]
 
     Parameters
     ----------
-    logger: logging.Logger
+    logger: :class:`~logging.Logger`
         Logger to save to
     config: Dict[str, Any]
         Configuration to dump

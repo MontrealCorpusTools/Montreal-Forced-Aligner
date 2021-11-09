@@ -1,14 +1,10 @@
 """Command line functions for adapting acoustic models to new data"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Collection, Optional
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
 import os
 import shutil
 import time
+from typing import TYPE_CHECKING, Collection, Optional
 
 from montreal_forced_aligner.aligner import AdaptingAligner, PretrainedAligner, TrainableAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -24,6 +20,9 @@ from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import get_mfa_version, log_config, setup_logger
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
 __all__ = ["adapt_model", "validate_args", "run_adapt_model"]
 
 
@@ -33,7 +32,7 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Command line arguments
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
@@ -264,12 +263,12 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
     try:
@@ -291,12 +290,10 @@ def validate_args(args: Namespace) -> None:
 
     args.corpus_directory = args.corpus_directory.rstrip("/").rstrip("\\")
     if not os.path.exists(args.corpus_directory):
-        raise ArgumentError(
-            "Could not find the corpus directory {}.".format(args.corpus_directory)
-        )
+        raise ArgumentError(f"Could not find the corpus directory {args.corpus_directory}.")
     if not os.path.isdir(args.corpus_directory):
         raise ArgumentError(
-            "The specified corpus directory ({}) is not a directory.".format(args.corpus_directory)
+            f"The specified corpus directory ({args.corpus_directory}) is not a directory."
         )
 
     args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
@@ -309,7 +306,7 @@ def run_adapt_model(args: Namespace, unknown_args: Optional[Collection] = None) 
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

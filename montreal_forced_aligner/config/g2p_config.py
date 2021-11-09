@@ -53,7 +53,7 @@ def g2p_yaml_to_config(path: str) -> G2PConfig:
 
     Returns
     -------
-    G2PConfig
+    :class:`~montreal_forced_aligner.config.g2p_config.G2PConfig`
         G2P configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -72,7 +72,7 @@ def load_basic_g2p_config() -> G2PConfig:
 
     Returns
     -------
-    G2PConfig
+    :class:`~montreal_forced_aligner.config.g2p_config.G2PConfig`
         Default G2P configuration
     """
     return G2PConfig()

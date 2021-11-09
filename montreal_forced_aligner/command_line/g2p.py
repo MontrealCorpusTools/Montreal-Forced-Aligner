@@ -1,13 +1,9 @@
 """Command line functions for generating pronunciations using G2P models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
 import os
 import shutil
+from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import TEMP_DIR
@@ -18,6 +14,10 @@ from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as G
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import setup_logger
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
+
 __all__ = ["generate_dictionary", "validate_args", "run_g2p"]
 
 
@@ -27,7 +27,7 @@ def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) ->
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Command line arguments
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
@@ -122,12 +122,12 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
     if not args.g2p_model_path:
@@ -142,7 +142,7 @@ def run_g2p(args: Namespace, unknown: Optional[list] = None) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

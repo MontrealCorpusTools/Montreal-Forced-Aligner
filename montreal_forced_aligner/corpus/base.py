@@ -1,12 +1,6 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Union
-
-if TYPE_CHECKING:
-    from logging import Logger
-    from ..dictionary import DictionaryType
-
 import logging
 import multiprocessing as mp
 import os
@@ -16,6 +10,7 @@ import sys
 import time
 from collections import Counter
 from queue import Empty
+from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Union
 
 import yaml
 
@@ -30,10 +25,16 @@ from ..utils import log_kaldi_errors, thirdparty_binary
 from .classes import File, Speaker, Utterance, parse_file
 from .helper import find_exts
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from ..dictionary import DictionaryType
+
+
 __all__ = ["Corpus"]
 
 
-class Corpus(object):
+class Corpus:
     """
     Class that stores information about the dataset to align.
 
@@ -59,7 +60,7 @@ class Corpus(object):
         Default sample rate to use for feature generation, defaults to 16000
     debug : bool
         Flag to enable debug mode, defaults to False
-    logger : logging.Logger
+    logger : :class:`~logging.Logger`
         Logger to use
     use_mp : bool
         Flag to enable multiprocessing, defaults to True
@@ -166,11 +167,11 @@ class Corpus(object):
         self, dictionary: Optional[DictionaryType] = None, min_count: int = 1
     ) -> Generator:
         """
-        Construct an interator over the normalized texts in the corpus
+        Construct an iterator over the normalized texts in the corpus
 
         Parameters
         ----------
-        dictionary: Dictionary
+        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
             Dictionary to use for normalization
         min_count: int
             Minimum word count to include in the output, otherwise will use OOV code, defaults to 1
@@ -608,7 +609,7 @@ class Corpus(object):
 
         Parameters
         ----------
-        file: File
+        file: :class:`~montreal_forced_aligner.corpus.classes.File`
             File to be added
         """
         self.files[file.name] = file
@@ -628,7 +629,7 @@ class Corpus(object):
 
         Parameters
         ----------
-        dictionary: Dictionary
+        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
             Dictionary to use for looking up subwords
 
         Returns
@@ -663,7 +664,7 @@ class Corpus(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
         self.utterances[utterance.name] = utterance
@@ -678,7 +679,7 @@ class Corpus(object):
 
         Parameters
         ----------
-        utterance: Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to delete
         """
         if isinstance(utterance, str):
@@ -711,9 +712,9 @@ class Corpus(object):
 
         Parameters
         ----------
-        dictionary: Dictionary
+        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`, optional
             Dictionary to use
-        feature_config: FeatureConfig
+        feature_config: :class:`~montreal_forced_aligner.config.feature.FeatureConfig`, optional
             Feature configuration to use
         """
         if not self.files:

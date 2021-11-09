@@ -1,20 +1,20 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..corpus import AlignableCorpus
-    from ..dictionary import Dictionary
-    from ..config import AlignConfig
-    from ..models import AcousticModel
-    from logging import Logger
-
 import os
 from collections import Counter
+from typing import TYPE_CHECKING, Optional
 
 from ..multiprocessing import generate_pronunciations
 from .base import BaseAligner
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from ..config import AlignConfig
+    from ..corpus import Corpus
+    from ..dictionary import Dictionary
+    from ..models import AcousticModel
 
 __all__ = ["PretrainedAligner"]
 
@@ -25,13 +25,13 @@ class PretrainedAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
     acoustic_model : :class:`~montreal_forced_aligner.models.AcousticModel`
         Archive containing the acoustic model and pronunciation dictionary
-    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -40,13 +40,13 @@ class PretrainedAligner(BaseAligner):
         Flag for debug mode, default is False
     verbose: bool
         Flag for verbose mode, default is False
-    logger: logging.Logger
+    logger: :class:`~logging.Logger`
         Logger to use
     """
 
     def __init__(
         self,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: Dictionary,
         acoustic_model: AcousticModel,
         align_config: AlignConfig,

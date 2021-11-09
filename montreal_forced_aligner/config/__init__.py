@@ -110,7 +110,7 @@ def update_global_config(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Arguments to set
     """
     global_configuration_file = generate_config_path()

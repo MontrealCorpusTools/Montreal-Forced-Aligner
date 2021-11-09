@@ -1,22 +1,22 @@
 """Class definitions for TriphoneTrainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..config import FeatureConfig
-    from .base import TrainerType
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-
 import os
 import subprocess
 import time
+from typing import TYPE_CHECKING, Optional
 
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import compile_train_graphs, convert_alignments, tree_stats
 from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .base import BaseTrainer
+
+if TYPE_CHECKING:
+    from ..config import FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from .base import TrainerType
+
 
 __all__ = ["TriphoneTrainer"]
 
@@ -73,7 +73,7 @@ class TriphoneTrainer(BaseTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         dirty_path = os.path.join(self.train_directory, "dirty")
@@ -183,7 +183,7 @@ class TriphoneTrainer(BaseTrainer):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         previous_trainer: Optional[TrainerType],
     ):
@@ -196,7 +196,7 @@ class TriphoneTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use

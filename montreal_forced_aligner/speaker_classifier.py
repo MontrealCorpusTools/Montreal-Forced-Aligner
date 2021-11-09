@@ -1,16 +1,10 @@
 """Class definitions for Speaker classification in MFA"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from .corpus import TranscribeCorpus
-    from .config import SpeakerClassificationConfig
-    from .models import IvectorExtractor, MetaDict
-
 import logging
 import os
 import shutil
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
@@ -21,20 +15,25 @@ from .helper import load_scp
 from .multiprocessing import extract_ivectors
 from .utils import log_kaldi_errors
 
+if TYPE_CHECKING:
+    from .config import SpeakerClassificationConfig
+    from .corpus import TranscribeCorpus
+    from .models import IvectorExtractor, MetaDict
+
 __all__ = ["SpeakerClassifier"]
 
 
-class SpeakerClassifier(object):
+class SpeakerClassifier:
     """
     Class for performing speaker classification
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.TranscribeCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     ivector_extractor : :class:`~montreal_forced_aligner.models.IvectorExtractor`
         Configuration for alignment
-    classification_config : :class:`~montreal_forced_aligner.config.SpeakerClassificationConfig`
+    classification_config : :class:`~montreal_forced_aligner.config.speaker_classification_config.SpeakerClassificationConfig`
         Configuration for alignment
     compute_segments: bool, optional
         Flag for whether segments should be created
@@ -168,7 +167,7 @@ class SpeakerClassifier(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         done_path = os.path.join(self.classify_directory, "done")

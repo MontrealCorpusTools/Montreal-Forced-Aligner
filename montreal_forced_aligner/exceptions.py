@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
 
-if TYPE_CHECKING:
-    from .models import G2PModel
-    from .dictionary import DictionaryType
-
 from colorama import Fore, Style
 
 from .helper import comma_join
+
+if TYPE_CHECKING:
+    from .dictionary import DictionaryType
+    from .models import G2PModel
+
 
 __all__ = [
     "MFAError",
@@ -267,6 +268,7 @@ class CorpusReadError(CorpusError):
     """
 
     def __init__(self, file_name: str):
+        MFAError.__init__(self)
         self.file_name = file_name
 
 
@@ -281,6 +283,7 @@ class TextParseError(CorpusReadError):
     """
 
     def __init__(self, file_name: str):
+        MFAError.__init__(self)
         self.file_name = file_name
 
 
@@ -297,6 +300,7 @@ class TextGridParseError(CorpusReadError):
     """
 
     def __init__(self, file_name: str, error: str):
+        MFAError.__init__(self)
         self.file_name = file_name
         self.error = error
 

@@ -1,14 +1,10 @@
 """Command line functions for classifying speakers"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
 import os
 import shutil
 import time
+from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import (
@@ -23,6 +19,9 @@ from montreal_forced_aligner.models import IvectorExtractor
 from montreal_forced_aligner.speaker_classifier import SpeakerClassifier
 from montreal_forced_aligner.utils import setup_logger
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
 __all__ = ["classify_speakers", "validate_args", "run_classify_speakers"]
 
 
@@ -32,7 +31,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Command line arguments
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
@@ -165,12 +164,12 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
     args.output_directory = args.output_directory.rstrip("/").rstrip("\\")
@@ -196,7 +195,7 @@ def run_classify_speakers(args: Namespace, unknown: Optional[list] = None) -> No
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

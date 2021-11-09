@@ -40,6 +40,10 @@ API Reference
 
 .. automodapi:: montreal_forced_aligner.speaker_classifier
 
+.. _transcriber_api:
+
+.. automodapi:: montreal_forced_aligner.transcriber
+
 .. _textgrid_api:
 
 .. automodapi:: montreal_forced_aligner.textgrid

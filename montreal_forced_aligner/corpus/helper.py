@@ -13,7 +13,6 @@ from ..exceptions import SoxError
 
 SoundFileInfoDict = Dict[str, Union[int, float, str]]
 
-
 supported_audio_extensions = [".flac", ".ogg", ".aiff", ".mp3"]
 
 __all__ = ["load_text", "parse_transcription", "find_exts", "get_wav_info"]
@@ -182,5 +181,5 @@ def get_wav_info(file_path: str, sample_rate: int = 16000) -> dict:
             use_sox = True
     return_dict["sox_string"] = ""
     if use_sox:
-        return_dict["sox_string"] = "sox {} -t wav -b 16 -r {} - |".format(file_path, sample_rate)
+        return_dict["sox_string"] = f"sox {file_path} -t wav -b 16 -r {sample_rate} - |"
     return return_dict

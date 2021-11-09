@@ -1,14 +1,10 @@
 """Command line functions for validating corpora"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
 import os
 import shutil
 import time
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import TEMP_DIR
@@ -19,6 +15,10 @@ from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import setup_logger
 from montreal_forced_aligner.validator import CorpusValidator
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
+
 __all__ = ["validate_corpus", "validate_args", "run_validate_corpus"]
 
 
@@ -28,7 +28,7 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Command line arguments
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
@@ -102,12 +102,12 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
     try:
@@ -136,7 +136,7 @@ def run_validate_corpus(args: Namespace, unknown: Optional[List[str]] = None) ->
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

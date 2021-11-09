@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Collection
 
 import yaml
 
+from ..exceptions import ConfigError
+
 if TYPE_CHECKING:
     from argparse import Namespace
-
-from ..exceptions import ConfigError
 
 DEFAULT_PUNCTUATION = r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘'
 
@@ -30,7 +30,7 @@ PARSING_KEYS = [
 __all__ = ["BaseConfig"]
 
 
-class BaseConfig(object):
+class BaseConfig:
     """
     Base configuration class
     """

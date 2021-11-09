@@ -1,19 +1,11 @@
 """Class definitions for the MFA transcriber"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import shutil
 import subprocess
 from typing import TYPE_CHECKING, Optional, Tuple
-
-if TYPE_CHECKING:
-    from .config.transcribe_config import TranscribeConfig
-    from .dictionary import DictionaryType
-    from .corpus import TranscribeCorpus
-    from .models import AcousticModel, LanguageModel
-    from logging import Logger
-
-import multiprocessing as mp
 
 from .config import TEMP_DIR
 from .exceptions import KaldiProcessingError
@@ -26,16 +18,24 @@ from .multiprocessing.transcription import (
 )
 from .utils import log_kaldi_errors, thirdparty_binary
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from .config.transcribe_config import TranscribeConfig
+    from .corpus import TranscribeCorpus
+    from .dictionary import DictionaryType
+    from .models import AcousticModel, LanguageModel
+
 __all__ = ["Transcriber"]
 
 
-class Transcriber(object):
+class Transcriber:
     """
     Class for performing transcription.
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.TranscribeCorpus` or :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus to transcribe
     dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Pronunciation dictionary to use as a lexicon
@@ -54,7 +54,7 @@ class Transcriber(object):
         Flag for running in verbose mode, defaults to false
     evaluation_mode : bool
         Flag for running in evaluation mode, defaults to false
-    logger : logging.Logger, optional
+    logger : :class:`~logging.Logger`, optional
         Logger to use
     """
 
@@ -201,7 +201,7 @@ class Transcriber(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         dirty_path = os.path.join(self.model_directory, "dirty")
@@ -280,7 +280,7 @@ class Transcriber(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self.logger.info("Beginning transcription...")
@@ -312,7 +312,7 @@ class Transcriber(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self.logger.info("Evaluating transcripts...")

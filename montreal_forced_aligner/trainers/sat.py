@@ -1,18 +1,11 @@
 """Class definitions for Speaker Adapted Triphone trainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..config import FeatureConfig, ConfigDict
-    from .base import TrainerType
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-
 import os
 import shutil
 import subprocess
 import time
+from typing import TYPE_CHECKING, Optional
 
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
@@ -28,6 +21,13 @@ from ..multiprocessing import (
 )
 from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .triphone import TriphoneTrainer
+
+if TYPE_CHECKING:
+    from ..config import ConfigDict, FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from .base import TrainerType
+
 
 __all__ = ["SatTrainer"]
 
@@ -106,7 +106,7 @@ class SatTrainer(TriphoneTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         try:
@@ -214,7 +214,7 @@ class SatTrainer(TriphoneTrainer):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         previous_trainer: Optional[TrainerType],
     ) -> None:
@@ -227,11 +227,11 @@ class SatTrainer(TriphoneTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
-        previous_trainer: TrainerType, optional
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
             Previous trainer to initialize from
         """
         self.feature_config.fmllr = False

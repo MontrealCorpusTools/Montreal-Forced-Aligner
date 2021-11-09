@@ -1,12 +1,6 @@
 """Class definitions for training G2P models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
-
-if TYPE_CHECKING:
-    from ..dictionary import Dictionary, DictionaryEntryType
-    from ..config.train_g2p_config import TrainG2PConfig
-
 import functools
 import logging
 import multiprocessing as mp
@@ -20,8 +14,15 @@ import subprocess
 import sys
 import time
 import traceback
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import tqdm
+
+from ..config import TEMP_DIR
+from ..helper import score
+from ..models import G2PModel
+from ..multiprocessing import Counter, Stopped
+from .generator import PyniniDictionaryGenerator
 
 try:
     import pynini
@@ -42,10 +43,10 @@ except ImportError:
 
     G2P_DISABLED = True
 
-from ..config import TEMP_DIR
-from ..helper import score
-from ..models import G2PModel
-from ..multiprocessing import Counter, Stopped
+if TYPE_CHECKING:
+    from ..config.train_g2p_config import TrainG2PConfig
+    from ..dictionary import Dictionary, DictionaryEntryType
+
 
 Labels = List[Any]
 
@@ -286,9 +287,9 @@ class PairNGramAligner:
                 p_writer[key] = self._compactor(p_fst)
         self.logger.info(f"Processed{linenum:,d} examples")
         self.logger.info("Constructing covering grammar")
-        self.logger.info("%d unique graphemes", len(g_labels))
+        self.logger.info(f"{len(g_labels)} unique graphemes")
         g_side = self._label_union(g_labels, input_epsilon)
-        self.logger.info("%d unique phones", len(p_labels))
+        self.logger.info(f"{len(p_labels)} unique phones")
         p_side = self._label_union(p_labels, output_epsilon)
         # The covering grammar is given by (G job_name P)^*.
         covering = pynini.cross(g_side, p_side).closure().optimize()
@@ -476,11 +477,14 @@ class PairNGramAligner:
             fst = converter(a_reader.get_fst())
             fst.encode(encoder)
             a_writer[key] = self._compactor(fst)
-            next(a_reader)
+            try:
+                next(a_reader)
+            except StopIteration:
+                break
         encoder.write(encoder_path)
 
 
-class PyniniTrainer(object):
+class PyniniTrainer:
     """
     Class for G2P trainer that uses Pynini functionality
 
@@ -700,8 +704,6 @@ class PyniniTrainer(object):
         """
         Validate the G2P model against held out data
         """
-        from ..models import G2PModel
-        from .generator import PyniniDictionaryGenerator
 
         word_dict = self.dictionary.actual_words
         validation = 0.1

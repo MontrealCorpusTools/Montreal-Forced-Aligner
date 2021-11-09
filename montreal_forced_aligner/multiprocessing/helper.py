@@ -88,13 +88,13 @@ class ProcessWorker(mp.Process):
     ----------
     job_name: int
         Integer number of job
-    job_q: multiprocessing.Queue
+    job_q: :class:`~multiprocessing.Queue`
         Job queue to pull arguments from
     function: Callable
         Multiprocessing function to call on arguments from job_q
     return_dict: Dict
         Dictionary for collecting errors
-    stopped: Stopped
+    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
         Stop check
     return_info: Dict[int, Any], optional
         Optional dictionary to fill if the function should return information to main thread
@@ -128,7 +128,6 @@ class ProcessWorker(mp.Process):
         self.job_q.task_done()
         try:
             result = self.function(*arguments)
-            print(self.job_name, result)
             if self.return_info is not None:
                 self.return_info[self.job_name] = result
         except Exception:
@@ -217,11 +216,9 @@ def run_mp(
     for p in procs:
         p.join()
     if "error" in return_dict:
-        element, exc = return_dict["error"]
+        _, exc = return_dict["error"]
         raise exc
 
     parse_logs(log_directory)
     if return_info:
-        print(info)
-        data = {k: v for k, v in info.items()}
-        return data
+        return info

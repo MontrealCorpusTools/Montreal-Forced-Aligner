@@ -1,7 +1,16 @@
 """Multiprocessing functions for transcription in MFA"""
 from __future__ import annotations
 
+import os
+import re
+import shutil
+import subprocess
+import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, TextIO, Union
+
+from ..exceptions import KaldiProcessingError
+from ..utils import thirdparty_binary
+from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
     from ..config.transcribe_config import ConfigDict
@@ -9,15 +18,6 @@ if TYPE_CHECKING:
     from ..transcriber import Transcriber
 
     DictionaryNames = Optional[Union[List[str], str]]
-import os
-import re
-import shutil
-import subprocess
-import sys
-
-from ..exceptions import KaldiProcessingError
-from ..utils import thirdparty_binary
-from .helper import run_mp, run_non_mp
 
 __all__ = [
     "compose_g",
@@ -483,7 +483,7 @@ def create_hclgs(transcriber: Transcriber):
 
     Parameters
     ----------
-    transcriber: Transcriber
+    transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
         Transcriber in use
     """
     dict_arguments = {}
@@ -796,7 +796,7 @@ def transcribe(transcriber: Transcriber) -> None:
 
     Parameters
     ----------
-    transcriber: Transcriber
+    transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
         Transcriber
     """
     config = transcriber.transcribe_config
@@ -829,7 +829,7 @@ def score_transcriptions(transcriber: Transcriber):
 
     Parameters
     ----------
-    transcriber: Transcriber
+    transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
         Transcriber
     """
     if transcriber.evaluation_mode:
@@ -1201,7 +1201,7 @@ def transcribe_fmllr(transcriber: Transcriber) -> None:
 
     Parameters
     ----------
-    transcriber: Transcriber
+    transcriber: :class:`~montreal_forced_aligner.transcriber.Transcriber`
         Transcriber
     """
     jobs = [x.initial_fmllr_arguments(transcriber) for x in transcriber.corpus.jobs]

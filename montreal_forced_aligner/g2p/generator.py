@@ -1,16 +1,21 @@
 """Class for generating pronunciations from G2P models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Text, Tuple, Union
-
-if TYPE_CHECKING:
-    SpeakerCharacterType = Union[str, int]
-    from ..models import G2PModel
-
 import functools
 import logging
 import multiprocessing as mp
 import os
+import queue
+import sys
+import time
+import traceback
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple, Union
+
+import tqdm
+
+from ..config import TEMP_DIR
+from ..exceptions import G2PError
+from ..multiprocessing import Counter, Stopped
 
 try:
     import pynini
@@ -25,21 +30,15 @@ except ImportError:
     rewrite = None
     G2P_DISABLED = True
 
-import queue
-import sys
-import time
-import traceback
+if TYPE_CHECKING:
+    SpeakerCharacterType = Union[str, int]
+    from ..models import G2PModel
 
-import tqdm
-
-from ..config import TEMP_DIR
-from ..exceptions import G2PError
-from ..multiprocessing import Counter, Stopped
 
 __all__ = ["Rewriter", "RewriterWorker", "PyniniDictionaryGenerator"]
 
 
-class Rewriter(object):
+class Rewriter:
     """Helper object for rewriting."""
 
     def __init__(
@@ -69,7 +68,7 @@ class RewriterWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: Dict[Text, Union[Text, Exception]],
+        return_dict: Dict[str, Union[str, Any]],
         rewriter: Rewriter,
         counter: Counter,
         stopped: Stopped,
@@ -106,7 +105,7 @@ class RewriterWorker(mp.Process):
         return
 
 
-def clean_up_word(word: Text, graphemes: Set[str]) -> Tuple[Text, List[Text]]:
+def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -134,7 +133,7 @@ def clean_up_word(word: Text, graphemes: Set[str]) -> Tuple[Text, List[Text]]:
     return "".join(new_word), missing_graphemes
 
 
-class PyniniDictionaryGenerator(object):
+class PyniniDictionaryGenerator:
     """
     Class for generating pronunciations from a G2P model
     """
@@ -142,8 +141,8 @@ class PyniniDictionaryGenerator(object):
     def __init__(
         self,
         g2p_model: G2PModel,
-        word_set: Collection[Text],
-        temp_directory: Optional[Text] = None,
+        word_set: Collection[str],
+        temp_directory: Optional[str] = None,
         num_jobs: int = 3,
         num_pronunciations: int = 1,
         logger: Optional[logging.Logger] = None,

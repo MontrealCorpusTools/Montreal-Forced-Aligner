@@ -2,9 +2,17 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Collection, Dict, Union
+from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
+from typing import TYPE_CHECKING, Any, Collection, Dict, Optional, Union
 
 import yaml
+
+from .exceptions import (
+    LanguageModelNotFoundError,
+    ModelLoadError,
+    PronunciationAcousticMismatchError,
+)
+from .helper import TerminalPrinter
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -19,15 +27,6 @@ if TYPE_CHECKING:
     TrainerType = Union[BaseTrainer, LmTrainer, AdaptingAligner]
     MetaDict = Dict[str, Any]
 
-from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import Optional
-
-from .exceptions import (
-    LanguageModelNotFoundError,
-    ModelLoadError,
-    PronunciationAcousticMismatchError,
-)
-from .helper import TerminalPrinter
 
 # default format for output
 FORMAT = "zip"
@@ -43,7 +42,7 @@ __all__ = [
 ]
 
 
-class Archive(object):
+class Archive:
     """
     Class representing data in a directory or archive file (zip, tar,
     tar.gz/tgz)
@@ -98,11 +97,11 @@ class Archive(object):
         for f in os.listdir(self.dirname):
             if f == "tree":
                 return AcousticModel(self.dirname, self.root_directory)
-            elif f == "phones.sym":
+            if f == "phones.sym":
                 return G2PModel(self.dirname, self.root_directory)
-            elif f.endswith(".arpa"):
+            if f.endswith(".arpa"):
                 return LanguageModel(self.dirname, self.root_directory)
-            elif f == "final.ie":
+            if f == "final.ie":
                 return IvectorExtractor(self.dirname, self.root_directory)
         raise ModelLoadError(self.source)
 
@@ -408,7 +407,7 @@ class AcousticModel(Archive):
 
         Parameters
         ----------
-        logger: logging.Logger
+        logger: :class:`~logging.Logger`
             Logger to send debug information to
         """
         logger.debug("")

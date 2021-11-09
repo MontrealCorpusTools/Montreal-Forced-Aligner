@@ -58,7 +58,7 @@ def segmentation_yaml_to_config(path: str) -> SegmentationConfig:
 
     Returns
     -------
-    SegmentationConfig
+    :class:`~montreal_forced_aligner.config.segmentation_config.SegmentationConfig`
         Segmentation configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -81,7 +81,7 @@ def load_basic_segmentation() -> SegmentationConfig:
 
     Returns
     -------
-    SegmentationConfig
+    :class:`~montreal_forced_aligner.config.segmentation_config.SegmentationConfig`
         Default segmentation configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))

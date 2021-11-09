@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Text, Union
 
-if TYPE_CHECKING:
-    SpeakerCharacterType = Union[str, int]
-
 from ..exceptions import ConfigError
 from .base_config import BaseConfig
+
+if TYPE_CHECKING:
+    SpeakerCharacterType = Union[str, int]
 
 __all__ = ["make_safe", "FeatureConfig"]
 

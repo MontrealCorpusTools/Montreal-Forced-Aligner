@@ -1,20 +1,11 @@
 """Class definition for IvectorExtractorTrainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..config import FeatureConfig
-    from ..models import MetaDict
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-    from ..aligner import PretrainedAligner
-
 import os
 import shutil
 import subprocess
 import time
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from tqdm import tqdm
 
@@ -30,6 +21,14 @@ from ..multiprocessing.ivector import (
 )
 from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .base import BaseTrainer
+
+if TYPE_CHECKING:
+    from ..aligner import PretrainedAligner
+    from ..config import FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from ..models import MetaDict
+
 
 IvectorConfigType = Dict[str, Any]
 
@@ -197,7 +196,7 @@ class IvectorExtractorTrainer(BaseTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         # train diag ubm
@@ -268,7 +267,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         previous_trainer: Optional[PretrainedAligner] = None,
     ) -> None:
@@ -281,11 +280,11 @@ class IvectorExtractorTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
-        previous_trainer: TrainerType, optional
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
             Previous trainer to initialize from
         """
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)
@@ -313,7 +312,7 @@ class IvectorExtractorTrainer(BaseTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         dirty_path = os.path.join(self.train_directory, "dirty")

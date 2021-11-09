@@ -46,7 +46,7 @@ def train_lm_yaml_to_config(path: str) -> TrainLMConfig:
 
     Returns
     -------
-    TrainLMConfig
+    :class:`~montreal_forced_aligner.config.train_lm_config.TrainLMConfig`
         Language model training configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -62,7 +62,7 @@ def load_basic_train_lm() -> TrainLMConfig:
 
     Returns
     -------
-    TrainLMConfig
+    :class:`~montreal_forced_aligner.config.train_lm_config.TrainLMConfig`
         Default language model training configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))

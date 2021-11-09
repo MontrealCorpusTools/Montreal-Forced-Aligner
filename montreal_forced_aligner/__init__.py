@@ -12,3 +12,18 @@ import montreal_forced_aligner.models as models  # noqa
 import montreal_forced_aligner.multiprocessing as multiprocessing  # noqa
 import montreal_forced_aligner.textgrid as textgrid  # noqa
 import montreal_forced_aligner.utils as utils  # noqa
+
+__all__ = [
+    "aligner",
+    "command_line",
+    "config",
+    "corpus",
+    "dictionary",
+    "exceptions",
+    "g2p",
+    "helper",
+    "models",
+    "multiprocessing",
+    "textgrid",
+    "utils",
+]

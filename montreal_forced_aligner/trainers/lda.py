@@ -1,16 +1,9 @@
 """Class definitions for LDA trainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..config import FeatureConfig
-    from .base import MetaDict, TrainerType
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-
 import os
 import time
+from typing import TYPE_CHECKING, Optional
 
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
@@ -22,6 +15,13 @@ from ..multiprocessing import (
 )
 from ..utils import log_kaldi_errors, parse_logs
 from .triphone import TriphoneTrainer
+
+if TYPE_CHECKING:
+    from ..config import FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from .base import MetaDict, TrainerType
+
 
 __all__ = ["LdaTrainer"]
 
@@ -88,7 +88,7 @@ class LdaTrainer(TriphoneTrainer):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         previous_trainer: Optional[TrainerType],
     ):
@@ -101,7 +101,7 @@ class LdaTrainer(TriphoneTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
@@ -110,7 +110,7 @@ class LdaTrainer(TriphoneTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)

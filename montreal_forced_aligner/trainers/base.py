@@ -1,21 +1,11 @@
 """Class definition for BaseTrainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
-
-if TYPE_CHECKING:
-    from ..aligner import PretrainedAligner
-    from ..config import ConfigDict
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-    from ..models import MetaDict
-    from ..trainers import BaseTrainer
-
-    TrainerType = Union[BaseTrainer, PretrainedAligner]
 import os
 import re
 import shutil
 import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from tqdm import tqdm
 
@@ -32,10 +22,17 @@ from ..multiprocessing import (
 )
 from ..utils import log_kaldi_errors, parse_logs
 
+if TYPE_CHECKING:
+    from ..config import ConfigDict
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from ..models import MetaDict
+
+
 __all__ = ["BaseTrainer"]
 
 
-class BaseTrainer(object):
+class BaseTrainer:
     """
     Base trainer class for training acoustic models and ivector extractors
 
@@ -100,7 +97,7 @@ class BaseTrainer(object):
         self.initial_gaussians = None  # Gets set later
         self.temp_directory = None
         self.identifier = None
-        self.corpus: Optional[AlignableCorpus] = None
+        self.corpus: Optional[Corpus] = None
         self.data_directory = None
         self.debug = False
         self.use_mp = True
@@ -208,7 +205,7 @@ class BaseTrainer(object):
 
     @property
     def phone_type(self) -> str:
-        """Phone tyoe, not implemented for BaseTrainer"""
+        """Phone type, not implemented for BaseTrainer"""
         raise NotImplementedError
 
     @property
@@ -278,9 +275,9 @@ class BaseTrainer(object):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
-        previous_trainer: Optional[TrainerType],
+        previous_trainer: Optional[BaseTrainer],
     ) -> None:
         """
         Default initialization for all Trainers
@@ -291,16 +288,16 @@ class BaseTrainer(object):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
-        previous_trainer: TrainerType, optional
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
             Previous trainer to initialize from
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         begin = time.time()
@@ -346,9 +343,9 @@ class BaseTrainer(object):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
-        previous_trainer: Optional[TrainerType],
+        previous_trainer: Optional[BaseTrainer],
     ) -> None:
         """
         Initialize training, not implemented for BaseTrainer
@@ -359,11 +356,11 @@ class BaseTrainer(object):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
-        previous_trainer: TrainerType, optional
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
             Previous trainer to initialize from
         """
         raise NotImplementedError
@@ -391,7 +388,7 @@ class BaseTrainer(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         if not os.path.exists(self.align_directory):
@@ -453,7 +450,7 @@ class BaseTrainer(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         done_path = os.path.join(self.train_directory, "done")
@@ -551,7 +548,7 @@ class BaseTrainer(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         begin = time.time()

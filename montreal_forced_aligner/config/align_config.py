@@ -6,10 +6,6 @@ from typing import TYPE_CHECKING, Collection
 
 import yaml
 
-if TYPE_CHECKING:
-    from argparse import Namespace
-    from . import ConfigDict
-
 from .base_config import (
     DEFAULT_CLITIC_MARKERS,
     DEFAULT_COMPOUND_MARKERS,
@@ -20,6 +16,11 @@ from .base_config import (
     ConfigError,
 )
 from .feature_config import FeatureConfig
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+
+    from . import ConfigDict
 
 __all__ = ["AlignConfig", "align_yaml_to_config", "load_basic_align"]
 
@@ -139,7 +140,7 @@ def align_yaml_to_config(path: str) -> AlignConfig:
 
     Returns
     -------
-    AlignConfig
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Alignment configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -164,7 +165,7 @@ def load_basic_align() -> AlignConfig:
 
     Returns
     -------
-    AlignConfig
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Default alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))

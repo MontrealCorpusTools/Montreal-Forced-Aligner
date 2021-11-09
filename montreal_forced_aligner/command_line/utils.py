@@ -36,15 +36,15 @@ def validate_model_arg(name: str, model_type: str) -> str:
 
     Raises
     ------
-    ModelTypeNotSupportedError
+    :class:`~montreal_forced_aligner.exceptions.ModelTypeNotSupportedError`
         If the type of model is not supported
-    FileArgumentNotFoundError
+    :class:`~montreal_forced_aligner.exceptions.FileArgumentNotFoundError`
         If the file specified is not found
-    PretrainedModelNotFoundError
+    :class:`~montreal_forced_aligner.exceptions.PretrainedModelNotFoundError`
         If the pretrained model specified is not found
-    ModelExtensionError
+    :class:`~montreal_forced_aligner.exceptions.ModelExtensionError`
         If the extension is not valid for the specified model type
-    NoDefaultSpeakerDictionaryError
+    :class:`~montreal_forced_aligner.exceptions.NoDefaultSpeakerDictionaryError`
         If a multispeaker dictionary does not have a default dictionary
     """
     if model_type not in MODEL_TYPES:

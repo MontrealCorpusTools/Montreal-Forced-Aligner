@@ -34,16 +34,16 @@ import montreal_forced_aligner  # noqa
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.ifconfig",
     "sphinx.ext.viewcode",
     "sphinx.ext.autosummary",
     "sphinx_automodapi.automodapi",
-    "numpydoc",
+    "sphinx_automodapi.smart_resolver",
+    "sphinx.ext.intersphinx",
 ]
 
-
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 autosummary_imported_members = False

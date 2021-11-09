@@ -1,22 +1,21 @@
 """Multiprocessing functions for ivector extraction and training"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Union
-
-if TYPE_CHECKING:
-    from ..trainers.ivector_extractor import IvectorExtractorTrainer
-    from ..speaker_classifier import SpeakerClassifier
-    from ..segmenter import SegmentationType
-    from ..segmenter import Segmenter
-    from ..config import ConfigDict
-    from ..corpus.classes import Utterance, File, Speaker  # noqa
-
 import os
 import subprocess
+from typing import TYPE_CHECKING, Dict, List, Union
 
 from ..helper import load_scp
 from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
+
+if TYPE_CHECKING:
+    from ..config import ConfigDict
+    from ..corpus.classes import File, Speaker, Utterance  # noqa
+    from ..segmenter import SegmentationType, Segmenter
+    from ..speaker_classifier import SpeakerClassifier
+    from ..trainers.ivector_extractor import IvectorExtractorTrainer
+
 
 __all__ = [
     "gmm_gselect",
@@ -103,8 +102,8 @@ def gmm_gselect(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : IvectorExtractorTrainer
-        IvectorExtractorTrainer
+    trainer : :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+        Ivector Extractor Trainer
     """
     jobs = [x.gmm_gselect_arguments(trainer) for x in trainer.corpus.jobs]
     if trainer.use_mp:
@@ -189,8 +188,8 @@ def acc_global_stats(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : IvectorExtractorTrainer
-        IvectorExtractorTrainer
+    trainer : :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+        Ivector Extractor Trainer
     """
     jobs = [x.acc_global_stats_arguments(trainer) for x in trainer.corpus.jobs]
     if trainer.use_mp:
@@ -322,8 +321,8 @@ def gauss_to_post(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : IvectorExtractorTrainer
-        IvectorExtractorTrainer
+    trainer: :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+        Ivector Extractor Trainer
     """
     jobs = [x.gauss_to_post_arguments(trainer) for x in trainer.corpus.jobs]
     if trainer.use_mp:
@@ -410,8 +409,8 @@ def acc_ivector_stats(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : IvectorExtractorTrainer
-        IvectorExtractorTrainer
+    trainer: :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+        Ivector Extractor Trainer
     """
 
     jobs = [x.ivector_acc_stats_arguments(trainer) for x in trainer.corpus.jobs]
@@ -594,7 +593,7 @@ def extract_ivectors(ivector_extractor: Union[SpeakerClassifier, IvectorExtracto
 
     Parameters
     ----------
-    ivector_extractor: Union[SpeakerClassifier, IvectorExtractorTrainer]
+    ivector_extractor: :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier` or :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
         Ivector extractor
     """
 
@@ -694,7 +693,6 @@ def merge_segments(
 
 
 def segment_vad_func(
-    log_path: str,
     dictionaries: List[str],
     vad_paths: Dict[str, str],
     segmentation_options: ConfigDict,
@@ -746,7 +744,7 @@ def segment_vad(segmenter: Segmenter) -> None:
 
     Parameters
     ----------
-    segmenter: Segmenter
+    segmenter: :class:`~montreal_forced_aligner.segmenter.Segmenter`
         Segmenter
     """
 
@@ -754,7 +752,6 @@ def segment_vad(segmenter: Segmenter) -> None:
 
     jobs = [x.segments_vad_arguments(segmenter) for x in segmenter.corpus.jobs]
     if segmenter.segmentation_config.use_mp:
-        print(jobs)
         segment_info = run_mp(
             segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
         )

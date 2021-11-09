@@ -1,17 +1,13 @@
 """Command line functions for calling the root mfa command"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from argparse import ArgumentParser
-
 import argparse
 import atexit
 import multiprocessing as mp
 import sys
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from montreal_forced_aligner.command_line.adapt import run_adapt_model
 from montreal_forced_aligner.command_line.align import run_align_corpus
@@ -44,6 +40,10 @@ from montreal_forced_aligner.utils import (
     get_available_ivector_extractors,
     get_available_language_models,
 )
+
+if TYPE_CHECKING:
+    from argparse import ArgumentParser
+
 
 BEGIN = time.time()
 BEGIN_DATE = datetime.now()

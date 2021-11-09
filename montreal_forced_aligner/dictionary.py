@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import math
+import os
+import re
+import subprocess
+import sys
+from collections import Counter, defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -15,20 +22,6 @@ from typing import (
     Union,
 )
 
-if TYPE_CHECKING:
-    IpaType = Optional[List[str]]
-    PunctuationType = Optional[str]
-    from logging import Logger
-    from .corpus.classes import Speaker
-
-import logging
-import math
-import os
-import re
-import subprocess
-import sys
-from collections import Counter, defaultdict
-
 import yaml
 
 from .config.base_config import (
@@ -40,6 +33,13 @@ from .config.base_config import (
 )
 from .exceptions import DictionaryError, DictionaryFileError, DictionaryPathError
 from .utils import get_available_dictionaries, get_dictionary_path, thirdparty_binary
+
+if TYPE_CHECKING:
+    IpaType = Optional[List[str]]
+    PunctuationType = Optional[str]
+    from logging import Logger
+
+    from .corpus.classes import Speaker
 
 DictionaryEntryType = List[Dict[str, Union[Tuple[str], float, None, int]]]
 ReversedMappingType = Dict[int, str]
@@ -256,7 +256,7 @@ class DictionaryData(NamedTuple):
     words: WordsType
 
 
-class Dictionary(object):
+class Dictionary:
     """
     Class containing information about a pronunciation dictionary
 

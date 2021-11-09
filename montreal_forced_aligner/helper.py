@@ -1,18 +1,16 @@
 """Helper functions for MFA"""
 from __future__ import annotations
 
+import sys
+import textwrap
 from typing import TYPE_CHECKING, Any, Collection, List, Optional, Tuple, Type
 
 import numpy
+from colorama import Fore, Style
 
 if TYPE_CHECKING:
     from .config import ConfigDict
     from .corpus import CorpusMappingType, ScpType
-
-import sys
-import textwrap
-
-from colorama import Fore, Style
 
 Labels = List[Any]
 
@@ -30,7 +28,7 @@ __all__ = [
 ]
 
 
-class TerminalPrinter(object):
+class TerminalPrinter:
     """
     Helper class to output colorized text
 

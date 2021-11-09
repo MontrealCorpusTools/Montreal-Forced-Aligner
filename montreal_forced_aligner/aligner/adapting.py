@@ -1,18 +1,9 @@
 """Class definitions for adapting acoustic models"""
 from __future__ import annotations
 
+import os
 import shutil
 from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..corpus import AlignableCorpus
-    from .pretrained import PretrainedAligner
-    from ..dictionary import Dictionary
-    from ..config import AlignConfig
-    from logging import Logger
-    from ..models import MetaDict
-
-import os
 
 from ..exceptions import KaldiProcessingError
 from ..models import AcousticModel
@@ -26,6 +17,16 @@ from ..multiprocessing import (
 from ..utils import log_kaldi_errors
 from .base import BaseAligner
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from ..config import AlignConfig
+    from ..corpus import Corpus
+    from ..dictionary import Dictionary
+    from ..models import MetaDict
+    from .pretrained import PretrainedAligner
+
+
 __all__ = ["AdaptingAligner"]
 
 
@@ -35,13 +36,13 @@ class AdaptingAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
-    pretrained_aligner: PretrainedAligner
+    pretrained_aligner: :class:`~montreal_forced_aligner.aligner.pretrained.PretrainedAligner`
         Pretrained aligner to use as input to training
-    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -50,13 +51,13 @@ class AdaptingAligner(BaseAligner):
         Flag for debug mode, default is False
     verbose: bool
         Flag for verbose mode, default is False
-    logger: Logger
+    logger: :class:`~logging.Logger`
         Logger to use
     """
 
     def __init__(
         self,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: Dictionary,
         previous_aligner: PretrainedAligner,
         align_config: AlignConfig,

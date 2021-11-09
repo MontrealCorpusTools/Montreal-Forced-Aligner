@@ -1,7 +1,15 @@
 """Classes and functions for working with TextGrids in MFA"""
 from __future__ import annotations
 
+import os
+import re
+import sys
+import traceback
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+
+from praatio import textgrid as tgio
+from praatio.utilities.textgrid_io import Interval
 
 if TYPE_CHECKING:
     from .aligner.base import BaseAligner
@@ -17,14 +25,6 @@ if TYPE_CHECKING:
     from .trainers.base import BaseTrainer
 
     AlignerType = Union[BaseTrainer, BaseAligner]
-import os
-import re
-import sys
-import traceback
-from dataclasses import dataclass
-
-from praatio import textgrid as tgio
-from praatio.utilities.textgrid_io import Interval
 
 __all__ = [
     "CtmInterval",

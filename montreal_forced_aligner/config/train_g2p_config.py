@@ -62,7 +62,7 @@ def train_g2p_yaml_to_config(path: str) -> TrainG2PConfig:
 
     Returns
     -------
-    TrainG2PConfig
+    :class:`~montreal_forced_aligner.config.train_g2p_config.TrainG2PConfig`
         G2P training configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -81,7 +81,7 @@ def load_basic_train_g2p_config() -> TrainG2PConfig:
 
     Returns
     -------
-    TrainG2PConfig
+    :class:`~montreal_forced_aligner.config.train_g2p_config.TrainG2PConfig`
         Default G2P training configuration
     """
     return TrainG2PConfig()

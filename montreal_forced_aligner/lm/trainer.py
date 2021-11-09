@@ -1,31 +1,31 @@
 """Classes for training language models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, Union
-
-if TYPE_CHECKING:
-    from ..config.train_lm_config import TrainLMConfig
-    from ..dictionary import DictionaryType
-
 import logging
 import os
 import re
 import subprocess
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 from ..config import TEMP_DIR
 from ..corpus import Corpus
 from ..models import LanguageModel
 
+if TYPE_CHECKING:
+    from ..config.train_lm_config import TrainLMConfig
+    from ..dictionary import DictionaryType
+
+
 __all__ = ["LmTrainer"]
 
 
-class LmTrainer(object):
+class LmTrainer:
     """
     Train a language model from a corpus with text, or convert an existing ARPA-format language model to MFA format
 
     Parameters
     ----------
-    source: class:`~montreal_forced_aligner.corpus.AlignableCorpus` or str
+    source: class:`~montreal_forced_aligner.corpus.base.Corpus` or str
         Either a alignable corpus or a path to an ARPA format language model
     config : class:`~montreal_forced_aligner.config.TrainLMConfig`
         Config class for training language model
@@ -42,7 +42,7 @@ class LmTrainer(object):
         Weight of supplemental model when merging, defaults to 1
     debug : bool
         Flag for debug mode
-    logger : logging.Logger, optional
+    logger : :class:`~logging.Logger`, optional
         Logger to send output to
     """
 

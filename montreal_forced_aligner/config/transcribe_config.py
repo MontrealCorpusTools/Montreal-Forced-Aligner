@@ -1,12 +1,8 @@
 """Class definitions for configuring transcription"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..config import ConfigDict
-
 import os
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -21,6 +17,9 @@ from .base_config import (
 )
 from .feature_config import FeatureConfig
 
+if TYPE_CHECKING:
+    from ..config import ConfigDict
+
 __all__ = ["TranscribeConfig", "transcribe_yaml_to_config", "load_basic_transcribe"]
 
 
@@ -30,7 +29,7 @@ class TranscribeConfig(BaseConfig):
 
     Parameters
     ----------
-    feature_config: FeatureConfig
+    feature_config: :class:`~montreal_forced_aligner.config.feature.FeatureConfig`
         Feature configuration to use in transcription
 
     Attributes
@@ -153,7 +152,7 @@ def transcribe_yaml_to_config(path: str) -> TranscribeConfig:
 
     Returns
     -------
-    TranscribeConfig
+    :class:`~montreal_forced_aligner.config.transcribe_config.TranscribeConfig`
         Transcription configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -176,7 +175,7 @@ def load_basic_transcribe() -> TranscribeConfig:
 
     Returns
     -------
-    TranscribeConfig
+    :class:`~montreal_forced_aligner.config.transcribe_config.TranscribeConfig`
         Default transcription configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))

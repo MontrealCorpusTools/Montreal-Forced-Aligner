@@ -1,27 +1,27 @@
 """Class definitions for Segmentation based on voice activity in MFA"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional
-
-if TYPE_CHECKING:
-    from .corpus import Corpus
-    from .config import SegmentationConfig, ConfigDict
-    from logging import Logger
-
 import os
 import shutil
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from .config import TEMP_DIR
 from .exceptions import KaldiProcessingError
 from .multiprocessing.ivector import segment_vad
 from .utils import log_kaldi_errors, parse_logs
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from .config import ConfigDict, SegmentationConfig
+    from .corpus import Corpus
+
 SegmentationType = List[Dict[str, float]]
 
 __all__ = ["Segmenter"]
 
 
-class Segmenter(object):
+class Segmenter:
     """
     Class for performing speaker classification
 
@@ -38,7 +38,7 @@ class Segmenter(object):
         Flag for running in debug mode, defaults to false
     verbose : bool
         Flag for running in verbose mode, defaults to false
-    logger : logging.Logger, optional
+    logger : :class:`~logging.Logger`, optional
         Logger to use
     """
 
@@ -90,7 +90,7 @@ class Segmenter(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         done_path = os.path.join(self.segmenter_directory, "done")
@@ -118,7 +118,7 @@ class Segmenter(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         log_directory = os.path.join(self.segmenter_directory, "log")

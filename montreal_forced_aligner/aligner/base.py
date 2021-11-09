@@ -1,19 +1,11 @@
 """Class definitions for base aligner"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-    from ..config import AlignConfig
-    from logging import Logger
-    from ..models import AcousticModel
-
 import logging
 import os
 import shutil
 import time
+from typing import TYPE_CHECKING, Optional
 
 from ..config import TEMP_DIR
 from ..exceptions import KaldiProcessingError
@@ -26,20 +18,28 @@ from ..multiprocessing import (
 )
 from ..utils import log_kaldi_errors
 
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from ..config import AlignConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from ..models import AcousticModel
+
 __all__ = ["BaseAligner"]
 
 
-class BaseAligner(object):
+class BaseAligner:
     """
     Base aligner class for common aligner functions
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.AlignableCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
-    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -48,13 +48,13 @@ class BaseAligner(object):
         Flag for running in debug mode, defaults to false
     verbose : bool
         Flag for running in verbose mode, defaults to false
-    logger : Logger
+    logger : :class:`~logging.Logger`
         Logger to use
     """
 
     def __init__(
         self,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         align_config: AlignConfig,
         temp_directory: Optional[str] = None,
@@ -244,7 +244,7 @@ class BaseAligner(object):
 
             self.logger.info("Performing first-pass alignment...")
             align(self)
-            unaligned, average_log_like = compile_information(self)
+            _, average_log_like = compile_information(self)
             self.logger.debug(
                 f"Prior to SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}"
             )
@@ -258,7 +258,7 @@ class BaseAligner(object):
                 self.logger.info("Performing second-pass alignment...")
                 align(self)
 
-                unaligned, average_log_like = compile_information(self)
+                _, average_log_like = compile_information(self)
                 self.logger.debug(
                     f"Following SAT, average per frame likelihood (this might not actually mean anything): {average_log_like}"
                 )

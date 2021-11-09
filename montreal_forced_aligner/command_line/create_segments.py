@@ -1,14 +1,10 @@
 """Command line functions for segmenting audio files"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from argparse import Namespace
-
 import os
 import shutil
 import time
+from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.config import (
     TEMP_DIR,
@@ -21,6 +17,10 @@ from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.segmenter import Segmenter
 from montreal_forced_aligner.utils import log_config, setup_logger
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
+
 __all__ = ["create_segments", "validate_args", "run_create_segments"]
 
 
@@ -30,7 +30,7 @@ def create_segments(args: Namespace, unknown_args: Optional[list] = None) -> Non
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Command line arguments
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
@@ -151,12 +151,12 @@ def validate_args(args: Namespace) -> None:
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
 
     Raises
     ------
-    ArgumentError
+    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
     args.output_directory = args.output_directory.rstrip("/").rstrip("\\")
@@ -178,7 +178,7 @@ def run_create_segments(args: Namespace, unknown: Optional[list] = None) -> None
 
     Parameters
     ----------
-    args: Namespace
+    args: :class:`~argparse.Namespace`
         Parsed command line arguments
     unknown: List[str]
         Parsed command line arguments to be passed to the configuration objects

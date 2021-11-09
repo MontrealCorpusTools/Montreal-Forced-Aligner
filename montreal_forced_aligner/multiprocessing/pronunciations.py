@@ -1,17 +1,17 @@
 """Multiprocessing functions for generating pronunciation probabilities"""
 from __future__ import annotations
 
+import os
+import subprocess
+from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Dict, List, Tuple
+
+from ..utils import thirdparty_binary
+from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
     from .alignment import AlignerType
 
-import os
-import subprocess
-from collections import Counter, defaultdict
-
-from ..utils import thirdparty_binary
-from .helper import run_mp, run_non_mp
 
 __all__ = ["generate_pronunciations"]
 
@@ -96,7 +96,7 @@ def generate_pronunciations(
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.aligner.pretrained.PretrainedAligner`
         Aligner
     """
     jobs = [x.generate_pronunciations_arguments(aligner) for x in aligner.corpus.jobs]

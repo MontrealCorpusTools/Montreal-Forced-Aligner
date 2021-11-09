@@ -120,9 +120,9 @@ def train_yaml_to_config(
 
     Returns
     -------
-    TrainingConfig
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
         Training configuration
-    AlignConfig
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
         Alignment configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -176,10 +176,10 @@ def load_basic_train() -> Tuple[TrainingConfig, AlignConfig]:
 
     Returns
     -------
-    TrainingConfig
-        Default training configuration
-    AlignConfig
-        Default alignment configuration
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(
@@ -194,10 +194,10 @@ def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
 
     Returns
     -------
-    TrainingConfig
-        Default training configuration
-    AlignConfig
-        Default alignment configuration
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(
@@ -218,10 +218,10 @@ def load_no_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
 
     Returns
     -------
-    TrainingConfig
-        Default training configuration
-    AlignConfig
-        Default alignment configuration
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(
@@ -239,10 +239,10 @@ def load_basic_train_ivector() -> Tuple[TrainingConfig, AlignConfig]:
 
     Returns
     -------
-    TrainingConfig
-        Default training configuration
-    AlignConfig
-        Default alignment configuration
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(
@@ -257,10 +257,10 @@ def load_test_config() -> Tuple[TrainingConfig, AlignConfig]:
 
     Returns
     -------
-    TrainingConfig
-        Default training configuration
-    AlignConfig
-        Default alignment configuration
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     training_config, align_config = train_yaml_to_config(

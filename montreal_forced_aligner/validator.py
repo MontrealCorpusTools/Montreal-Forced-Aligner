@@ -2,14 +2,9 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from .corpus import AlignableCorpus
-    from .dictionary import DictionaryType
-
 import os
 from decimal import Decimal
+from typing import TYPE_CHECKING, Optional
 
 from .aligner.pretrained import PretrainedAligner
 from .config import FeatureConfig
@@ -20,16 +15,21 @@ from .multiprocessing.alignment import compile_utterance_train_graphs_func, test
 from .trainers import MonophoneTrainer
 from .utils import log_kaldi_errors
 
+if TYPE_CHECKING:
+    from .corpus import Corpus
+    from .dictionary import DictionaryType
+
+
 __all__ = ["CorpusValidator"]
 
 
-class CorpusValidator(object):
+class CorpusValidator:
     """
     Aligner that aligns and trains acoustics models on a large dataset
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
         Corpus object for the dataset
     dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
         Dictionary object for the pronunciation dictionary
@@ -42,7 +42,7 @@ class CorpusValidator(object):
         Flag for whether the validator should test transcriptions, defaults to False
     use_mp: bool, optional
         Flag for whether to use multiprocessing
-    logger: logging.Logger, optional
+    logger: :class:`~logging.Logger`, optional
         Logger to use
     """
 
@@ -97,7 +97,7 @@ class CorpusValidator(object):
 
     def __init__(
         self,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         temp_directory: Optional[str] = None,
         ignore_acoustics: bool = False,
@@ -122,7 +122,7 @@ class CorpusValidator(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self.dictionary.set_word_set(self.corpus.word_set)
@@ -418,7 +418,7 @@ class CorpusValidator(object):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self.logger.info("Checking utterance transcriptions...")

@@ -1,22 +1,22 @@
 """Class definitions for Monophone trainer"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from ..config import FeatureConfig
-    from ..corpus import AlignableCorpus
-    from ..dictionary import DictionaryType
-
 import os
 import re
 import subprocess
 import time
+from typing import TYPE_CHECKING, Optional
 
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import compile_train_graphs, mono_align_equal
 from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .base import BaseTrainer
+
+if TYPE_CHECKING:
+    from ..config import FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+
 
 __all__ = ["MonophoneTrainer"]
 
@@ -84,7 +84,7 @@ class MonophoneTrainer(BaseTrainer):
         self,
         identifier: str,
         temporary_directory: str,
-        corpus: AlignableCorpus,
+        corpus: Corpus,
         dictionary: DictionaryType,
         previous_trainer: Optional[BaseTrainer] = None,
     ) -> None:
@@ -97,7 +97,7 @@ class MonophoneTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: AlignableCorpus
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
             Corpus to use
         dictionary: DictionaryType
             Dictionary to use
@@ -106,7 +106,7 @@ class MonophoneTrainer(BaseTrainer):
 
         Raises
         ------
-        KaldiProcessingError
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)
