@@ -464,12 +464,13 @@ def create_hclg_func(
         convert_proc = subprocess.Popen(
             [
                 thirdparty_binary("fstconvert"),
-                "--v=4",
-                f"--tmpdir={temp_dir}" "--fst_type=const",
+                "--v=100",
+                f"--tmpdir={temp_dir}",
+                "--fst_type=const",
                 hclg_path_temp,
                 hclg_path,
             ],
-            # stderr=log_file,
+            stderr=log_file,
             env=os.environ,
         )
         convert_proc.communicate()

@@ -204,6 +204,7 @@ class Transcriber(object):
         KaldiProcessingError
             If there were any errors in running Kaldi binaries
         """
+        os.environ["TMPDIR"] = self.model_directory
         dirty_path = os.path.join(self.model_directory, "dirty")
 
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
