@@ -586,13 +586,12 @@ def compile_information(aligner: AlignerType) -> Tuple[Dict[str, str], float]:
     jobs = [x.compile_information_arguments(aligner) for x in aligner.corpus.jobs]
 
     if aligner.use_mp:
-        manager = mp.Manager()
-        alignment_info = manager.dict()
-        run_mp(compile_information_func, jobs, aligner.working_log_directory, alignment_info)
+        alignment_info = run_mp(
+            compile_information_func, jobs, aligner.working_log_directory, True
+        )
     else:
-        alignment_info = {}
         alignment_info = run_non_mp(
-            compile_information_func, jobs, aligner.working_log_directory, alignment_info
+            compile_information_func, jobs, aligner.working_log_directory, True
         )
 
     unaligned = {}

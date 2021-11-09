@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from ..config import ConfigDict
     from ..corpus.classes import Utterance, File, Speaker  # noqa
 
-import multiprocessing as mp
 import os
 import subprocess
 
@@ -755,13 +754,12 @@ def segment_vad(segmenter: Segmenter) -> None:
 
     jobs = [x.segments_vad_arguments(segmenter) for x in segmenter.corpus.jobs]
     if segmenter.segmentation_config.use_mp:
-        manager = mp.Manager()
-        segment_info = manager.dict()
-        run_mp(segment_vad_func, jobs, segmenter.corpus.features_log_directory, segment_info)
+        segment_info = run_mp(
+            segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
+        )
     else:
-        segment_info = {}
         segment_info = run_non_mp(
-            segment_vad_func, jobs, segmenter.corpus.features_log_directory, segment_info
+            segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
         )
 
     for j in range(segmenter.corpus.num_jobs):

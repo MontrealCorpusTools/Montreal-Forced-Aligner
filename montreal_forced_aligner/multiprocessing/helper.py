@@ -145,7 +145,7 @@ def run_non_mp(
     function: Callable,
     argument_list: List[Tuple[Any, ...]],
     log_directory: str,
-    return_info: Optional[Dict[int, Any]] = None,
+    return_info: bool = False,
 ) -> Optional[Dict[Any, Any]]:
     """
     Similar to run_mp, but no additional processes are used and the jobs are evaluated in sequential order
@@ -166,11 +166,12 @@ def run_non_mp(
     Dict, optional
         If the function returns information, returns the dictionary it was supplied with
     """
-    if return_info is not None:
+    if return_info:
+        info = {}
         for i, args in enumerate(argument_list):
-            return_info[i] = function(*args)
+            info[i] = function(*args)
         parse_logs(log_directory)
-        return return_info
+        return info
 
     for args in argument_list:
         function(*args)
@@ -181,8 +182,8 @@ def run_mp(
     function: Callable,
     argument_list: List[Tuple[Any, ...]],
     log_directory: str,
-    return_info: Optional[Dict[str, Any]] = None,
-) -> None:
+    return_info: bool = False,
+) -> Optional[Dict[int, Any]]:
     """
     Apply a function for each job in parallel
 
@@ -205,11 +206,14 @@ def run_mp(
     manager = mp.Manager()
     job_queue = manager.Queue()
     return_dict = manager.dict()
+    info = None
+    if return_info:
+        info = manager.dict()
     for a in argument_list:
         job_queue.put(a, False)
     procs = []
     for i in range(len(argument_list)):
-        p = ProcessWorker(i, job_queue, function, return_dict, stopped, return_info)
+        p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
         procs.append(p)
         p.start()
 
@@ -220,3 +224,6 @@ def run_mp(
         raise exc
 
     parse_logs(log_directory)
+    if return_info:
+        data = {k: v for k, v in info.items()}
+        return data
