@@ -14,4 +14,4 @@ conda:
 python:
   install:
     - requirements: requirements.txt
-    - requirements: rtd_requirements.txtgit add
+    - requirements: rtd_requirements.txt
