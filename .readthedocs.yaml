@@ -13,7 +13,5 @@ conda:
 
 python:
   install:
-    - method: pip
-      path: .
-      extra_requirements:
-        - docs
+    - requirements: requirements.txt
+    - requirements: rtd_requirements.txtgit add
