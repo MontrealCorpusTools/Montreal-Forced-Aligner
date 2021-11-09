@@ -9,7 +9,7 @@ sphinx:
    configuration: docs/source/conf.py
 
 conda:
-  environment: environment.yml
+  environment: rtd_environment.yml
 
 python:
   install:
