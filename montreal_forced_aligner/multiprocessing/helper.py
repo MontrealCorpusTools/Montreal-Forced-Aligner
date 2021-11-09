@@ -121,24 +121,21 @@ class ProcessWorker(mp.Process):
         """
         Run through the arguments in the queue apply the function to them
         """
-        while True:
-            try:
-                arguments = self.job_q.get(timeout=1)
-            except Empty:
-                break
-            self.job_q.task_done()
-            if self.stopped.stop_check():
-                continue
-            try:
-                result = self.function(*arguments)
-                if self.return_info is not None:
-                    self.return_info[self.job_name] = result
-            except Exception:
-                self.stopped.stop()
-                self.return_dict["error"] = arguments, Exception(
-                    traceback.format_exception(*sys.exc_info())
-                )
-        return
+        try:
+            arguments = self.job_q.get(timeout=1)
+        except Empty:
+            return
+        self.job_q.task_done()
+        try:
+            result = self.function(*arguments)
+            print(self.job_name, result)
+            if self.return_info is not None:
+                self.return_info[self.job_name] = result
+        except Exception:
+            self.stopped.stop()
+            self.return_dict["error"] = arguments, Exception(
+                traceback.format_exception(*sys.exc_info())
+            )
 
 
 def run_non_mp(
@@ -225,5 +222,6 @@ def run_mp(
 
     parse_logs(log_directory)
     if return_info:
+        print(info)
         data = {k: v for k, v in info.items()}
         return data

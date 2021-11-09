@@ -754,6 +754,7 @@ def segment_vad(segmenter: Segmenter) -> None:
 
     jobs = [x.segments_vad_arguments(segmenter) for x in segmenter.corpus.jobs]
     if segmenter.segmentation_config.use_mp:
+        print(jobs)
         segment_info = run_mp(
             segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
         )
@@ -761,11 +762,8 @@ def segment_vad(segmenter: Segmenter) -> None:
         segment_info = run_non_mp(
             segment_vad_func, jobs, segmenter.corpus.features_log_directory, True
         )
-    print(segment_info)
-    print(segmenter.corpus.utterances)
-    print(segmenter.corpus.speakers)
-    for j in range(segmenter.corpus.num_jobs):
-        for old_utt, utterance in segment_info[j].items():
+    for j in segmenter.corpus.jobs:
+        for old_utt, utterance in segment_info[j.name].items():
             old_utt = segmenter.corpus.utterances[old_utt]
             file = old_utt.file
             if segmenter.corpus.no_speakers:
@@ -778,8 +776,7 @@ def segment_vad(segmenter: Segmenter) -> None:
                 speaker = old_utt.speaker
             utterance.file = file
             utterance.set_speaker(speaker)
-            segmenter.corpus.delete_utterance(old_utt)
             segmenter.corpus.add_utterance(utterance)
-    print(segmenter.corpus.utterances)
-    print(segmenter.corpus.files)
-    print(segmenter.corpus.speakers)
+    utterance_ids = [x.name for x in segmenter.corpus.utterances.values() if x.begin is None]
+    for u in utterance_ids:
+        segmenter.corpus.delete_utterance(u)
