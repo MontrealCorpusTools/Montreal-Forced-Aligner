@@ -1,0 +1,59 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Allow rebuilds via API.
+  repository_dispatch:
+    types: rebuild
+
+
+concurrency:
+  group: run_tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v2"
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox tox-gh-actions tox-conda twine build setuptools setuptools_scm[toml] wheel
+      - name: sdist
+        run: python setup.py sdist
+      - name: Test with tox
+        run: tox
+      - name: "Upload coverage to Codecov"
+        uses: "codecov/codecov-action@v2.0.3"
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true
+      - name: Build a binary wheel and a source tarball
+        run: >-
+          python -m
+          build
+          --sdist
+          --wheel
+          --outdir dist/
+          .
+      - name: "List result"
+        run: "ls -l dist"
+      - name: "Check long_description"
+        run: "python -m twine check dist/*"
+      - name: Publish distribution 📦 to PyPI
+        if: startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Publish distribution 📦 to Test PyPI
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/

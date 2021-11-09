@@ -1,29 +1,29 @@
-__ver_major__ = 2
-__ver_minor__ = 0
-__ver_patch__ = '0b3'
-__version__ = "{}.{}.{}".format(__ver_major__, __ver_minor__, __ver_patch__)
+"""Montreal Forced Aligner is a package for aligning speech corpora through the use of acoustic models and
+            dictionaries using Kaldi functionality."""
+import montreal_forced_aligner.aligner as aligner  # noqa
+import montreal_forced_aligner.command_line as command_line  # noqa
+import montreal_forced_aligner.config as config  # noqa
+import montreal_forced_aligner.corpus as corpus  # noqa
+import montreal_forced_aligner.dictionary as dictionary  # noqa
+import montreal_forced_aligner.exceptions as exceptions  # noqa
+import montreal_forced_aligner.g2p as g2p  # noqa
+import montreal_forced_aligner.helper as helper  # noqa
+import montreal_forced_aligner.models as models  # noqa
+import montreal_forced_aligner.multiprocessing as multiprocessing  # noqa
+import montreal_forced_aligner.textgrid as textgrid  # noqa
+import montreal_forced_aligner.utils as utils  # noqa
 
-__all__ = ['aligner', 'command_line', 'models', 'corpus', 'config', 'dictionary', 'exceptions',
-            'helper', 'multiprocessing', 'textgrid', 'g2p', '__version__']
-
-import montreal_forced_aligner.aligner as aligner
-
-import montreal_forced_aligner.command_line as command_line
-
-import montreal_forced_aligner.models as models
-
-import montreal_forced_aligner.corpus as corpus
-
-import montreal_forced_aligner.dictionary as dictionary
-
-import montreal_forced_aligner.exceptions as exceptions
-
-import montreal_forced_aligner.helper as helper
-
-import montreal_forced_aligner.config as config
-
-import montreal_forced_aligner.multiprocessing as multiprocessing
-
-import montreal_forced_aligner.textgrid as textgrid
-
-import montreal_forced_aligner.g2p as g2p
+__all__ = [
+    "aligner",
+    "command_line",
+    "config",
+    "corpus",
+    "dictionary",
+    "exceptions",
+    "g2p",
+    "helper",
+    "models",
+    "multiprocessing",
+    "textgrid",
+    "utils",
+]

@@ -20,6 +20,7 @@ pretrained_models/
 *.so
 
 # Distribution / packaging
+montreal_forced_aligner/version.py
 .Python
 env/
 build/
@@ -76,3 +77,7 @@ target/
 *.dll
 
 \.pytest_cache/
+
+docs/source/api/
+
+montreal_forced_aligner/_version.py

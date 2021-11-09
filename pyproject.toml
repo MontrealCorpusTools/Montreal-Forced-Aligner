@@ -1,3 +1,82 @@
 [build-system]
-requires = ["setuptools >= 57.1.0", "wheel"]
+requires = [
+    "setuptools>=45", "wheel", "setuptools_scm>=6.2"
+]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "montreal_forced_aligner/_version.py"
+
+[tool.black]
+line-length = 99
+
+[tool.isort]
+line_length = 99
+profile = "black"
+known_first_party = [
+    "montreal_forced_aligner"
+]
+
+[tool.interrogate]
+ignore-init-method = true
+ignore-init-module = false
+ignore-magic = false
+ignore-semiprivate = false
+ignore-private = false
+ignore-module = false
+ignore-property-decorators = false
+fail-under = 95
+exclude = [
+    "tests",
+    "build",
+    "dist",
+    "setup.py",
+    "docs"
+]
+verbose = 0
+omit-covered-files = false
+quiet = false
+generate-badge = "docs/source/_static"
+badge-format = "svg"
+whitelist-regex = []
+ignore-regex = []
+color = true
+
+
+[tool.check-manifest]
+ignore = [
+    ".deepsource.toml",
+    ".readthedocs.yaml",
+]
+
+[tool.coverage.run]
+source = ["montreal_forced_aligner"]
+concurrency = ["multiprocessing"]
+branch = true
+parallel = true
+omit = [
+    ".tox/*"
+]
+
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "pass",
+    "if sys.platform",
+    "except ImportError:",
+    "except KeyboardInterrupt:",
+    "except Exception as e:",
+    "except Exception:",
+    "if call_back",
+    "if stop_check",
+    "if TYPE_CHECKING:",
+    "def history_save_handler() -> None:",
+    "class ExitHooks(object):",
+    "def main() -> None:",
+]
+fail_under = 50

@@ -74,8 +74,3 @@ Extra options (see :ref:`configuration_g2p` for full configuration details):
   Flag for whether to generate pronunciations for words that are enclosed in brackets (i.e., [...], (...), <...>)
 
 See :ref:`dict_generating_example` for an example of how to use G2P functionality with a premade example.
-
-
-
-
-

@@ -1,13 +1,29 @@
-import os
-from tqdm import tqdm
-import subprocess
-import shutil
-import time
+"""Class definitions for LDA trainer"""
+from __future__ import annotations
 
-from ..multiprocessing import (align, acc_stats, calc_lda_mllt, lda_acc_stats, compute_alignment_improvement)
-from ..helper import thirdparty_binary, make_path_safe, log_kaldi_errors
+import os
+import time
+from typing import TYPE_CHECKING, Optional
+
 from ..exceptions import KaldiProcessingError
+from ..multiprocessing import (
+    acc_stats,
+    align,
+    calc_lda_mllt,
+    compute_alignment_improvement,
+    lda_acc_stats,
+)
+from ..utils import log_kaldi_errors, parse_logs
 from .triphone import TriphoneTrainer
+
+if TYPE_CHECKING:
+    from ..config import FeatureConfig
+    from ..corpus import Corpus
+    from ..dictionary import DictionaryType
+    from .base import MetaDict, TrainerType
+
+
+__all__ = ["LdaTrainer"]
 
 
 class LdaTrainer(TriphoneTrainer):
@@ -26,7 +42,7 @@ class LdaTrainer(TriphoneTrainer):
         LDA and MLLT calculations via randomized pruning
     """
 
-    def __init__(self, default_feature_config):
+    def __init__(self, default_feature_config: FeatureConfig):
         super(LdaTrainer, self).__init__(default_feature_config)
         self.lda_dimension = 40
         self.mllt_iterations = []
@@ -36,13 +52,15 @@ class LdaTrainer(TriphoneTrainer):
                 self.mllt_iterations.append(i)
         self.mllt_iterations.append(max_mllt_iter)
         if not self.mllt_iterations:
-            self.mllt_iterations = range(1,4)
+            self.mllt_iterations = range(1, 4)
         self.random_prune = 4.0
 
         self.feature_config.lda = True
         self.feature_config.deltas = True
+        self.uses_splices = True
 
-    def compute_calculated_properties(self):
+    def compute_calculated_properties(self) -> None:
+        """Generate realignment iterations, MLLT estimation iterations, and initial gaussians based on configuration"""
         super(LdaTrainer, self).compute_calculated_properties()
         self.mllt_iterations = []
         max_mllt_iter = int(self.num_iterations / 2) - 1
@@ -52,122 +70,87 @@ class LdaTrainer(TriphoneTrainer):
         self.mllt_iterations.append(max_mllt_iter)
 
     @property
-    def train_type(self):
-        return 'lda'
+    def train_type(self) -> str:
+        """Training identifier"""
+        return "lda"
 
     @property
-    def lda_options(self):
-        return {'lda_dimension': self.lda_dimension, 'boost_silence': self.boost_silence,
-                'random_prune': self.random_prune}
+    def lda_options(self) -> MetaDict:
+        """Options for computing LDA"""
+        return {
+            "lda_dimension": self.lda_dimension,
+            "boost_silence": self.boost_silence,
+            "random_prune": self.random_prune,
+            "silence_csl": self.dictionary.silence_csl,
+        }
 
-    def init_training(self, identifier, temporary_directory, corpus, dictionary, previous_trainer):
-        self._setup_for_init(identifier, temporary_directory, corpus, dictionary)
-        done_path = os.path.join(self.train_directory, 'done')
-        dirty_path = os.path.join(self.train_directory, 'dirty')
+    def init_training(
+        self,
+        identifier: str,
+        temporary_directory: str,
+        corpus: Corpus,
+        dictionary: DictionaryType,
+        previous_trainer: Optional[TrainerType],
+    ):
+        """
+        Initialize LDA training
+
+        Parameters
+        ----------
+        identifier: str
+            Identifier for the training block
+        temporary_directory: str
+            Root temporary directory to save
+        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+            Corpus to use
+        dictionary: DictionaryType
+            Dictionary to use
+        previous_trainer: TrainerType, optional
+            Previous trainer to initialize from
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)
+        done_path = os.path.join(self.train_directory, "done")
+        dirty_path = os.path.join(self.train_directory, "dirty")
         if os.path.exists(done_path):
-            self.logger.info('{} training already done, skipping initialization.'.format(self.identifier))
+            self.logger.info("{self.identifier} training already done, skipping initialization.")
             return
         begin = time.time()
         try:
             self.feature_config.directory = None
-            lda_acc_stats(self.train_directory, self.data_directory, previous_trainer.align_directory, self,
-                          self.dictionary.silence_csl, self.corpus.num_jobs)
+            lda_acc_stats(self)
             self.feature_config.directory = self.train_directory
-            if self.data_directory != self.corpus.split_directory():
-                utt_list = []
-                subset_utt_path = os.path.join(self.data_directory, 'included_utts.txt')
-                with open(subset_utt_path, 'r') as f:
-                    for line in f:
-                        utt_list.append(line.strip())
         except Exception as e:
-            with open(dirty_path, 'w') as _:
+            with open(dirty_path, "w") as _:
                 pass
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
                 e.update_log_file(self.logger.handlers[0].baseFilename)
             raise
-        self._setup_tree(previous_trainer.align_directory)
-        self.logger.info('Initialization complete!')
-        self.logger.debug('Initialization took {} seconds'.format(time.time() - begin))
+        self._setup_tree()
+        self.iteration = 1
+        self.logger.info("Initialization complete!")
+        self.logger.debug(f"Initialization took {time.time() - begin} seconds")
 
-    def train(self, call_back=None):
-        done_path = os.path.join(self.train_directory, 'done')
-        dirty_path = os.path.join(self.train_directory, 'dirty')
-        if os.path.exists(done_path):
-            self.logger.info('{} training already done, skipping.'.format(self.identifier))
+    def training_iteration(self):
+        """
+        Run a single training iteration
+        """
+        if os.path.exists(self.next_model_path):
             return
-        begin = time.time()
-        try:
-            num_gauss = self.initial_gaussians
-            if call_back == print:
-                iters = tqdm(range(0, self.num_iterations))
-            else:
-                iters = range(0, self.num_iterations)
-            sil_phones = self.dictionary.silence_csl
-            for i in iters:
-                model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
-                occs_path = os.path.join(self.train_directory, '{}.occs'.format(i + 1))
-                next_model_path = os.path.join(self.train_directory, '{}.mdl'.format(i + 1))
-                if os.path.exists(next_model_path):
-                    continue
-                if i in self.realignment_iterations:
-                    align(i, self.train_directory, self.data_directory,
-                          self.dictionary.optional_silence_csl,
-                          self.corpus.num_jobs, self)
-                    if self.debug:
-                        compute_alignment_improvement(i, self, self.train_directory, self.corpus.num_jobs)
-                if i in self.mllt_iterations:
-                    calc_lda_mllt(self.train_directory, self.data_directory,  sil_phones,
-                                  self.corpus.num_jobs, self,
-                                  initial=False, iteration=i)
+        if self.iteration in self.realignment_iterations:
+            align(self)
+            if self.debug:
+                compute_alignment_improvement(self)
+        if self.iteration in self.mllt_iterations:
+            calc_lda_mllt(self)
 
-                acc_stats(i, self.train_directory, self.data_directory, self.corpus.num_jobs,
-                          self)
-                log_path = os.path.join(self.log_directory, 'update.{}.log'.format(i))
-                with open(log_path, 'w') as log_file:
-                    acc_files = [os.path.join(self.train_directory, '{}.{}.acc'.format(i, x))
-                                 for x in range(self.corpus.num_jobs)]
-                    est_proc = subprocess.Popen([thirdparty_binary('gmm-est'),
-                                                 '--write-occs=' + occs_path,
-                                                 '--mix-up=' + str(num_gauss), '--power=' + str(self.power),
-                                                 model_path,
-                                                 "{} - {}|".format(thirdparty_binary('gmm-sum-accs'),
-                                                                   ' '.join(map(make_path_safe, acc_files))),
-                                                 next_model_path],
-                                                stderr=log_file)
-                    est_proc.communicate()
-                if not self.debug:
-                    for f in acc_files:
-                        os.remove(f)
-                self.parse_log_directory(self.log_directory, i, self.corpus.num_jobs, call_back)
-                if i < self.final_gaussian_iteration:
-                    num_gauss += self.gaussian_increment
-            shutil.copy(os.path.join(self.train_directory, '{}.mdl'.format(self.num_iterations)),
-                        os.path.join(self.train_directory, 'final.mdl'))
-            shutil.copy(os.path.join(self.train_directory, '{}.occs'.format(self.num_iterations)),
-                        os.path.join(self.train_directory, 'final.occs'))
-            shutil.copy(os.path.join(self.train_directory, 'lda.mat'),
-                        os.path.join(self.align_directory, 'lda.mat'))
-            if not self.debug:
-                for i in range(1, self.num_iterations):
-                    model_path = os.path.join(self.train_directory, '{}.mdl'.format(i))
-                    try:
-                        os.remove(model_path)
-                    except FileNotFoundError:
-                        pass
-                    try:
-                        os.remove(os.path.join(self.train_directory, '{}.occs'.format(i)))
-                    except FileNotFoundError:
-                        pass
-        except Exception as e:
-            with open(dirty_path, 'w'):
-                pass
-            if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger.handlers[0].baseFilename)
-            raise
-        with open(done_path, 'w'):
-            pass
-
-        self.logger.info('Training complete!')
-        self.logger.debug('Training took {} seconds'.format(time.time() - begin))
+        acc_stats(self)
+        parse_logs(self.log_directory)
+        if self.iteration < self.final_gaussian_iteration:
+            self.increment_gaussians()
+        self.iteration += 1

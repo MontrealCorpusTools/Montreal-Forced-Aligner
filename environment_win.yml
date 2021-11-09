@@ -1,0 +1,16 @@
+name: montreal-forced-aligner
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8   # or 2.7 if you are feeling nostalgic
+  - numpy
+  - librosa
+  - tqdm
+  - requests
+  - colorama
+  - pyyaml
+  - kaldi
+  - sox
+  - pip
+  - pip:
+    - praatio>=5.0

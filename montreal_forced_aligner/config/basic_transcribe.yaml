@@ -7,5 +7,3 @@ fmllr: true
 first_beam: 10.0 # Beam used in initial, speaker-indep. pass
 first_max_active: 2000 # max-active used in initial pass.
 fmllr_update_type: full
-
-

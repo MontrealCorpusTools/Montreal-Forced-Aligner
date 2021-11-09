@@ -12,7 +12,7 @@ multilingual_ipa: true
 
 digraphs:
   - "[dt][szʒʃʐʑʂɕç]"
-  - "[a][i][u]"
+  - "[a][job_name][u]"
 
 strip_diacritics:
   - 'ː'
@@ -57,5 +57,3 @@ training:
       subset: 1000
       features:
           lda: true
-
-

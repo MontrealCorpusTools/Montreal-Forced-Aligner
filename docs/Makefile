@@ -57,7 +57,7 @@ diagrams:
 	sed -i '' '/^def/,/class/{/class/!d;}' ../montreal_forced_aligner/generalUML.py; sed -i '' '/^import/,/class/{/class/!d;}' ../aligner/generalUML.py
 	$(PYREVERSE) -o svg -AS -k ../montreal_forced_aligner/generalUML.py
 	mv classes.svg $(BUILDDIR)/generalUML.svg; chmod 777 $(BUILDDIR)/generalUML.svg; rm ../montreal_forced_aligner/generalUML.py
-	mv $(BUILDDIR)/generalUML.svg $(BUILDDIR)/html/_images 
+	mv $(BUILDDIR)/generalUML.svg $(BUILDDIR)/html/_images
 
 	# UML class diagram for aligner API
 	cat ../montreal_forced_aligner/aligner/pretrained.py ../montreal_forced_aligner/aligner/trainable.py ../montreal_forced_aligner/aligner/base.py > ../aligner/all_aligner.py

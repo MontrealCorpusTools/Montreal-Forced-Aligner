@@ -69,6 +69,22 @@ Options available:
 
    Enable postprocessing of TextGrids that cleans up silences and recombines compound words and clitics
 
+.. option:: --disable_terminal_colors
+
+   Turn off colored text in output
+
+.. option:: --enable_terminal_colors
+
+   Turn on colored text in output
+
+.. option:: --terminal_width
+
+   Set width of terminal output, defaults to 120 characters
+
+.. option:: --blas_num_threads
+
+   Number of threads to use for BLAS libraries, 1 is recommended and the default, due to how much MFA relies on multiprocessing.
+
 .. option:: -h
                --help
 

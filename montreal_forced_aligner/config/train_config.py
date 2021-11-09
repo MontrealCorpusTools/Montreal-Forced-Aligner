@@ -1,16 +1,47 @@
+"""Class definitions for configuring acoustic model training"""
+from __future__ import annotations
 
 import os
-import yaml
-from .base_config import BaseConfig, ConfigError, DEFAULT_PUNCTUATION, DEFAULT_CLITIC_MARKERS, DEFAULT_COMPOUND_MARKERS, PARSING_KEYS
-from ..features.config import FeatureConfig
 from collections import Counter
+from typing import Iterator, List, Tuple
 
-from ..trainers import MonophoneTrainer, TriphoneTrainer, LdaTrainer, SatTrainer, IvectorExtractorTrainer
+import yaml
 
+from ..trainers import (
+    BaseTrainer,
+    IvectorExtractorTrainer,
+    LdaTrainer,
+    MonophoneTrainer,
+    SatTrainer,
+    TriphoneTrainer,
+)
 from .align_config import AlignConfig
+from .base_config import (
+    DEFAULT_CLITIC_MARKERS,
+    DEFAULT_COMPOUND_MARKERS,
+    DEFAULT_PUNCTUATION,
+    PARSING_KEYS,
+    BaseConfig,
+    ConfigError,
+)
+from .feature_config import FeatureConfig
+
+__all__ = [
+    "TrainingConfig",
+    "train_yaml_to_config",
+    "load_basic_train",
+    "load_basic_train_ivector",
+    "load_test_config",
+    "load_sat_adapt",
+    "load_no_sat_adapt",
+]
 
 
 class TrainingConfig(BaseConfig):
+    """
+    Configuration class for storing parameters and trainers for training acoustic models
+    """
+
     def __init__(self, training_configs):
         self.training_configs = training_configs
         counts = Counter([x.train_type for x in self.training_configs])
@@ -27,79 +58,96 @@ class TrainingConfig(BaseConfig):
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
 
-    def update_from_align(self, align_config):
+    def update_from_align(self, align_config: AlignConfig) -> None:
+        """Update parameters from an AlignConfig"""
         for tc in self.training_configs:
             tc.overwrite = align_config.overwrite
             tc.cleanup_textgrids = align_config.cleanup_textgrids
 
-    def update(self, data):
+    def update(self, data: dict) -> None:
+        """Update parameters"""
         for k, v in data.items():
             if k in PARSING_KEYS:
                 if not v:
                     continue
-                if '-' in v:
-                    v = '-' + v.replace('-', '')
-                if ']' in v and r'\]' not in v:
-                    v = v.replace(']', r'\]')
+                if "-" in v:
+                    v = "-" + v.replace("-", "")
+                if "]" in v and r"\]" not in v:
+                    v = v.replace("]", r"\]")
             if not hasattr(self, k):
-                raise ConfigError('No field found for key {}'.format(k))
+                raise ConfigError("No field found for key {}".format(k))
             setattr(self, k, v)
         for trainer in self.values():
             trainer.update(data)
 
-    def keys(self):
+    def keys(self) -> List:
+        """List of training identifiers"""
         return self.training_identifiers
 
-    def values(self):
+    def values(self) -> List[BaseTrainer]:
+        """List of trainers"""
         return self.training_configs
 
-    def items(self):
+    def items(self) -> Iterator:
+        """Iterator over training identifiers and trainers"""
         return zip(self.training_identifiers, self.training_configs)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> BaseTrainer:
+        """Get trainer based on identifier"""
         if item not in self.training_identifiers:
-            raise KeyError('{} not a valid training identifier'.format(item))
+            raise KeyError(f"{item} not a valid training identifier")
         return self.training_configs[self.training_identifiers.index(item)]
 
     @property
-    def uses_lda(self):
+    def uses_sat(self) -> bool:
+        """Flag for whether a trainer uses speaker adaptation"""
         for k in self.keys():
-            if k.startswith('lda'):
-                return True
-        return False
-
-    @property
-    def uses_sat(self):
-        for k in self.keys():
-            if k.startswith('sat'):
+            if k.startswith("sat"):
                 return True
         return False
 
 
-def train_yaml_to_config(path, require_mono=True):
-    with open(path, 'r', encoding='utf8') as f:
+def train_yaml_to_config(
+    path: str, require_mono: bool = True
+) -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load acoustic model training configurations
+
+    Parameters
+    ----------
+    path: str
+        Path to yaml file
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
+    with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
         training = []
         training_params = []
         global_feature_params = {}
         for k, v in data.items():
-            if k == 'training':
+            if k == "training":
                 for t in v:
                     for k2, v2 in t.items():
                         feature_config = FeatureConfig()
-                        if k2 == 'monophone':
+                        if k2 == "monophone":
                             training.append(MonophoneTrainer(feature_config))
-                        elif k2 == 'triphone':
+                        elif k2 == "triphone":
                             training.append(TriphoneTrainer(feature_config))
-                        elif k2 == 'lda':
+                        elif k2 == "lda":
                             training.append(LdaTrainer(feature_config))
-                        elif k2 == 'sat':
+                        elif k2 == "sat":
                             training.append(SatTrainer(feature_config))
-                        elif k2 == 'ivector':
+                        elif k2 == "ivector":
                             training.append(IvectorExtractorTrainer(feature_config))
                         training_params.append(v2)
-            elif k == 'features':
+            elif k == "features":
                 global_feature_params.update(v)
             else:
                 global_params[k] = v
@@ -110,49 +158,112 @@ def train_yaml_to_config(path, require_mono=True):
         training_config = None
         if training:
             for i, t in enumerate(training):
-                if i == 0 and require_mono and t.train_type not in ['mono', 'ivector']:
-                    raise ConfigError('The first round of training must be monophone.')
+                if i == 0 and require_mono and t.train_type not in ["mono", "ivector"]:
+                    raise ConfigError("The first round of training must be monophone.")
                 t.update(global_params)
                 t.update(training_params[i])
                 t.feature_config.update(global_feature_params)
             training_config = TrainingConfig(training)
-        align_config.feature_config.lda = training_config.uses_lda
-        if training_config.uses_lda:
-            align_config.feature_config.set_features_to_use_lda()
         align_config.feature_config.fmllr = training_config.uses_sat
         if align_config.beam >= align_config.retry_beam:
-            raise ConfigError('Retry beam must be greater than beam.')
+            raise ConfigError("Retry beam must be greater than beam.")
         return training_config, align_config
 
 
-def load_basic_train():
+def load_basic_train() -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load the default parameters
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train.yaml'))
+    training_config, align_config = train_yaml_to_config(
+        os.path.join(base_dir, "basic_train.yaml")
+    )
     return training_config, align_config
 
 
-def load_sat_adapt():
+def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load the default speaker adaptation parameters for adapting an acoustic model to new data
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_sat.yaml'), require_mono=False)
-    training_config.training_configs[0].fmllr_iterations = range(0, training_config.training_configs[0].num_iterations)
-    training_config.training_configs[0].realignment_iterations = range(0, training_config.training_configs[0].num_iterations)
+    training_config, align_config = train_yaml_to_config(
+        os.path.join(base_dir, "adapt_sat.yaml"), require_mono=False
+    )
+    training_config.training_configs[0].fmllr_iterations = range(
+        0, training_config.training_configs[0].num_iterations
+    )
+    training_config.training_configs[0].realignment_iterations = range(
+        0, training_config.training_configs[0].num_iterations
+    )
     return training_config, align_config
 
 
-def load_no_sat_adapt():
+def load_no_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load the default parameters for adapting an acoustic model to new data without speaker adaptation
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'adapt_nosat.yaml'), require_mono=False)
-    training_config.training_configs[0].realignment_iterations = range(0, training_config.training_configs[0].num_iterations)
+    training_config, align_config = train_yaml_to_config(
+        os.path.join(base_dir, "adapt_nosat.yaml"), require_mono=False
+    )
+    training_config.training_configs[0].realignment_iterations = range(
+        0, training_config.training_configs[0].num_iterations
+    )
     return training_config, align_config
 
 
-def load_basic_train_ivector():
+def load_basic_train_ivector() -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load the default parameters for training ivector extractors
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'basic_train_ivector.yaml'))
+    training_config, align_config = train_yaml_to_config(
+        os.path.join(base_dir, "basic_train_ivector.yaml")
+    )
     return training_config, align_config
 
 
-def load_test_config():
+def load_test_config() -> Tuple[TrainingConfig, AlignConfig]:
+    """
+    Helper function to load the default parameters for validating corpora
+
+    Returns
+    -------
+    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+        Training configuration
+    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+        Alignment configuration
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(os.path.join(base_dir, 'test_config.yaml'))
+    training_config, align_config = train_yaml_to_config(
+        os.path.join(base_dir, "test_config.yaml")
+    )
     return training_config, align_config

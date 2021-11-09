@@ -1,9 +1,9 @@
-praatio~=5.0
+praatio>=5.0
 numpy
 tqdm
 pyyaml
 soundfile
 librosa
 requests
-scikit-learn==0.24.1
-joblib
+scikit-learn
+colorama

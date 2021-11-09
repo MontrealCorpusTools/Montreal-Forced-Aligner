@@ -1,0 +1,25 @@
+name: mfa
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8   # or 2.7 if you are feeling nostalgic
+  - numpy
+  - librosa
+  - tqdm
+  - requests
+  - colorama
+  - pyyaml
+  - kaldi
+  - sox
+  - openfst
+  - baumwelch
+  - ngram
+  - pynini
+  - pip
+  - interrogate
+  - sphinx
+  - numpydoc
+  - sphinx_rtd_theme
+  - sphinx-automodapi
+  - pip:
+      - praatio >= 5.0

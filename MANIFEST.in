@@ -1,0 +1,32 @@
+include LICENSE *.md pyproject.toml *.yml *.yaml *.ini *.txt
+graft .github
+
+# Source
+recursive-include montreal_forced_aligner *.py
+recursive-include montreal_forced_aligner *.yaml
+
+# Tests
+include tox.ini tests/conftest.py
+recursive-include tests *.py
+recursive-include tests *.txt *.lab *.TextGrid
+recursive-include tests *.flac *.wav *.mp3
+recursive-include tests *.yaml
+recursive-include tests *.zip *.arpa
+recursive-include tests topo *.fst *.int
+prune tests/data/generated
+
+# Docs
+recursive-include docs *.svg
+recursive-include docs *.py
+recursive-include docs *.pdf
+recursive-include docs *.png
+recursive-include docs *.rst
+recursive-include docs *.css
+recursive-include docs *.html
+include docs/Makefile
+include docs/make.bat
+prune docs/build
+prune docs/source/api
+
+prune dist
+prune build

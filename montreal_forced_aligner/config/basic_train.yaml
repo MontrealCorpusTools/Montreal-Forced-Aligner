@@ -46,4 +46,3 @@ training:
       power: 0.2
       silence_weight: 0.0
       fmllr_update_type: "full"
-

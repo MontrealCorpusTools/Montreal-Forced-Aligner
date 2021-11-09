@@ -22,5 +22,3 @@ training:
       features:
           splice_left_context: 3
           splice_right_context: 3
-
-

@@ -52,8 +52,7 @@ Other utilities
    :header: "Command", "Description", "Link"
    :widths: 10, 110, 40
 
-   "download", "Download a model trained by MFA developers", :ref:`pretrained_models`
-   "thirdparty", "Download and validate new third party binaries", :ref:`installation`
+   "model", "Inspect/list/download/save models", :ref:`pretrained_models`
    "configure", "Configure MFA to use customized defaults for command line arguments", :ref:`configuration`
    "history", "List previous MFA commands run locally",
 
