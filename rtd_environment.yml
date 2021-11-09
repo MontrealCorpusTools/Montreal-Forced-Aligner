@@ -16,5 +16,10 @@ dependencies:
   - ngram
   - pynini
   - pip
+  - interrogate
+  - sphinx
+  - numpydoc
+  - sphinx_rtd_theme
+  - sphinx-automodapi
   - pip:
       - praatio >= 5.0
