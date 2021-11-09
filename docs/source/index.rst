@@ -25,8 +25,8 @@ Contents:
    configuration.rst
    annotator.rst
    pretrained_models.rst
-   changelog.rst
-   api_index.rst
+   changelog/changelog_index.rst
+   api_reference/api_index.rst
 
 
 Indices and tables

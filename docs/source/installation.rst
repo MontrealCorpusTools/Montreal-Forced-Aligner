@@ -19,9 +19,11 @@ All platforms
    For Linux" and use the Bash console to continue the instructions.
 
 1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
-2. Create new environment via :code:`conda create -n aligner -c conda-forge montreal-forced-aligner sox python=3.8 openfst pynini ngram baumwelch`
+2. Create new environment:
 
-   a. On Windows to use the aligner natively without G2P functionality, use the command :code:`conda create -n aligner -c conda-forge kaldi sox python=3.8`
+   b. On Linux/MacOS: :code:`conda create -n aligner -c conda-forge kaldi sox python=3.8 openfst pynini ngram baumwelch`
+
+   b. On Windows (no G2P functionality), use the command :code:`conda create -n aligner -c conda-forge kaldi sox python=3.8`
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 4. Install via pip :code:`pip install montreal-forced-aligner`
@@ -39,7 +41,7 @@ To upgrade to the latest version of MFA:
 
 .. note::
 
-   Kaldi is now built on conda-forge, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards
+   Kaldi is now built on conda-forge, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards.
    I plan to put MFA on conda-forge eventually as well, so installation will be handled just through that.
 
 
@@ -51,7 +53,7 @@ The aligner will save data and logs for the models it trains in a new folder,
 exists in MFA, it will use any existing models if you try to align it again.
 (If this is not desired, delete or move the old model folder or use the ``--clean`` flag.)
 You can specify your own temporary directory by using the ``-t``
-flag when calling the executable.
+flag when calling the executable or by changing the default, see :ref:`configuration` for more details.
 
 Supported functionality
 =======================

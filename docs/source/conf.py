@@ -41,6 +41,7 @@ extensions = [
     "sphinx_automodapi.automodapi",
     "sphinx_automodapi.smart_resolver",
     "sphinx.ext.intersphinx",
+    "sphinxemoji.sphinxemoji",
 ]
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
