@@ -563,6 +563,13 @@ def decode_func(
                 max_active = decode_options["first_max_active"]
             else:
                 max_active = decode_options["max_active"]
+            print(hclg_path, os.path.exists(hclg_path))
+            info_proc = subprocess.Popen(
+                [thirdparty_binary("fstinfo"), hclg_path],
+                stderr=log_file,
+                env=os.environ,
+            )
+            info_proc.communicate()
             decode_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-latgen-faster"),
