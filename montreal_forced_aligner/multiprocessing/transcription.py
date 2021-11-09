@@ -460,13 +460,15 @@ def create_hclg_func(
             env=os.environ,
         )
         self_loop_proc.communicate()
-        subprocess.run(
-            ["fstconvert", "--fst_type=const"],
-            # stderr=log_file,
-            env=os.environ,
-        )
+        temp_dir = os.path.dirname(hclg_path)
         convert_proc = subprocess.Popen(
-            [thirdparty_binary("fstconvert"), "--fst_type=const", hclg_path_temp, hclg_path],
+            [
+                thirdparty_binary("fstconvert"),
+                "--v=4",
+                f"--tmpdir={temp_dir}" "--fst_type=const",
+                hclg_path_temp,
+                hclg_path,
+            ],
             # stderr=log_file,
             env=os.environ,
         )
