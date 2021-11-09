@@ -446,7 +446,6 @@ def create_hclg_func(
                 log_file,
             )
         log_file.write("Generating HCLG.fst...")
-        hclg_path_temp = path_template.format(file_name="HCLG_temp")
         self_loop_proc = subprocess.Popen(
             [
                 thirdparty_binary("add-self-loops"),
@@ -454,29 +453,26 @@ def create_hclg_func(
                 "--reorder=true",
                 model_path,
                 hclga_path,
-                hclg_path_temp,
             ],
             stderr=log_file,
+            stdout=subprocess.PIPE,
             env=os.environ,
         )
-        self_loop_proc.communicate()
-        temp_dir = os.path.dirname(hclg_path)
         convert_proc = subprocess.Popen(
             [
                 thirdparty_binary("fstconvert"),
                 "--v=100",
-                f"--tmpdir={temp_dir}",
                 "--fst_type=const",
-                hclg_path_temp,
+                "-",
                 hclg_path,
             ],
+            stdin=self_loop_proc.stdout,
             stderr=log_file,
             env=os.environ,
         )
         convert_proc.communicate()
         if os.path.exists(hclg_path):
             log_file.write(f"Done generating {hclg_path}!")
-            os.remove(hclg_path_temp)
         else:
             log_file.write(f"There was an error in generating {hclg_path}")
 
@@ -563,13 +559,6 @@ def decode_func(
                 max_active = decode_options["first_max_active"]
             else:
                 max_active = decode_options["max_active"]
-            print(hclg_path, os.path.exists(hclg_path))
-            info_proc = subprocess.Popen(
-                [thirdparty_binary("fstinfo"), hclg_path],
-                stderr=log_file,
-                env=os.environ,
-            )
-            info_proc.communicate()
             decode_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-latgen-faster"),

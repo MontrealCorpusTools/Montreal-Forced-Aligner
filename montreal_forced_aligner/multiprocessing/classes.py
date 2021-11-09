@@ -1172,7 +1172,7 @@ class Job(object):
             transcriber.alignment_model_path,
             self.construct_path_dictionary(transcriber.working_directory, "lat", "ark"),
             self.construct_dictionary_dependent_paths(transcriber.model_directory, "words", "txt"),
-            self.construct_dictionary_dependent_paths(transcriber.model_directory, "hclg", "fst"),
+            self.construct_dictionary_dependent_paths(transcriber.model_directory, "HCLG", "fst"),
         )
 
     def score_arguments(self, transcriber: Transcriber) -> ScoreArguments:
@@ -1299,7 +1299,7 @@ class Job(object):
             transcriber.model_path,
             transcriber.transcribe_config.decode_options,
             self.construct_dictionary_dependent_paths(transcriber.model_directory, "words", "txt"),
-            self.construct_dictionary_dependent_paths(transcriber.model_directory, "hclg", "fst"),
+            self.construct_dictionary_dependent_paths(transcriber.model_directory, "HCLG", "fst"),
             self.construct_path_dictionary(transcriber.working_directory, "lat.tmp", "ark"),
         )
 
