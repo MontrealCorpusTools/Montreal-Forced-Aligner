@@ -34,8 +34,8 @@ Steps to align:
 .. note::
 
    ``acoustic_model_path`` can also be a language that has been pretrained by MFA developers.  For instance, to use
-   the pretrained English model, first download it via :code:`mfa download acoustic english`.  A list of available
-   acoustic models will be provided if you run :code:`mfa download acoustic`.  See :ref:`pretrained_models` for more details.
+   the pretrained English model, first download it via :code:`mfa model download acoustic english`.  A list of available
+   acoustic models will be provided if you run :code:`mfa model download acoustic`.  See :ref:`pretrained_models` for more details.
 
 .. note::
    On Mac/Unix, to save time typing out the path, you
@@ -218,8 +218,8 @@ Steps to align:
 .. note::
 
    ``acoustic_model_path`` can also be a language that has been pretrained by MFA developers.  For instance, to use
-   the pretrained English model, first download it via :code:`mfa download acoustic english`.  A list of available
-   acoustic models will be provided if you run :code:`mfa download acoustic`.  See :ref:`pretrained_models` for more details.
+   the pretrained English model, first download it via :code:`mfa model download acoustic english`.  A list of available
+   acoustic models will be provided if you run :code:`mfa model download acoustic`.  See :ref:`pretrained_models` for more details.
 
 Once the aligner finishes, the resulting TextGrids will be in the
 specified output directory.
