@@ -1,4 +1,8 @@
-"""Utility functions for Montreal Forced Aligner"""
+"""
+Utility functions
+=================
+
+"""
 from __future__ import annotations
 
 import logging
@@ -122,7 +126,7 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
     logger: :class:`~logging.Logger`
         Logger to output to
     """
-    logger.debug("There were {} kaldi processing files that had errors:".format(len(error_logs)))
+    logger.debug(f"There were {len(error_logs)} kaldi processing files that had errors:")
     for path in error_logs:
         logger.debug("")
         logger.debug(path)
@@ -444,7 +448,7 @@ def setup_logger(
     handler.setLevel(getattr(logging, console_level.upper()))
     handler.setFormatter(CustomFormatter())
     logger.addHandler(handler)
-
+    logger.debug(f"Set up logger for MFA version: {get_mfa_version()}")
     return logger
 
 
@@ -456,7 +460,7 @@ def log_config(logger: logging.Logger, config: Union[Dict[str, Any], BaseConfig]
     ----------
     logger: :class:`~logging.Logger`
         Logger to save to
-    config: Dict[str, Any]
+    config: Dict[str, Any] or :class:`~montreal_forced_aligner.config.BaseConfig`
         Configuration to dump
     """
     stream = yaml.dump(config)

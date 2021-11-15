@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
     load_command_configuration,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import log_config, setup_logger
@@ -53,14 +53,16 @@ def train_dictionary(args: Namespace, unknown_args: Optional[list] = None) -> No
     data_directory = os.path.join(temp_dir, corpus_name)
     conf_path = os.path.join(data_directory, "config.yml")
     if args.config_path:
-        align_config = align_yaml_to_config(args.config_path)
+        align_config, dictionary_config = align_yaml_to_config(args.config_path)
     else:
-        align_config = load_basic_align()
+        align_config, dictionary_config = load_basic_align()
     align_config.use_mp = not args.disable_mp
     align_config.overwrite = args.overwrite
     align_config.debug = args.debug
+    dictionary_config.debug = args.debug
     if unknown_args:
         align_config.update_from_unknown_args(unknown_args)
+        dictionary_config.update_from_unknown_args(unknown_args)
     if getattr(args, "clean", False) and os.path.exists(data_directory):
         print("Cleaning old directory!")
         shutil.rmtree(data_directory, ignore_errors=True)
@@ -125,24 +127,21 @@ def train_dictionary(args: Namespace, unknown_args: Optional[list] = None) -> No
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             num_jobs=args.num_jobs,
             sample_rate=align_config.feature_config.sample_frequency,
             use_mp=align_config.use_mp,
             logger=logger,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
         )
         logger.info(corpus.speaker_utterance_info())
         acoustic_model = AcousticModel(args.acoustic_model_path)
-        dictionary = Dictionary(
+        dictionary = MultispeakerDictionary(
             args.dictionary_path,
             data_directory,
+            dictionary_config,
             word_set=corpus.word_set,
             logger=logger,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
-            compound_markers=align_config.compound_markers,
         )
         acoustic_model.validate(dictionary)
 

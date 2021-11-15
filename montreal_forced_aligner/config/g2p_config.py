@@ -1,15 +1,12 @@
 """Class definitions for configuring G2P generation"""
 from __future__ import annotations
 
+from typing import Tuple
+
 import yaml
 
-from .base_config import (
-    DEFAULT_CLITIC_MARKERS,
-    DEFAULT_COMPOUND_MARKERS,
-    DEFAULT_PUNCTUATION,
-    BaseConfig,
-    ConfigError,
-)
+from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 
 __all__ = ["G2PConfig", "g2p_yaml_to_config", "load_basic_g2p_config"]
 
@@ -21,9 +18,6 @@ class G2PConfig(BaseConfig):
     """
 
     def __init__(self):
-        self.punctuation = DEFAULT_PUNCTUATION
-        self.clitic_markers = DEFAULT_CLITIC_MARKERS
-        self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.num_pronunciations = 1
         self.use_mp = True
 
@@ -38,11 +32,11 @@ class G2PConfig(BaseConfig):
                 if "]" in v and r"\]" not in v:
                     v = v.replace("]", r"\]")
             elif not hasattr(self, k):
-                raise ConfigError("No field found for key {}".format(k))
+                continue
             setattr(self, k, v)
 
 
-def g2p_yaml_to_config(path: str) -> G2PConfig:
+def g2p_yaml_to_config(path: str) -> Tuple[G2PConfig, DictionaryConfig]:
     """
     Helper function to load G2P configurations
 
@@ -53,9 +47,12 @@ def g2p_yaml_to_config(path: str) -> G2PConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.g2p_config.G2PConfig`
+    :class:`~montreal_forced_aligner.config.G2PConfig`
         G2P configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -63,16 +60,19 @@ def g2p_yaml_to_config(path: str) -> G2PConfig:
             global_params[k] = v
         g2p_config = G2PConfig()
         g2p_config.update(global_params)
-        return g2p_config
+        dictionary_config.update(global_params)
+    return g2p_config, dictionary_config
 
 
-def load_basic_g2p_config() -> G2PConfig:
+def load_basic_g2p_config() -> Tuple[G2PConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.g2p_config.G2PConfig`
+    :class:`~montreal_forced_aligner.config.G2PConfig`
         Default G2P configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
-    return G2PConfig()
+    return G2PConfig(), DictionaryConfig()

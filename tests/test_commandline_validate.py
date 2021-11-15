@@ -2,13 +2,15 @@ from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
 
-def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictionary, temp_dir):
+def test_validate_corpus(
+    multilingual_ipa_tg_corpus_dir, english_ipa_acoustic_model, english_us_ipa_dictionary, temp_dir
+):
 
     command = [
         "validate",
-        large_prosodylab_format_directory,
-        large_dataset_dictionary,
-        "english",
+        multilingual_ipa_tg_corpus_dir,
+        english_us_ipa_dictionary,
+        english_ipa_acoustic_model,
         "-t",
         temp_dir,
         "-q",
@@ -16,8 +18,6 @@ def test_validate_corpus(large_prosodylab_format_directory, large_dataset_dictio
         "--debug",
         "--disable_mp",
         "--test_transcriptions",
-        "-j",
-        "0",
     ]
     args, unknown = parser.parse_known_args(command)
     run_validate_corpus(args)

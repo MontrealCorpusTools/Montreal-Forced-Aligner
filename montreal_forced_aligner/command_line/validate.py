@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import TEMP_DIR
+from montreal_forced_aligner.config.dictionary_config import DictionaryConfig
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import setup_logger
@@ -54,28 +55,30 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
     else:
         log_level = "info"
     logger = setup_logger(command, data_directory, console_level=log_level)
+    dictionary_config = DictionaryConfig()
+    acoustic_model = None
+    if args.acoustic_model_path:
+        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
+        acoustic_model.log_details(logger)
+        dictionary_config.update(acoustic_model.meta)
+    dictionary = MultispeakerDictionary(
+        args.dictionary_path,
+        data_directory,
+        dictionary_config,
+        logger=logger,
+    )
+    if acoustic_model:
+        acoustic_model.validate(dictionary)
 
     corpus = Corpus(
         args.corpus_directory,
         data_directory,
+        dictionary_config,
         speaker_characters=args.speaker_characters,
         num_jobs=getattr(args, "num_jobs", 3),
         logger=logger,
         use_mp=not args.disable_mp,
     )
-    if args.acoustic_model_path:
-        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
-        acoustic_model.log_details(logger)
-        dictionary = Dictionary(
-            args.dictionary_path,
-            data_directory,
-            logger=logger,
-            multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-        )
-        acoustic_model.validate(dictionary)
-    else:
-        dictionary = Dictionary(args.dictionary_path, data_directory, logger=logger)
-
     a = CorpusValidator(
         corpus,
         dictionary,

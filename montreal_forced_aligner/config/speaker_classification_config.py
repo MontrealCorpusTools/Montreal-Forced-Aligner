@@ -42,7 +42,7 @@ def classification_yaml_to_config(path: str) -> SpeakerClassificationConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.speaker_classification_config.SpeakerClassificationConfig`
+    :class:`~montreal_forced_aligner.config.SpeakerClassificationConfig`
         Speaker classification configuration
     """
     with open(path, "r", encoding="utf8") as f:
@@ -59,7 +59,7 @@ def load_basic_classification() -> SpeakerClassificationConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.speaker_classification_config.SpeakerClassificationConfig`
+    :class:`~montreal_forced_aligner.config.SpeakerClassificationConfig`
         Default speaker classification configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))

@@ -20,12 +20,11 @@ Beta releases
 - Massive refactor to a proper class-based API for interacting with MFA corpora
 
   - Sorry, I really do hope this is the last big refactor of 2.0
-  - :class:`~montreal_forced_aligner.corpus.classes.Speakers`, :class:`~montreal_forced_aligner.corpus.classes.Files`, and :class:`~montreal_forced_aligner.corpus.classes.Utterances` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
-  - Added :class:`~montreal_forced_aligner.multiprocessing.classes.Job` class as well to make it easier to generate and keep track of information about different processes
+  - :class:`~montreal_forced_aligner.corpus.Speaker`, :class:`~montreal_forced_aligner.corpus.File`, and :class:`~montreal_forced_aligner.corpus.Utterance` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
+  - Added :class:`~montreal_forced_aligner.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
 - Updated installation style to be more dependent on conda-forge packages
 
-  - Kaldi is now on conda-forge! |:tada:|
-  - MFA should follow suit soon, making installation a lot simpler
+  - Kaldi and MFA are now on conda-forge! |:tada:|
 
 - Added a :code:`mfa model` command for inspecting, listing, downloading, and saving pretrained models, see :ref:`pretrained_models` for more information.
 - Fixed a bug where saving command history with errors would throw an error of its own
@@ -199,7 +198,7 @@ Beta release!
   if you had previously installed MFA.
 - Allowed for splitting clitics on multiple apostrophes
 - Fixed bug in checking for brackets in G2P (`PR #194`_)
-- Updated Annotator utility (:ref:`annotator` for more details) to be generally more usable for TextGrid use cases and
+- Updated Annotator utility (:ref:`anchor` for more details) to be generally more usable for TextGrid use cases and
   adjusting segments and their transcriptions
 - Improved handling of stereo files with TextGrids so that MFA doesn't need to generate temporary files for each channel
 

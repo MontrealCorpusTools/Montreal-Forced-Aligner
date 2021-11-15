@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Optional
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import TEMP_DIR, load_basic_train_lm, train_lm_yaml_to_config
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import PronunciationDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.lm.trainer import LmTrainer
 from montreal_forced_aligner.utils import setup_logger
@@ -38,9 +38,9 @@ def train_lm(args: Namespace, unknown_args: Optional[list] = None) -> None:
     else:
         temp_dir = os.path.expanduser(args.temp_directory)
     if args.config_path:
-        train_config = train_lm_yaml_to_config(args.config_path)
+        train_config, dictionary_config = train_lm_yaml_to_config(args.config_path)
     else:
-        train_config = load_basic_train_lm()
+        train_config, dictionary_config = load_basic_train_lm()
     train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_unknown_args(unknown_args)
@@ -74,8 +74,8 @@ def train_lm(args: Namespace, unknown_args: Optional[list] = None) -> None:
             debug=args.debug,
         )
         if args.dictionary_path:
-            dictionary = Dictionary(
-                args.dictionary_path, data_directory, debug=args.debug, word_set=source.word_set
+            dictionary = PronunciationDictionary(
+                args.dictionary_path, data_directory, dictionary_config, word_set=source.word_set
             )
             dictionary.generate_mappings()
         else:

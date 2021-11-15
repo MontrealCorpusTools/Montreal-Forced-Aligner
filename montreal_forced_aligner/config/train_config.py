@@ -7,6 +7,7 @@ from typing import Iterator, List, Tuple
 
 import yaml
 
+from ..exceptions import ConfigError
 from ..trainers import (
     BaseTrainer,
     IvectorExtractorTrainer,
@@ -16,14 +17,8 @@ from ..trainers import (
     TriphoneTrainer,
 )
 from .align_config import AlignConfig
-from .base_config import (
-    DEFAULT_CLITIC_MARKERS,
-    DEFAULT_COMPOUND_MARKERS,
-    DEFAULT_PUNCTUATION,
-    PARSING_KEYS,
-    BaseConfig,
-    ConfigError,
-)
+from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 from .feature_config import FeatureConfig
 
 __all__ = [
@@ -54,10 +49,6 @@ class TrainingConfig(BaseConfig):
                 curs[t.train_type] += 1
             self.training_identifiers.append(i)
 
-        self.punctuation = DEFAULT_PUNCTUATION
-        self.clitic_markers = DEFAULT_CLITIC_MARKERS
-        self.compound_markers = DEFAULT_COMPOUND_MARKERS
-
     def update_from_align(self, align_config: AlignConfig) -> None:
         """Update parameters from an AlignConfig"""
         for tc in self.training_configs:
@@ -67,15 +58,8 @@ class TrainingConfig(BaseConfig):
     def update(self, data: dict) -> None:
         """Update parameters"""
         for k, v in data.items():
-            if k in PARSING_KEYS:
-                if not v:
-                    continue
-                if "-" in v:
-                    v = "-" + v.replace("-", "")
-                if "]" in v and r"\]" not in v:
-                    v = v.replace("]", r"\]")
             if not hasattr(self, k):
-                raise ConfigError("No field found for key {}".format(k))
+                continue
             setattr(self, k, v)
         for trainer in self.values():
             trainer.update(data)
@@ -109,7 +93,7 @@ class TrainingConfig(BaseConfig):
 
 def train_yaml_to_config(
     path: str, require_mono: bool = True
-) -> Tuple[TrainingConfig, AlignConfig]:
+) -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load acoustic model training configurations
 
@@ -120,11 +104,14 @@ def train_yaml_to_config(
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -155,6 +142,7 @@ def train_yaml_to_config(
         feature_config.update(global_feature_params)
         align_config = AlignConfig(feature_config)
         align_config.update(global_params)
+        dictionary_config.update(global_params)
         training_config = None
         if training:
             for i, t in enumerate(training):
@@ -167,40 +155,44 @@ def train_yaml_to_config(
         align_config.feature_config.fmllr = training_config.uses_sat
         if align_config.beam >= align_config.retry_beam:
             raise ConfigError("Retry beam must be greater than beam.")
-        return training_config, align_config
+        return training_config, align_config, dictionary_config
 
 
-def load_basic_train() -> Tuple[TrainingConfig, AlignConfig]:
+def load_basic_train() -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(
+    training_config, align_config, dictionary_config = train_yaml_to_config(
         os.path.join(base_dir, "basic_train.yaml")
     )
-    return training_config, align_config
+    return training_config, align_config, dictionary_config
 
 
-def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
+def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default speaker adaptation parameters for adapting an acoustic model to new data
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(
+    training_config, align_config, dictionary_config = train_yaml_to_config(
         os.path.join(base_dir, "adapt_sat.yaml"), require_mono=False
     )
     training_config.training_configs[0].fmllr_iterations = range(
@@ -209,61 +201,67 @@ def load_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
     training_config.training_configs[0].realignment_iterations = range(
         0, training_config.training_configs[0].num_iterations
     )
-    return training_config, align_config
+    return training_config, align_config, dictionary_config
 
 
-def load_no_sat_adapt() -> Tuple[TrainingConfig, AlignConfig]:
+def load_no_sat_adapt() -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters for adapting an acoustic model to new data without speaker adaptation
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(
+    training_config, align_config, dictionary_config = train_yaml_to_config(
         os.path.join(base_dir, "adapt_nosat.yaml"), require_mono=False
     )
     training_config.training_configs[0].realignment_iterations = range(
         0, training_config.training_configs[0].num_iterations
     )
-    return training_config, align_config
+    return training_config, align_config, dictionary_config
 
 
-def load_basic_train_ivector() -> Tuple[TrainingConfig, AlignConfig]:
+def load_basic_train_ivector() -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters for training ivector extractors
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(
+    training_config, align_config, dictionary_config = train_yaml_to_config(
         os.path.join(base_dir, "basic_train_ivector.yaml")
     )
-    return training_config, align_config
+    return training_config, align_config, dictionary_config
 
 
-def load_test_config() -> Tuple[TrainingConfig, AlignConfig]:
+def load_test_config() -> Tuple[TrainingConfig, AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters for validating corpora
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_config.TrainingConfig`
+    :class:`~montreal_forced_aligner.config.TrainingConfig`
         Training configuration
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config, align_config = train_yaml_to_config(
+    training_config, align_config, dictionary_config = train_yaml_to_config(
         os.path.join(base_dir, "test_config.yaml")
     )
-    return training_config, align_config
+    return training_config, align_config, dictionary_config

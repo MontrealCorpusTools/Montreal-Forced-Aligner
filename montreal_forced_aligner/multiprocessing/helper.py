@@ -1,4 +1,8 @@
-"""Helper classes and functions for multiprocessing"""
+"""
+Multiprocessing helpers
+-----------------------
+
+"""
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -19,9 +23,9 @@ class Counter(object):
 
     Attributes
     ----------
-    val: multiprocessing.Value
+    val: :func:`~multiprocessing.Value`
         Integer to increment
-    lock: multiprocessing.Lock
+    lock: :class:`~multiprocessing.Lock`
         Lock for process safety
     """
 
@@ -46,9 +50,9 @@ class Stopped(object):
 
     Attributes
     ----------
-    val: multiprocessing.Value
+    val: :func:`~multiprocessing.Value`
         0 if not stopped, 1 if stopped
-    lock: multiprocessing.Lock
+    lock: :class:`~multiprocessing.Lock`
         Lock for process safety
     _source: multiprocessing.Value
         1 if it was a Ctrl+C event that stopped it, 0 otherwise
@@ -94,7 +98,7 @@ class ProcessWorker(mp.Process):
         Multiprocessing function to call on arguments from job_q
     return_dict: Dict
         Dictionary for collecting errors
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check
     return_info: Dict[int, Any], optional
         Optional dictionary to fill if the function should return information to main thread

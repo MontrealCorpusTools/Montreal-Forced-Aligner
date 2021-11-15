@@ -11,7 +11,7 @@ from montreal_forced_aligner.config.train_g2p_config import (
     load_basic_train_g2p_config,
     train_g2p_yaml_to_config,
 )
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer as Trainer
 
 if TYPE_CHECKING:
@@ -40,13 +40,13 @@ def train_g2p(args: Namespace, unknown_args: Optional[list] = None) -> None:
         shutil.rmtree(os.path.join(temp_dir, "G2P"), ignore_errors=True)
         shutil.rmtree(os.path.join(temp_dir, "models", "G2P"), ignore_errors=True)
     if args.config_path:
-        train_config = train_g2p_yaml_to_config(args.config_path)
+        train_config, dictionary_config = train_g2p_yaml_to_config(args.config_path)
     else:
-        train_config = load_basic_train_g2p_config()
+        train_config, dictionary_config = load_basic_train_g2p_config()
     train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_unknown_args(unknown_args)
-    dictionary = Dictionary(args.dictionary_path, "")
+    dictionary = MultispeakerDictionary(args.dictionary_path, "")
     t = Trainer(
         dictionary,
         args.output_model_path,

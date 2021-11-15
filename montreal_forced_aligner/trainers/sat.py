@@ -7,6 +7,7 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Optional
 
+from ..abc import MetaDict
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
     acc_stats,
@@ -23,10 +24,9 @@ from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .triphone import TriphoneTrainer
 
 if TYPE_CHECKING:
-    from ..config import ConfigDict, FeatureConfig
+    from ..abc import Dictionary, Trainer
+    from ..config import FeatureConfig
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
-    from .base import TrainerType
 
 
 __all__ = ["SatTrainer"]
@@ -77,13 +77,13 @@ class SatTrainer(TriphoneTrainer):
         return "sat"
 
     @property
-    def fmllr_options(self) -> ConfigDict:
+    def fmllr_options(self) -> MetaDict:
         """Options for calculating fMLLR transforms"""
         return {
             "fmllr_update_type": self.fmllr_update_type,
             "debug": self.debug,
             "initial": self.initial_fmllr,
-            "silence_csl": self.dictionary.silence_csl,
+            "silence_csl": self.dictionary.config.silence_csl,
         }
 
     @property
@@ -215,8 +215,8 @@ class SatTrainer(TriphoneTrainer):
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
-        previous_trainer: Optional[TrainerType],
+        dictionary: Dictionary,
+        previous_trainer: Optional[Trainer],
     ) -> None:
         """
         Initialize speaker-adapted triphone training
@@ -227,11 +227,11 @@ class SatTrainer(TriphoneTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+            MultispeakerDictionary to use
+        previous_trainer: Trainer, optional
             Previous trainer to initialize from
         """
         self.feature_config.fmllr = False
@@ -262,7 +262,7 @@ class SatTrainer(TriphoneTrainer):
             extra_question_int_path = os.path.join(
                 self.dictionary.phones_dir, "extra_questions.int"
             )
-            topo_path = os.path.join(self.dictionary.output_directory, "topo")
+            topo_path = self.dictionary.topo_path
             questions_path = os.path.join(self.train_directory, "questions.int")
             questions_qst_path = os.path.join(self.train_directory, "questions.qst")
             with open(log_path, "w") as log_file:

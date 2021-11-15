@@ -2,23 +2,16 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 import yaml
 
-from .base_config import (
-    DEFAULT_CLITIC_MARKERS,
-    DEFAULT_COMPOUND_MARKERS,
-    DEFAULT_DIGRAPHS,
-    DEFAULT_PUNCTUATION,
-    DEFAULT_STRIP_DIACRITICS,
-    BaseConfig,
-    ConfigError,
-)
+from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 from .feature_config import FeatureConfig
 
 if TYPE_CHECKING:
-    from ..config import ConfigDict
+    from ..abc import MetaDict
 
 __all__ = ["TranscribeConfig", "transcribe_yaml_to_config", "load_basic_transcribe"]
 
@@ -29,7 +22,7 @@ class TranscribeConfig(BaseConfig):
 
     Parameters
     ----------
-    feature_config: :class:`~montreal_forced_aligner.config.feature.FeatureConfig`
+    feature_config: :class:`~montreal_forced_aligner.config.FeatureConfig`
         Feature configuration to use in transcription
 
     Attributes
@@ -64,16 +57,10 @@ class TranscribeConfig(BaseConfig):
         self.data_directory = None  # Gets set later
         self.use_mp = True
         self.use_fmllr_mp = False
-        self.multilingual_ipa = False
         self.ignore_speakers = False
-        self.punctuation = DEFAULT_PUNCTUATION
-        self.clitic_markers = DEFAULT_CLITIC_MARKERS
-        self.compound_markers = DEFAULT_COMPOUND_MARKERS
-        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
-        self.digraphs = DEFAULT_DIGRAPHS
         self.overwrite = False
 
-    def params(self) -> ConfigDict:
+    def params(self) -> MetaDict:
         """Metadata parameters for the configuration"""
         return {
             "transition_scale": self.transition_scale,
@@ -93,7 +80,7 @@ class TranscribeConfig(BaseConfig):
         }
 
     @property
-    def decode_options(self) -> ConfigDict:
+    def decode_options(self) -> MetaDict:
         """Options needed for decoding"""
         return {
             "fmllr": self.fmllr,
@@ -107,7 +94,7 @@ class TranscribeConfig(BaseConfig):
         }
 
     @property
-    def score_options(self) -> ConfigDict:
+    def score_options(self) -> MetaDict:
         """Options needed for scoring lattices"""
         return {
             "language_model_weight": self.language_model_weight,
@@ -115,7 +102,7 @@ class TranscribeConfig(BaseConfig):
         }
 
     @property
-    def fmllr_options(self) -> ConfigDict:
+    def fmllr_options(self) -> MetaDict:
         """Options needed for calculating fMLLR transformations"""
         return {
             "fmllr_update_type": self.fmllr_update_type,
@@ -125,7 +112,7 @@ class TranscribeConfig(BaseConfig):
         }
 
     @property
-    def lm_rescore_options(self) -> ConfigDict:
+    def lm_rescore_options(self) -> MetaDict:
         """Options needed for rescoring the language model"""
         return {
             "acoustic_scale": self.acoustic_scale,
@@ -137,11 +124,11 @@ class TranscribeConfig(BaseConfig):
             if k == "use_mp":
                 self.feature_config.use_mp = v
             if not hasattr(self, k):
-                raise ConfigError("No field found for key {}".format(k))
+                continue
             setattr(self, k, v)
 
 
-def transcribe_yaml_to_config(path: str) -> TranscribeConfig:
+def transcribe_yaml_to_config(path: str) -> Tuple[TranscribeConfig, DictionaryConfig]:
     """
     Helper function to load transcription configurations
 
@@ -152,9 +139,12 @@ def transcribe_yaml_to_config(path: str) -> TranscribeConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.transcribe_config.TranscribeConfig`
+    :class:`~montreal_forced_aligner.config.TranscribeConfig`
         Transcription configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -166,18 +156,23 @@ def transcribe_yaml_to_config(path: str) -> TranscribeConfig:
                 global_params[k] = v
         config = TranscribeConfig(feature_config)
         config.update(global_params)
-        return config
+        dictionary_config.update(global_params)
+        return config, dictionary_config
 
 
-def load_basic_transcribe() -> TranscribeConfig:
+def load_basic_transcribe() -> Tuple[TranscribeConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.transcribe_config.TranscribeConfig`
+    :class:`~montreal_forced_aligner.config.TranscribeConfig`
         Default transcription configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    config = transcribe_yaml_to_config(os.path.join(base_dir, "basic_transcribe.yaml"))
-    return config
+    config, dictionary_config = transcribe_yaml_to_config(
+        os.path.join(base_dir, "basic_transcribe.yaml")
+    )
+    return config, dictionary_config

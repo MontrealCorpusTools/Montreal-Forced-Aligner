@@ -4,11 +4,13 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from ..config.dictionary_config import DictionaryConfig
 
 import soundfile
 
-from ..dictionary import sanitize
 from ..exceptions import SoxError
 
 SoundFileInfoDict = Dict[str, Union[int, float, str]]
@@ -38,7 +40,7 @@ def load_text(path: str) -> str:
 
 
 def parse_transcription(
-    text: str, punctuation: Optional[str] = None, clitic_markers: Optional[str] = None
+    text: str, dictionary_config: Optional[DictionaryConfig] = None
 ) -> List[str]:
     """
     Parse an orthographic transcription given punctuation and clitic markers
@@ -47,18 +49,25 @@ def parse_transcription(
     ----------
     text: str
         Orthographic text to parse
-    punctuation: str
+    dictionary_config: Optional[DictionaryConfig]
         Characters to treat as punctuation
-    clitic_markers: str
-        Characters that mark clitics
 
     Returns
     -------
     List
         Parsed orthographic transcript
     """
-    words = [sanitize(x, punctuation, clitic_markers) for x in text.split()]
-    words = [x for x in words if x not in ["", "-", "'"]]
+    if dictionary_config is not None:
+        words = [dictionary_config.sanitize(x) for x in text.split()]
+        words = [
+            x
+            for x in words
+            if x
+            and x not in dictionary_config.clitic_markers
+            and x not in dictionary_config.compound_markers
+        ]
+    else:
+        words = text.split()
     return words
 
 

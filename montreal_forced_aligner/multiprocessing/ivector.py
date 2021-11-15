@@ -1,19 +1,24 @@
-"""Multiprocessing functions for ivector extraction and training"""
+"""
+Ivector extractor functions
+---------------------------
+
+
+"""
 from __future__ import annotations
 
 import os
 import subprocess
 from typing import TYPE_CHECKING, Dict, List, Union
 
+from ..abc import MetaDict
 from ..helper import load_scp
 from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
-    from ..config import ConfigDict
+    from ..abc import IvectorExtractor
     from ..corpus.classes import File, Speaker, Utterance  # noqa
     from ..segmenter import SegmentationType, Segmenter
-    from ..speaker_classifier import SpeakerClassifier
     from ..trainers.ivector_extractor import IvectorExtractorTrainer
 
 
@@ -26,6 +31,12 @@ __all__ = [
     "get_initial_segmentation",
     "merge_segments",
     "segment_vad",
+    "segment_vad_func",
+    "gmm_gselect_func",
+    "gauss_to_post_func",
+    "acc_global_stats_func",
+    "acc_ivector_stats_func",
+    "extract_ivectors_func",
 ]
 
 
@@ -33,7 +44,7 @@ def gmm_gselect_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    ivector_options: ConfigDict,
+    ivector_options: MetaDict,
     dubm_path: str,
     gselect_paths: Dict[str, str],
 ) -> None:
@@ -48,7 +59,7 @@ def gmm_gselect_func(
         List of dictionary names
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
-    ivector_options: ConfigDict
+    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for ivector extractor training
     dubm_path: str
         Path to the DUBM file
@@ -102,7 +113,7 @@ def gmm_gselect(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+    trainer : :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
         Ivector Extractor Trainer
     """
     jobs = [x.gmm_gselect_arguments(trainer) for x in trainer.corpus.jobs]
@@ -116,7 +127,7 @@ def acc_global_stats_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    ivector_options: ConfigDict,
+    ivector_options: MetaDict,
     gselect_paths: Dict[str, str],
     acc_paths: Dict[str, str],
     dubm_path: str,
@@ -132,7 +143,7 @@ def acc_global_stats_func(
         List of dictionary names
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
-    ivector_options: ConfigDict
+    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for ivector extractor training
     gselect_paths: Dict[str, str]
         Dictionary of gselect archives per dictionary name
@@ -188,7 +199,7 @@ def acc_global_stats(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer : :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+    trainer : :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
         Ivector Extractor Trainer
     """
     jobs = [x.acc_global_stats_arguments(trainer) for x in trainer.corpus.jobs]
@@ -238,7 +249,7 @@ def gauss_to_post_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    ivector_options: ConfigDict,
+    ivector_options: MetaDict,
     post_paths: Dict[str, str],
     dubm_path: str,
 ):
@@ -253,7 +264,7 @@ def gauss_to_post_func(
         List of dictionary names
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
-    ivector_options: ConfigDict
+    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for ivector extractor training
     post_paths: Dict[str, str]
         Dictionary of posterior archives per dictionary name
@@ -321,7 +332,7 @@ def gauss_to_post(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer: :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+    trainer: :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
         Ivector Extractor Trainer
     """
     jobs = [x.gauss_to_post_arguments(trainer) for x in trainer.corpus.jobs]
@@ -335,7 +346,7 @@ def acc_ivector_stats_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    ivector_options: ConfigDict,
+    ivector_options: MetaDict,
     ie_path: str,
     post_paths: Dict[str, str],
     acc_init_paths: Dict[str, str],
@@ -350,15 +361,15 @@ def acc_ivector_stats_func(
     dictionaries: List[str]
         List of dictionary names
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ivector_options: ConfigDict
+        PronunciationDictionary of feature strings per dictionary name
+    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for ivector extractor training
     ie_path: str
         Path to the ivector extractor file
     post_paths: Dict[str, str]
-        Dictionary of posterior archives per dictionary name
+        PronunciationDictionary of posterior archives per dictionary name
     acc_init_paths: Dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+        PronunciationDictionary of accumulated stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -409,7 +420,7 @@ def acc_ivector_stats(trainer: IvectorExtractorTrainer) -> None:
 
     Parameters
     ----------
-    trainer: :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+    trainer: :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
         Ivector Extractor Trainer
     """
 
@@ -459,7 +470,7 @@ def extract_ivectors_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    ivector_options: ConfigDict,
+    ivector_options: MetaDict,
     ali_paths: Dict[str, str],
     ie_path: str,
     ivector_paths: Dict[str, str],
@@ -478,7 +489,7 @@ def extract_ivectors_func(
         List of dictionary names
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
-    ivector_options: ConfigDict
+    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for ivector extraction
     ali_paths: Dict[str, str]
         Dictionary of alignment archives per dictionary name
@@ -576,7 +587,7 @@ def extract_ivectors_func(
             extract_proc.communicate()
 
 
-def extract_ivectors(ivector_extractor: Union[SpeakerClassifier, IvectorExtractorTrainer]) -> None:
+def extract_ivectors(ivector_extractor: IvectorExtractor) -> None:
     """
     Multiprocessing function that extracts job_name-vectors.
 
@@ -593,7 +604,7 @@ def extract_ivectors(ivector_extractor: Union[SpeakerClassifier, IvectorExtracto
 
     Parameters
     ----------
-    ivector_extractor: :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier` or :class:`~montreal_forced_aligner.trainers.ivector.IvectorExtractorTrainer`
+    ivector_extractor: IvectorExtractor
         Ivector extractor
     """
 
@@ -695,7 +706,7 @@ def merge_segments(
 def segment_vad_func(
     dictionaries: List[str],
     vad_paths: Dict[str, str],
-    segmentation_options: ConfigDict,
+    segmentation_options: MetaDict,
 ) -> Dict[str, Utterance]:
     """
     Multiprocessing function to generate segments from VAD output
@@ -708,7 +719,7 @@ def segment_vad_func(
         List of dictionary names
     vad_paths: Dict[str, str]
         Dictionary of VAD archives per dictionary name
-    segmentation_options: ConfigDict
+    segmentation_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for segmentation
     """
 

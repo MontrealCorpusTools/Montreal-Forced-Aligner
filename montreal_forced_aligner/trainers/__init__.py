@@ -1,4 +1,9 @@
-"""Class definitions for acoustic model trainers in MFA"""
+"""
+Training acoustic models
+========================
+
+
+"""
 from .base import BaseTrainer  # noqa
 from .ivector_extractor import IvectorExtractorTrainer  # noqa
 from .lda import LdaTrainer  # noqa
@@ -13,4 +18,17 @@ __all__ = [
     "MonophoneTrainer",
     "SatTrainer",
     "TriphoneTrainer",
+    "base",
+    "ivector_extractor",
+    "lda",
+    "monophone",
+    "sat",
+    "triphone",
 ]
+
+BaseTrainer.__module__ = "montreal_forced_aligner.trainers"
+IvectorExtractorTrainer.__module__ = "montreal_forced_aligner.trainers"
+LdaTrainer.__module__ = "montreal_forced_aligner.trainers"
+MonophoneTrainer.__module__ = "montreal_forced_aligner.trainers"
+SatTrainer.__module__ = "montreal_forced_aligner.trainers"
+TriphoneTrainer.__module__ = "montreal_forced_aligner.trainers"

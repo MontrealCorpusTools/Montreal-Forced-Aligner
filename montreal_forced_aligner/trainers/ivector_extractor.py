@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from tqdm import tqdm
 
+from ..abc import IvectorExtractor, MetaDict
 from ..exceptions import KaldiProcessingError
 from ..helper import load_scp
-from ..models import IvectorExtractor
+from ..models import IvectorExtractorModel
 from ..multiprocessing.ivector import (
     acc_global_stats,
     acc_ivector_stats,
@@ -23,11 +24,10 @@ from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .base import BaseTrainer
 
 if TYPE_CHECKING:
+    from ..abc import Dictionary
     from ..aligner import PretrainedAligner
     from ..config import FeatureConfig
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
-    from ..models import MetaDict
 
 
 IvectorConfigType = Dict[str, Any]
@@ -36,7 +36,7 @@ IvectorConfigType = Dict[str, Any]
 __all__ = ["IvectorExtractorTrainer"]
 
 
-class IvectorExtractorTrainer(BaseTrainer):
+class IvectorExtractorTrainer(BaseTrainer, IvectorExtractor):
     """
     Trainer for IvectorExtractor
 
@@ -123,7 +123,7 @@ class IvectorExtractorTrainer(BaseTrainer):
             "silence_weight": self.silence_weight,
             "max_count": self.max_count,
             "ivector_dimension": self.ivector_dimension,
-            "sil_phones": self.dictionary.silence_csl,
+            "sil_phones": self.dictionary.config.silence_csl,
         }
 
     @property
@@ -268,7 +268,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: Dictionary,
         previous_trainer: Optional[PretrainedAligner] = None,
     ) -> None:
         """
@@ -280,11 +280,11 @@ class IvectorExtractorTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+            MultispeakerDictionary to use
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.BaseTrainer`, optional
             Previous trainer to initialize from
         """
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)
@@ -359,6 +359,12 @@ class IvectorExtractorTrainer(BaseTrainer):
         """Overwrite align function to export IvectorExtractor to align directory"""
         self.save(os.path.join(self.align_directory, "ivector_extractor.zip"))
 
+    def extract_ivectors(self) -> None:
+        """
+        Extract ivectors for the corpus
+        """
+        extract_ivectors(self)
+
     def training_iteration(self):
         """
         Run an iteration of training
@@ -424,7 +430,7 @@ class IvectorExtractorTrainer(BaseTrainer):
         """
         directory, filename = os.path.split(path)
         basename, _ = os.path.splitext(filename)
-        ivector_extractor = IvectorExtractor.empty(basename, root_directory)
+        ivector_extractor = IvectorExtractorModel.empty(basename, root_directory)
         ivector_extractor.add_meta_file(self)
         ivector_extractor.add_model(self.train_directory)
         os.makedirs(directory, exist_ok=True)

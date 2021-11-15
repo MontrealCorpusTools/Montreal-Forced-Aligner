@@ -5,6 +5,7 @@ import os
 import time
 from typing import TYPE_CHECKING, Optional
 
+from ..abc import MetaDict, Trainer
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
     acc_stats,
@@ -19,8 +20,7 @@ from .triphone import TriphoneTrainer
 if TYPE_CHECKING:
     from ..config import FeatureConfig
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
-    from .base import MetaDict, TrainerType
+    from ..dictionary import MultispeakerDictionary
 
 
 __all__ = ["LdaTrainer"]
@@ -81,7 +81,7 @@ class LdaTrainer(TriphoneTrainer):
             "lda_dimension": self.lda_dimension,
             "boost_silence": self.boost_silence,
             "random_prune": self.random_prune,
-            "silence_csl": self.dictionary.silence_csl,
+            "silence_csl": self.dictionary.config.silence_csl,
         }
 
     def init_training(
@@ -89,8 +89,8 @@ class LdaTrainer(TriphoneTrainer):
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
-        previous_trainer: Optional[TrainerType],
+        dictionary: MultispeakerDictionary,
+        previous_trainer: Optional[Trainer],
     ):
         """
         Initialize LDA training
@@ -101,11 +101,11 @@ class LdaTrainer(TriphoneTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: TrainerType, optional
+        dictionary: Dictionary
+            Pronunciation dictionary to use
+        previous_trainer: Trainer, optional
             Previous trainer to initialize from
 
         Raises

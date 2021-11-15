@@ -7,7 +7,7 @@ from montreal_forced_aligner.config.train_config import train_yaml_to_config
 from montreal_forced_aligner.corpus import Corpus
 from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
 from montreal_forced_aligner.corpus.helper import get_wav_info
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import SoxError
 
 
@@ -46,41 +46,41 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir, default_feature
     output_directory = os.path.join(generated_dir, "basic")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, output_directory)
+    dictionary = MultispeakerDictionary(basic_dict_path, output_directory)
     dictionary.write()
     c = Corpus(basic_corpus_dir, output_directory, use_mp=True)
     c.initialize_corpus(dictionary, default_feature_config)
     for speaker in c.speakers.values():
         data = speaker.dictionary.data()
-        assert dictionary.silences == data.silences
-        assert dictionary.multilingual_ipa == data.multilingual_ipa
-        assert dictionary.words_mapping == data.words_mapping
-        assert dictionary.punctuation == data.punctuation
-        assert dictionary.clitic_markers == data.clitic_markers
-        assert dictionary.oov_int == data.oov_int
-        assert dictionary.words == data.words
+        assert speaker.dictionary.config.silence_phones == data.dictionary_config.silence_phones
+        assert (
+            speaker.dictionary.config.multilingual_ipa == data.dictionary_config.multilingual_ipa
+        )
+        assert speaker.dictionary.words_mapping == data.words_mapping
+        assert speaker.dictionary.config.punctuation == data.dictionary_config.punctuation
+        assert speaker.dictionary.config.clitic_markers == data.dictionary_config.clitic_markers
+        assert speaker.dictionary.oov_int == data.oov_int
+        assert speaker.dictionary.words == data.words
     assert c.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config):
     output_directory = os.path.join(generated_dir, "basic")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
     dictionary.write()
     c = Corpus(basic_corpus_txt_dir, output_directory, use_mp=False)
     print(c.no_transcription_files)
     assert len(c.no_transcription_files) == 0
     c.initialize_corpus(dictionary, default_feature_config)
     assert c.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_alignable_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config
 ):
-    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
     dictionary.write()
     output_directory = os.path.join(generated_dir, "basic")
     if os.path.exists(output_directory):
@@ -94,13 +94,12 @@ def test_alignable_from_temp(
     assert len(c.no_transcription_files) == 0
     c.initialize_corpus(dictionary, default_feature_config)
     assert c.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_transcribe_from_temp(
     basic_corpus_txt_dir, basic_dict_path, generated_dir, default_feature_config
 ):
-    dictionary = Dictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
     dictionary.write()
     output_directory = os.path.join(generated_dir, "basic")
     if os.path.exists(output_directory):
@@ -112,7 +111,6 @@ def test_transcribe_from_temp(
     c = Corpus(basic_corpus_txt_dir, output_directory, use_mp=False)
     c.initialize_corpus(dictionary, default_feature_config)
     assert c.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
@@ -127,12 +125,11 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, temp_dir, default_feature_co
     temp = os.path.join(temp_dir, "stereo")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(stereo_corpus_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_stereo_short_tg(
@@ -141,24 +138,22 @@ def test_stereo_short_tg(
     temp = os.path.join(temp_dir, "stereo_tg")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(stereo_corpus_short_tg_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, "flac")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_corpus_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_audio_directory(basic_dict_path, basic_split_dir, temp_dir, default_feature_config):
@@ -166,7 +161,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, temp_dir, default_fea
     audio_dir, text_dir = basic_split_dir
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(text_dir, temp, use_mp=False, audio_directory=audio_dir)
     assert len(d.no_transcription_files) == 0
@@ -176,71 +171,65 @@ def test_audio_directory(basic_dict_path, basic_split_dir, temp_dir, default_fea
 
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(text_dir, temp, use_mp=True, audio_directory=audio_dir)
     assert len(d.no_transcription_files) == 0
     assert len(d.files) > 0
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac_mp(basic_dict_path, flac_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, "flac")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_corpus_dir, temp, use_mp=True)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, "flac")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_tg_corpus_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, "flac")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_tg_corpus_dir, temp, use_mp=True)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac_tg_transcribe(basic_dict_path, flac_tg_corpus_dir, temp_dir, default_feature_config):
     temp = os.path.join(temp_dir, "flac_tg")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_tg_corpus_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_tg_corpus_dir, temp, use_mp=True)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_flac_transcribe(
@@ -249,22 +238,20 @@ def test_flac_transcribe(
     temp = os.path.join(temp_dir, "flac_transcribe")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
     d = Corpus(flac_transcribe_corpus_dir, temp, use_mp=True)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, os.path.join(temp, "basic"))
+    dictionary = MultispeakerDictionary(basic_dict_path, os.path.join(temp, "basic"))
     dictionary.write()
 
     d = Corpus(flac_transcribe_corpus_dir, temp, use_mp=False)
     d.initialize_corpus(dictionary, default_feature_config)
     assert d.get_feat_dim() == 39
-    dictionary.cleanup_logger()
 
 
 def test_24bit_wav(transcribe_corpus_24bit_dir, temp_dir, default_feature_config):
@@ -284,7 +271,7 @@ def test_short_segments(
     temp = os.path.join(temp_dir, "short_segments")
     if os.path.exists(temp):
         shutil.rmtree(temp, ignore_errors=True)
-    dictionary = Dictionary(basic_dict_path, temp)
+    dictionary = MultispeakerDictionary(basic_dict_path, temp)
     dictionary.write()
     corpus = Corpus(shortsegments_corpus_dir, temp, use_mp=False)
     corpus.initialize_corpus(dictionary, default_feature_config)
@@ -293,69 +280,65 @@ def test_short_segments(
     assert len([x for x in corpus.utterances.values() if x.features is not None]) == 1
     assert len([x for x in corpus.utterances.values() if x.ignored]) == 2
     assert len([x for x in corpus.utterances.values() if x.features is None]) == 2
-    dictionary.cleanup_logger()
 
 
 def test_speaker_groupings(
-    large_prosodylab_format_directory, temp_dir, large_dataset_dictionary, default_feature_config
+    multilingual_ipa_corpus_dir, temp_dir, english_us_ipa_dictionary, default_feature_config
 ):
-    output_directory = os.path.join(temp_dir, "large")
+    output_directory = os.path.join(temp_dir, "speaker_groupings")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(large_dataset_dictionary, output_directory)
+    dictionary = MultispeakerDictionary(english_us_ipa_dictionary, output_directory)
     dictionary.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory, use_mp=False)
+    c = Corpus(multilingual_ipa_corpus_dir, output_directory, use_mp=True)
 
     c.initialize_corpus(dictionary, default_feature_config)
-    speakers = os.listdir(large_prosodylab_format_directory)
+    speakers = os.listdir(multilingual_ipa_corpus_dir)
     for s in speakers:
         assert any(s in x.speakers for x in c.jobs)
-    for _, _, files in os.walk(large_prosodylab_format_directory):
+    for _, _, files in os.walk(multilingual_ipa_corpus_dir):
         for f in files:
             name, ext = os.path.splitext(f)
             assert name in c.files
 
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory, num_jobs=2, use_mp=False)
+    c = Corpus(multilingual_ipa_corpus_dir, output_directory, num_jobs=1, use_mp=True)
 
     c.initialize_corpus(dictionary, default_feature_config)
     for s in speakers:
         assert any(s in x.speakers for x in c.jobs)
-    for _, _, files in os.walk(large_prosodylab_format_directory):
+    for _, _, files in os.walk(multilingual_ipa_corpus_dir):
         for f in files:
             name, ext = os.path.splitext(f)
             assert name in c.files
-
-    dictionary.cleanup_logger()
 
 
 def test_subset(
-    large_prosodylab_format_directory, temp_dir, large_dataset_dictionary, default_feature_config
+    multilingual_ipa_corpus_dir, temp_dir, english_us_ipa_dictionary, default_feature_config
 ):
     output_directory = os.path.join(temp_dir, "large_subset")
     shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(large_dataset_dictionary, output_directory)
+    dictionary = MultispeakerDictionary(english_us_ipa_dictionary, output_directory)
     dictionary.write()
-    c = Corpus(large_prosodylab_format_directory, output_directory, use_mp=False)
+    c = Corpus(multilingual_ipa_corpus_dir, output_directory, use_mp=False)
     c.initialize_corpus(dictionary, default_feature_config)
     sd = c.split_directory
 
-    s = c.subset_directory(10)
+    s = c.subset_directory(5)
     assert os.path.exists(sd)
     assert os.path.exists(s)
-    dictionary.cleanup_logger()
 
 
 def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
     output_directory = os.path.join(temp_dir, "weird_words")
     shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(sick_dict_path, output_directory)
-    assert "i’m" not in dictionary.words
-    assert "’m" not in dictionary.words
-    assert dictionary.words["i'm"][0]["pronunciation"] == ("ay", "m", "ih")
-    assert dictionary.words["i'm"][1]["pronunciation"] == ("ay", "m")
-    assert dictionary.words["'m"][0]["pronunciation"] == ("m",)
+    dictionary = MultispeakerDictionary(sick_dict_path, output_directory)
+    assert "i’m" not in dictionary.default_dictionary.words
+    assert "’m" not in dictionary.default_dictionary.words
+    assert dictionary.default_dictionary.words["i'm"][0]["pronunciation"] == ("ay", "m", "ih")
+    assert dictionary.default_dictionary.words["i'm"][1]["pronunciation"] == ("ay", "m")
+    assert dictionary.default_dictionary.words["'m"][0]["pronunciation"] == ("m",)
     dictionary.write()
     c = Corpus(weird_words_dir, output_directory, use_mp=False)
     c.initialize_corpus(dictionary)
@@ -367,65 +350,62 @@ def test_weird_words(weird_words_dir, temp_dir, sick_dict_path):
 
     dictionary.set_word_set(c.word_set)
     for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
-        _ = dictionary.to_int(w)
+        _ = dictionary.default_dictionary.to_int(w)
     print(dictionary.oovs_found)
     assert "'m" not in dictionary.oovs_found
-    dictionary.cleanup_logger()
 
 
 def test_punctuated(punctuated_dir, temp_dir, sick_dict_path):
     output_directory = os.path.join(temp_dir, "punctuated")
     shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = Dictionary(sick_dict_path, output_directory)
+    dictionary = MultispeakerDictionary(sick_dict_path, output_directory)
     dictionary.write()
-    c = Corpus(punctuated_dir, output_directory, use_mp=False)
+    c = Corpus(punctuated_dir, output_directory, dictionary_config=dictionary.config, use_mp=False)
     c.initialize_corpus(dictionary)
     assert (
         c.utterances["punctuated-punctuated"].text
         == "oh yes they they you know they love her and so i mean"
     )
-    dictionary.cleanup_logger()
 
 
 def test_alternate_punctuation(
     punctuated_dir, temp_dir, sick_dict_path, different_punctuation_config
 ):
-    train_config, align_config = train_yaml_to_config(different_punctuation_config)
+    train_config, align_config, dictionary_config = train_yaml_to_config(
+        different_punctuation_config
+    )
     output_directory = os.path.join(temp_dir, "punctuated")
     shutil.rmtree(output_directory, ignore_errors=True)
-    print(align_config.punctuation)
-    dictionary = Dictionary(sick_dict_path, output_directory, punctuation=align_config.punctuation)
+    print(dictionary_config.punctuation)
+    dictionary = MultispeakerDictionary(sick_dict_path, output_directory, dictionary_config)
     dictionary.write()
     c = Corpus(
-        punctuated_dir, output_directory, use_mp=False, punctuation=align_config.punctuation
+        punctuated_dir,
+        output_directory,
+        dictionary_config,
+        use_mp=False,
     )
-    print(c.punctuation)
     c.initialize_corpus(dictionary)
     assert (
         c.utterances["punctuated-punctuated"].text
         == "oh yes, they they, you know, they love her and so i mean"
     )
-    dictionary.cleanup_logger()
 
 
 def test_xsampa_corpus(
     xsampa_corpus_dir, xsampa_dict_path, temp_dir, generated_dir, different_punctuation_config
 ):
-    train_config, align_config = train_yaml_to_config(different_punctuation_config)
+    train_config, align_config, dictionary_config = train_yaml_to_config(
+        different_punctuation_config
+    )
     output_directory = os.path.join(temp_dir, "xsampa")
     shutil.rmtree(output_directory, ignore_errors=True)
-    print(align_config.punctuation)
-    dictionary = Dictionary(
-        xsampa_dict_path, output_directory, punctuation=align_config.punctuation
-    )
+    print(dictionary_config.punctuation)
+    dictionary = MultispeakerDictionary(xsampa_dict_path, output_directory, dictionary_config)
     dictionary.write()
-    c = Corpus(
-        xsampa_corpus_dir, output_directory, use_mp=False, punctuation=align_config.punctuation
-    )
-    print(c.punctuation)
+    c = Corpus(xsampa_corpus_dir, output_directory, dictionary_config, use_mp=False)
     c.initialize_corpus(dictionary)
     assert (
         c.utterances["xsampa-michael"].text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
     )
-    dictionary.cleanup_logger()

@@ -1,4 +1,8 @@
-"""Multiprocessing functions for generating features"""
+"""
+Feature generation functions
+----------------------------
+
+"""
 from __future__ import annotations
 
 import os
@@ -12,10 +16,10 @@ from ..utils import thirdparty_binary
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
+    from ..abc import MetaDict
     from ..corpus import Corpus
-    from ..corpus.classes import ConfigDict
 
-__all__ = ["mfcc", "compute_vad", "calc_cmvn"]
+__all__ = ["mfcc", "compute_vad", "calc_cmvn", "mfcc_func", "compute_vad_func"]
 
 
 def mfcc_func(
@@ -25,7 +29,7 @@ def mfcc_func(
     lengths_paths: Dict[str, str],
     segment_paths: Dict[str, str],
     wav_paths: Dict[str, str],
-    mfcc_options: ConfigDict,
+    mfcc_options: MetaDict,
 ) -> None:
     """
     Multiprocessing function for generating MFCC features
@@ -44,7 +48,7 @@ def mfcc_func(
         Dictionary of segment scp files per dictionary name
     wav_paths: Dict[str, str]
         Dictionary of sound file scp files per dictionary name
-    mfcc_options: ConfigDict
+    mfcc_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for MFCC generation
     """
     with open(log_path, "w") as log_file:
@@ -116,7 +120,7 @@ def mfcc(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus to generate MFCC features for
     """
     log_directory = os.path.join(corpus.split_directory, "log")
@@ -135,7 +139,7 @@ def calc_cmvn(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus to run CMVN calculation
     """
     spk2utt = os.path.join(corpus.output_directory, "spk2utt.scp")
@@ -167,7 +171,7 @@ def compute_vad_func(
     dictionaries: List[str],
     feats_scp_paths: Dict[str, str],
     vad_scp_paths: Dict[str, str],
-    vad_options: ConfigDict,
+    vad_options: MetaDict,
 ) -> None:
     """
     Multiprocessing function to compute voice activity detection
@@ -179,10 +183,10 @@ def compute_vad_func(
     dictionaries: List[str]
         List of dictionary names
     feats_scp_paths: Dict[str, str]
-        Dictionary of feature scp files per dictionary name
+        PronunciationDictionary of feature scp files per dictionary name
     vad_scp_paths: Dict[str, str]
-        Dictionary of vad scp files per dictionary name
-    vad_options: ConfigDict
+        PronunciationDictionary of vad scp files per dictionary name
+    vad_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for VAD
     """
     with open(log_path, "w") as log_file:
@@ -209,7 +213,7 @@ def compute_vad(corpus: Corpus) -> None:
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus to compute VAD
     """
     log_directory = os.path.join(corpus.split_directory, "log")

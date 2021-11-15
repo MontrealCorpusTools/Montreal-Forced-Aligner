@@ -21,6 +21,7 @@ pretrained_models/
 
 # Distribution / packaging
 montreal_forced_aligner/version.py
+montreal_forced_aligner/_version.py
 .Python
 env/
 build/
@@ -81,3 +82,4 @@ target/
 docs/source/api/
 
 montreal_forced_aligner/_version.py
+/docs/source/reference/generated/

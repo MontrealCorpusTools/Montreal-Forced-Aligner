@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
     train_yaml_to_config,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.utils import log_config, setup_logger
 
@@ -51,9 +51,9 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[list] = None) -
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.config_path:
-        train_config, align_config = train_yaml_to_config(args.config_path)
+        train_config, align_config, dictionary_config = train_yaml_to_config(args.config_path)
     else:
-        train_config, align_config = load_basic_train()
+        train_config, align_config, dictionary_config = load_basic_train()
     train_config.use_mp = not args.disable_mp
     align_config.use_mp = not args.disable_mp
     align_config.debug = args.debug
@@ -130,28 +130,22 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[list] = None) -
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             num_jobs=getattr(args, "num_jobs", 3),
             sample_rate=align_config.feature_config.sample_frequency,
             debug=getattr(args, "debug", False),
             logger=logger,
             use_mp=align_config.use_mp,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
             audio_directory=audio_dir,
         )
         logger.info(corpus.speaker_utterance_info())
-        dictionary = Dictionary(
+        dictionary = MultispeakerDictionary(
             args.dictionary_path,
             data_directory,
+            dictionary_config,
             word_set=corpus.word_set,
             logger=logger,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
-            compound_markers=align_config.compound_markers,
-            multilingual_ipa=align_config.multilingual_ipa,
-            strip_diacritics=align_config.strip_diacritics,
-            digraphs=align_config.digraphs,
         )
         utt_oov_path = os.path.join(corpus.split_directory, "utterance_oovs.txt")
         if os.path.exists(utt_oov_path):

@@ -12,8 +12,8 @@ from ..corpus import Corpus
 from ..models import LanguageModel
 
 if TYPE_CHECKING:
+    from ..abc import Dictionary
     from ..config.train_lm_config import TrainLMConfig
-    from ..dictionary import DictionaryType
 
 
 __all__ = ["LmTrainer"]
@@ -25,13 +25,13 @@ class LmTrainer:
 
     Parameters
     ----------
-    source: class:`~montreal_forced_aligner.corpus.base.Corpus` or str
+    source: class:`~montreal_forced_aligner.corpus.Corpus` or str
         Either a alignable corpus or a path to an ARPA format language model
     config : class:`~montreal_forced_aligner.config.TrainLMConfig`
         Config class for training language model
     output_model_path : str
         Path to output trained model
-    dictionary : class:`~montreal_forced_aligner.dictionary.Dictionary`, optional
+    dictionary : class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`, optional
         Optional dictionary to calculate unknown words
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -51,7 +51,7 @@ class LmTrainer:
         source: Union[Corpus, str],
         config: TrainLMConfig,
         output_model_path: str,
-        dictionary: Optional[DictionaryType] = None,
+        dictionary: Optional[Dictionary] = None,
         temp_directory: Optional[str] = None,
         supplemental_model_path: Optional[str] = None,
         supplemental_model_weight: int = 1,
@@ -180,9 +180,7 @@ class LmTrainer:
             training_path = os.path.join(self.temp_directory, "training.txt")
 
             with open(training_path, "w", encoding="utf8") as f:
-                for text in self.source.normalized_text_iter(
-                    self.dictionary, self.config.count_threshold
-                ):
+                for text in self.source.normalized_text_iter(self.config.count_threshold):
                     f.write(f"{text}\n")
 
             if self.dictionary is not None:

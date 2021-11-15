@@ -14,7 +14,7 @@ from montreal_forced_aligner.config import (
     transcribe_yaml_to_config,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.transcriber import Transcriber
@@ -51,9 +51,9 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
         args.corpus_directory = os.path.dirname(args.corpus_directory)
         corpus_name = os.path.basename(args.corpus_directory)
     if args.config_path:
-        transcribe_config = transcribe_yaml_to_config(args.config_path)
+        transcribe_config, dictionary_config = transcribe_yaml_to_config(args.config_path)
     else:
-        transcribe_config = load_basic_transcribe()
+        transcribe_config, dictionary_config = load_basic_transcribe()
     transcribe_config.use_mp = not args.disable_mp
     transcribe_config.overwrite = args.overwrite
     if unknown_args:
@@ -138,6 +138,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             sample_rate=transcribe_config.feature_config.sample_frequency,
             num_jobs=args.num_jobs,
@@ -146,6 +147,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
             ignore_speakers=transcribe_config.ignore_speakers,
         )
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
+        dictionary_config.update(acoustic_model.meta)
         acoustic_model.log_details(logger)
         if args.language_model_path.endswith(".arpa"):
             alternative_name = os.path.splitext(args.language_model_path)[0] + ".zip"
@@ -155,26 +157,13 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[list] = None) -> N
                 f"`mfa train_lm {args.language_model_path} {alternative_name}`."
             )
         language_model = LanguageModel(args.language_model_path, root_directory=data_directory)
-        if args.dictionary_path.lower().endswith(".yaml"):
-            dictionary = MultispeakerDictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=transcribe_config.punctuation,
-                clitic_markers=transcribe_config.clitic_markers,
-                compound_markers=transcribe_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-            )
-        else:
-            dictionary = Dictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=transcribe_config.punctuation,
-                clitic_markers=transcribe_config.clitic_markers,
-                compound_markers=transcribe_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-            )
+        dictionary = MultispeakerDictionary(
+            args.dictionary_path,
+            data_directory,
+            dictionary_config,
+            logger=logger,
+        )
+
         acoustic_model.validate(dictionary)
         begin = time.time()
         t = Transcriber(

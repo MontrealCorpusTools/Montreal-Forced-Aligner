@@ -1,4 +1,8 @@
-"""Multiprocessing functions for transcription in MFA"""
+"""
+Transcription functions
+-----------------------
+
+"""
 from __future__ import annotations
 
 import os
@@ -8,12 +12,12 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, TextIO, Union
 
+from ..abc import MetaDict
 from ..exceptions import KaldiProcessingError
 from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
-    from ..config.transcribe_config import ConfigDict
     from ..dictionary import MappingType
     from ..transcriber import Transcriber
 
@@ -29,6 +33,15 @@ __all__ = [
     "transcribe",
     "transcribe_fmllr",
     "score_transcriptions",
+    "fmllr_rescore_func",
+    "final_fmllr_est_func",
+    "initial_fmllr_func",
+    "lat_gen_fmllr_func",
+    "score_func",
+    "lm_rescore_func",
+    "carpa_lm_rescore_func",
+    "decode_func",
+    "create_hclg_func",
 ]
 
 
@@ -151,6 +164,7 @@ def compose_hclg(
     log_file: TextIO,
 ) -> None:
     """
+    Compost HCLG.fst for a dictionary
 
     Parameters
     ----------
@@ -166,10 +180,6 @@ def compose_hclg(
         Path to save HCLGa.fst file
     log_file: TextIO
         Log file handler to output logging info to
-
-    Returns
-    -------
-
     """
     model_path = os.path.join(model_directory, "final.mdl")
     tree_path = os.path.join(model_directory, "tree")
@@ -355,7 +365,7 @@ def create_hclg_func(
     model_path: str,
     disambig_L_path: str,
     disambig_int_path: str,
-    hclg_options: ConfigDict,
+    hclg_options: MetaDict,
     words_mapping: MappingType,
 ):
     """
@@ -385,7 +395,7 @@ def create_hclg_func(
         Path to L_disambig.fst file
     disambig_int_path:
         Path to dictionary's disambiguation symbols file
-    hclg_options: ConfigDict
+    hclg_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Configuration options for composing HCLG.fst
     words_mapping: Dict[str, int]
         Word labels to integer ID mapping
@@ -479,7 +489,7 @@ def create_hclg_func(
 
 def create_hclgs(transcriber: Transcriber):
     """
-    Create HCLG.fst files for every dictionary being used by a Transcriber
+    Create HCLG.fst files for every dictionary being used by a :class:`~montreal_forced_aligner.transcriber.Transcriber`
 
     Parameters
     ----------
@@ -511,7 +521,7 @@ def decode_func(
     log_path: str,
     dictionaries: List[str],
     feature_strings: Dict[str, str],
-    decode_options: ConfigDict,
+    decode_options: MetaDict,
     model_path: str,
     lat_paths: Dict[str, str],
     word_symbol_paths: Dict[str, str],
@@ -528,7 +538,7 @@ def decode_func(
         List of dictionary names
     feature_strings: Dict[str, str]
         Dictionary of feature strings per dictionary name
-    decode_options: ConfigDict
+    decode_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for decoding
     model_path: str
         Path to acoustic model file
@@ -582,7 +592,7 @@ def decode_func(
 def score_func(
     log_path: str,
     dictionaries: List[str],
-    score_options: ConfigDict,
+    score_options: MetaDict,
     lat_paths: Dict[str, str],
     rescored_lat_paths: Dict[str, str],
     carpa_rescored_lat_paths: Dict[str, str],
@@ -598,7 +608,7 @@ def score_func(
         Path to save log output
     dictionaries: List[str]
         List of dictionary names
-    score_options: ConfigDict
+    score_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for scoring
     lat_paths: Dict[str, str]
         Dictionary of lattice archive paths per dictionary name
@@ -664,7 +674,7 @@ def score_func(
 def lm_rescore_func(
     log_path: str,
     dictionaries: List[str],
-    lm_rescore_options: ConfigDict,
+    lm_rescore_options: MetaDict,
     lat_paths: Dict[str, str],
     rescored_lat_paths: Dict[str, str],
     old_g_paths: Dict[str, str],
@@ -679,7 +689,7 @@ def lm_rescore_func(
         Path to save log output
     dictionaries: List[str]
         List of dictionary names
-    lm_rescore_options: ConfigDict
+    lm_rescore_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for rescoring
     lat_paths: Dict[str, str]
         Dictionary of lattice archive paths per dictionary name
@@ -736,13 +746,13 @@ def carpa_lm_rescore_func(
     dictionaries: List[str]
         List of dictionary names
     lat_paths: Dict[str, str]
-        Dictionary of lattice archive paths per dictionary name
+        PronunciationDictionary of lattice archive paths per dictionary name
     rescored_lat_paths: Dict[str, str]
-        Dictionary of rescored lattice archive paths per dictionary name
+        PronunciationDictionary of rescored lattice archive paths per dictionary name
     old_g_paths: Dict[str, str]
-        Dictionary of medium G.fst paths per dictionary name
+        PronunciationDictionary of medium G.fst paths per dictionary name
     new_g_paths: Dict[str, str]
-        Dictionary of large G.carpa paths per dictionary name
+        PronunciationDictionary of large G.carpa paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -873,7 +883,7 @@ def initial_fmllr_func(
     dictionaries: List[str],
     feature_strings: Dict[str, str],
     model_path: str,
-    fmllr_options: ConfigDict,
+    fmllr_options: MetaDict,
     trans_paths: Dict[str, str],
     lat_paths: Dict[str, str],
     spk2utt_paths: Dict[str, str],
@@ -891,7 +901,7 @@ def initial_fmllr_func(
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: ConfigDict
+    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for calculating fMLLR transforms
     trans_paths: Dict[str, str]
         Dictionary of transform archives per dictionary name
@@ -968,7 +978,7 @@ def lat_gen_fmllr_func(
     dictionaries: List[str],
     feature_strings: Dict[str, str],
     model_path: str,
-    decode_options: ConfigDict,
+    decode_options: MetaDict,
     word_symbol_paths: Dict[str, str],
     hclg_paths: Dict[str, str],
     tmp_lat_paths: Dict[str, str],
@@ -986,7 +996,8 @@ def lat_gen_fmllr_func(
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    decode_options
+    decode_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+        Options for decoding
     word_symbol_paths: Dict[str, str]
         Dictionary of word symbol paths per dictionary name
     hclg_paths: Dict[str, str]
@@ -1027,7 +1038,7 @@ def final_fmllr_est_func(
     dictionaries: List[str],
     feature_strings: Dict[str, str],
     model_path: str,
-    fmllr_options: ConfigDict,
+    fmllr_options: MetaDict,
     trans_paths: Dict[str, str],
     spk2utt_paths: Dict[str, str],
     tmp_lat_paths: Dict[str, str],
@@ -1045,7 +1056,7 @@ def final_fmllr_est_func(
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: ConfigDict
+    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for calculating fMLLR transforms
     trans_paths: Dict[str, str]
         Dictionary of transform archives per dictionary name
@@ -1138,7 +1149,7 @@ def fmllr_rescore_func(
     dictionaries: List[str],
     feature_strings: Dict[str, str],
     model_path: str,
-    fmllr_options: ConfigDict,
+    fmllr_options: MetaDict,
     tmp_lat_paths: Dict[str, str],
     final_lat_paths: Dict[str, str],
 ) -> None:
@@ -1155,7 +1166,7 @@ def fmllr_rescore_func(
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: ConfigDict
+    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for calculating fMLLR transforms
     tmp_lat_paths: Dict[str, str]
         Dictionary of temporary lattice archive paths per dictionary name

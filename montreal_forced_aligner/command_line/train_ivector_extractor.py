@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
     train_yaml_to_config,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import log_config, setup_logger
@@ -51,9 +51,9 @@ def train_ivector(args: Namespace, unknown_args: Optional[list] = None) -> None:
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.config_path:
-        train_config, align_config = train_yaml_to_config(args.config_path)
+        train_config, align_config, dictionary_config = train_yaml_to_config(args.config_path)
     else:
-        train_config, align_config = load_basic_train_ivector()
+        train_config, align_config, dictionary_config = load_basic_train_ivector()
     if unknown_args:
         train_config.update_from_unknown_args(unknown_args)
         align_config.update_from_unknown_args(unknown_args)
@@ -130,23 +130,20 @@ def train_ivector(args: Namespace, unknown_args: Optional[list] = None) -> None:
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             num_jobs=args.num_jobs,
             sample_rate=align_config.feature_config.sample_frequency,
             debug=getattr(args, "debug", False),
             logger=logger,
             use_mp=align_config.use_mp,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
         )
-        dictionary = Dictionary(
+        dictionary = MultispeakerDictionary(
             args.dictionary_path,
             data_directory,
+            dictionary_config,
             word_set=corpus.word_set,
             logger=logger,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
-            compound_markers=align_config.compound_markers,
         )
         acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
         acoustic_model.log_details(logger)

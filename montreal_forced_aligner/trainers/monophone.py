@@ -15,7 +15,7 @@ from .base import BaseTrainer
 if TYPE_CHECKING:
     from ..config import FeatureConfig
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
+    from ..dictionary import MultispeakerDictionary
 
 
 __all__ = ["MonophoneTrainer"]
@@ -59,33 +59,12 @@ class MonophoneTrainer(BaseTrainer):
         """Phone type"""
         return "monophone"
 
-    def get_num_gauss(self) -> int:
-        """
-        Get the number of gaussians for a monophone model
-
-        Returns
-        -------
-        int
-            Initial number of gaussians
-        """
-        with open(os.devnull, "w") as devnull:
-            proc = subprocess.Popen(
-                [thirdparty_binary("gmm-info"), "--print-args=false", self.current_model_path],
-                stderr=devnull,
-                stdout=subprocess.PIPE,
-            )
-            stdout, stderr = proc.communicate()
-            num = stdout.decode("utf8")
-            matches = re.search(r"gaussians (\d+)", num)
-            num = int(matches.groups()[0])
-        return num
-
     def init_training(
         self,
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: MultispeakerDictionary,
         previous_trainer: Optional[BaseTrainer] = None,
     ) -> None:
         """
@@ -97,11 +76,11 @@ class MonophoneTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: TrainerType, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+            MultispeakerDictionary to use
+        previous_trainer: Trainer, optional
             Previous trainer to initialize from
 
         Raises
@@ -123,7 +102,9 @@ class MonophoneTrainer(BaseTrainer):
             feat_dim = corpus.get_feat_dim()
 
             feature_string = corpus.jobs[0].construct_base_feature_string(corpus)
-            shared_phones_path = os.path.join(dictionary.phones_dir, "sets.int")
+            shared_phones_path = os.path.join(
+                dictionary.get_dictionary("default").phones_dir, "sets.int"
+            )
             init_log_path = os.path.join(self.log_directory, "init.log")
             temp_feats_path = os.path.join(self.train_directory, "temp_feats")
             with open(init_log_path, "w") as log_file:
@@ -141,17 +122,27 @@ class MonophoneTrainer(BaseTrainer):
                         thirdparty_binary("gmm-init-mono"),
                         f"--shared-phones={shared_phones_path}",
                         f"--train-feats=ark:{temp_feats_path}",
-                        os.path.join(dictionary.output_directory, "topo"),
+                        os.path.join(
+                            dictionary.get_dictionary("default").output_directory, "topo"
+                        ),
                         str(feat_dim),
                         self.current_model_path,
                         tree_path,
                     ],
                     stderr=log_file,
                 )
+                proc = subprocess.Popen(
+                    [thirdparty_binary("gmm-info"), "--print-args=false", self.current_model_path],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                )
+                stdout, stderr = proc.communicate()
+                num = stdout.decode("utf8")
+                matches = re.search(r"gaussians (\d+)", num)
+                num_gauss = int(matches.groups()[0])
             if os.path.exists(self.current_model_path):
                 os.remove(init_log_path)
             os.remove(temp_feats_path)
-            num_gauss = self.get_num_gauss()
             self.initial_gaussians = num_gauss
             self.current_gaussians = num_gauss
             compile_train_graphs(self)

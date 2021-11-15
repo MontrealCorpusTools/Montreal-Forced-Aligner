@@ -18,7 +18,7 @@ import yaml
 
 from montreal_forced_aligner.config import align_yaml_to_config, train_yaml_to_config
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 
 
 @pytest.fixture(scope="session")
@@ -87,12 +87,19 @@ def english_acoustic_model():
 
 
 @pytest.fixture(scope="session")
-def english_pretrained_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
-    from montreal_forced_aligner.utils import get_dictionary_path
+def english_dictionary():
+    from montreal_forced_aligner.command_line.model import download_model, get_pretrained_path
 
     download_model("dictionary", "english")
-    return get_dictionary_path("english")
+    return get_pretrained_path("dictionary", "english")
+
+
+@pytest.fixture(scope="session")
+def basic_dictionary_config():
+    from montreal_forced_aligner.config.dictionary_config import DictionaryConfig
+
+    config = DictionaryConfig(debug=True)
+    return config
 
 
 @pytest.fixture(scope="session")
@@ -105,10 +112,10 @@ def english_ipa_acoustic_model():
 
 @pytest.fixture(scope="session")
 def english_us_ipa_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
+    from montreal_forced_aligner.command_line.model import download_model, get_pretrained_path
 
     download_model("dictionary", "english_us_ipa")
-    return "english_us_ipa"
+    return get_pretrained_path("dictionary", "english_us_ipa")
 
 
 @pytest.fixture(scope="session")
@@ -524,11 +531,6 @@ def basic_rootstxt_path(expected_dict_path):
     return os.path.join(expected_dict_path, "roots.txt")
 
 
-# @pytest.fixture(scope='session')
-# def basic_roots_path(expected_dict_path):
-#    return os.path.join(expected_dict_path, 'roots.txt')
-
-
 @pytest.fixture(scope="session")
 def basic_setsint_path(expected_dict_path):
     return os.path.join(expected_dict_path, "sets.int")
@@ -594,17 +596,18 @@ def acoustic_corpus_textgrid_path(basic_dir):
 
 
 @pytest.fixture(scope="session")
-def sick_dict(sick_dict_path, generated_dir):
+def sick_dict(sick_dict_path, generated_dir, basic_dictionary_config):
     output_directory = os.path.join(generated_dir, "sickcorpus")
-    dictionary = Dictionary(sick_dict_path, output_directory)
+
+    dictionary = MultispeakerDictionary(sick_dict_path, output_directory, basic_dictionary_config)
     dictionary.write()
     return dictionary
 
 
 @pytest.fixture(scope="session")
-def sick_corpus(basic_corpus_dir, generated_dir):
+def sick_corpus(basic_corpus_dir, generated_dir, basic_dictionary_config):
     output_directory = os.path.join(generated_dir, "sickcorpus")
-    corpus = Corpus(basic_corpus_dir, output_directory, num_jobs=2)
+    corpus = Corpus(basic_corpus_dir, output_directory, basic_dictionary_config, num_jobs=2)
     return corpus
 
 
@@ -614,63 +617,8 @@ def textgrid_directory(test_dir):
 
 
 @pytest.fixture(scope="session")
-def large_dataset_directory():
-    if os.environ.get("TRAVIS", False):
-        directory = os.path.expanduser("~/tools/mfa_test_data")
-    else:
-        test_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_dir = os.path.dirname(test_dir)
-        root_dir = os.path.dirname(repo_dir)
-        directory = os.path.join(root_dir, "mfa_test_data")
-    if not os.path.exists(directory):
-        pytest.skip("Couldn't find the mfa_test_data directory")
-    else:
-        return directory
-
-
-@pytest.fixture(scope="session")
-def large_dataset_dictionary(large_dataset_directory):
-    return os.path.join(large_dataset_directory, "librispeech-lexicon.txt")
-
-
-@pytest.fixture(scope="session")
-def large_prosodylab_format_directory(large_dataset_directory):
-    return os.path.join(large_dataset_directory, "prosodylab_format")
-
-
-@pytest.fixture(scope="session")
-def large_textgrid_format_directory(large_dataset_directory):
-    return os.path.join(large_dataset_directory, "textgrid_format")
-
-
-@pytest.fixture(scope="session")
-def prosodylab_output_directory(generated_dir):
-    return os.path.join(generated_dir, "prosodylab_output")
-
-
-@pytest.fixture(scope="session")
-def textgrid_output_directory(generated_dir):
-    return os.path.join(generated_dir, "textgrid_output")
-
-
-@pytest.fixture(scope="session")
 def mono_output_directory(generated_dir):
     return os.path.join(generated_dir, "mono_output")
-
-
-@pytest.fixture(scope="session")
-def single_speaker_prosodylab_format_directory(large_prosodylab_format_directory):
-    return os.path.join(large_prosodylab_format_directory, "121")
-
-
-@pytest.fixture(scope="session")
-def single_speaker_textgrid_format_directory(large_textgrid_format_directory):
-    return os.path.join(large_textgrid_format_directory, "121")
-
-
-@pytest.fixture(scope="session")
-def prosodylab_output_model_path(generated_dir):
-    return os.path.join(generated_dir, "prosodylab_output_model.zip")
 
 
 @pytest.fixture(scope="session")
@@ -789,7 +737,7 @@ def mono_align_config_path(config_directory):
 
 @pytest.fixture(scope="session")
 def mono_align_config(mono_align_config_path):
-    return align_yaml_to_config(mono_align_config_path)
+    return align_yaml_to_config(mono_align_config_path)[0]
 
 
 @pytest.fixture(scope="session")

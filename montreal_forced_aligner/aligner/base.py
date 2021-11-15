@@ -7,6 +7,7 @@ import shutil
 import time
 from typing import TYPE_CHECKING, Optional
 
+from ..abc import Aligner
 from ..config import TEMP_DIR
 from ..exceptions import KaldiProcessingError
 from ..multiprocessing import (
@@ -21,25 +22,27 @@ from ..utils import log_kaldi_errors
 if TYPE_CHECKING:
     from logging import Logger
 
+    import montreal_forced_aligner
+
     from ..config import AlignConfig
-    from ..corpus import Corpus
-    from ..dictionary import DictionaryType
+    from ..corpus.base import Corpus
+    from ..dictionary import MultispeakerDictionary
     from ..models import AcousticModel
 
 __all__ = ["BaseAligner"]
 
 
-class BaseAligner:
+class BaseAligner(Aligner):
     """
     Base aligner class for common aligner functions
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
         Dictionary object for the pronunciation dictionary
-    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -55,7 +58,7 @@ class BaseAligner:
     def __init__(
         self,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: MultispeakerDictionary,
         align_config: AlignConfig,
         temp_directory: Optional[str] = None,
         debug: bool = False,
@@ -63,9 +66,7 @@ class BaseAligner:
         logger: Optional[Logger] = None,
         acoustic_model: Optional[AcousticModel] = None,
     ):
-        self.align_config = align_config
-        self.corpus = corpus
-        self.dictionary = dictionary
+        super().__init__(corpus, dictionary, align_config)
         if not temp_directory:
             temp_directory = TEMP_DIR
         self.temp_directory = temp_directory
@@ -97,7 +98,7 @@ class BaseAligner:
         self.dictionary.set_word_set(self.corpus.word_set)
         self.dictionary.write()
         self.corpus.initialize_corpus(self.dictionary, self.align_config.feature_config)
-        self.align_config.silence_csl = self.dictionary.silence_csl
+        self.align_config.silence_csl = self.dictionary.config.silence_csl
         self.data_directory = self.corpus.split_directory
         self.feature_config = self.align_config.feature_config
 
@@ -107,12 +108,12 @@ class BaseAligner:
         return self.align_config.use_mp
 
     @property
-    def meta(self) -> dict:
+    def meta(self) -> montreal_forced_aligner.abc.MetaDict:
         """Metadata for the trained model"""
         from ..utils import get_mfa_version
 
         data = {
-            "phones": sorted(self.dictionary.nonsil_phones),
+            "phones": sorted(self.dictionary.config.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": "gmm-hmm",
             "features": "mfcc+deltas",
@@ -123,14 +124,14 @@ class BaseAligner:
     def align_options(self):
         """Options for alignment"""
         options = self.align_config.align_options
-        options["optional_silence_csl"] = self.dictionary.optional_silence_csl
+        options["optional_silence_csl"] = self.dictionary.config.optional_silence_csl
         return options
 
     @property
     def fmllr_options(self):
         """Options for fMLLR"""
         options = self.align_config.fmllr_options
-        options["silence_csl"] = self.dictionary.silence_csl
+        options["silence_csl"] = self.dictionary.config.silence_csl
         return options
 
     @property
@@ -142,6 +143,11 @@ class BaseAligner:
     def working_directory(self) -> str:
         """Current working directory"""
         return self.align_directory
+
+    @property
+    def model_path(self) -> str:
+        """Current acoustic model path"""
+        return self.current_model_path
 
     @property
     def current_model_path(self) -> str:

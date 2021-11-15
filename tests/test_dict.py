@@ -1,12 +1,8 @@
 import os
 
-from montreal_forced_aligner.dictionary import (
-    Dictionary,
-    MultispeakerDictionary,
-    parse_ipa,
-    sanitize,
-)
-from montreal_forced_aligner.textgrid import split_clitics
+from montreal_forced_aligner.config.dictionary_config import DictionaryConfig
+from montreal_forced_aligner.config.train_config import train_yaml_to_config
+from montreal_forced_aligner.dictionary import MultispeakerDictionary, PronunciationDictionary
 
 
 def ListLines(path):
@@ -21,10 +17,10 @@ def ListLines(path):
 
 
 def test_basic(basic_dict_path, generated_dir):
-    d = Dictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
+    d = PronunciationDictionary(basic_dict_path, os.path.join(generated_dir, "basic"))
     d.write()
-    assert set(d.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
-    assert set(d.positional_nonsil_phones) == {
+    assert set(d.config.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
+    assert set(d.config.kaldi_non_silence_phones) == {
         "phonea_B",
         "phonea_I",
         "phonea_E",
@@ -41,28 +37,27 @@ def test_basic(basic_dict_path, generated_dir):
 
 
 def test_extra_annotations(extra_annotations_path, generated_dir):
-    d = Dictionary(extra_annotations_path, os.path.join(generated_dir, "extra"))
+    d = PronunciationDictionary(extra_annotations_path, os.path.join(generated_dir, "extra"))
     assert "{" in d.graphemes
     d.write()
 
 
 def test_basic_noposition(basic_dict_path, generated_dir):
-    d = Dictionary(
-        basic_dict_path, os.path.join(generated_dir, "basic"), position_dependent_phones=False
-    )
+    config = DictionaryConfig(position_dependent_phones=False)
+    d = PronunciationDictionary(basic_dict_path, os.path.join(generated_dir, "basic"), config)
     d.write()
-    assert set(d.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
+    assert set(d.config.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
 
 
 def test_frclitics(frclitics_dict_path, generated_dir):
-    d = Dictionary(frclitics_dict_path, os.path.join(generated_dir, "frclitics"))
+    d = PronunciationDictionary(frclitics_dict_path, os.path.join(generated_dir, "frclitics"))
     d.write()
     data = d.data()
-    assert d.silences == data.silences
-    assert d.multilingual_ipa == data.multilingual_ipa
+    assert d.silences == data.dictionary_config.silence_phones
+    assert d.config.multilingual_ipa == data.dictionary_config.multilingual_ipa
     assert d.words_mapping == data.words_mapping
-    assert d.punctuation == data.punctuation
-    assert d.clitic_markers == data.clitic_markers
+    assert d.config.punctuation == data.dictionary_config.punctuation
+    assert d.config.clitic_markers == data.dictionary_config.clitic_markers
     assert d.oov_int == data.oov_int
     assert d.words == data.words
     assert not d.check_word("aujourd")
@@ -70,56 +65,16 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.check_word("m'appelle")
     assert not d.check_word("purple-people-eater")
     assert d.split_clitics("aujourd") == ["aujourd"]
-    assert split_clitics(
-        "aujourd", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["aujourd"]
     assert d.split_clitics("aujourd'hui") == ["aujourd'hui"]
-    assert split_clitics(
-        "aujourd'hui", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["aujourd'hui"]
     assert d.split_clitics("vingt-six") == ["vingt", "six"]
-    assert split_clitics(
-        "vingt-six", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["vingt", "six"]
     assert d.split_clitics("m'appelle") == ["m'", "appelle"]
-    assert split_clitics(
-        "m'appelle", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["m'", "appelle"]
     assert d.split_clitics("m'm'appelle") == ["m'", "m'", "appelle"]
-    assert split_clitics(
-        "m'm'appelle", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["m'", "m'", "appelle"]
     assert d.split_clitics("c'est") == ["c'est"]
-    assert split_clitics(
-        "c'est", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["c'est"]
     assert d.split_clitics("m'c'est") == ["m'", "c'est"]
-    assert split_clitics(
-        "m'c'est", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["m'", "c'est"]
     assert d.split_clitics("purple-people-eater") == ["purple", "people", "eater"]
-    assert split_clitics(
-        "purple-people-eater", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["purple", "people", "eater"]
     assert d.split_clitics("m'appele") == ["m'", "appele"]
-    assert split_clitics(
-        "m'appele", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["m'", "appele"]
     assert d.split_clitics("m'ving-sic") == ["m'", "ving", "sic"]
-    assert split_clitics(
-        "m'ving-sic", d.words_mapping, d.clitic_set, d.clitic_markers, d.compound_markers
-    ) == ["m'", "ving", "sic"]
     assert d.split_clitics("flying'purple-people-eater") == ["flying'purple", "people", "eater"]
-    assert (
-        split_clitics(
-            "flying'purple-people-eater",
-            d.words_mapping,
-            d.clitic_set,
-            d.clitic_markers,
-            d.compound_markers,
-        )
-        == ["flying'purple", "people", "eater"]
-    )
 
     assert d.to_int("aujourd") == [d.oov_int]
     assert d.to_int("aujourd'hui") == [d.words_mapping["aujourd'hui"]]
@@ -138,9 +93,11 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.to_int("flying'purple-people-eater") == [d.oov_int]
 
 
-def test_english_clitics(english_pretrained_dictionary, generated_dir):
-    d = Dictionary(
-        english_pretrained_dictionary, os.path.join(generated_dir, "english_clitic_test")
+def test_english_clitics(english_dictionary, generated_dir, basic_dictionary_config):
+    d = PronunciationDictionary(
+        english_dictionary,
+        os.path.join(generated_dir, "english_clitic_test"),
+        basic_dictionary_config,
     )
     d.write()
     assert d.split_clitics("l'orme's") == ["l'", "orme's"]
@@ -148,48 +105,58 @@ def test_english_clitics(english_pretrained_dictionary, generated_dir):
     assert d.to_int("l'orme's") == [d.words_mapping["l'"], d.words_mapping["orme's"]]
 
 
-def test_devanagari():
+def test_devanagari(basic_dictionary_config):
     test_cases = ["हैं", "हूं", "हौं"]
     for tc in test_cases:
-        assert tc == sanitize(tc)
+        assert tc == basic_dictionary_config.sanitize(tc)
 
 
-def test_japanese():
-    assert "かぎ括弧" == sanitize("「かぎ括弧」")
-    assert "二重かぎ括弧" == sanitize("『二重かぎ括弧』")
+def test_japanese(basic_dictionary_config):
+    assert "かぎ括弧" == basic_dictionary_config.sanitize("「かぎ括弧」")
+    assert "二重かぎ括弧" == basic_dictionary_config.sanitize("『二重かぎ括弧』")
 
 
-def test_multilingual_ipa():
+def test_multilingual_ipa(basic_dictionary_config):
     input_transcription = "m æ ŋ g oʊ dʒ aɪ".split()
     expected = tuple("m æ ŋ ɡ o ʊ d ʒ a ɪ".split())
-    assert parse_ipa(input_transcription) == expected
+    assert basic_dictionary_config.parse_ipa(input_transcription) == expected
 
     input_transcription = "n ɔː ɹ job_name".split()
     expected = tuple("n ɔ ɹ job_name".split())
-    assert parse_ipa(input_transcription) == expected
+    assert basic_dictionary_config.parse_ipa(input_transcription) == expected
 
     input_transcription = "t ʌ tʃ ə b l̩".split()
     expected = tuple("t ʌ t ʃ ə b l".split())
-    assert parse_ipa(input_transcription) == expected
+    assert basic_dictionary_config.parse_ipa(input_transcription) == expected
 
 
-def test_xsampa_dir(xsampa_dict_path, generated_dir):
-    d = Dictionary(xsampa_dict_path, os.path.join(generated_dir, "xsampa"))
+def test_xsampa_dir(xsampa_dict_path, generated_dir, different_punctuation_config):
+
+    train_config, align_config, dictionary_config = train_yaml_to_config(
+        different_punctuation_config
+    )
+    d = PronunciationDictionary(
+        xsampa_dict_path, os.path.join(generated_dir, "xsampa"), dictionary_config
+    )
     d.write()
 
     print(d.words)
-    assert not d.clitic_set
+    assert not d.config.clitic_set
     assert d.split_clitics(r"r\{und") == [r"r\{und"]
     assert d.split_clitics("{bI5s@`n") == ["{bI5s@`n"]
     assert d.words[r"r\{und"]
 
 
-def test_multispeaker_config(multispeaker_dictionary_config, generated_dir):
+def test_multispeaker_config(
+    multispeaker_dictionary_config, sick_corpus, basic_dictionary_config, generated_dir
+):
     dictionary = MultispeakerDictionary(
-        multispeaker_dictionary_config, os.path.join(generated_dir, "multispeaker")
+        multispeaker_dictionary_config,
+        os.path.join(generated_dir, "multispeaker"),
+        basic_dictionary_config,
+        word_set=sick_corpus.word_set,
     )
     dictionary.write()
     for d in dictionary.dictionary_mapping.values():
-        assert d.sil_phones.issubset(dictionary.sil_phones)
-        assert d.nonsil_phones.issubset(dictionary.nonsil_phones)
-        assert set(d.words.keys()).issubset(dictionary.words)
+        assert d.silences.issubset(dictionary.config.silence_phones)
+        assert d.config.non_silence_phones.issubset(dictionary.config.non_silence_phones)

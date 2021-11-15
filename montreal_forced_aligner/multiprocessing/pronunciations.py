@@ -1,19 +1,20 @@
-"""Multiprocessing functions for generating pronunciation probabilities"""
+"""
+Pronunciation probability functions
+-----------------------------------
+
+"""
 from __future__ import annotations
 
 import os
 import subprocess
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
+from ..abc import Aligner
 from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
 
-if TYPE_CHECKING:
-    from .alignment import AlignerType
-
-
-__all__ = ["generate_pronunciations"]
+__all__ = ["generate_pronunciations", "generate_pronunciations_func"]
 
 
 def generate_pronunciations_func(
@@ -89,7 +90,7 @@ def generate_pronunciations_func(
 
 
 def generate_pronunciations(
-    aligner: AlignerType,
+    aligner: Aligner,
 ) -> Tuple[Dict[str, defaultdict[Counter]], Dict[str, Dict[str, List[str, ...]]]]:
     """
     Generates pronunciations based on alignments for a corpus and calculates pronunciation probabilities

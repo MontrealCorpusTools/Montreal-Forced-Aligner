@@ -13,8 +13,8 @@ from ..exceptions import CorpusError, TextGridParseError, TextParseError
 from .helper import get_wav_info, load_text, parse_transcription
 
 if TYPE_CHECKING:
-    from ..aligner.base import BaseAligner
     from ..config.align_config import AlignConfig
+    from ..config.dictionary_config import DictionaryConfig
     from ..dictionary import Dictionary, DictionaryData
     from ..textgrid import CtmType
     from ..trainers import BaseTrainer, LdaTrainer, SatTrainer
@@ -22,10 +22,6 @@ if TYPE_CHECKING:
     ConfigType = Union[BaseTrainer, AlignConfig]
     FmllrConfigType = Union[SatTrainer, AlignConfig]
     LdaConfigType = Union[LdaTrainer, AlignConfig]
-
-    IterationType = Union[str, int]
-
-    AlignerType = Union[BaseTrainer, BaseAligner]
 
 
 __all__ = ["parse_file", "File", "Speaker", "Utterance"]
@@ -38,8 +34,7 @@ def parse_file(
     relative_path: str,
     speaker_characters: Union[int, str],
     sample_rate: int = 16000,
-    punctuation: Optional[str] = None,
-    clitic_markers: Optional[str] = None,
+    dictionary_config: Optional[DictionaryConfig] = None,
     stop_check: Optional[Callable] = None,
 ) -> File:
     """
@@ -68,7 +63,7 @@ def parse_file(
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.corpus.classes.File`
+    :class:`~montreal_forced_aligner.corpus.File`
         Parsed file
     """
     file = File(wav_path, text_path, relative_path=relative_path)
@@ -90,8 +85,7 @@ def parse_file(
         root_speaker = Speaker(speaker_name)
     file.load_text(
         root_speaker=root_speaker,
-        punctuation=punctuation,
-        clitic_markers=clitic_markers,
+        dictionary_config=dictionary_config,
         stop_check=stop_check,
     )
     return file
@@ -108,19 +102,19 @@ class Speaker:
 
     Attributes
     ----------
-    utterances: Dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
+    utterances: Dict[str, :class:`~montreal_forced_aligner.corpus.Utterance`]
         Utterances that the speaker is associated with
     cmvn: str, optional
         String pointing to any CMVN that has been calculated for this speaker
-    dictionary: Dictionary, optional
-        Dictionary that the speaker is associated with
+    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`, optional
+        Pronunciation dictionary that the speaker is associated with
     dictionary_data: DictionaryData, optional
         Dictionary data from the speaker's dictionary
     """
 
     def __init__(self, name):
         self.name = name
-        self.utterances: Dict[str, Utterance] = {}
+        self.utterances = {}
         self.cmvn = None
         self.dictionary: Optional[Dictionary] = None
         self.dictionary_data: Optional[DictionaryData] = None
@@ -193,7 +187,7 @@ class Speaker:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance
         """
         utterance.speaker = self
@@ -205,7 +199,7 @@ class Speaker:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance to be deleted
         """
         identifier = utterance.name
@@ -218,7 +212,7 @@ class Speaker:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
             Other speaker to take utterances from
         """
         for u in speaker.utterances.values():
@@ -246,14 +240,14 @@ class Speaker:
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
-            Dictionary to associate with the speaker
+        dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
+            Pronunciation dictionary to associate with the speaker
         """
         self.dictionary = dictionary
         self.dictionary_data = dictionary.data(self.word_set())
 
     @property
-    def files(self) -> Set[File]:
+    def files(self) -> Set["File"]:
         """Files that the speaker is associated with"""
         files = set()
         for u in self.utterances.values():
@@ -490,8 +484,7 @@ class File:
     def load_text(
         self,
         root_speaker: Optional[Speaker] = None,
-        punctuation: Optional[str] = None,
-        clitic_markers: Optional[str] = None,
+        dictionary_config: Optional[DictionaryConfig] = None,
         stop_check: Optional[Callable] = None,
     ) -> None:
         """
@@ -499,7 +492,7 @@ class File:
 
         Parameters
         ----------
-        root_speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`, optional
+        root_speaker: :class:`~montreal_forced_aligner.corpus.Speaker`, optional
             Speaker derived from the root directory, ignored for TextGrids
         punctuation: str
             Orthographic characters to treat as punctuation
@@ -513,7 +506,7 @@ class File:
                 text = load_text(self.text_path)
             except UnicodeDecodeError:
                 raise TextParseError(self.text_path)
-            words = parse_transcription(text, punctuation, clitic_markers)
+            words = parse_transcription(text, dictionary_config)
             utterance = Utterance(speaker=root_speaker, file=self, text=" ".join(words))
             self.add_utterance(utterance)
         elif self.text_type == "textgrid":
@@ -547,7 +540,7 @@ class File:
                     if stop_check is not None and stop_check():
                         return
                     text = text.lower().strip()
-                    words = parse_transcription(text, punctuation, clitic_markers)
+                    words = parse_transcription(text, dictionary_config)
                     if not words:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
@@ -566,7 +559,7 @@ class File:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
             Speaker to add
         """
         if speaker not in self.speaker_ordering:
@@ -578,7 +571,7 @@ class File:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance to add
         """
         utterance.file = self
@@ -591,7 +584,7 @@ class File:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance to remove
         """
         identifier = utterance.name
@@ -657,7 +650,7 @@ class Utterance:
 
     Parameters
     ----------
-    speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+    speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
         Speaker of the utterance
     file: File
         File that the utterance belongs to
@@ -774,7 +767,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -799,7 +792,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -823,7 +816,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -847,7 +840,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -872,7 +865,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -922,7 +915,7 @@ class Utterance:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
             New speaker
         """
         self.speaker = speaker

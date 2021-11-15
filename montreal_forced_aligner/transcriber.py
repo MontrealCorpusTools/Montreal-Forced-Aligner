@@ -1,4 +1,8 @@
-"""Class definitions for the MFA transcriber"""
+"""
+Transcription
+=============
+
+"""
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -7,6 +11,7 @@ import shutil
 import subprocess
 from typing import TYPE_CHECKING, Optional, Tuple
 
+from .abc import Transcriber as ABCTranscriber
 from .config import TEMP_DIR
 from .exceptions import KaldiProcessingError
 from .helper import score
@@ -22,22 +27,22 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from .config.transcribe_config import TranscribeConfig
-    from .corpus import TranscribeCorpus
-    from .dictionary import DictionaryType
+    from .corpus import Corpus
+    from .dictionary import MultispeakerDictionary
     from .models import AcousticModel, LanguageModel
 
 __all__ = ["Transcriber"]
 
 
-class Transcriber:
+class Transcriber(ABCTranscriber):
     """
     Class for performing transcription.
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus to transcribe
-    dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
         Pronunciation dictionary to use as a lexicon
     acoustic_model : :class:`~montreal_forced_aligner.models.AcousticModel`
         Acoustic model to use
@@ -64,8 +69,8 @@ class Transcriber:
 
     def __init__(
         self,
-        corpus: TranscribeCorpus,
-        dictionary: DictionaryType,
+        corpus: Corpus,
+        dictionary: MultispeakerDictionary,
         acoustic_model: AcousticModel,
         language_model: LanguageModel,
         transcribe_config: TranscribeConfig,
@@ -153,7 +158,7 @@ class Transcriber:
     def fmllr_options(self):
         """Options for computing fMLLR transforms"""
         data = self.transcribe_config.fmllr_options
-        data["sil_phones"] = self.dictionary.silence_csl
+        data["sil_phones"] = self.dictionary.config.silence_csl
         return data
 
     @property

@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
 )
 from montreal_forced_aligner.corpus import Corpus
 from montreal_forced_aligner.exceptions import ArgumentError
-from montreal_forced_aligner.models import IvectorExtractor
+from montreal_forced_aligner.models import IvectorExtractorModel
 from montreal_forced_aligner.speaker_classifier import SpeakerClassifier
 from montreal_forced_aligner.utils import setup_logger
 
@@ -112,7 +112,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
     os.makedirs(data_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     try:
-        ivector_extractor = IvectorExtractor(
+        ivector_extractor = IvectorExtractorModel(
             args.ivector_extractor_path, root_directory=data_directory
         )
         corpus = Corpus(

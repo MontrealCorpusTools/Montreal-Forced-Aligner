@@ -1,4 +1,8 @@
-"""Multiprocessing files for alignment functions in MFA"""
+"""
+Aligment functions
+------------------
+
+"""
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -28,9 +32,10 @@ from ..utils import thirdparty_binary
 from .helper import run_mp, run_non_mp
 
 if TYPE_CHECKING:
+    from ..abc import Aligner, CtmErrorDict, MetaDict, Trainer
     from ..aligner.adapting import AdaptingAligner
     from ..aligner.base import BaseAligner
-    from ..config.align_config import AlignConfig, ConfigDict
+    from ..config.align_config import AlignConfig
     from ..corpus.classes import (
         CleanupWordCtmArguments,
         CombineCtmArguments,
@@ -40,17 +45,11 @@ if TYPE_CHECKING:
         PhoneCtmArguments,
         Utterance,
     )
-    from ..textgrid import CtmInterval
-    from ..trainers import BaseTrainer, LdaTrainer, MonophoneTrainer
+    from ..data import CtmType
+    from ..trainers import BaseTrainer, LdaTrainer, MonophoneTrainer, SatTrainer
 
     ConfigType = Union[BaseTrainer, AlignConfig]
 
-    IterationType = Union[str, int]
-
-    AlignerType = Union[BaseTrainer, BaseAligner]
-    CtmType = List[CtmInterval]
-
-CtmErrorDict = Dict[Tuple[str, int], str]
 
 queue_polling_timeout = 1
 
@@ -78,6 +77,22 @@ __all__ = [
     "lda_acc_stats",
     "train_map",
     "parse_iteration_alignments",
+    "convert_alignments_func",
+    "align_func",
+    "ali_to_ctm_func",
+    "compute_alignment_improvement_func",
+    "mono_align_equal_func",
+    "calc_fmllr_func",
+    "calc_lda_mllt_func",
+    "lda_acc_stats_func",
+    "tree_stats_func",
+    "map_acc_stats_func",
+    "acc_stats_two_feats_func",
+    "compile_information_func",
+    "compile_train_graphs_func",
+    "compile_utterance_train_graphs_func",
+    "test_utterances_func",
+    "acc_stats_func",
 ]
 
 
@@ -124,20 +139,19 @@ def acc_stats_func(
             acc_proc.communicate()
 
 
-def acc_stats(aligner: AlignerType):
+def acc_stats(aligner: Trainer):
     """
-    Multiprocessing function that computes stats for GMM training
-
-    See http://kaldi-asr.org/doc/gmm-acc-stats-ali_8cc.html for more details
-    on the Kaldi binary this runs.
-
-    Also see https://github.com/kaldi-asr/kaldi/blob/master/egs/wsj/s5/steps/train_mono.sh
-    for the bash script this function was extracted from
+    Multiprocessing function that accumulates stats for GMM training
 
     Parameters
     ----------
-    aligner : :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner : Trainer
         Trainer
+
+    Notes
+    -----
+    See :kaldi_src:`gmmbin/gmm-acc-stats-ali` for more details on the Kaldi
+    binary, and :kaldi_steps:`train_mono` for an example Kaldi script
     """
     arguments = [j.acc_stats_arguments(aligner) for j in aligner.corpus.jobs]
 
@@ -232,13 +246,13 @@ def compile_train_graphs_func(
     model_path: str
         Path to the acoustic model file
     text_int_paths: Dict[str, str]
-        Dictionary of text int files per dictionary name
+        PronunciationDictionary of text int files per dictionary name
     disambig_paths: Dict[str, str]
-        Dictionary of disambiguation symbol int files per dictionary name
+        PronunciationDictionary of disambiguation symbol int files per dictionary name
     lexicon_fst_paths: Dict[str, str]
-        Dictionary of L.fst files per dictionary name
+        PronunciationDictionary of L.fst files per dictionary name
     fst_scp_paths: Dict[str, str]
-        Dictionary of utterance FST scp files per dictionary name
+        PronunciationDictionary of utterance FST scp files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -262,7 +276,7 @@ def compile_train_graphs_func(
             proc.communicate()
 
 
-def compile_train_graphs(aligner: AlignerType) -> None:
+def compile_train_graphs(aligner: Union[BaseAligner, BaseTrainer]) -> None:
     """
     Multiprocessing function that compiles training graphs for utterances
 
@@ -274,7 +288,7 @@ def compile_train_graphs(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: Aligner
         Aligner
     """
     aligner.logger.debug("Compiling training graphs...")
@@ -308,13 +322,13 @@ def mono_align_equal_func(
     dictionaries: List[str]
         List of dictionary names
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     fst_scp_paths: Dict[str, str]
-        Dictionary of utterance FST scp files per dictionary name
+        PronunciationDictionary of utterance FST scp files per dictionary name
     ali_ark_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     acc_paths: Dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+        PronunciationDictionary of accumulated stats files per dictionary name
     model_path: str
         Path to the acoustic model file
     """
@@ -362,7 +376,7 @@ def mono_align_equal(aligner: MonophoneTrainer):
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.MonophoneTrainer`
+    aligner: :class:`~montreal_forced_aligner.trainers.MonophoneTrainer`
         Monophone trainer
     """
 
@@ -413,7 +427,7 @@ def align_func(
     ali_paths: Dict[str, str],
     score_paths: Dict[str, str],
     loglike_paths: Dict[str, str],
-    align_options: ConfigDict,
+    align_options: MetaDict,
 ):
     """
     Multiprocessing function for alignment
@@ -425,18 +439,18 @@ def align_func(
     dictionaries: List[str]
         List of dictionary names
     fst_scp_paths: Dict[str, str]
-        Dictionary of FST scp file paths per dictionary name
+        PronunciationDictionary of FST scp file paths per dictionary name
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     model_path: str
         Path to the acoustic model file
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     score_paths: Dict[str, str]
-        Dictionary of scores files per dictionary name
+        PronunciationDictionary of scores files per dictionary name
     loglike_paths: Dict[str, str]
-        Dictionary of log likelihood files per dictionary name
-    align_options: ConfigDict
+        PronunciationDictionary of log likelihood files per dictionary name
+    align_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for alignment
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -481,7 +495,7 @@ def align_func(
             align_proc.communicate()
 
 
-def align(aligner: AlignerType) -> None:
+def align(aligner: Union[BaseAligner, BaseTrainer]) -> None:
     """
     Multiprocessing function that aligns based on the current model
 
@@ -494,7 +508,7 @@ def align(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: Aligner
         Aligner
     """
     begin = time.time()
@@ -566,14 +580,14 @@ def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], 
     return data
 
 
-def compile_information(aligner: AlignerType) -> Tuple[Dict[str, str], float]:
+def compile_information(aligner: Union[BaseAligner, BaseTrainer]) -> Tuple[Dict[str, str], float]:
     """
     Compiles information about alignment, namely what the overall log-likelihood was
     and how many files were unaligned
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: Aligner
         Aligner
 
     Returns
@@ -647,11 +661,11 @@ def compute_alignment_improvement_func(
     model_path: str
         Path to the acoustic model file
     text_int_paths: Dict[str, str]
-        Dictionary of text int files per dictionary name
+        PronunciationDictionary of text int files per dictionary name
     word_boundary_paths: Dict[str, str]
-        Dictionary of word boundary files per dictionary name
+        PronunciationDictionary of word boundary files per dictionary name
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     frame_shift: int
         Frame shift of feature generation, in ms
     reversed_phone_mappings: Dict[str, Dict[int, str]]
@@ -659,7 +673,7 @@ def compute_alignment_improvement_func(
     positions: Dict[str, List[str]]
         Positions per dictionary name
     phone_ctm_paths: Dict[str, str]
-        Dictionary of phone ctm files per dictionary name
+        PronunciationDictionary of phone ctm files per dictionary name
     """
     try:
 
@@ -754,16 +768,16 @@ def compute_alignment_improvement_func(
 
 
 def parse_iteration_alignments(
-    aligner: AlignerType, iteration: Optional[IterationType] = None
+    aligner: Trainer, iteration: Optional[int] = None
 ) -> Dict[str, List[Tuple[float, float, str]]]:
     """
     Function to parse phone CTMs in a given iteration
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: Trainer
         Aligner
-    iteration: IterationType
+    iteration: int
         Iteration to compute over
     Returns
     -------
@@ -853,14 +867,14 @@ def compare_alignments(
     return utterances_aligned_diff, mean_difference
 
 
-def compute_alignment_improvement(aligner: AlignerType) -> None:
+def compute_alignment_improvement(aligner: Union[BaseAligner, BaseTrainer]) -> None:
     """
     Computes aligner improvements in terms of number of aligned files and phone boundaries
     for debugging purposes
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
         Aligner
     """
     jobs = [x.alignment_improvement_arguments(aligner) for x in aligner.corpus.jobs]
@@ -924,17 +938,17 @@ def ali_to_ctm_func(
     dictionaries: List[str]
         List of dictionary names
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     text_int_paths: Dict[str, str]
-        Dictionary of text int files per dictionary name
+        PronunciationDictionary of text int files per dictionary name
     word_boundary_int_paths: Dict[str, str]
-        Dictionary of word boundary int files per dictionary name
+        PronunciationDictionary of word boundary int files per dictionary name
     frame_shift: float
         Frame shift of feature generation in seconds
     model_path: str
         Path to the acoustic model file
     ctm_paths: Dict[str, str]
-        Dictionary of CTM files per dictionary name
+        PronunciationDictionary of CTM files per dictionary name
     word_mode: bool
         Flag for whether to parse words or phones
     """
@@ -1016,10 +1030,10 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
-        Dictionary for storing errors encountered
+        PronunciationDictionary for storing errors encountered
     arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.NoCleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
@@ -1043,7 +1057,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         # Corpus information
         self.utterances = arguments.utterances
 
-        # Dictionary information
+        # PronunciationDictionary information
         self.dictionary_data = arguments.dictionary_data
 
     def run(self) -> None:
@@ -1114,10 +1128,10 @@ class CleanupWordCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
-        Dictionary for storing errors encountered
+        PronunciationDictionary for storing errors encountered
     arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
@@ -1141,7 +1155,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
         # Corpus information
         self.utterances = arguments.utterances
 
-        # Dictionary information
+        # PronunciationDictionary information
         self.dictionary_data = arguments.dictionary_data
 
     def run(self) -> None:
@@ -1214,10 +1228,10 @@ class PhoneCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
     error_catching: CtmErrorDict
-        Dictionary for storing errors encountered
+        PronunciationDictionary for storing errors encountered
     arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.PhoneCtmArguments`
         Arguments to pass to the CTM processing function
     """
@@ -1316,12 +1330,12 @@ class CombineProcessWorker(mp.Process):
         Input queue of phone and word ctms to combine
     to_export_queue: :class:`~multiprocessing.Queue`
         Export queue of combined CTMs
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    finished_combining: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Signal that this worker has finished combining all CTMs
     error_catching: CtmErrorDict
-        Dictionary for storing errors encountered
+        PronunciationDictionary for storing errors encountered
     arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CombineCtmArguments`
         Arguments to pass to the CTM combining function
     """
@@ -1407,12 +1421,12 @@ class ExportTextGridProcessWorker(mp.Process):
     ----------
     for_write_queue: :class:`~multiprocessing.Queue`
         Input queue of files to export
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
-    finished_processing: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    finished_processing: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Input signal that all jobs have been added and no more new ones will come in
     textgrid_errors: CtmErrorDict
-        Dictionary for storing errors encountered
+        PronunciationDictionary for storing errors encountered
     arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.ExportTextGridArguments`
         Arguments to pass to the TextGrid export function
     """
@@ -1474,9 +1488,9 @@ class ExportPreparationProcessWorker(mp.Process):
         Input queue of combined CTMs
     for_write_queue: :class:`~multiprocessing.Queue`
         Export queue of files to export
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    finished_combining: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Input signal that all CTMs have been combined
     files: Dict[str, File]
         Files in corpus
@@ -1531,13 +1545,13 @@ class ExportPreparationProcessWorker(mp.Process):
             raise
 
 
-def ctms_to_textgrids_mp(aligner: AlignerType):
+def ctms_to_textgrids_mp(aligner: Aligner):
     """
     Multiprocessing function for exporting alignment CTM information as TextGrids
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: Aligner
         Aligner
     """
     export_begin = time.time()
@@ -1665,7 +1679,7 @@ def ctms_to_textgrids_mp(aligner: AlignerType):
     output_textgrid_writing_errors(aligner.textgrid_output, textgrid_errors)
 
 
-def convert_ali_to_textgrids(aligner: AlignerType) -> None:
+def convert_ali_to_textgrids(aligner: Aligner) -> None:
     """
     Multiprocessing function that aligns based on the current model
 
@@ -1684,7 +1698,7 @@ def convert_ali_to_textgrids(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: :class:`~montreal_forced_aligner.abc.Aligner`
         Aligner
     """
     log_directory = aligner.working_log_directory
@@ -1729,11 +1743,11 @@ def tree_stats_func(
     model_path: str
         Path to the acoustic model file
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     treeacc_paths: Dict[str, str]
-        Dictionary of accumulated tree stats files per dictionary name
+        PronunciationDictionary of accumulated tree stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -1753,7 +1767,7 @@ def tree_stats_func(
             )
 
 
-def tree_stats(aligner: AlignerType) -> None:
+def tree_stats(trainer: Trainer) -> None:
     """
     Multiprocessing function that computes stats for decision tree training
 
@@ -1762,31 +1776,31 @@ def tree_stats(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
-        Aligner
+    trainer: :class:`~montreal_forced_aligner.abc.Trainer`
+        Trainer
     """
 
-    jobs = [j.tree_stats_arguments(aligner) for j in aligner.corpus.jobs]
+    jobs = [j.tree_stats_arguments(trainer) for j in trainer.corpus.jobs]
 
-    if aligner.use_mp:
-        run_mp(tree_stats_func, jobs, aligner.working_log_directory)
+    if trainer.use_mp:
+        run_mp(tree_stats_func, jobs, trainer.working_log_directory)
     else:
-        run_non_mp(tree_stats_func, jobs, aligner.working_log_directory)
+        run_non_mp(tree_stats_func, jobs, trainer.working_log_directory)
 
     tree_accs = []
     for x in jobs:
         tree_accs.extend(x.treeacc_paths.values())
-    log_path = os.path.join(aligner.working_log_directory, "sum_tree_acc.log")
+    log_path = os.path.join(trainer.working_log_directory, "sum_tree_acc.log")
     with open(log_path, "w", encoding="utf8") as log_file:
         subprocess.call(
             [
                 thirdparty_binary("sum-tree-stats"),
-                os.path.join(aligner.working_directory, "treeacc"),
+                os.path.join(trainer.working_directory, "treeacc"),
             ]
             + tree_accs,
             stderr=log_file,
         )
-    if not aligner.debug:
+    if not trainer.debug:
         for f in tree_accs:
             os.remove(f)
 
@@ -1816,9 +1830,9 @@ def convert_alignments_func(
     align_model_path: str
         Path to the alignment acoustic model file
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     new_ali_paths: Dict[str, str]
-        Dictionary of new alignment archives per dictionary name
+        PronunciationDictionary of new alignment archives per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -1837,7 +1851,7 @@ def convert_alignments_func(
             )
 
 
-def convert_alignments(aligner: AlignerType) -> None:
+def convert_alignments(trainer: Trainer) -> None:
     """
     Multiprocessing function that converts alignments from previous training
 
@@ -1846,15 +1860,15 @@ def convert_alignments(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
-        Aligner
+    trainer: :class:`~montreal_forced_aligner.abc.Trainer`
+        Trainer
     """
 
-    jobs = [x.convert_alignment_arguments(aligner) for x in aligner.corpus.jobs]
-    if aligner.use_mp:
-        run_mp(convert_alignments_func, jobs, aligner.working_log_directory)
+    jobs = [x.convert_alignment_arguments(trainer) for x in trainer.corpus.jobs]
+    if trainer.use_mp:
+        run_mp(convert_alignments_func, jobs, trainer.working_log_directory)
     else:
-        run_non_mp(convert_alignments_func, jobs, aligner.working_log_directory)
+        run_non_mp(convert_alignments_func, jobs, trainer.working_log_directory)
 
 
 def calc_fmllr_func(
@@ -1866,7 +1880,7 @@ def calc_fmllr_func(
     model_path: str,
     spk2utt_paths: Dict[str, str],
     trans_paths: Dict[str, str],
-    fmllr_options: ConfigDict,
+    fmllr_options: MetaDict,
 ) -> None:
     """
     Multiprocessing function for calculating fMLLR transforms
@@ -1878,18 +1892,18 @@ def calc_fmllr_func(
     dictionaries: List[str]
         List of dictionary names
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     ali_model_path: str
         Path to the alignment acoustic model file
     model_path: str
         Path to the acoustic model file
     spk2utt_paths: Dict[str, str]
-        Dictionary of spk2utt scps per dictionary name
+        PronunciationDictionary of spk2utt scps per dictionary name
     trans_paths: Dict[str, str]
-        Dictionary of fMLLR transform archives per dictionary name
-    fmllr_options: ConfigDict
+        PronunciationDictionary of fMLLR transform archives per dictionary name
+    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for fMLLR estimation
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -2007,7 +2021,7 @@ def calc_fmllr_func(
                     est_proc.communicate()
 
 
-def calc_fmllr(aligner: AlignerType) -> None:
+def calc_fmllr(aligner: Aligner) -> None:
     """
     Multiprocessing function that computes speaker adaptation (fMLLR)
 
@@ -2027,7 +2041,7 @@ def calc_fmllr(aligner: AlignerType) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: :class:`~montreal_forced_aligner.abc.Aligner`
         Aligner
     """
     begin = time.time()
@@ -2062,15 +2076,15 @@ def acc_stats_two_feats_func(
     dictionaries: List[str]
         List of dictionary names
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     acc_paths: Dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+        PronunciationDictionary of accumulated stats files per dictionary name
     model_path: str
         Path to the acoustic model file
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     si_feature_strings: Dict[str, str]
-        Dictionary of speaker-independent feature strings per dictionary name
+        PronunciationDictionary of speaker-independent feature strings per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -2100,14 +2114,14 @@ def acc_stats_two_feats_func(
             acc_proc.communicate()
 
 
-def create_align_model(aligner: AlignerType) -> None:
+def create_align_model(aligner: SatTrainer) -> None:
     """
     Create alignment model for speaker-adapted training that will use speaker-independent
     features in later aligning
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+    aligner: :class:`~montreal_forced_aligner.trainers.SatTrainer`
         Aligner
     """
     aligner.logger.info("Creating alignment model for speaker-independent features...")
@@ -2161,7 +2175,7 @@ def lda_acc_stats_func(
     feature_strings: Dict[str, str],
     ali_paths: Dict[str, str],
     model_path: str,
-    lda_options: ConfigDict,
+    lda_options: MetaDict,
     acc_paths: Dict[str, str],
 ) -> None:
     """
@@ -2174,12 +2188,12 @@ def lda_acc_stats_func(
     dictionaries: List[str]
         List of dictionary names
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     ali_paths: Dict[str, str]
         Dictionary of alignment archives per dictionary name
     model_path: str
         Path to the acoustic model file
-    lda_options: ConfigDict
+    lda_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for LDA
     acc_paths: Dict[str, str]
         Dictionary of accumulated stats files per dictionary name
@@ -2244,7 +2258,7 @@ def lda_acc_stats(aligner: LdaTrainer) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
+    aligner: :class:`~montreal_forced_aligner.trainers.LdaTrainer`
         Trainer
     """
     arguments = [x.lda_acc_stats_arguments(aligner) for x in aligner.corpus.jobs]
@@ -2279,7 +2293,7 @@ def calc_lda_mllt_func(
     feature_strings: Dict[str, str],
     ali_paths: Dict[str, str],
     model_path: str,
-    lda_options: ConfigDict,
+    lda_options: MetaDict,
     macc_paths: Dict[str, str],
 ) -> None:
     """
@@ -2297,7 +2311,7 @@ def calc_lda_mllt_func(
         Dictionary of alignment archives per dictionary name
     model_path: str
         Path to the acoustic model file
-    lda_options: ConfigDict
+    lda_options: :class:`~montreal_forced_aligner.abc.MetaDict`
         Options for LDA
     macc_paths: Dict[str, str]
         Dictionary of accumulated stats files per dictionary name
@@ -2366,7 +2380,7 @@ def calc_lda_mllt(aligner: LdaTrainer) -> None:
 
     Parameters
     ----------
-    aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
+    aligner: :class:`~montreal_forced_aligner.trainers.LdaTrainer`
         Trainer
     """
     jobs = [x.calc_lda_mllt_arguments(aligner) for x in aligner.corpus.jobs]
@@ -2438,13 +2452,13 @@ def map_acc_stats_func(
     dictionaries: List[str]
         List of dictionary names
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     model_path: str
         Path to the acoustic model file
     ali_paths: Dict[str, str]
-        Dictionary of alignment archives per dictionary name
+        PronunciationDictionary of alignment archives per dictionary name
     acc_paths: Dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+        PronunciationDictionary of accumulated stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -2604,17 +2618,17 @@ def test_utterances_func(
     dictionaries: List[str]
         List of dictionaries
     feature_strings: Dict[str, str]
-        Dictionary of feature strings per dictionary name
+        PronunciationDictionary of feature strings per dictionary name
     words_paths: Dict[str, str]
-        Dictionary of word mapping files per dictionary name
+        PronunciationDictionary of word mapping files per dictionary name
     graphs_paths: Dict[str, str]
-        Dictionary of utterance FST graph archives per dictionary name
+        PronunciationDictionary of utterance FST graph archives per dictionary name
     text_int_paths: Dict[str, str]
-        Dictionary of text.int files per dictionary name
+        PronunciationDictionary of text.int files per dictionary name
     edits_paths: Dict[str, str]
-        Dictionary of paths to save transcription differences per dictionary name
+        PronunciationDictionary of paths to save transcription differences per dictionary name
     out_int_paths: Dict[str, str]
-        Dictionary of output .int files per dictionary name
+        PronunciationDictionary of output .int files per dictionary name
     model_path: str
         Acoustic model path
     """
@@ -2681,13 +2695,13 @@ def compile_utterance_train_graphs_func(
     dictionaries: List[str]
         List of dictionaries
     disambig_int_paths: Dict[str, str]
-        Dictionary of disambiguation symbol int files per dictionary name
+        PronunciationDictionary of disambiguation symbol int files per dictionary name
     disambig_L_fst_paths: Dict[str, str]
-        Dictionary of disambiguation lexicon FSTs per dictionary name
+        PronunciationDictionary of disambiguation lexicon FSTs per dictionary name
     fst_paths: Dict[str, str]
-        Dictionary of pregenerated utterance FST scp files per dictionary name
+        PronunciationDictionary of pregenerated utterance FST scp files per dictionary name
     graphs_paths: Dict[str, str]
-        Dictionary of utterance FST graph archives per dictionary name
+        PronunciationDictionary of utterance FST graph archives per dictionary name
     model_path: str
         Acoustic model path
     tree_path: str

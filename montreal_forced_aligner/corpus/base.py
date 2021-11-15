@@ -15,9 +15,10 @@ from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Union
 import yaml
 
 from ..config import FeatureConfig
+from ..config.dictionary_config import DictionaryConfig
 from ..exceptions import CorpusError, KaldiProcessingError, TextGridParseError, TextParseError
 from ..helper import output_mapping
-from ..multiprocessing.classes import Job
+from ..multiprocessing import Job
 from ..multiprocessing.corpus import CorpusProcessWorker
 from ..multiprocessing.features import calc_cmvn, compute_vad, mfcc
 from ..multiprocessing.helper import Stopped
@@ -28,7 +29,7 @@ from .helper import find_exts
 if TYPE_CHECKING:
     from logging import Logger
 
-    from ..dictionary import DictionaryType
+    from ..dictionary import MultispeakerDictionary
 
 
 __all__ = ["Corpus"]
@@ -80,22 +81,20 @@ class Corpus:
         self,
         directory: str,
         output_directory: str,
+        dictionary_config: Optional[DictionaryConfig] = None,
         speaker_characters: Union[int, str] = 0,
         num_jobs: int = 3,
         sample_rate: int = 16000,
         debug: bool = False,
         logger: Optional[Logger] = None,
         use_mp: bool = True,
-        punctuation: str = None,
-        clitic_markers: str = None,
         audio_directory: Optional[str] = None,
         skip_load: bool = False,
         parse_text_only_files: bool = False,
         ignore_speakers: bool = False,
     ):
         self.audio_directory = audio_directory
-        self.punctuation = punctuation
-        self.clitic_markers = clitic_markers
+        self.dictionary_config = dictionary_config
         self.debug = debug
         self.use_mp = use_mp
         log_dir = os.path.join(output_directory, "logging")
@@ -163,16 +162,12 @@ class Corpus:
         if not self.skip_load:
             self.load()
 
-    def normalized_text_iter(
-        self, dictionary: Optional[DictionaryType] = None, min_count: int = 1
-    ) -> Generator:
+    def normalized_text_iter(self, min_count: int = 1) -> Generator:
         """
         Construct an iterator over the normalized texts in the corpus
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
-            Dictionary to use for normalization
         min_count: int
             Minimum word count to include in the output, otherwise will use OOV code, defaults to 1
 
@@ -186,9 +181,9 @@ class Corpus:
             text = u.text.split()
             new_text = []
             for t in text:
-                if dictionary is not None:
-                    dictionary.to_int(t)
-                    lookup = dictionary.split_clitics(t)
+                if u.speaker.dictionary is not None:
+                    u.speaker.dictionary.to_int(t)
+                    lookup = u.speaker.dictionary.split_clitics(t)
                     if lookup is None:
                         continue
                 else:
@@ -196,7 +191,9 @@ class Corpus:
                 for item in lookup:
                     if item in unk_words:
                         new_text.append("<unk>")
-                    elif dictionary is not None and item not in dictionary.words:
+                    elif (
+                        u.speaker.dictionary is not None and item not in u.speaker.dictionary.words
+                    ):
                         new_text.append("<unk>")
                     else:
                         new_text.append(item)
@@ -252,7 +249,7 @@ class Corpus:
             )
             larger_subset = utts[:larger_subset_num]
         else:
-            larger_subset = self.utterances.values()
+            larger_subset = sorted(self.utterances.values())
         random.seed(1234)  # make it deterministic sampling
         subset_utts = set(random.sample(larger_subset, subset))
         log_dir = os.path.join(subset_directory, "log")
@@ -445,8 +442,7 @@ class Corpus:
                             relative_path,
                             self.speaker_characters,
                             self.sample_rate,
-                            self.punctuation,
-                            self.clitic_markers,
+                            self.dictionary_config,
                         )
                     )
 
@@ -576,8 +572,7 @@ class Corpus:
                         relative_path,
                         self.speaker_characters,
                         self.sample_rate,
-                        self.punctuation,
-                        self.clitic_markers,
+                        self.dictionary_config,
                     )
                     self.add_file(file)
                 except TextParseError as e:
@@ -609,7 +604,7 @@ class Corpus:
 
         Parameters
         ----------
-        file: :class:`~montreal_forced_aligner.corpus.classes.File`
+        file: :class:`~montreal_forced_aligner.corpus.File`
             File to be added
         """
         self.files[file.name] = file
@@ -623,25 +618,20 @@ class Corpus:
             if u.text:
                 self.word_counts.update(u.text.split())
 
-    def get_word_frequency(self, dictionary: DictionaryType) -> Dict[str, float]:
+    def get_word_frequency(self) -> Dict[str, float]:
         """
         Calculate the word frequency across all the texts in the corpus
-
-        Parameters
-        ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`
-            Dictionary to use for looking up subwords
 
         Returns
         -------
         Dict[str, float]
-            Dictionary of words and their relative frequencies
+            PronunciationDictionary of words and their relative frequencies
         """
         word_counts = Counter()
         for u in self.utterances.values():
             text = u.text
             speaker = u.speaker
-            d = dictionary.get_dictionary(speaker)
+            d = speaker.dictionary
             new_text = []
             text = text.split()
             for t in text:
@@ -664,7 +654,7 @@ class Corpus:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance to add
         """
         self.utterances[utterance.name] = utterance
@@ -679,7 +669,7 @@ class Corpus:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
             Utterance to delete
         """
         if isinstance(utterance, str):
@@ -704,7 +694,7 @@ class Corpus:
 
     def initialize_corpus(
         self,
-        dictionary: Optional[DictionaryType] = None,
+        dictionary: Optional[MultispeakerDictionary] = None,
         feature_config: Optional[FeatureConfig] = None,
     ) -> None:
         """
@@ -712,9 +702,9 @@ class Corpus:
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.Dictionary`, optional
-            Dictionary to use
-        feature_config: :class:`~montreal_forced_aligner.config.feature.FeatureConfig`, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`, optional
+            PronunciationDictionary to use
+        feature_config: :class:`~montreal_forced_aligner.config.FeatureConfig`, optional
             Feature configuration to use
         """
         if not self.files:

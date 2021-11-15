@@ -1,35 +1,27 @@
-"""Classes and functions for working with TextGrids in MFA"""
+"""
+Textgrid utilities
+==================
+
+"""
 from __future__ import annotations
 
 import os
-import re
 import sys
 import traceback
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from praatio import textgrid as tgio
-from praatio.utilities.textgrid_io import Interval
+
+from .abc import Aligner
+from .data import CtmInterval
 
 if TYPE_CHECKING:
-    from .aligner.base import BaseAligner
     from .corpus.classes import DictionaryData, File, Speaker
-    from .dictionary import (
-        DictionaryEntryType,
-        IpaType,
-        MappingType,
-        PunctuationType,
-        ReversedMappingType,
-    )
+    from .dictionary import ReversedMappingType
     from .multiprocessing.alignment import CtmType
-    from .trainers.base import BaseTrainer
-
-    AlignerType = Union[BaseTrainer, BaseAligner]
 
 __all__ = [
-    "CtmInterval",
     "process_ctm_line",
-    "map_to_original_pronunciation",
     "parse_from_word",
     "parse_from_phone",
     "parse_from_word_no_cleanup",
@@ -37,57 +29,8 @@ __all__ = [
     "export_textgrid",
     "ctm_to_textgrid",
     "output_textgrid_writing_errors",
-    "to_int",
     "ctms_to_textgrids_non_mp",
-    "split_clitics",
 ]
-
-
-@dataclass
-class CtmInterval:
-    """
-    Data class for intervals derived from CTM files
-
-    Attributes
-    ----------
-    begin: float
-        Start time of interval
-    end: float
-        End time of interval
-    label: str
-        Text of interval
-    utterance: str
-        Utterance ID that the interval belongs to
-    """
-
-    begin: float
-    end: float
-    label: str
-    utterance: str
-
-    def shift_times(self, offset: float):
-        """
-        Shift times of the interval based on some offset (i.e., segments in Kaldi)
-
-        Parameters
-        ----------
-        offset: float
-            Offset to add to the interval's begin and end
-
-        """
-        self.begin += offset
-        self.end += offset
-
-    def to_tg_interval(self) -> Interval:
-        """
-        Converts the CTMInterval to PraatIO's Interval class
-
-        Returns
-        -------
-        Interval
-            Derived PraatIO Interval
-        """
-        return Interval(self.begin, self.end, self.label)
 
 
 def process_ctm_line(line: str) -> CtmInterval:
@@ -101,7 +44,7 @@ def process_ctm_line(line: str) -> CtmInterval:
 
     Returns
     -------
-    CtmInterval
+    :class:`~montreal_forced_aligner.data.CtmInterval`
         Extracted data from the line
     """
     line = line.split(" ")
@@ -113,143 +56,6 @@ def process_ctm_line(line: str) -> CtmInterval:
     return CtmInterval(begin, end, label, utt)
 
 
-def split_clitics(
-    item: str,
-    words_mapping: MappingType,
-    clitic_set: Set[str],
-    clitic_markers: PunctuationType,
-    compound_markers: PunctuationType,
-) -> List[str]:
-    """
-    Split a word into subwords based on dictionary information
-
-    Parameters
-    ----------
-    item: str
-        Word to split
-    words_mapping: Dict[str, int]
-        A word mapping from a Dictionary object
-    clitic_set: Set[str]
-        Set of acceptable clitics from the dictionary
-    clitic_markers: str
-        Clitic markers
-    compound_markers: str
-        Compound markers
-
-    Returns
-    -------
-    List[str]
-        List of subwords
-    """
-    if item in words_mapping:
-        return [item]
-    if any(x in item for x in compound_markers):
-        s = re.split(rf"[{compound_markers}]", item)
-        if any(x in item for x in clitic_markers):
-            new_s = []
-            for seg in s:
-                if any(x in seg for x in clitic_markers):
-                    new_s.extend(
-                        split_clitics(
-                            seg, words_mapping, clitic_set, clitic_markers, compound_markers
-                        )
-                    )
-                else:
-                    new_s.append(seg)
-            s = new_s
-        return s
-    if any(x in item and not item.endswith(x) and not item.startswith(x) for x in clitic_markers):
-        initial, final = re.split(rf"[{clitic_markers}]", item, maxsplit=1)
-        if any(x in final for x in clitic_markers):
-            final = split_clitics(
-                final, words_mapping, clitic_set, clitic_markers, compound_markers
-            )
-        else:
-            final = [final]
-        for clitic in clitic_markers:
-            if initial + clitic in clitic_set:
-                return [initial + clitic] + final
-            elif clitic + final[0] in clitic_set:
-                final[0] = clitic + final[0]
-                return [initial] + final
-    return [item]
-
-
-def _lookup(
-    item: str,
-    words_mapping: MappingType,
-    punctuation: PunctuationType,
-    clitic_set: Set[str],
-    clitic_markers: PunctuationType,
-    compound_markers: PunctuationType,
-) -> List[str]:
-    """
-    Look up a word and return the list of sub words if necessary
-    taking into account clitic and compound markers
-
-    Parameters
-    ----------
-    item: str
-        Word to look up
-
-    Returns
-    -------
-    List[str]
-        List of subwords that are in the dictionary
-    """
-    from montreal_forced_aligner.dictionary import sanitize
-
-    if item in words_mapping:
-        return [item]
-    sanitized = sanitize(item, punctuation, clitic_markers)
-    if sanitized in words_mapping:
-        return [sanitized]
-    split = split_clitics(sanitized, words_mapping, clitic_set, clitic_markers, compound_markers)
-    oov_count = sum(1 for x in split if x not in words_mapping)
-
-    if oov_count < len(split):  # Only returned split item if it gains us any transcribed speech
-        return split
-    return [sanitized]
-
-
-def to_int(
-    item: str,
-    words_mapping: MappingType,
-    punctuation: PunctuationType,
-    clitic_set: Set[str],
-    clitic_markers: PunctuationType,
-    compound_markers: PunctuationType,
-    oov_int: int,
-) -> List[int]:
-    """
-    Convert a given word into integer IDs
-
-    Parameters
-    ----------
-    item: str
-        Word to look up
-
-    Returns
-    -------
-    List[int]
-        List of integer IDs corresponding to each subword
-    """
-    if item == "":
-        return []
-    sanitized = _lookup(
-        item, words_mapping, punctuation, clitic_set, clitic_markers, compound_markers
-    )
-    text_int = []
-    for item in sanitized:
-        if not item:
-            continue
-        if item not in words_mapping:
-            text_int.append(oov_int)
-        else:
-            text_int.append(words_mapping[item])
-    return text_int
-
-
 def parse_from_word(
     ctm_labels: List[CtmInterval], text: List[str], dictionary_data: DictionaryData
 ) -> List[CtmInterval]:
@@ -258,7 +64,7 @@ def parse_from_word(
 
     Parameters
     ----------
-    ctm_labels: List[CtmInterval]
+    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
         CTM intervals
     text: List[str]
         The original text that was to be aligned
@@ -267,22 +73,14 @@ def parse_from_word(
 
     Returns
     -------
-    List[CtmInterval]
+    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Correct intervals with subwords merged back into their original text
     """
     cur_ind = 0
     actual_labels = []
     utterance = None
-    words_mapping = dictionary_data.words_mapping
-    punctuation = dictionary_data.punctuation
-    clitic_set = dictionary_data.clitic_set
-    clitic_markers = dictionary_data.clitic_markers
-    compound_markers = dictionary_data.compound_markers
-    oov_int = dictionary_data.oov_int
     for word in text:
-        ints = to_int(
-            word, words_mapping, punctuation, clitic_set, clitic_markers, compound_markers, oov_int
-        )
+        ints = dictionary_data.to_int(word)
         b = 1000000
         e = -1
         for i in ints:
@@ -309,14 +107,14 @@ def parse_from_word_no_cleanup(
 
     Parameters
     ----------
-    ctm_labels: List[CtmInterval]
-        List of CtmIntervals to convert
+    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
     reversed_word_mapping: Dict[int, str]
         Look up for Kaldi word IDs to convert them back to text
 
     Returns
     -------
-    List[CtmInterval]
+    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with text rather than integer IDs
     """
     for ctm_interval in ctm_labels:
@@ -335,8 +133,8 @@ def parse_from_phone(
 
     Parameters
     ----------
-    ctm_labels: List[CtmInterval]
-        CtmIntervals to convert
+    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
     reversed_phone_mapping: Dict[int, str]
         Mapping to convert phone IDs to phone labels
     positions: List[str]
@@ -344,7 +142,7 @@ def parse_from_phone(
 
     Returns
     -------
-    List[CtmInterval]
+    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with phone labels rather than IDs
     """
     for ctm_interval in ctm_labels:
@@ -356,96 +154,13 @@ def parse_from_phone(
     return ctm_labels
 
 
-def map_to_original_pronunciation(
-    phones: CtmType, subpronunciations: List[DictionaryEntryType], strip_diacritics: IpaType
-) -> CtmType:
-    """
-    Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
-
-    Parameters
-    ----------
-    phones: List[CtmInterval]
-        List of aligned phones
-    subpronunciations: List[DictionaryEntryType]
-        Pronunciations of each sub word to reconstruct the transcriptions
-    strip_diacritics: List[str]
-        List of diacritics that were stripped out of the original IPA transcription
-
-    Returns
-    -------
-    List[CtmInterval]
-        Intervals with their original IPA pronunciation rather than the internal simplified form
-    """
-    transcription = tuple(x.label for x in phones)
-    new_phones = []
-    mapping_ind = 0
-    transcription_ind = 0
-    for pronunciations in subpronunciations:
-        pron = None
-        if mapping_ind >= len(phones):
-            break
-        for p in pronunciations:
-            if (
-                "original_pronunciation" in p
-                and transcription == p["pronunciation"] == p["original_pronunciation"]
-            ) or (transcription == p["pronunciation"] and "original_pronunciation" not in p):
-                new_phones.extend(phones)
-                mapping_ind += len(phones)
-                break
-            if (
-                p["pronunciation"]
-                == transcription[transcription_ind : transcription_ind + len(p["pronunciation"])]
-                and pron is None
-            ):
-                pron = p
-        if mapping_ind >= len(phones):
-            break
-        if not pron:
-            new_phones.extend(phones)
-            mapping_ind += len(phones)
-            break
-        to_extend = phones[transcription_ind : transcription_ind + len(pron["pronunciation"])]
-        transcription_ind += len(pron["pronunciation"])
-        p = pron
-        if "original_pronunciation" not in p or p["pronunciation"] == p["original_pronunciation"]:
-
-            new_phones.extend(to_extend)
-            mapping_ind += len(to_extend)
-            break
-        for pi in p["original_pronunciation"]:
-            if pi == phones[mapping_ind].label:
-                new_phones.append(phones[mapping_ind])
-            else:
-                modded_phone = pi
-                new_p = phones[mapping_ind].label
-                for diacritic in strip_diacritics:
-                    modded_phone = modded_phone.replace(diacritic, "")
-                if modded_phone == new_p:
-                    phones[mapping_ind].label = pi
-                    new_phones.append(phones[mapping_ind])
-                elif mapping_ind != len(phones) - 1:
-                    new_p = phones[mapping_ind].label + phones[mapping_ind + 1].label
-                    if modded_phone == new_p:
-                        new_phones.append(
-                            CtmInterval(
-                                phones[mapping_ind].begin,
-                                phones[mapping_ind + 1].end,
-                                new_p,
-                                phones[mapping_ind].utterance,
-                            )
-                        )
-                        mapping_ind += 1
-            mapping_ind += 1
-    return new_phones
-
-
-def ctms_to_textgrids_non_mp(aligner: AlignerType) -> None:
+def ctms_to_textgrids_non_mp(aligner: Aligner) -> None:
     """
     Parse CTM files to TextGrids without using multiprocessing
 
     Parameters
     ----------
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner`
         Aligner that generated the CTM files
     """
 
@@ -593,7 +308,7 @@ def generate_tiers(
     Returns
     -------
     Dict[Speaker, Dict[str, CtmType]]
-        Tier information per speaker, with CtmIntervals split by "phones" and "words"
+        Tier information per speaker, with :class:`~montreal_forced_aligner.data.CtmInterval` split by "phones" and "words"
     """
     output = {}
 
@@ -605,39 +320,32 @@ def generate_tiers(
 
         words = []
         phones = []
-        if dictionary_data.multilingual_ipa and cleanup_textgrids:
+        if dictionary_data.dictionary_config.multilingual_ipa and cleanup_textgrids:
             phone_ind = 0
             for interval in u.word_labels:
                 end = interval.end
                 word = interval.label
-                subwords = _lookup(
+                subwords = dictionary_data.lookup(
                     word,
-                    dictionary_data.words_mapping,
-                    dictionary_data.punctuation,
-                    dictionary_data.clitic_set,
-                    dictionary_data.clitic_markers,
-                    dictionary_data.compound_markers,
                 )
                 subwords = [
-                    x if x in dictionary_data.words_mapping else dictionary_data.oov_code
+                    x
+                    if x in dictionary_data.words_mapping
+                    else dictionary_data.dictionary_config.oov_word
                     for x in subwords
                 ]
                 subprons = [dictionary_data.words[x] for x in subwords]
                 cur_phones = []
                 while u.phone_labels[phone_ind].end <= end:
                     p = u.phone_labels[phone_ind]
-                    if p.label in dictionary_data.silences:
+                    if p.label in dictionary_data.dictionary_config.silence_phones:
                         phone_ind += 1
                         continue
                     cur_phones.append(p)
                     phone_ind += 1
                     if phone_ind > len(u.phone_labels) - 1:
                         break
-                phones.extend(
-                    map_to_original_pronunciation(
-                        cur_phones, subprons, dictionary_data.strip_diacritics
-                    )
-                )
+                phones.extend(dictionary_data.map_to_original_pronunciation(cur_phones, subprons))
                 if not word:
                     continue
 
@@ -646,7 +354,10 @@ def generate_tiers(
             for interval in u.word_labels:
                 words.append(interval)
             for interval in u.phone_labels:
-                if interval.label in dictionary_data.silences and cleanup_textgrids:
+                if (
+                    interval.label in dictionary_data.dictionary_config.silence_phones
+                    and cleanup_textgrids
+                ):
                     continue
                 phones.append(interval)
         if speaker not in output:
@@ -673,8 +384,8 @@ def export_textgrid(
         File object to export
     output_path: str
         Output path of the file
-    speaker_data: Dict[Speaker, Dict[str, CtmType]]
-        Per speaker, per word/phone CtmIntervals
+    speaker_data: Dict[Speaker, Dict[str, List[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+        Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
     frame_shift: int
         Frame shift of features, in ms
     first_file_write: bool, optional
@@ -743,7 +454,7 @@ def export_textgrid(
     tg.save(output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error")
 
 
-def ctm_to_textgrid(file: File, aligner: AlignerType, first_file_write=True) -> None:
+def ctm_to_textgrid(file: File, aligner: Aligner, first_file_write=True) -> None:
     """
     Export a File to TextGrid
 
@@ -751,7 +462,7 @@ def ctm_to_textgrid(file: File, aligner: AlignerType, first_file_write=True) -> 
     ----------
     file: File
         File to export
-    aligner: AlignerType
+    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner` or :class:`~montreal_forced_aligner.trainer.base.BaseTrainer`
         Aligner used to generate the alignments
     first_file_write: bool, optional
         Flag for whether this is the first time touching this file
