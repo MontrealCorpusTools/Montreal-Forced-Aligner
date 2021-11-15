@@ -29,6 +29,7 @@ def test_training(sick_dict, sick_g2p_model_path, temp_dir):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")
     train_config, dictionary_config = load_basic_train_g2p_config()
+    sick_dict = sick_dict.default_dictionary
     train_config.random_starts = 1
     train_config.max_iterations = 5
     trainer = PyniniTrainer(
@@ -40,7 +41,7 @@ def test_training(sick_dict, sick_g2p_model_path, temp_dir):
     model = G2PModel(sick_g2p_model_path, root_directory=temp_dir)
     assert model.meta["version"] == get_mfa_version()
     assert model.meta["architecture"] == "pynini"
-    assert model.meta["phones"] == sick_dict.nonsil_phones
+    assert model.meta["phones"] == sick_dict.config.non_silence_phones
 
 
 def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output):
