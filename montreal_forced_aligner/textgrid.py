@@ -462,7 +462,7 @@ def ctm_to_textgrid(file: File, aligner: Aligner, first_file_write=True) -> None
     ----------
     file: File
         File to export
-    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner` or :class:`~montreal_forced_aligner.trainer.base.BaseTrainer`
+    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner` or :class:`~montreal_forced_aligner.trainers.BaseTrainer`
         Aligner used to generate the alignments
     first_file_write: bool, optional
         Flag for whether this is the first time touching this file

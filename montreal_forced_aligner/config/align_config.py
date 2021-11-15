@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Collection, Tuple
 
 import yaml
 
-from .base_config import BaseConfig, ConfigError
+from ..exceptions import ConfigError
+from .base_config import BaseConfig
 from .dictionary_config import DictionaryConfig
 from .feature_config import FeatureConfig
 

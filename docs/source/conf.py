@@ -56,7 +56,7 @@ panels_add_bootstrap_css = False
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 extlinks = {
-    "coqui": ("https://coqui.ai/", "Coqui"),
+    "mfa_pr": ("https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/%s", "PR #%s"),
 }
 
 xref_links = {
@@ -101,6 +101,10 @@ xref_links = {
         "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",
     ),
     "conda_forge": ("Conda Forge", "https://conda-forge.org/"),
+    "pydata_sphinx_theme": (
+        "Pydata Sphinx Theme",
+        "https://pydata-sphinx-theme.readthedocs.io/en/latest/",
+    ),
     "mfa_reorg_scripts": (
         "MFA-reorganization-scripts repository",
         "https://github.com/MontrealCorpusTools/MFA-reorganization-scripts",
