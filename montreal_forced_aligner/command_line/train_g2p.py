@@ -11,7 +11,7 @@ from montreal_forced_aligner.config.train_g2p_config import (
     load_basic_train_g2p_config,
     train_g2p_yaml_to_config,
 )
-from montreal_forced_aligner.dictionary import MultispeakerDictionary
+from montreal_forced_aligner.dictionary import PronunciationDictionary
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer as Trainer
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ def train_g2p(args: Namespace, unknown_args: Optional[list] = None) -> None:
     train_config.use_mp = not args.disable_mp
     if unknown_args:
         train_config.update_from_unknown_args(unknown_args)
-    dictionary = MultispeakerDictionary(args.dictionary_path, "")
+    dictionary = PronunciationDictionary(args.dictionary_path, "", dictionary_config)
     t = Trainer(
         dictionary,
         args.output_model_path,

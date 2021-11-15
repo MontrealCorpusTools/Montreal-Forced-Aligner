@@ -522,7 +522,7 @@ class G2PModel(Archive):
             architecture = "pynini"
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
             meta = {
-                "phones": sorted(dictionary.nonsil_phones),
+                "phones": sorted(dictionary.config.non_silence_phones),
                 "graphemes": sorted(dictionary.graphemes),
                 "architecture": architecture,
                 "version": get_mfa_version(),
