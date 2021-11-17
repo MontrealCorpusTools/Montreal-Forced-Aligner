@@ -11,7 +11,7 @@ What's new in 2.0
 =================
 
 Version 2.0 of the Montreal Forced Aligner represents several overhauls to installation and management
-of commands.
+of commands.  See :ref:`changelog_2.0` for a more specific changes.
 
 .. _2_0_installation_update:
 
@@ -25,13 +25,10 @@ customize the runtime for different environments and versions.
 
 Moving forward, MFA will:
 
-- Use standard Python packaging, i.e., :code:`pip install montreal-forced-aligner` or
-  :code:`python setup.py install` from the cloned repo
-- Allow for downloading third party executables for the particular system, but also allow for picking up relevant executables
-  that were built on the system, increasing flexibility of use
+- Use standard Python packaging and be available for import in Python
+- Rely on :xref:`conda_forge` for handling dependencies
 - Switch to using Pynini instead of Phonetisaurus for G2P purposes, which should ease distribution and installation
-- Have a :ref:`2_0_unified_cli` with subcommands for each command line function that will be available upon installation,
-  as well as exposing the full MFA api for use in other Python scripts
+- Have a :ref:`2_0_unified_cli` with subcommands for each command line function that will be available upon installation, as well as exposing the full MFA api for use in other Python scripts
 - Allow for faster bug fixes that do not require repackaging and releasing frozen binaries across all platforms
 
 .. _2_0_unified_cli:
@@ -44,13 +41,13 @@ more functionality has been added with G2P models, validation, managing pretrain
 different types of models, it has become unwieldy to have separate commands for each. As such, going
 forward:
 
-- There will be a single :code:`mfa` command line utility that will be available once it is installed via pip.
-- Running :code:`mfa -h` will list the subcommands that can be run, along with their descriptions.
+- There will be a single :code:`mfa` command line utility that will be available once it is installed via pip/conda.
+- Running :code:`mfa -h` will list the subcommands that can be run, along with their descriptions, see :ref:`commands` for details.
 
-.. _2_0_annotator_gui:
+.. _2_0_anchor_gui:
 
-Annotator GUI
--------------
+Anchor annotator GUI
+--------------------
 
 Added a basic annotation GUI with features for:
 
@@ -72,30 +69,25 @@ MFA now supports:
 - Transcribing a corpus of sound files using an acoustic model, dictionary, and language model, see :ref:`transcribing` for
   more information.
 - Training language models from corpora that have text transcriptions, see :ref:`training_lm` for more information
-- Training pronunciation probability dictionaries from alignments, for use in alignment or transcription, see
-  :ref:`training_dictionary` for more information
+- Training pronunciation probability dictionaries from alignments, for use in alignment or transcription, see :ref:`training_dictionary` for more information
 
 .. _whats_new_1_1:
 
 What's new in 1.1
 =================
 
-Version 1.1 of the Montreal Forced Aligner represents several overhauls to the workflow and ability to customize model
-training and alignment.
+Version 1.1 of the Montreal Forced Aligner represents several overhauls to the workflow and ability to customize model training and alignment.
 
 .. attention::
 
-   Please note that development of 1.1 has been bundled into 2.0 as part of larger infrastructure changes
-   in developing MFA (@mmcauliffe no longer being affiliated with an academic institution, lack of access to Mac
-   OS for building third party executables, etc)
+   With the development of 2.0, the below sections are out of date.
 
 .. _1_1_training_configurations:
 
 Training configurations
 -----------------------
 
-A major new feature is the ability to specify and customize configuration for training and alignment. Prior to 1.1,
-the training procedure for new models was:
+A major new feature is the ability to specify and customize configuration for training and alignment. Prior to 1.1, the training procedure for new models was:
 
 - Monophone training
 - Triphone training
@@ -110,7 +102,6 @@ In 1.1, the following training procedures are available:
 - LDA+MLLT training
 - Speaker-adapted triphone training
 - Ivector extractor training
-- Nnet2 training
 
 Each of these blocks (as well as their inclusion) can be customized through a YAML config file.  In addition to training parameters,
 global alignment and feature configuration parameters are available. See :ref:`configuration` for more details.

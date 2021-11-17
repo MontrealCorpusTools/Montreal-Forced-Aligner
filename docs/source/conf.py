@@ -219,7 +219,25 @@ add_function_parentheses = False
 # show_authors = False
 
 # nitpicky = True
-nitpick_ignore = [("py:class", "optional")]
+nitpick_ignore = [
+    ("py:class", "optional"),
+    ("py:class", "callable"),
+    ("py:class", "CtmType"),
+    ("py:class", "ReversedMappingType"),
+    ("py:class", "WordsType"),
+    ("py:class", "MappingType"),
+    ("py:class", "TextIO"),
+    ("py:class", "SegmentationType"),
+    ("py:class", "CtmErrorDict"),
+    ("py:class", "Labels"),
+    ("py:class", "ScpType"),
+    ("py:class", "multiprocessing.Value"),
+    ("py:class", "praatio.utilities.constants.Interval"),
+    ("py:class", "CorpusMappingType"),
+    ("py:class", "DictionaryEntryType"),
+    ("py:class", "montreal_forced_aligner.abc.MetaDict"),
+    ("py:class", "multiprocessing.context.Process"),
+]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -253,7 +271,17 @@ html_theme_options = {
         {
             "name": "GitHub",
             "url": "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
-            "icon": "fab fa-github-square",
+            "icon": "fab fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/Montreal-Forced-Aligner/",
+            "icon": "fas fa-box",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://anaconda.org/conda-forge/montreal-forced-aligner",
+            "icon": "fas fa-toolbox",
         },
     ],
     "google_analytics_id": "UA-73068199-4",

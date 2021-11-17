@@ -52,6 +52,7 @@
 }
 .i-navigation{
     color: #003566;
+    padding: 20px;
 }
 .i-navigation:hover {
     color: #FFC300;
@@ -71,6 +72,9 @@ background-color: #E9F6EC;
 
 .not-supported {
 background-color: #FBEAEC;
+}
+#navbar-icon-links i.fa-github-square::before, i.fa-github-square::before {
+    color: inherit;
 }
 
 dt:target {

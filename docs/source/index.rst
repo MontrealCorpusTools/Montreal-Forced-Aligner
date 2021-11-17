@@ -9,7 +9,7 @@ Montreal Forced Aligner documentation
     ---
     .. raw:: html
 
-       <i class="fas fa-running fa-10x i-navigation"></i>
+       <i class="fas fa-running fa-4x i-navigation"></i>
 
     Getting started
     ^^^^^^^^^^^^^^^
@@ -26,12 +26,14 @@ Montreal Forced Aligner documentation
     ---
     .. raw:: html
 
-       <i class="fas fa-terminal fa-10x i-navigation"></i>
+       <i class="fas fa-terminal fa-4x i-navigation"></i>
 
     First steps
     ^^^^^^^^^^^
 
-    Have a particular use case for MFA? Check out the first steps tutorials.
+    Have a particular use case for MFA?
+
+    Check out the first steps tutorials.
 
     +++
 
@@ -43,14 +45,12 @@ Montreal Forced Aligner documentation
     ---
     .. raw:: html
 
-       <i class="fas fa-book-open fa-9x i-navigation"></i>
+       <i class="fas fa-book-open fa-4x i-navigation"></i>
 
     User guide
     ^^^^^^^^^^
 
-    The reference guide contains a detailed description of
-    the SciPy API. The reference describes how the methods work and which parameters can
-    be used. It assumes that you have an understanding of the key concepts.
+    The User Guide gives more details on input formats, available commands, and details on the various workflows available.
 
     +++
 
@@ -62,12 +62,12 @@ Montreal Forced Aligner documentation
     ---
     .. raw:: html
 
-       <i class="fas fa-file-code fa-9x i-navigation"></i>
+       <i class="fas fa-file-code fa-4x i-navigation"></i>
 
     API reference
     ^^^^^^^^^^^^^
 
-    Implementation details of MFA classes and functions
+    The API guide lists all the inner workings of MFA, the modules and classes that you can import and use in your own scripts and projects, along with details about the Kaldi functionality used.
 
     +++
 

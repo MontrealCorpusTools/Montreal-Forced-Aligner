@@ -83,3 +83,5 @@ docs/source/api/
 
 montreal_forced_aligner/_version.py
 /docs/source/reference/generated/
+
+docs/source/reference/multiprocessing/generated/

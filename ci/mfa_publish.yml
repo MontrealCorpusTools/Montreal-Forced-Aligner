@@ -1,8 +1,8 @@
-name: mfa
+name: mfa_publish
 channels:
   - conda-forge
+  - defaults
 dependencies:
-  - python>=3.8
   - numpy
   - librosa
   - tqdm
@@ -15,6 +15,8 @@ dependencies:
   - baumwelch
   - ngram
   - pynini
+  - setuptools_scm
   - pip
   - pip:
-      - praatio >= 5.0
+     - pep517
+     - praatio >= 5.0

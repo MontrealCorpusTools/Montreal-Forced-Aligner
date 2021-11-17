@@ -16,6 +16,7 @@ Beta releases
 - Documentation refresh! Docs now use the :xref:`pydata_sphinx_theme` and should have a better landing page and flow, as well as up to date API reference
 - Some refactoring to use type hinting and abstract class interfaces (still a work in progress)
 
+
 2.0.0b4
 -------
 
