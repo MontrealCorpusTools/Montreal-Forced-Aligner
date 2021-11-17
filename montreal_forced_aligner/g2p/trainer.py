@@ -44,8 +44,8 @@ except ImportError:
     G2P_DISABLED = True
 
 if TYPE_CHECKING:
+    from ..abc import Dictionary, DictionaryEntryType
     from ..config.train_g2p_config import TrainG2PConfig
-    from ..dictionary import Dictionary, DictionaryEntryType
 
 
 Labels = List[Any]
@@ -490,8 +490,8 @@ class PyniniTrainer:
 
     Parameters
     ----------
-    dictionary: Dictionary
-        Dictionary to train from`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
+        PronunciationDictionary to train from`
     model_path: str
         Output model path
     train_config: TrainG2PConfig
@@ -651,7 +651,7 @@ class PyniniTrainer:
         Parameters
         ----------
         word_dict: Dict[str, DictionaryEntryType]
-            Dictionary of words to pronunciations, optional, defaults to the dictionary's
+            PronunciationDictionary of words to pronunciations, optional, defaults to the dictionary's
             set of words
         """
         input_path = os.path.join(self.temp_directory, "input.txt")

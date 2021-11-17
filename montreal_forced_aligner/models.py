@@ -1,12 +1,17 @@
-"""Class definitions for Montreal Forced Aligner models"""
+"""
+Model classes
+=============
+
+"""
 from __future__ import annotations
 
 import os
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import TYPE_CHECKING, Any, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Tuple, Union
 
 import yaml
 
+from .abc import Dictionary, MetaDict, MfaModel, Trainer
 from .exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -17,15 +22,10 @@ from .helper import TerminalPrinter
 if TYPE_CHECKING:
     from logging import Logger
 
-    from .aligner.adapting import AdaptingAligner
     from .config import FeatureConfig
+    from .config.dictionary_config import DictionaryConfig
     from .config.train_config import TrainingConfig
-    from .dictionary import Dictionary
-    from .lm.trainer import LmTrainer
-    from .trainers import BaseTrainer
-
-    TrainerType = Union[BaseTrainer, LmTrainer, AdaptingAligner]
-    MetaDict = Dict[str, Any]
+    from .dictionary import PronunciationDictionary
 
 
 # default format for output
@@ -35,14 +35,14 @@ __all__ = [
     "Archive",
     "LanguageModel",
     "AcousticModel",
-    "IvectorExtractor",
+    "IvectorExtractorModel",
     "DictionaryModel",
     "G2PModel",
     "MODEL_TYPES",
 ]
 
 
-class Archive:
+class Archive(MfaModel):
     """
     Class representing data in a directory or archive file (zip, tar,
     tar.gz/tgz)
@@ -85,7 +85,7 @@ class Archive:
 
     def get_subclass_object(
         self,
-    ) -> Union[AcousticModel, G2PModel, LanguageModel, IvectorExtractor]:
+    ) -> Union[AcousticModel, G2PModel, LanguageModel, IvectorExtractorModel]:
         """
         Instantiate subclass models based on files contained in the archive
 
@@ -102,7 +102,7 @@ class Archive:
             if f.endswith(".arpa"):
                 return LanguageModel(self.dirname, self.root_directory)
             if f == "final.ie":
-                return IvectorExtractor(self.dirname, self.root_directory)
+                return IvectorExtractorModel(self.dirname, self.root_directory)
         raise ModelLoadError(self.source)
 
     @classmethod
@@ -168,13 +168,13 @@ class Archive:
                 self._meta = yaml.safe_load(f)
         return self._meta
 
-    def add_meta_file(self, trainer: TrainerType) -> None:
+    def add_meta_file(self, trainer: Trainer) -> None:
         """
         Add a metadata file from a given trainer to the model
 
         Parameters
         ----------
-        trainer: TrainerType
+        trainer: Trainer
             The trainer to construct the metadata from
         """
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
@@ -255,17 +255,17 @@ class AcousticModel(Archive):
     files = ["final.mdl", "final.alimdl", "final.occs", "lda.mat", "tree"]
     extensions = [".zip", ".am"]
 
-    def add_meta_file(self, aligner: TrainerType) -> None:
+    def add_meta_file(self, trainer: Trainer) -> None:
         """
         Add metadata file from a model trainer
 
         Parameters
         ----------
-        aligner: TrainerType
+        trainer: :class:`~montreal_forced_aligner.abc.Trainer`
             Trainer to supply metadata information about the acoustic model
         """
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
-            yaml.dump(aligner.meta, f)
+            yaml.dump(trainer.meta, f)
 
     @property
     def feature_config(self) -> FeatureConfig:
@@ -278,7 +278,7 @@ class AcousticModel(Archive):
         fc.update(self.meta["features"])
         return fc
 
-    def adaptation_config(self) -> TrainingConfig:
+    def adaptation_config(self) -> Tuple[TrainingConfig, DictionaryConfig]:
         """
         Generate an adaptation configuration
 
@@ -290,10 +290,10 @@ class AcousticModel(Archive):
         from .config.train_config import load_no_sat_adapt, load_sat_adapt
 
         if self.meta["features"]["fmllr"]:
-            train, align = load_sat_adapt()
+            train, align, dictionary = load_sat_adapt()
         else:
-            train, align = load_no_sat_adapt()
-        return train
+            train, align, dictionary = load_no_sat_adapt()
+        return train, dictionary
 
     @property
     def meta(self) -> MetaDict:
@@ -430,8 +430,8 @@ class AcousticModel(Archive):
 
         Parameters
         ----------
-        dictionary: Union[Dictionary, G2PModel]
-            Dictionary or G2P model to compare phone sets with
+        dictionary: Union[DictionaryConfig, G2PModel]
+            PronunciationDictionary or G2P model to compare phone sets with
 
         Raises
         ------
@@ -441,12 +441,12 @@ class AcousticModel(Archive):
         if isinstance(dictionary, G2PModel):
             missing_phones = dictionary.meta["phones"] - set(self.meta["phones"])
         else:
-            missing_phones = dictionary.nonsil_phones - set(self.meta["phones"])
+            missing_phones = dictionary.config.non_silence_phones - set(self.meta["phones"])
         if missing_phones:
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
-class IvectorExtractor(Archive):
+class IvectorExtractorModel(Archive):
     """
     Model class for IvectorExtractor
     """
@@ -503,14 +503,16 @@ class IvectorExtractor(Archive):
 class G2PModel(Archive):
     extensions = [".zip", ".g2p"]
 
-    def add_meta_file(self, dictionary: Dictionary, architecture: Optional[str] = None) -> None:
+    def add_meta_file(
+        self, dictionary: PronunciationDictionary, architecture: Optional[str] = None
+    ) -> None:
         """
         Construct meta data information for the G2P model from the dictionary it was trained from
 
         Parameters
         ----------
-        dictionary: Dictionary
-            Dictionary that was the training data for the G2P model
+        dictionary: PronunciationDictionary
+            PronunciationDictionary that was the training data for the G2P model
         architecture: str, optional
             Architecture of the G2P model, defaults to "pynini"
         """
@@ -520,7 +522,7 @@ class G2PModel(Archive):
             architecture = "pynini"
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
             meta = {
-                "phones": sorted(dictionary.nonsil_phones),
+                "phones": sorted(dictionary.config.non_silence_phones),
                 "graphemes": sorted(dictionary.graphemes),
                 "architecture": architecture,
                 "version": get_mfa_version(),
@@ -693,12 +695,133 @@ class LanguageModel(Archive):
         copyfile(arpa_path, os.path.join(self.dirname, name))
 
 
-class DictionaryModel(Archive):
+class DictionaryModel(MfaModel):
     """
     Class for representing MFA pronunciation dictionaries
     """
 
-    extensions = [".dict", f".{FORMAT}", ".txt", ".yaml"]
+    extensions = [".dict", ".txt", ".yaml", ".yml"]
+
+    def __init__(self, path: str):
+        self.path = path
+        count = 0
+        self.pronunciation_probabilities = True
+        self.silence_probabilities = True
+        with open(self.path, "r", encoding="utf8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                line = line.split()
+                _ = line.pop(0)  # word
+                next_item = line.pop(0)
+                if self.pronunciation_probabilities:
+                    try:
+                        prob = float(next_item)
+                        if prob > 1 or prob < 0:
+                            raise ValueError
+                    except ValueError:
+                        self.pronunciation_probabilities = False
+                try:
+                    next_item = line.pop(0)
+                except IndexError:
+                    self.silence_probabilities = False
+                if self.silence_probabilities:
+                    try:
+                        prob = float(next_item)
+                        if prob > 1 or prob < 0:
+                            raise ValueError
+                    except ValueError:
+                        self.silence_probabilities = False
+                count += 1
+                if count > 10:
+                    break
+
+    @property
+    def meta(self) -> MetaDict:
+        return {
+            "pronunciation_probabilities": self.pronunciation_probabilities,
+            "silence_probabilities": self.silence_probabilities,
+        }
+
+    def add_meta_file(self, trainer: Trainer) -> None:
+        raise NotImplementedError
+
+    def pretty_print(self):
+        """
+        Pretty print the dictionary's meta data using TerminalPrinter
+        """
+        printer = TerminalPrinter()
+        configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
+        printer.print_config(configuration_data)
+
+    @classmethod
+    def valid_extension(cls, filename: str) -> bool:
+        """
+        Check whether a file has a valid extension for the given model archive
+
+        Parameters
+        ----------
+        filename: str
+            File name to check
+
+        Returns
+        -------
+        bool
+            True if the extension matches the models allowed extensions
+        """
+        if os.path.splitext(filename)[1] in cls.extensions:
+            return True
+        return False
+
+    @classmethod
+    def generate_path(cls, root: str, name: str, enforce_existence: bool = True) -> Optional[str]:
+        """
+        Generate a path for a given model from the root directory and the name of the model
+
+        Parameters
+        ----------
+        root: str
+            Root directory for the full path
+        name: str
+            Name of the model
+        enforce_existence: bool
+            Flag to return None if the path doesn't exist, defaults to True
+
+        Returns
+        -------
+        str
+           Full path in the root directory for the model
+        """
+        for ext in cls.extensions:
+            path = os.path.join(root, name + ext)
+            if os.path.exists(path) or not enforce_existence:
+                return path
+        return None
+
+    @property
+    def is_multiple(self):
+        return os.path.splitext(self.path)[1] in [".yaml", ".yml"]
+
+    @property
+    def name(self):
+        return os.path.splitext(os.path.basename(self.path))[0]
+
+    def load_dictionary_paths(self) -> Dict[str, DictionaryModel]:
+        from .utils import get_available_dictionaries, get_dictionary_path
+
+        mapping = {}
+        if self.is_multiple:
+            available_langs = get_available_dictionaries()
+            with open(self.path, "r", encoding="utf8") as f:
+                data = yaml.safe_load(f)
+                for speaker, path in data.items():
+                    if path in available_langs:
+                        path = get_dictionary_path(path)
+                    mapping[speaker] = DictionaryModel(path)
+        else:
+            mapping["default"] = self
+        return mapping
 
 
 MODEL_TYPES = {
@@ -706,5 +829,5 @@ MODEL_TYPES = {
     "g2p": G2PModel,
     "dictionary": DictionaryModel,
     "language_model": LanguageModel,
-    "ivector": IvectorExtractor,
+    "ivector": IvectorExtractorModel,
 }

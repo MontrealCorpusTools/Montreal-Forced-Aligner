@@ -1,10 +1,19 @@
-"""Class definitions for Segmentation based on voice activity in MFA"""
+"""
+Segmenting files
+================
+
+.. autosummary::
+
+   :toctree: generated/
+
+"""
 from __future__ import annotations
 
 import os
 import shutil
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+from .abc import MetaDict
 from .config import TEMP_DIR
 from .exceptions import KaldiProcessingError
 from .multiprocessing.ivector import segment_vad
@@ -13,7 +22,7 @@ from .utils import log_kaldi_errors, parse_logs
 if TYPE_CHECKING:
     from logging import Logger
 
-    from .config import ConfigDict, SegmentationConfig
+    from .config import SegmentationConfig
     from .corpus import Corpus
 
 SegmentationType = List[Dict[str, float]]
@@ -27,7 +36,7 @@ class Segmenter:
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.TranscribeCorpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
     segmentation_config : :class:`~montreal_forced_aligner.config.SegmentationConfig`
         Configuration for alignment
@@ -72,7 +81,7 @@ class Segmenter:
         return os.path.join(self.temp_directory, "segmentation")
 
     @property
-    def vad_options(self) -> ConfigDict:
+    def vad_options(self) -> MetaDict:
         """Options for performing VAD"""
         return {
             "energy_threshold": self.segmentation_config.energy_threshold,

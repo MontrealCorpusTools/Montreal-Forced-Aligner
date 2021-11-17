@@ -2,25 +2,19 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Collection
+from typing import TYPE_CHECKING, Collection, Tuple
 
 import yaml
 
-from .base_config import (
-    DEFAULT_CLITIC_MARKERS,
-    DEFAULT_COMPOUND_MARKERS,
-    DEFAULT_DIGRAPHS,
-    DEFAULT_PUNCTUATION,
-    DEFAULT_STRIP_DIACRITICS,
-    BaseConfig,
-    ConfigError,
-)
+from ..exceptions import ConfigError
+from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 from .feature_config import FeatureConfig
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    from . import ConfigDict
+    from ..abc import MetaDict
 
 __all__ = ["AlignConfig", "align_yaml_to_config", "load_basic_align"]
 
@@ -39,7 +33,7 @@ class AlignConfig(BaseConfig):
         Self-loop scale, defaults to 0.1
     disable_sat : bool
         Flag for disabling speaker adaptation, defaults to False
-    feature_config : :class:`~montreal_forced_aligner.features.config.FeatureConfig`
+    feature_config : :class:`~montreal_forced_aligner.config.FeatureConfig`
         Configuration object for feature generation
     boost_silence : float
         Factor to boost silence probabilities, 1.0 is no boost or reduction
@@ -66,14 +60,8 @@ class AlignConfig(BaseConfig):
         self.retry_beam = 40
         self.data_directory = None  # Gets set later
         self.fmllr_update_type = "full"
-        self.punctuation = DEFAULT_PUNCTUATION
-        self.clitic_markers = DEFAULT_CLITIC_MARKERS
-        self.compound_markers = DEFAULT_COMPOUND_MARKERS
-        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
-        self.digraphs = DEFAULT_DIGRAPHS
         self.use_mp = True
         self.use_fmllr_mp = False
-        self.multilingual_ipa = False
         self.debug = False
         self.overwrite = False
         self.cleanup_textgrids = True
@@ -81,7 +69,7 @@ class AlignConfig(BaseConfig):
         self.iteration = None
 
     @property
-    def align_options(self) -> ConfigDict:
+    def align_options(self) -> MetaDict:
         """Options for use in aligning"""
         return {
             "transition_scale": self.transition_scale,
@@ -94,7 +82,7 @@ class AlignConfig(BaseConfig):
         }
 
     @property
-    def fmllr_options(self) -> ConfigDict:
+    def fmllr_options(self) -> MetaDict:
         """Options for use in calculating fMLLR transforms"""
         return {
             "fmllr_update_type": self.fmllr_update_type,
@@ -105,15 +93,8 @@ class AlignConfig(BaseConfig):
         for k, v in data.items():
             if k == "use_mp":
                 self.feature_config.use_mp = v
-            elif k in ["punctuation", "clitic_markers", "compound_markers"]:
-                if not v:
-                    continue
-                if "-" in v:
-                    v = "-" + v.replace("-", "")
-                if "]" in v and r"\]" not in v:
-                    v = v.replace("]", r"\]")
             elif not hasattr(self, k):
-                raise ConfigError(f"No field found for key {k}")
+                continue
             setattr(self, k, v)
 
     def update_from_args(self, args: Namespace):
@@ -129,7 +110,7 @@ class AlignConfig(BaseConfig):
             self.retry_beam = self.beam * 4
 
 
-def align_yaml_to_config(path: str) -> AlignConfig:
+def align_yaml_to_config(path: str) -> Tuple[AlignConfig, DictionaryConfig]:
     """
     Helper function to load alignment configurations
 
@@ -140,9 +121,12 @@ def align_yaml_to_config(path: str) -> AlignConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Alignment configuration
+    :class:`~montreal_forced_aligner.config.dictionary_config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -154,20 +138,25 @@ def align_yaml_to_config(path: str) -> AlignConfig:
                 global_params[k] = v
         align_config = AlignConfig(feature_config)
         align_config.update(global_params)
+        dictionary_config.update(global_params)
         if align_config.beam >= align_config.retry_beam:
             raise ConfigError("Retry beam must be greater than beam.")
-        return align_config
+        return align_config, dictionary_config
 
 
-def load_basic_align() -> AlignConfig:
+def load_basic_align() -> Tuple[AlignConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    :class:`~montreal_forced_aligner.config.AlignConfig`
         Default alignment configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    align_config = align_yaml_to_config(os.path.join(base_dir, "basic_align.yaml"))
-    return align_config
+    align_config, dictionary_config = align_yaml_to_config(
+        os.path.join(base_dir, "basic_align.yaml")
+    )
+    return align_config, dictionary_config

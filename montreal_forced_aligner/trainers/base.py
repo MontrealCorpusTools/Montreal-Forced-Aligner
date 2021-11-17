@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from tqdm import tqdm
 
+from ..abc import Aligner, MetaDict, Trainer
 from ..config import FeatureConfig
 from ..exceptions import KaldiProcessingError, TrainerError
 from ..models import AcousticModel
-from ..multiprocessing import (
+from ..multiprocessing.alignment import (
     acc_stats,
     align,
     compile_information,
@@ -23,21 +24,26 @@ from ..multiprocessing import (
 from ..utils import log_kaldi_errors, parse_logs
 
 if TYPE_CHECKING:
-    from ..config import ConfigDict
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
-    from ..models import MetaDict
+    from ..dictionary import MultispeakerDictionary
 
 
 __all__ = ["BaseTrainer"]
 
 
-class BaseTrainer:
+class BaseTrainer(Aligner, Trainer):
     """
     Base trainer class for training acoustic models and ivector extractors
 
+    Parameters
+    ----------
+    default_feature_config: :class:`~montreal_forced_aligner.config.FeatureConfig`
+        Default feature config
+
     Attributes
     ----------
+    feature_config : :class:`~montreal_forced_aligner.config.FeatureConfig`
+        Feature configuration
     num_iterations : int
         Number of training iterations to perform, defaults to 40
     transition_scale : float
@@ -78,7 +84,7 @@ class BaseTrainer:
 
     def __init__(self, default_feature_config: FeatureConfig):
         self.logger = None
-        self.dictionary = None
+        self.dictionary: Optional[MultispeakerDictionary] = None
         self.transition_scale = 1.0
         self.acoustic_scale = 0.1
         self.self_loop_scale = 0.1
@@ -145,12 +151,12 @@ class BaseTrainer:
         return self.log_directory
 
     @property
-    def fmllr_options(self) -> ConfigDict:
+    def fmllr_options(self) -> MetaDict:
         """Options for fMLLR calculation, only used by SatTrainer"""
         raise NotImplementedError
 
     @property
-    def lda_options(self) -> ConfigDict:
+    def lda_options(self) -> MetaDict:
         """Options for LDA calculation, only used by LdaTrainer"""
         raise NotImplementedError
 
@@ -169,6 +175,11 @@ class BaseTrainer:
         ):
             return os.path.join(self.working_directory, "final.mdl")
         return os.path.join(self.working_directory, f"{self.iteration}.mdl")
+
+    @property
+    def model_path(self) -> str:
+        """Current acoustic model path"""
+        return self.current_model_path
 
     @property
     def next_model_path(self):
@@ -219,11 +230,11 @@ class BaseTrainer:
         return int((self.max_gaussians - self.initial_gaussians) / self.final_gaussian_iteration)
 
     @property
-    def align_options(self) -> ConfigDict:
+    def align_options(self) -> MetaDict:
         """Options for alignment"""
         options_silence_csl = ""
         if self.dictionary:
-            options_silence_csl = self.dictionary.optional_silence_csl
+            options_silence_csl = self.dictionary.config.optional_silence_csl
         return {
             "beam": self.beam,
             "retry_beam": self.retry_beam,
@@ -276,7 +287,7 @@ class BaseTrainer:
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: MultispeakerDictionary,
         previous_trainer: Optional[BaseTrainer],
     ) -> None:
         """
@@ -288,11 +299,11 @@ class BaseTrainer:
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+            MultispeakerDictionary to use
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.BaseTrainer`, optional
             Previous trainer to initialize from
 
         Raises
@@ -344,7 +355,7 @@ class BaseTrainer:
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: MultispeakerDictionary,
         previous_trainer: Optional[BaseTrainer],
     ) -> None:
         """
@@ -356,11 +367,11 @@ class BaseTrainer:
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
-            Dictionary to use
-        previous_trainer: :class:`~montreal_forced_aligner.trainers.base.BaseTrainer`, optional
+        dictionary: :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+            MultispeakerDictionary to use
+        previous_trainer: :class:`~montreal_forced_aligner.trainers.BaseTrainer`, optional
             Previous trainer to initialize from
         """
         raise NotImplementedError
@@ -530,16 +541,16 @@ class BaseTrainer:
         from ..utils import get_mfa_version
 
         data = {
-            "phones": sorted(self.dictionary.nonsil_phones),
+            "phones": sorted(self.dictionary.config.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_config.params(),
-            "multilingual_ipa": self.dictionary.multilingual_ipa,
+            "multilingual_ipa": self.dictionary.config.multilingual_ipa,
         }
-        if self.dictionary.multilingual_ipa:
-            data["strip_diacritics"] = self.dictionary.strip_diacritics
-            data["digraphs"] = self.dictionary.digraphs
+        if self.dictionary.config.multilingual_ipa:
+            data["strip_diacritics"] = self.dictionary.config.strip_diacritics
+            data["digraphs"] = self.dictionary.config.digraphs
         return data
 
     def export_textgrids(self) -> None:

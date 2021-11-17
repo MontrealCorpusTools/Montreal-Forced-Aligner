@@ -1,4 +1,9 @@
-"""Class definitions for Speaker classification in MFA"""
+"""
+Speaker classification
+======================
+
+
+"""
 from __future__ import annotations
 
 import logging
@@ -8,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
+from .abc import MetaDict
 from .config import TEMP_DIR
 from .corpus.classes import Speaker
 from .exceptions import KaldiProcessingError
@@ -17,8 +23,8 @@ from .utils import log_kaldi_errors
 
 if TYPE_CHECKING:
     from .config import SpeakerClassificationConfig
-    from .corpus import TranscribeCorpus
-    from .models import IvectorExtractor, MetaDict
+    from .corpus import Corpus
+    from .models import IvectorExtractorModel
 
 __all__ = ["SpeakerClassifier"]
 
@@ -29,11 +35,11 @@ class SpeakerClassifier:
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    ivector_extractor : :class:`~montreal_forced_aligner.models.IvectorExtractor`
+    ivector_extractor : :class:`~montreal_forced_aligner.models.IvectorExtractorModel`
         Configuration for alignment
-    classification_config : :class:`~montreal_forced_aligner.config.speaker_classification_config.SpeakerClassificationConfig`
+    classification_config : :class:`~montreal_forced_aligner.config.SpeakerClassificationConfig`
         Configuration for alignment
     compute_segments: bool, optional
         Flag for whether segments should be created
@@ -54,8 +60,8 @@ class SpeakerClassifier:
 
     def __init__(
         self,
-        corpus: TranscribeCorpus,
-        ivector_extractor: IvectorExtractor,
+        corpus: Corpus,
+        ivector_extractor: IvectorExtractorModel,
         classification_config: SpeakerClassificationConfig,
         compute_segments: Optional[bool] = False,
         num_speakers: Optional[int] = None,
@@ -161,6 +167,12 @@ class SpeakerClassifier:
         """Flag for whether to use multiprocessing"""
         return self.classification_config.use_mp
 
+    def extract_ivectors(self) -> None:
+        """
+        Extract ivectors for the corpus
+        """
+        extract_ivectors(self)
+
     def setup(self) -> None:
         """
         Sets up the corpus and speaker classifier
@@ -182,7 +194,7 @@ class SpeakerClassifier:
         self.ivector_extractor.export_model(self.classify_directory)
         try:
             self.corpus.initialize_corpus(None, self.feature_config)
-            extract_ivectors(self)
+            self.extract_ivectors()
         except Exception as e:
             with open(dirty_path, "w"):
                 pass

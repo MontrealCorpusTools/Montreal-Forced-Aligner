@@ -1,8 +1,15 @@
-from montreal_forced_aligner.config.base_config import DEFAULT_STRIP_DIACRITICS
-from montreal_forced_aligner.textgrid import CtmInterval, map_to_original_pronunciation
+import os
+
+from montreal_forced_aligner.dictionary import PronunciationDictionary
+from montreal_forced_aligner.models import DictionaryModel
+from montreal_forced_aligner.textgrid import CtmInterval
 
 
-def test_mapping():
+def test_mapping(english_us_ipa_dictionary, generated_dir, basic_dictionary_config):
+    output_directory = os.path.join(generated_dir, "ipa_temp")
+    d = PronunciationDictionary(
+        DictionaryModel(english_us_ipa_dictionary), output_directory, basic_dictionary_config
+    )
     u = "utt"
     cur_phones = [
         CtmInterval(2.25, 2.33, "t", u),
@@ -38,7 +45,7 @@ def test_mapping():
             }
         ],
     ]
-    new_phones = map_to_original_pronunciation(cur_phones, subprons, DEFAULT_STRIP_DIACRITICS)
+    new_phones = d.data().map_to_original_pronunciation(cur_phones, subprons)
     assert new_phones == [
         CtmInterval(2.25, 2.43, "tʃ", u),
         CtmInterval(2.43, 2.55, "æ", u),

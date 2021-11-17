@@ -10,10 +10,12 @@ dependencies:
   - colorama
   - pyyaml
   - pip
-  - interrogate
-  - sphinx
-  - sphinx_rtd_theme
-  - sphinx-automodapi
   - pip:
       - praatio >= 5.0
       - sphinxemoji
+      - sphinxcontrib-autoprogram
+      - git+https://github.com/pydata/pydata-sphinx-theme.git
+      - sphinx-panels
+      - interrogate
+      - sphinx
+      - numpydoc

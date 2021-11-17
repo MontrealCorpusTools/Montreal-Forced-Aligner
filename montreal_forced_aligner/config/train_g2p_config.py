@@ -1,15 +1,12 @@
 """Class definitions for configuring G2P model training"""
 from __future__ import annotations
 
+from typing import Tuple
+
 import yaml
 
-from .base_config import (
-    DEFAULT_CLITIC_MARKERS,
-    DEFAULT_COMPOUND_MARKERS,
-    DEFAULT_PUNCTUATION,
-    BaseConfig,
-    ConfigError,
-)
+from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 
 __all__ = ["TrainG2PConfig", "train_g2p_yaml_to_config", "load_basic_train_g2p_config"]
 
@@ -20,9 +17,6 @@ class TrainG2PConfig(BaseConfig):
     """
 
     def __init__(self):
-        self.punctuation = DEFAULT_PUNCTUATION
-        self.clitic_markers = DEFAULT_CLITIC_MARKERS
-        self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.num_pronunciations = 1
         self.order = 7
         self.random_starts = 25
@@ -36,22 +30,8 @@ class TrainG2PConfig(BaseConfig):
         self.model_size = 1000000
         self.use_mp = True
 
-    def update(self, data: dict) -> None:
-        """Update configuration parameters"""
-        for k, v in data.items():
-            if k in ["punctuation", "clitic_markers", "compound_markers"]:
-                if not v:
-                    continue
-                if "-" in v:
-                    v = "-" + v.replace("-", "")
-                if "]" in v and r"\]" not in v:
-                    v = v.replace("]", r"\]")
-            elif not hasattr(self, k):
-                raise ConfigError("No field found for key {}".format(k))
-            setattr(self, k, v)
 
-
-def train_g2p_yaml_to_config(path: str) -> TrainG2PConfig:
+def train_g2p_yaml_to_config(path: str) -> Tuple[TrainG2PConfig, DictionaryConfig]:
     """
     Helper function to load G2P training configurations
 
@@ -62,9 +42,12 @@ def train_g2p_yaml_to_config(path: str) -> TrainG2PConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_g2p_config.TrainG2PConfig`
+    :class:`~montreal_forced_aligner.config.TrainG2PConfig`
         G2P training configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         global_params = {}
@@ -72,16 +55,19 @@ def train_g2p_yaml_to_config(path: str) -> TrainG2PConfig:
             global_params[k] = v
         g2p_config = TrainG2PConfig()
         g2p_config.update(global_params)
-        return g2p_config
+        dictionary_config.update(global_params)
+    return g2p_config, dictionary_config
 
 
-def load_basic_train_g2p_config() -> TrainG2PConfig:
+def load_basic_train_g2p_config() -> Tuple[TrainG2PConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_g2p_config.TrainG2PConfig`
+    :class:`~montreal_forced_aligner.config.TrainG2PConfig`
         Default G2P training configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
-    return TrainG2PConfig()
+    return TrainG2PConfig(), DictionaryConfig()

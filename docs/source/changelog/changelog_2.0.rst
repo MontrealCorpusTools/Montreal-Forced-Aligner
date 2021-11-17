@@ -1,7 +1,3 @@
-.. _`PR #194`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/194
-.. _`PR #235`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/235
-.. _`PR #288`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/288
-.. _`PR #337`: https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/337
 
 .. _changelog_2.0:
 
@@ -14,18 +10,24 @@
 Beta releases
 =============
 
+2.0.0b5
+-------
+
+- Documentation refresh! Docs now use the :xref:`pydata_sphinx_theme` and should have a better landing page and flow, as well as up to date API reference
+- Some refactoring to use type hinting and abstract class interfaces (still a work in progress)
+
+
 2.0.0b4
 -------
 
 - Massive refactor to a proper class-based API for interacting with MFA corpora
 
   - Sorry, I really do hope this is the last big refactor of 2.0
-  - :class:`~montreal_forced_aligner.corpus.classes.Speakers`, :class:`~montreal_forced_aligner.corpus.classes.Files`, and :class:`~montreal_forced_aligner.corpus.classes.Utterances` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
-  - Added :class:`~montreal_forced_aligner.multiprocessing.classes.Job` class as well to make it easier to generate and keep track of information about different processes
+  - :class:`~montreal_forced_aligner.corpus.Speaker`, :class:`~montreal_forced_aligner.corpus.File`, and :class:`~montreal_forced_aligner.corpus.Utterance` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
+  - Added :class:`~montreal_forced_aligner.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
 - Updated installation style to be more dependent on conda-forge packages
 
-  - Kaldi is now on conda-forge! |:tada:|
-  - MFA should follow suit soon, making installation a lot simpler
+  - Kaldi and MFA are now on conda-forge! |:tada:|
 
 - Added a :code:`mfa model` command for inspecting, listing, downloading, and saving pretrained models, see :ref:`pretrained_models` for more information.
 - Fixed a bug where saving command history with errors would throw an error of its own
@@ -44,7 +46,7 @@ Beta releases
 2.0.0b1
 -------
 
-- Fixed bug in training (`PR #337`_)
+- Fixed bug in training (:mfa_pr:`337`)
 - Fixed bug when using Ctrl-C in loading
 
 2.0.0b0
@@ -140,7 +142,7 @@ Beta release!
 2.0.0a16
 --------
 
-- Changed how punctuation is stripped from beginning/end of words (`PR #288`_)
+- Changed how punctuation is stripped from beginning/end of words (:mfa_pr:`288`)
 - Added more logging for alignment (validating acoustic models and generating overall log-likelihood of the alignment)
 - Changed subsetting features prior to initializing monophone trainer to prevent erroneous error detection
 - Fixed parsing of boolean arguments on command line to be passed to aligners
@@ -198,8 +200,8 @@ Beta release!
 - Upgraded dependency of Pynini version to 2.1.4, please update package versions via :code:`conda upgrade -c conda-forge openfst pynini ngram baumwelch`
   if you had previously installed MFA.
 - Allowed for splitting clitics on multiple apostrophes
-- Fixed bug in checking for brackets in G2P (`PR #194`_)
-- Updated Annotator utility (:ref:`annotator` for more details) to be generally more usable for TextGrid use cases and
+- Fixed bug in checking for brackets in G2P (:mfa_pr:`235`)
+- Updated Annotator utility (:ref:`anchor` for more details) to be generally more usable for TextGrid use cases and
   adjusting segments and their transcriptions
 - Improved handling of stereo files with TextGrids so that MFA doesn't need to generate temporary files for each channel
 
@@ -238,4 +240,4 @@ Currently under development with major changes, see :ref:`whats_new_2_0`.
   messages for files that do not meet Kaldi's input requirements
 - Removed multiprocessing from speaker adaptation, as the executables use multiple threads leading to a bottleneck in
   performance.  This change should result in faster speaker adaptation.
-- Optimized corpus parsing algorithm to be O(n log n) instead of O(n^2) (`PR #194`_)
+- Optimized corpus parsing algorithm to be O(n log n) instead of O(n^2) (:mfa_pr:`194`)

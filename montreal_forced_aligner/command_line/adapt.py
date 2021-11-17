@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
     load_command_configuration,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import get_mfa_version, log_config, setup_logger
@@ -49,9 +49,9 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.config_path:
-        align_config = align_yaml_to_config(args.config_path)
+        align_config, dictionary_config = align_yaml_to_config(args.config_path)
     else:
-        align_config = load_basic_align()
+        align_config, dictionary_config = load_basic_align()
     align_config.update_from_args(args)
     if unknown_args:
         align_config.update_from_unknown_args(unknown_args)
@@ -66,6 +66,8 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
     logger = setup_logger(command, data_directory, console_level=log_level)
     logger.debug("ALIGN CONFIG:")
     log_config(logger, align_config)
+    logger.debug("DICTIONARY CONFIG:")
+    log_config(logger, dictionary_config)
     conf = load_command_configuration(
         conf_path,
         {
@@ -119,6 +121,7 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
     model_directory = os.path.join(data_directory, "acoustic_models")
     os.makedirs(model_directory, exist_ok=True)
     acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
+    dictionary_config.update(acoustic_model.meta)
     acoustic_model.log_details(logger)
     debug = getattr(args, "debug", False)
     audio_dir = None
@@ -128,40 +131,21 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             num_jobs=args.num_jobs,
             sample_rate=align_config.feature_config.sample_frequency,
             logger=logger,
             use_mp=align_config.use_mp,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
             audio_directory=audio_dir,
         )
         logger.info(corpus.speaker_utterance_info())
-        if args.dictionary_path.lower().endswith(".yaml"):
-            dictionary = MultispeakerDictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=align_config.punctuation,
-                clitic_markers=align_config.clitic_markers,
-                compound_markers=align_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-                strip_diacritics=acoustic_model.meta.get("strip_diacritics", None),
-                digraphs=acoustic_model.meta.get("digraphs", None),
-            )
-        else:
-            dictionary = Dictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=align_config.punctuation,
-                clitic_markers=align_config.clitic_markers,
-                compound_markers=align_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-                strip_diacritics=acoustic_model.meta.get("strip_diacritics", None),
-                digraphs=acoustic_model.meta.get("digraphs", None),
-            )
+        dictionary = MultispeakerDictionary(
+            args.dictionary_path,
+            data_directory,
+            dictionary_config,
+            logger=logger,
+        )
         acoustic_model.validate(dictionary)
 
         begin = time.time()
@@ -175,7 +159,7 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
             logger=logger,
         )
         if args.full_train:
-            training_config = acoustic_model.adaptation_config()
+            training_config, dictionary = acoustic_model.adaptation_config()
             training_config.training_configs[0].update(
                 {"beam": align_config.beam, "retry_beam": align_config.retry_beam}
             )
@@ -228,7 +212,7 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
             else:
                 os.makedirs(args.output_directory, exist_ok=True)
             begin = time.time()
-            a.adapt()
+            a.train()
             logger.debug(f"Mapped adapted model in {time.time() - begin} seconds")
             if args.output_model_path is not None:
                 a.save(args.output_model_path, root_directory=model_directory)

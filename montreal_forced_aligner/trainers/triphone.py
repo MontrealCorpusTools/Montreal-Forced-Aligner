@@ -12,10 +12,9 @@ from ..utils import log_kaldi_errors, parse_logs, thirdparty_binary
 from .base import BaseTrainer
 
 if TYPE_CHECKING:
+    from ..abc import Dictionary, Trainer
     from ..config import FeatureConfig
     from ..corpus import Corpus
-    from ..dictionary import DictionaryType
-    from .base import TrainerType
 
 
 __all__ = ["TriphoneTrainer"]
@@ -29,8 +28,6 @@ class TriphoneTrainer(BaseTrainer):
     ----------
     num_iterations : int
         Number of training iterations to perform, defaults to 40
-    max_gaussians : int
-        Total number of gaussians, defaults to 1000
     num_leaves : int
         Number of states in the decision tree, defaults to 1000
     max_gaussians : int
@@ -88,7 +85,7 @@ class TriphoneTrainer(BaseTrainer):
             extra_question_int_path = os.path.join(
                 self.dictionary.phones_dir, "extra_questions.int"
             )
-            topo_path = os.path.join(self.dictionary.output_directory, "topo")
+            topo_path = self.dictionary.topo_path
             questions_path = os.path.join(self.train_directory, "questions.int")
             questions_qst_path = os.path.join(self.train_directory, "questions.qst")
             with open(log_path, "w") as log_file:
@@ -184,8 +181,8 @@ class TriphoneTrainer(BaseTrainer):
         identifier: str,
         temporary_directory: str,
         corpus: Corpus,
-        dictionary: DictionaryType,
-        previous_trainer: Optional[TrainerType],
+        dictionary: Dictionary,
+        previous_trainer: Optional[Trainer],
     ):
         """
         Initialize triphone training
@@ -196,11 +193,11 @@ class TriphoneTrainer(BaseTrainer):
             Identifier for the training block
         temporary_directory: str
             Root temporary directory to save
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use
-        dictionary: DictionaryType
+        dictionary: MultispeakerDictionary
             Dictionary to use
-        previous_trainer: TrainerType, optional
+        previous_trainer: Trainer, optional
             Previous trainer to initialize from
         """
         self._setup_for_init(identifier, temporary_directory, corpus, dictionary, previous_trainer)

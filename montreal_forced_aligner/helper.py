@@ -1,4 +1,8 @@
-"""Helper functions for MFA"""
+"""
+Helper functions
+================
+
+"""
 from __future__ import annotations
 
 import sys
@@ -9,10 +13,8 @@ import numpy
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from .config import ConfigDict
-    from .corpus import CorpusMappingType, ScpType
+    from .abc import CorpusMappingType, Labels, MetaDict, ScpType
 
-Labels = List[Any]
 
 __all__ = [
     "TerminalPrinter",
@@ -108,13 +110,13 @@ class TerminalPrinter:
                 self.print_block(v, starting_level=starting_level + 1)
         print()
 
-    def print_config(self, configuration: ConfigDict) -> None:
+    def print_config(self, configuration: MetaDict) -> None:
         """
         Pretty print a configuration
 
         Parameters
         ----------
-        configuration: ConfigDict
+        configuration: :class:`~montreal_forced_aligner.abc.MetaDict`
             Configuration to print
         """
         for k, v in configuration.items():
@@ -323,7 +325,7 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
     Returns
     -------
     dict
-        Dictionary where the keys are the first couple and the values are all
+        PronunciationDictionary where the keys are the first couple and the values are all
         other columns in the script file
 
     """

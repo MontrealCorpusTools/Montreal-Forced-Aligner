@@ -24,7 +24,7 @@ def test_align_arguments(
     basic_corpus_dir,
     sick_dict_path,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     temp_dir,
     english_acoustic_model,
 ):
@@ -32,7 +32,7 @@ def test_align_arguments(
     command = [
         "align",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         os.path.join(generated_dir, "basic_output"),
         "-t",
@@ -44,7 +44,7 @@ def test_align_arguments(
     ]
     args, unknown_args = parser.parse_known_args(command)
     print(args, unknown_args)
-    align_config = load_basic_align()
+    align_config, dictionary_config = load_basic_align()
     assert not align_config.disable_sat
     if unknown_args:
         align_config.update_from_unknown_args(unknown_args)
@@ -56,7 +56,7 @@ def test_align_basic(
     basic_corpus_dir,
     sick_dict_path,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     temp_dir,
     basic_align_config,
     english_acoustic_model,
@@ -82,7 +82,7 @@ def test_align_basic(
     command = [
         "align",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         output_directory,
         "-t",
@@ -121,7 +121,7 @@ def test_align_basic(
     command = [
         "align",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         output_directory,
         "-t",
@@ -144,7 +144,7 @@ def test_align_basic(
     command = [
         "align",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         output_directory,
         "-t",
@@ -281,7 +281,7 @@ def test_align_stereo(
     stereo_corpus_dir,
     sick_dict_path,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     temp_dir,
     basic_align_config,
     english_acoustic_model,
@@ -290,7 +290,7 @@ def test_align_stereo(
     command = [
         "align",
         stereo_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         output_dir,
         "-t",

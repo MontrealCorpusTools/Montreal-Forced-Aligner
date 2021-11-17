@@ -5,7 +5,7 @@ import os
 
 import yaml
 
-from .base_config import BaseConfig, ConfigError
+from .base_config import BaseConfig
 from .feature_config import FeatureConfig
 
 __all__ = ["SegmentationConfig", "segmentation_yaml_to_config", "load_basic_segmentation"]
@@ -33,7 +33,7 @@ class SegmentationConfig(BaseConfig):
             if k == "use_mp":
                 self.feature_config.use_mp = v
             if not hasattr(self, k):
-                raise ConfigError("No field found for key {}".format(k))
+                continue
             setattr(self, k, v)
 
     @property

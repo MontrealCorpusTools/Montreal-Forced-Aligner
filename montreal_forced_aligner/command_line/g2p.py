@@ -9,7 +9,6 @@ from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.config import TEMP_DIR
 from montreal_forced_aligner.config.g2p_config import g2p_yaml_to_config, load_basic_g2p_config
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import check_bracketed
 from montreal_forced_aligner.g2p.generator import PyniniDictionaryGenerator as Generator
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import setup_logger
@@ -42,9 +41,9 @@ def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) ->
         shutil.rmtree(os.path.join(temp_dir, "G2P"), ignore_errors=True)
         shutil.rmtree(os.path.join(temp_dir, "models", "G2P"), ignore_errors=True)
     if args.config_path:
-        g2p_config = g2p_yaml_to_config(args.config_path)
+        g2p_config, dictionary_config = g2p_yaml_to_config(args.config_path)
     else:
-        g2p_config = load_basic_g2p_config()
+        g2p_config, dictionary_config = load_basic_g2p_config()
     g2p_config.use_mp = not args.disable_mp
     if unknown_args:
         g2p_config.update_from_unknown_args(unknown_args)
@@ -64,16 +63,15 @@ def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) ->
         corpus = Corpus(
             input_dir,
             data_directory,
+            dictionary_config=dictionary_config,
             num_jobs=args.num_jobs,
             use_mp=g2p_config.use_mp,
-            punctuation=g2p_config.punctuation,
-            clitic_markers=g2p_config.clitic_markers,
             parse_text_only_files=True,
         )
 
         word_set = corpus.word_set
         if not args.include_bracketed:
-            word_set = [x for x in word_set if not check_bracketed(x)]
+            word_set = [x for x in word_set if not dictionary_config.check_bracketed(x)]
     else:
 
         if getattr(args, "verbose", False):
@@ -86,7 +84,7 @@ def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) ->
             for line in f:
                 word_set.extend(line.strip().split())
         if not args.include_bracketed:
-            word_set = [x for x in word_set if not check_bracketed(x)]
+            word_set = [x for x in word_set if not dictionary_config.check_bracketed(x)]
 
     logger.info(
         f"Generating transcriptions for the {len(word_set)} word types found in the corpus..."

@@ -1,38 +1,37 @@
-"""Class definitions for multiprocessing Jobs"""
+"""
+Multiprocessing classes
+-----------------------
+
+"""
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Collection, Dict, List, NamedTuple, Set, Tuple, Union
+from typing import TYPE_CHECKING, Collection, Dict, List, NamedTuple, Optional, Set, Tuple
 
-from ..corpus.classes import File, Speaker, Utterance
+if TYPE_CHECKING:
+    from ..corpus.classes import File, Speaker, Utterance
+
+from ..abc import IvectorExtractor, MetaDict, MfaWorker
 from ..helper import output_mapping, save_scp
 
 if TYPE_CHECKING:
+    from ..abc import Aligner, MappingType, ReversedMappingType, WordsType
     from ..aligner.adapting import AdaptingAligner
     from ..aligner.base import BaseAligner
     from ..config import FeatureConfig
-    from ..config.align_config import AlignConfig, ConfigDict
     from ..corpus import Corpus
-    from ..dictionary import (
-        Dictionary,
-        DictionaryData,
-        MappingType,
-        ReversedMappingType,
-        WordsType,
-    )
+    from ..dictionary import DictionaryData
     from ..segmenter import Segmenter
-    from ..speaker_classifier import SpeakerClassifier
-    from ..trainers import BaseTrainer, IvectorExtractorTrainer, LdaTrainer, SatTrainer
+    from ..trainers import (
+        BaseTrainer,
+        IvectorExtractorTrainer,
+        LdaTrainer,
+        MonophoneTrainer,
+        SatTrainer,
+    )
     from ..transcriber import Transcriber
     from ..validator import CorpusValidator
 
-    ConfigType = Union[BaseTrainer, AlignConfig]
-    FmllrConfigType = Union[SatTrainer, AlignConfig]
-    LdaConfigType = Union[LdaTrainer, AlignConfig]
-
-    IterationType = Union[str, int]
-
-    AlignerType = Union[BaseTrainer, BaseAligner]
 
 __all__ = [
     "Job",
@@ -65,7 +64,6 @@ __all__ = [
     "LdaAccStatsArguments",
     "MapAccStatsArguments",
     "GaussToPostArguments",
-    "ClassifySpeakersArguments",
     "InitialFmllrArguments",
     "ExtractIvectorsArguments",
     "ExportTextGridArguments",
@@ -86,7 +84,7 @@ class VadArguments(NamedTuple):
     dictionaries: List[str]
     feats_scp_paths: Dict[str, str]
     vad_scp_paths: Dict[str, str]
-    vad_options: ConfigDict
+    vad_options: MetaDict
 
 
 class MfccArguments(NamedTuple):
@@ -100,7 +98,7 @@ class MfccArguments(NamedTuple):
     lengths_paths: Dict[str, str]
     segment_paths: Dict[str, str]
     wav_paths: Dict[str, str]
-    mfcc_options: ConfigDict
+    mfcc_options: MetaDict
 
 
 class CompileTrainGraphsArguments(NamedTuple):
@@ -150,7 +148,7 @@ class AlignArguments(NamedTuple):
     ali_paths: Dict[str, str]
     score_paths: Dict[str, str]
     loglike_paths: Dict[str, str]
-    align_options: ConfigDict
+    align_options: MetaDict
 
 
 class CompileInformationArguments(NamedTuple):
@@ -269,7 +267,7 @@ class CalcFmllrArguments(NamedTuple):
     model_path: str
     spk2utt_paths: Dict[str, str]
     trans_paths: Dict[str, str]
-    fmllr_options: ConfigDict
+    fmllr_options: MetaDict
 
 
 class AccStatsTwoFeatsArguments(NamedTuple):
@@ -292,7 +290,7 @@ class LdaAccStatsArguments(NamedTuple):
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
     model_path: str
-    lda_options: ConfigDict
+    lda_options: MetaDict
     acc_paths: Dict[str, str]
 
 
@@ -304,7 +302,7 @@ class CalcLdaMlltArguments(NamedTuple):
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
     model_path: str
-    lda_options: ConfigDict
+    lda_options: MetaDict
     macc_paths: Dict[str, str]
 
 
@@ -325,7 +323,7 @@ class GmmGselectArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ivector_options: ConfigDict
+    ivector_options: MetaDict
     dubm_model: str
     gselect_paths: Dict[str, str]
 
@@ -336,7 +334,7 @@ class AccGlobalStatsArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ivector_options: ConfigDict
+    ivector_options: MetaDict
     gselect_paths: Dict[str, str]
     acc_paths: Dict[str, str]
     dubm_path: str
@@ -348,7 +346,7 @@ class GaussToPostArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ivector_options: ConfigDict
+    ivector_options: MetaDict
     post_paths: Dict[str, str]
     dubm_path: str
 
@@ -359,7 +357,7 @@ class AccIvectorStatsArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ivector_options: ConfigDict
+    ivector_options: MetaDict
     ie_path: str
     post_paths: Dict[str, str]
     acc_init_paths: Dict[str, str]
@@ -371,7 +369,7 @@ class ExtractIvectorsArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    ivector_options: ConfigDict
+    ivector_options: MetaDict
     ali_paths: Dict[str, str]
     ie_path: str
     ivector_paths: Dict[str, str]
@@ -408,21 +406,11 @@ class TestUtterancesArguments(NamedTuple):
 
 
 class SegmentVadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.segment_vad_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.segment_vad_func`"""
 
     dictionaries: List[str]
     vad_paths: Dict[str, str]
-    segmentation_options: ConfigDict
-
-
-class ClassifySpeakersArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.classify_speakers_func`"""
-
-    log_path: str
-    dictionaries: List[str]
-    model_path: str
-    labels_path: str
-    ivector_paths: Dict[str, str]
+    segmentation_options: MetaDict
 
 
 class GeneratePronunciationsArguments(NamedTuple):
@@ -451,7 +439,7 @@ class CreateHclgArguments(NamedTuple):
     model_path: str
     disambig_L_path: str
     disambig_int_path: str
-    hclg_options: ConfigDict
+    hclg_options: MetaDict
     words_mapping: MappingType
 
     @property
@@ -465,7 +453,7 @@ class DecodeArguments(NamedTuple):
     log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    decode_options: ConfigDict
+    decode_options: MetaDict
     model_path: str
     lat_paths: Dict[str, str]
     words_paths: Dict[str, str]
@@ -477,7 +465,7 @@ class ScoreArguments(NamedTuple):
 
     log_path: str
     dictionaries: List[str]
-    score_options: ConfigDict
+    score_options: MetaDict
     lat_paths: Dict[str, str]
     rescored_lat_paths: Dict[str, str]
     carpa_rescored_lat_paths: Dict[str, str]
@@ -490,7 +478,7 @@ class LmRescoreArguments(NamedTuple):
 
     log_path: str
     dictionaries: List[str]
-    lm_rescore_options: ConfigDict
+    lm_rescore_options: MetaDict
     lat_paths: Dict[str, str]
     rescored_lat_paths: Dict[str, str]
     old_g_paths: Dict[str, str]
@@ -515,7 +503,7 @@ class InitialFmllrArguments(NamedTuple):
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
-    fmllr_options: ConfigDict
+    fmllr_options: MetaDict
     pre_trans_paths: Dict[str, str]
     lat_paths: Dict[str, str]
     spk2utt_paths: Dict[str, str]
@@ -528,7 +516,7 @@ class LatGenFmllrArguments(NamedTuple):
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
-    decode_options: ConfigDict
+    decode_options: MetaDict
     words_paths: Dict[str, str]
     hclg_paths: Dict[str, str]
     tmp_lat_paths: Dict[str, str]
@@ -541,7 +529,7 @@ class FinalFmllrArguments(NamedTuple):
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
-    fmllr_options: ConfigDict
+    fmllr_options: MetaDict
     trans_paths: Dict[str, str]
     spk2utt_paths: Dict[str, str]
     tmp_lat_paths: Dict[str, str]
@@ -554,7 +542,7 @@ class FmllrRescoreArguments(NamedTuple):
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
-    fmllr_options: ConfigDict
+    fmllr_options: MetaDict
     tmp_lat_paths: Dict[str, str]
     final_lat_paths: Dict[str, str]
 
@@ -573,16 +561,16 @@ class Job:
 
     Attributes
     ----------
-    speakers: List[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
+    speakers: List[:class:`~montreal_forced_aligner.corpus.Speaker`]
         List of speakers associated with this job
-    dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.Dictionary`]
+    dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
         Set of dictionaries that the job's speakers use
-    subset_utts: Set[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
+    subset_utts: Set[:class:`~montreal_forced_aligner.corpus.Utterance`]
         When trainers are just using a subset of the corpus, the subset of utterances on each job will be set and used to
         filter the job's utterances
-    subset_speakers: Set[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
+    subset_speakers: Set[:class:`~montreal_forced_aligner.corpus.Speaker`]
         When subset_utts is set, this property will be calculated as the subset of speakers that the utterances correspond to
-    subset_dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.Dictionary`]
+    subset_dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
         Subset of dictionaries that the subset of speakers use
 
     """
@@ -590,11 +578,11 @@ class Job:
     def __init__(self, name: int):
         self.name = name
         self.speakers: List[Speaker] = []
-        self.dictionaries: Set[Dictionary] = set()
+        self.dictionaries = set()
 
-        self.subset_utts: Set[Utterance] = set()
-        self.subset_speakers: Set[Speaker] = set()
-        self.subset_dictionaries: Set[Dictionary] = set()
+        self.subset_utts = set()
+        self.subset_speakers = set()
+        self.subset_dictionaries = set()
 
     def add_speaker(self, speaker: Speaker) -> None:
         """
@@ -602,19 +590,19 @@ class Job:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
             Speaker to add
         """
         self.speakers.append(speaker)
         self.dictionaries.add(speaker.dictionary)
 
-    def set_subset(self, subset_utts: Collection[Utterance]) -> None:
+    def set_subset(self, subset_utts: Optional[Collection[Utterance]]) -> None:
         """
         Set the current subset for the trainer
 
         Parameters
         ----------
-        subset_utts: List[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
+        subset_utts: Collection[:class:`~montreal_forced_aligner.corpus.Utterance`], optional
             Subset of utterances for this job to use
         """
         if subset_utts is None:
@@ -934,7 +922,7 @@ class Job:
 
         Parameters
         ----------
-        feature_config: :class:`~montreal_forced_aligner.config.features.FeatureConfig`
+        feature_config: :class:`~montreal_forced_aligner.config.FeatureConfig`
             Feature configuration
         """
         self.feature_config = feature_config
@@ -947,7 +935,7 @@ class Job:
 
         Parameters
         ----------
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to use as the source
         all_feats: bool
             Flag for whether all features across all jobs should be taken into account
@@ -979,7 +967,7 @@ class Job:
 
     def construct_feature_proc_strings(
         self,
-        aligner: Union[AlignerType, SpeakerClassifier, Transcriber],
+        aligner: MfaWorker,
         speaker_independent: bool = False,
     ) -> Dict[str, str]:
         """
@@ -988,7 +976,7 @@ class Job:
 
         Parameters
         ----------
-        aligner: Union[AlignerType, :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier`, :class:`~montreal_forced_aligner.transcriber.Transcriber`]
+        aligner: :class:`~montreal_forced_aligner.abc.MfaWorker`
             Aligner, Transcriber or other main utility class that uses the features
         speaker_independent: bool
             Flag for whether features should be speaker-independent regardless of the presence of fMLLR transforms
@@ -1066,7 +1054,7 @@ class Job:
 
         Returns
         -------
-        CompileUtteranceTrainGraphsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CompileUtteranceTrainGraphsArguments`
             Arguments for processing
         """
         dictionary_paths = validator.dictionary.output_paths
@@ -1103,7 +1091,7 @@ class Job:
 
         Returns
         -------
-        TestUtterancesArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.TestUtterancesArguments`
             Arguments for processing
         """
         dictionary_paths = validator.dictionary.output_paths
@@ -1123,19 +1111,19 @@ class Job:
         )
 
     def extract_ivector_arguments(
-        self, ivector_extractor: SpeakerClassifier
+        self, ivector_extractor: IvectorExtractor
     ) -> ExtractIvectorsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.extract_ivectors_func`
 
         Parameters
         ----------
-        ivector_extractor: :class:`~montreal_forced_aligner.speaker_classifier.SpeakerClassifier`
-            Speaker classifier
+        ivector_extractor: :class:`~montreal_forced_aligner.abc.IvectorExtractor`
+            Ivector extractor
 
         Returns
         -------
-        ExtractIvectorsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.ExtractIvectorsArguments`
             Arguments for processing
         """
         return ExtractIvectorsArguments(
@@ -1164,7 +1152,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, CreateHclgArguments]
+        Dict[str, :class:`~montreal_forced_aligner.multiprocessing.classes.CreateHclgArguments`]
             Per dictionary arguments for HCLG
         """
         args = {}
@@ -1199,7 +1187,7 @@ class Job:
 
         Returns
         -------
-        DecodeArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.DecodeArguments`
             Arguments for processing
         """
         return DecodeArguments(
@@ -1224,7 +1212,7 @@ class Job:
 
         Returns
         -------
-        ScoreArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.ScoreArguments`
             Arguments for processing
         """
         return ScoreArguments(
@@ -1251,7 +1239,7 @@ class Job:
 
         Returns
         -------
-        LmRescoreArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.LmRescoreArguments`
             Arguments for processing
         """
         return LmRescoreArguments(
@@ -1277,7 +1265,7 @@ class Job:
 
         Returns
         -------
-        CarpaLmRescoreArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CarpaLmRescoreArguments`
             Arguments for processing
         """
         return CarpaLmRescoreArguments(
@@ -1302,7 +1290,7 @@ class Job:
 
         Returns
         -------
-        InitialFmllrArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.InitialFmllrArguments`
             Arguments for processing
         """
         return InitialFmllrArguments(
@@ -1327,7 +1315,7 @@ class Job:
 
         Returns
         -------
-        LatGenFmllrArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.LatGenFmllrArguments`
             Arguments for processing
         """
         return LatGenFmllrArguments(
@@ -1352,7 +1340,7 @@ class Job:
 
         Returns
         -------
-        FinalFmllrArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.FinalFmllrArguments`
             Arguments for processing
         """
         return FinalFmllrArguments(
@@ -1377,7 +1365,7 @@ class Job:
 
         Returns
         -------
-        FmllrRescoreArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.FmllrRescoreArguments`
             Arguments for processing
         """
         return FmllrRescoreArguments(
@@ -1396,12 +1384,12 @@ class Job:
 
         Parameters
         ----------
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus
 
         Returns
         -------
-        VadArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.VadArguments`
             Arguments for processing
         """
         return VadArguments(
@@ -1414,7 +1402,7 @@ class Job:
 
     def segments_vad_arguments(self, segmenter: Segmenter) -> SegmentVadArguments:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.segment_vad_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.segment_vad_func`
 
         Parameters
         ----------
@@ -1423,7 +1411,7 @@ class Job:
 
         Returns
         -------
-        SegmentVadArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.SegmentVadArguments`
             Arguments for processing
         """
         return SegmentVadArguments(
@@ -1438,12 +1426,12 @@ class Job:
 
         Parameters
         ----------
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus
 
         Returns
         -------
-        MfccArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.MfccArguments`
             Arguments for processing
         """
         return MfccArguments(
@@ -1456,18 +1444,18 @@ class Job:
             self.feature_config.mfcc_options,
         )
 
-    def acc_stats_arguments(self, aligner: AlignerType) -> AccStatsArguments:
+    def acc_stats_arguments(self, aligner: BaseTrainer) -> AccStatsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer`
             Aligner
 
         Returns
         -------
-        AccStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AccStatsArguments`
             Arguments for processing
         """
         return AccStatsArguments(
@@ -1483,18 +1471,18 @@ class Job:
             aligner.current_model_path,
         )
 
-    def mono_align_equal_arguments(self, aligner: AlignerType) -> MonoAlignEqualArguments:
+    def mono_align_equal_arguments(self, aligner: MonophoneTrainer) -> MonoAlignEqualArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.mono_align_equal_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.MonophoneTrainer`
             Aligner
 
         Returns
         -------
-        MonoAlignEqualArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.MonoAlignEqualArguments`
             Arguments for processing
         """
         return MonoAlignEqualArguments(
@@ -1507,18 +1495,18 @@ class Job:
             aligner.current_model_path,
         )
 
-    def align_arguments(self, aligner: AlignerType) -> AlignArguments:
+    def align_arguments(self, aligner: Aligner) -> AlignArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.align_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        AlignArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AlignArguments`
             Arguments for processing
         """
         if aligner.iteration is not None:
@@ -1539,18 +1527,18 @@ class Job:
             aligner.align_options,
         )
 
-    def compile_information_arguments(self, aligner: AlignerType) -> CompileInformationArguments:
+    def compile_information_arguments(self, aligner: BaseTrainer) -> CompileInformationArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer`
             Aligner
 
         Returns
         -------
-        CompileInformationArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CompileInformationArguments`
             Arguments for processing
         """
         if aligner.iteration is not None:
@@ -1772,19 +1760,19 @@ class Job:
         return data
 
     def generate_pronunciations_arguments(
-        self, aligner: AlignerType
+        self, aligner: Aligner
     ) -> GeneratePronunciationsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.pronunciations.generate_pronunciations_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        GeneratePronunciationsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.GeneratePronunciationsArguments`
             Arguments for processing
         """
         return GeneratePronunciationsArguments(
@@ -1795,24 +1783,24 @@ class Job:
             self.construct_path_dictionary(aligner.data_directory, "text", "int.scp"),
             self.word_boundary_int_files(),
             self.construct_path_dictionary(aligner.working_directory, "ali", "ark"),
-            aligner.current_model_path,
+            aligner.model_path,
             self.construct_path_dictionary(aligner.working_directory, "prons", "scp"),
         )
 
     def alignment_improvement_arguments(
-        self, aligner: AlignerType
+        self, aligner: BaseTrainer
     ) -> AlignmentImprovementArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compute_alignment_improvement_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer`
             Aligner
 
         Returns
         -------
-        AlignmentImprovementArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AlignmentImprovementArguments`
             Arguments for processing
         """
         return AlignmentImprovementArguments(
@@ -1830,18 +1818,18 @@ class Job:
             ),
         )
 
-    def ali_to_word_ctm_arguments(self, aligner: AlignerType) -> AliToCtmArguments:
+    def ali_to_word_ctm_arguments(self, aligner: BaseAligner) -> AliToCtmArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        AliToCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AliToCtmArguments`
             Arguments for processing
         """
         return AliToCtmArguments(
@@ -1856,18 +1844,18 @@ class Job:
             True,
         )
 
-    def ali_to_phone_ctm_arguments(self, aligner: AlignerType) -> AliToCtmArguments:
+    def ali_to_phone_ctm_arguments(self, aligner: Aligner) -> AliToCtmArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        AliToCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AliToCtmArguments`
             Arguments for processing
         """
         return AliToCtmArguments(
@@ -1888,7 +1876,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, Utterance]]
+        Dict[str, Dict[str, :class:`~montreal_forced_aligner.corpus.Utterance`]]
             Mapping of dictionary name to Utterance mappings
         """
         data = {}
@@ -1907,7 +1895,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, File]
+        Dict[str, :class:`~montreal_forced_aligner.corpus.File`]
             Mapping of file name to File objects
         """
         data = {}
@@ -1922,18 +1910,18 @@ class Job:
                 data[f.name] = f
         return data
 
-    def cleanup_word_ctm_arguments(self, aligner: AlignerType) -> CleanupWordCtmArguments:
+    def cleanup_word_ctm_arguments(self, aligner: Aligner) -> CleanupWordCtmArguments:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.CleanupWordCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.CleanupWordCtmProcessWorker`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        CleanupWordCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CleanupWordCtmArguments`
             Arguments for processing
         """
         return CleanupWordCtmArguments(
@@ -1943,18 +1931,18 @@ class Job:
             self.dictionary_data(),
         )
 
-    def no_cleanup_word_ctm_arguments(self, aligner: AlignerType) -> NoCleanupWordCtmArguments:
+    def no_cleanup_word_ctm_arguments(self, aligner: Aligner) -> NoCleanupWordCtmArguments:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.NoCleanupWordCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.NoCleanupWordCtmProcessWorker`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        NoCleanupWordCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.NoCleanupWordCtmArguments`
             Arguments for processing
         """
         return NoCleanupWordCtmArguments(
@@ -1964,18 +1952,18 @@ class Job:
             self.dictionary_data(),
         )
 
-    def phone_ctm_arguments(self, aligner: AlignerType) -> PhoneCtmArguments:
+    def phone_ctm_arguments(self, aligner: Aligner) -> PhoneCtmArguments:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.PhoneCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.PhoneCtmProcessWorker`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        PhoneCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.PhoneCtmArguments`
             Arguments for processing
         """
         return PhoneCtmArguments(
@@ -2000,18 +1988,18 @@ class Job:
             data[dictionary.name] = dictionary.data()
         return data
 
-    def combine_ctm_arguments(self, aligner: AlignerType) -> CombineCtmArguments:
+    def combine_ctm_arguments(self, aligner: Aligner) -> CombineCtmArguments:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.CombineProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.CombineProcessWorker`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        CombineCtmArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CombineCtmArguments`
             Arguments for processing
         """
         return CombineCtmArguments(
@@ -2021,18 +2009,18 @@ class Job:
             aligner.align_config.cleanup_textgrids,
         )
 
-    def export_textgrid_arguments(self, aligner: AlignerType) -> ExportTextGridArguments:
+    def export_textgrid_arguments(self, aligner: Aligner) -> ExportTextGridArguments:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.ExportTextGridProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.ExportTextGridProcessWorker`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        ExportTextGridArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.ExportTextGridArguments`
             Arguments for processing
         """
         return ExportTextGridArguments(
@@ -2042,42 +2030,42 @@ class Job:
             aligner.backup_output_directory,
         )
 
-    def tree_stats_arguments(self, aligner: AlignerType) -> TreeStatsArguments:
+    def tree_stats_arguments(self, aligner: BaseTrainer) -> TreeStatsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.tree_stats_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer`
             Aligner
 
         Returns
         -------
-        TreeStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.TreeStatsArguments`
             Arguments for processing
         """
         return TreeStatsArguments(
             os.path.join(aligner.working_log_directory, f"acc_tree.{self.name}.log"),
             self.current_dictionary_names,
-            aligner.dictionary.silence_csl,
+            aligner.dictionary.config.silence_csl,
             aligner.previous_trainer.alignment_model_path,
             self.construct_feature_proc_strings(aligner),
             self.construct_path_dictionary(aligner.previous_trainer.align_directory, "ali", "ark"),
             self.construct_path_dictionary(aligner.working_directory, "tree", "acc"),
         )
 
-    def convert_alignment_arguments(self, aligner: AlignerType) -> ConvertAlignmentsArguments:
+    def convert_alignment_arguments(self, aligner: BaseTrainer) -> ConvertAlignmentsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.convert_alignments_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.BaseTrainer`
             Aligner
 
         Returns
         -------
-        ConvertAlignmentsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.ConvertAlignmentsArguments`
             Arguments for processing
         """
         return ConvertAlignmentsArguments(
@@ -2092,18 +2080,18 @@ class Job:
             self.construct_path_dictionary(aligner.working_directory, "ali", "ark"),
         )
 
-    def calc_fmllr_arguments(self, aligner: AlignerType) -> CalcFmllrArguments:
+    def calc_fmllr_arguments(self, aligner: Aligner) -> CalcFmllrArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_fmllr_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        CalcFmllrArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CalcFmllrArguments`
             Arguments for processing
         """
         return CalcFmllrArguments(
@@ -2112,24 +2100,24 @@ class Job:
             self.construct_feature_proc_strings(aligner),
             self.construct_path_dictionary(aligner.working_directory, "ali", "ark"),
             aligner.alignment_model_path,
-            aligner.current_model_path,
+            aligner.model_path,
             self.construct_path_dictionary(aligner.data_directory, "spk2utt", "scp"),
             self.construct_path_dictionary(aligner.working_directory, "trans", "ark"),
             aligner.fmllr_options,
         )
 
-    def acc_stats_two_feats_arguments(self, aligner: AlignerType) -> AccStatsTwoFeatsArguments:
+    def acc_stats_two_feats_arguments(self, aligner: SatTrainer) -> AccStatsTwoFeatsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_two_feats_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: :class:`~montreal_forced_aligner.trainers.SatTrainer`
             Aligner
 
         Returns
         -------
-        AccStatsTwoFeatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AccStatsTwoFeatsArguments`
             Arguments for processing
         """
         return AccStatsTwoFeatsArguments(
@@ -2148,12 +2136,12 @@ class Job:
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
+        aligner: :class:`~montreal_forced_aligner.trainers.LdaTrainer`
             Aligner
 
         Returns
         -------
-        LdaAccStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.LdaAccStatsArguments`
             Arguments for processing
         """
         return LdaAccStatsArguments(
@@ -2174,12 +2162,12 @@ class Job:
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.LdaTrainer`
+        aligner: :class:`~montreal_forced_aligner.trainers.LdaTrainer`
             Aligner
 
         Returns
         -------
-        CalcLdaMlltArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CalcLdaMlltArguments`
             Arguments for processing
         """
         return CalcLdaMlltArguments(
@@ -2200,12 +2188,12 @@ class Job:
 
         Parameters
         ----------
-        trainer: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
+        trainer: :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
             Aligner
 
         Returns
         -------
-        AccIvectorStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AccIvectorStatsArguments`
             Arguments for processing
         """
         return AccIvectorStatsArguments(
@@ -2229,7 +2217,7 @@ class Job:
 
         Returns
         -------
-        MapAccStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.MapAccStatsArguments`
             Arguments for processing
         """
         return MapAccStatsArguments(
@@ -2247,12 +2235,12 @@ class Job:
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
+        aligner: :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
             Aligner
 
         Returns
         -------
-        GmmGselectArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.GmmGselectArguments`
             Arguments for processing
         """
         return GmmGselectArguments(
@@ -2272,12 +2260,12 @@ class Job:
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
+        aligner: :class:`~montreal_forced_aligners.trainers.IvectorExtractorTrainer`
             Aligner
 
         Returns
         -------
-        AccGlobalStatsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.AccGlobalStatsArguments`
             Arguments for processing
         """
         return AccGlobalStatsArguments(
@@ -2301,12 +2289,12 @@ class Job:
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.IvectorExtractorTrainer`
+        aligner: :class:`~montreal_forced_aligner.trainers.IvectorExtractorTrainer`
             Aligner
 
         Returns
         -------
-        GaussToPostArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.GaussToPostArguments`
             Arguments for processing
         """
         return GaussToPostArguments(
@@ -2318,18 +2306,18 @@ class Job:
             aligner.current_dubm_path,
         )
 
-    def compile_train_graph_arguments(self, aligner: AlignerType) -> CompileTrainGraphsArguments:
+    def compile_train_graph_arguments(self, aligner: Aligner) -> CompileTrainGraphsArguments:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_train_graphs_func`
 
         Parameters
         ----------
-        aligner: :class:`~montreal_forced_aligner.trainer.BaseTrainer` or :class:`~montreal_forced_aligner.aligner.BaseAligner`
+        aligner: Aligner
             Aligner
 
         Returns
         -------
-        CompileTrainGraphsArguments
+        :class:`~montreal_forced_aligner.multiprocessing.classes.CompileTrainGraphsArguments`
             Arguments for processing
         """
         dictionary_paths = aligner.dictionary.output_paths
@@ -2338,7 +2326,7 @@ class Job:
             for k, v in dictionary_paths.items()
         }
         lexicon_fst_paths = {k: os.path.join(v, "L.fst") for k, v in dictionary_paths.items()}
-        model_path = aligner.current_model_path
+        model_path = aligner.model_path
         if not os.path.exists(model_path):
             model_path = aligner.alignment_model_path
         return CompileTrainGraphsArguments(
@@ -2360,7 +2348,7 @@ class Job:
 
         Parameters
         ----------
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to generate data for
         num_frequent_words: int
             Number of frequent words to include in the unigram language model
@@ -2378,7 +2366,7 @@ class Job:
                 new_text = []
                 dictionary = utterance.speaker.dictionary
                 if dictionary.name not in most_frequent:
-                    word_frequencies = corpus.get_word_frequency(dictionary)
+                    word_frequencies = corpus.get_word_frequency()
                     most_frequent[dictionary.name] = sorted(
                         word_frequencies.items(), key=lambda x: -x[1]
                     )[:num_frequent_words]
@@ -2402,7 +2390,7 @@ class Job:
 
         Parameters
         ----------
-        corpus: :class:`~montreal_forced_aligner.corpus.base.Corpus`
+        corpus: :class:`~montreal_forced_aligner.corpus.Corpus`
             Corpus to generate FSTs for
         num_frequent_words: int
             Number of frequent words

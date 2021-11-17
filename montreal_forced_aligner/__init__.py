@@ -14,6 +14,8 @@ import montreal_forced_aligner.textgrid as textgrid  # noqa
 import montreal_forced_aligner.utils as utils  # noqa
 
 __all__ = [
+    "abc",
+    "data",
     "aligner",
     "command_line",
     "config",

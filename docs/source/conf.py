@@ -19,6 +19,7 @@
 #
 import os
 import sys
+from datetime import date
 
 sys.path.insert(0, os.path.abspath("../../"))
 import montreal_forced_aligner  # noqa
@@ -32,22 +33,121 @@ import montreal_forced_aligner  # noqa
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.mathjax",
-    "sphinx.ext.ifconfig",
-    "sphinx.ext.viewcode",
     "sphinx.ext.autosummary",
-    "sphinx_automodapi.automodapi",
-    "sphinx_automodapi.smart_resolver",
+    "sphinx.ext.coverage",
+    "sphinx.ext.mathjax",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.extlinks",
+    "external_links",
+    # "numpydoc",
+    "sphinx.ext.napoleon",
+    "sphinx_panels",
+    "sphinx.ext.viewcode",
+    "sphinxcontrib.autoprogram",
     "sphinxemoji.sphinxemoji",
+    # "sphinx_autodoc_typehints",
 ]
-
+panels_add_bootstrap_css = False
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+
+extlinks = {
+    "mfa_pr": ("https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/%s", "PR #%s"),
+}
+
+xref_links = {
+    "mfa_mailing_list": ("MFA mailing list", "https://groups.google.com/g/mfa-users"),
+    "mfa_github": ("MFA GitHub Repo", "https://groups.google.com/g/mfa-users"),
+    "mfa_github_issues": (
+        "MFA GitHub Issues",
+        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues",
+    ),
+    "memcauliffe.com": ("Michael McAuliffe's blog", "https://memcauliffe.com"),
+    "@wavable": ("@wavable", "https://twitter.com/wavable"),
+    "sonderegger": ("Morgan Sonderegger", "http://people.linguistics.mcgill.ca/~morgan/"),
+    "wagner": ("Michael Wagner", "https://prosodylab.org/"),
+    "coles": ("Arlie Coles", "https://a-coles.github.io/"),
+    "stengel-eskin": ("Elias Stengel-Eskin", "https://esteng.github.io/"),
+    "socolof": ("Michaela Socolof", "https://mcqll.org/people/socolof.michaela/"),
+    "mihuc": ("Sarah Mihuc", "https://www.cs.mcgill.ca/~smihuc/"),
+    "wsl": ("Windows Subsystem for Linux", "https://docs.microsoft.com/en-us/windows/wsl/install"),
+    "kaldi": ("Kaldi", "http://kaldi-asr.org/"),
+    "kaldi_github": ("Kaldi GitHub", "https://github.com/kaldi-asr/kaldi"),
+    "htk": ("HTK", "http://htk.eng.cam.ac.uk/"),
+    "phonetisaurus": ("Phonetisaurus", "https://github.com/AdolfVonKleist/Phonetisaurus"),
+    "pynini": ("Pynini", "https://www.openfst.org/twiki/bin/view/GRM/Pynini"),
+    "prosodylab_aligner": ("Prosodylab-aligner", "http://prosodylab.org/tools/aligner/"),
+    "p2fa": (
+        "Penn Phonetics Forced Aligner",
+        "https://www.ling.upenn.edu/phonetics/old_website_2015/p2fa/",
+    ),
+    "fave": ("FAVE-align", "https://github.com/JoFrhwld/FAVE/wiki/FAVE-align"),
+    "maus": ("MAUS", "http://www.bas.uni-muenchen.de/Bas/BasMAUS.html"),
+    "praat": ("Praat", "http://www.fon.hum.uva.nl/praat/"),
+    "easy_align": ("EasyAlign", "http://latlcui.unige.ch/phonetique/easyalign.php"),
+    "gentle": ("Gentle", "https://lowerquality.com/gentle/"),
+    "chodroff_kaldi": ("Kaldi tutorial", "https://eleanorchodroff.com/tutorial/kaldi/index.html"),
+    "chodroff_phonetics": (
+        "Corpus Phonetics Tutorial",
+        "https://eleanorchodroff.com/tutorial/intro.html",
+    ),
+    "coqui": ("Coqui", "https://coqui.ai/"),
+    "conda_installation": (
+        "Conda installation",
+        "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",
+    ),
+    "conda_forge": ("Conda Forge", "https://conda-forge.org/"),
+    "pydata_sphinx_theme": (
+        "Pydata Sphinx Theme",
+        "https://pydata-sphinx-theme.readthedocs.io/en/latest/",
+    ),
+    "mfa_reorg_scripts": (
+        "MFA-reorganization-scripts repository",
+        "https://github.com/MontrealCorpusTools/MFA-reorganization-scripts",
+    ),
+}
+
+# -----------------------------------------------------------------------------
+# Autosummary
+# -----------------------------------------------------------------------------
+
+
+autosummary_generate = True
+autodoc_typehints = "none"
+# autodoc_typehints_description_target = 'documented'
+# autoclass_content = 'both'
+autodoc_docstring_signature = True
+autodoc_type_aliases = {
+    "MultispeakerDictionary": "montreal_forced_aligner.dictionary.MultispeakerDictionary",
+    "Trainer": "montreal_forced_aligner.abc.Trainer",
+    "Aligner": "montreal_forced_aligner.abc.Aligner",
+    "DictionaryData": "montreal_forced_aligner.dictionary.DictionaryData",
+    "Utterance": "montreal_forced_aligner.corpus.Utterance",
+    "File": "montreal_forced_aligner.corpus.File",
+    "FeatureConfig": "montreal_forced_aligner.config.FeatureConfig",
+    "multiprocessing.context.Process": "multiprocessing.Process",
+    "mp.Process": "multiprocessing.Process",
+    "Speaker": "montreal_forced_aligner.corpus.Speaker",
+}
+
+napoleon_preprocess_types = False
+napoleon_attr_annotations = False
+napoleon_use_param = True
+napoleon_type_aliases = {
+    "Labels": "List[str]",
+}
+typehints_fully_qualified = False
+# numpydoc_xref_param_type = True
+# numpydoc_show_inherited_class_members = False
 numpydoc_show_class_members = False
-numpydoc_class_members_toctree = False
-autosummary_imported_members = False
+# -----------------------------------------------------------------------------
+# Autodoc
+# -----------------------------------------------------------------------------
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
@@ -66,7 +166,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "Montreal Forced Aligner"
-copyright = "2018, Montreal Corpus Tools"
+copyright = f"2018-{date.today().year}, Montreal Corpus Tools"
 author = "Montreal Corpus Tools"
 
 # The version info for the project you're documenting, acts as replacement for
@@ -102,11 +202,11 @@ exclude_patterns = []
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
 #
-# default_role = None
+default_role = "autolink"
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 #
-# add_function_parentheses = True
+add_function_parentheses = False
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).
@@ -117,6 +217,27 @@ exclude_patterns = []
 # output. They are ignored by default.
 #
 # show_authors = False
+
+# nitpicky = True
+nitpick_ignore = [
+    ("py:class", "optional"),
+    ("py:class", "callable"),
+    ("py:class", "CtmType"),
+    ("py:class", "ReversedMappingType"),
+    ("py:class", "WordsType"),
+    ("py:class", "MappingType"),
+    ("py:class", "TextIO"),
+    ("py:class", "SegmentationType"),
+    ("py:class", "CtmErrorDict"),
+    ("py:class", "Labels"),
+    ("py:class", "ScpType"),
+    ("py:class", "multiprocessing.Value"),
+    ("py:class", "praatio.utilities.constants.Interval"),
+    ("py:class", "CorpusMappingType"),
+    ("py:class", "DictionaryEntryType"),
+    ("py:class", "montreal_forced_aligner.abc.MetaDict"),
+    ("py:class", "multiprocessing.context.Process"),
+]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -136,15 +257,46 @@ todo_include_todos = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
+html_theme = "pydata_sphinx_theme"
+
+html_logo = "_static/logo_long.svg"
+html_favicon = "_static/favicon.ico"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {
-#    'page_width': 'auto',
-# }
+html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
+            "icon": "fab fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/Montreal-Forced-Aligner/",
+            "icon": "fas fa-box",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://anaconda.org/conda-forge/montreal-forced-aligner",
+            "icon": "fas fa-toolbox",
+        },
+    ],
+    "google_analytics_id": "UA-73068199-4",
+    "show_nav_level": 1,
+    "navigation_depth": 4,
+    "show_toc_level": 2,
+    "collapse_navigation": False,
+}
+html_context = {
+    # "github_url": "https://github.com", # or your GitHub Enterprise interprise
+    "github_user": "MontrealCorpusTools",
+    "github_repo": "Montreal-Forced-Aligner",
+    "github_version": "main",
+    "doc_path": "docs/source",
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []
@@ -173,6 +325,9 @@ html_theme = "sphinx_rtd_theme"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+html_css_files = [
+    "css/style.css",
+]
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -194,7 +349,7 @@ html_static_path = ["_static"]
 # Custom sidebar templates, maps document names to template names.
 #
 # html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
-
+html_sidebars = {"**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
 #

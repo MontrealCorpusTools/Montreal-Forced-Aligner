@@ -6,11 +6,10 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import (
 )
 
 
-# @pytest.mark.skip(reason='Optimization')
 def test_basic_ivector(
     basic_corpus_dir,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     temp_dir,
     train_ivector_config,
     english_acoustic_model,
@@ -19,7 +18,7 @@ def test_basic_ivector(
     command = [
         "train_ivector",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         "english",
         ivector_output_model_path,
         "-t",

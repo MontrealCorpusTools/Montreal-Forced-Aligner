@@ -1,4 +1,8 @@
-"""Class definition for MFA's validator"""
+"""
+Validating corpora
+==================
+
+"""
 from __future__ import annotations
 
 import logging
@@ -6,6 +10,7 @@ import os
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
+from .abc import AcousticModelWorker
 from .aligner.pretrained import PretrainedAligner
 from .config import FeatureConfig
 from .exceptions import CorpusError, KaldiProcessingError
@@ -16,23 +21,23 @@ from .trainers import MonophoneTrainer
 from .utils import log_kaldi_errors
 
 if TYPE_CHECKING:
-    from .corpus import Corpus
-    from .dictionary import DictionaryType
+    from .corpus.base import Corpus
+    from .dictionary import MultispeakerDictionary
 
 
 __all__ = ["CorpusValidator"]
 
 
-class CorpusValidator:
+class CorpusValidator(AcousticModelWorker):
     """
-    Aligner that aligns and trains acoustics models on a large dataset
+    Validator class for checking whether a corpus, a dictionary, and (optionally) an acoustic model work together
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
-        Dictionary object for the pronunciation dictionary
+    dictionary : :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
+        MultispeakerDictionary object for the pronunciation dictionary
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
         If not specified, it will be set to ``~/Documents/MFA``
@@ -44,6 +49,15 @@ class CorpusValidator:
         Flag for whether to use multiprocessing
     logger: :class:`~logging.Logger`, optional
         Logger to use
+
+    Attributes
+    ----------
+    corpus_analysis_template: str
+        Template for output message
+    alignment_analysis_template: str
+        Template for output message
+    transcription_analysis_template: str
+        Template for output message
     """
 
     corpus_analysis_template = """
@@ -98,15 +112,14 @@ class CorpusValidator:
     def __init__(
         self,
         corpus: Corpus,
-        dictionary: DictionaryType,
+        dictionary: MultispeakerDictionary,
         temp_directory: Optional[str] = None,
         ignore_acoustics: bool = False,
         test_transcriptions: bool = False,
         use_mp: bool = True,
         logger: Optional[logging.Logger] = None,
     ):
-        self.dictionary = dictionary
-        self.corpus = corpus
+        super().__init__(corpus, dictionary)
         self.temp_directory = temp_directory
         self.test_transcriptions = test_transcriptions
         self.ignore_acoustics = ignore_acoustics
@@ -115,6 +128,14 @@ class CorpusValidator:
         self.trainer.logger = logger
         self.trainer.update({"use_mp": use_mp})
         self.setup()
+
+    @property
+    def working_directory(self) -> str:
+        return os.path.join(self.temp_directory, "validation")
+
+    @property
+    def working_log_directory(self) -> str:
+        return os.path.join(self.working_directory, "log")
 
     def setup(self):
         """
@@ -442,11 +463,13 @@ class CorpusValidator:
                 run_non_mp(test_utterances_func, jobs, log_directory)
             self.logger.info("Finished decoding utterances!")
 
-            word_mapping = self.dictionary.reversed_word_mapping
             errors = {}
 
             for job in jobs:
                 for dict_name in job.dictionaries:
+                    word_mapping = self.dictionary.dictionary_mapping[
+                        dict_name
+                    ].reversed_word_mapping
                     aligned_int = load_scp(job.out_int_paths[dict_name])
                     for utt, line in sorted(aligned_int.items()):
                         text = []

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from ..config import AlignConfig
     from ..corpus import Corpus
-    from ..dictionary import Dictionary
+    from ..dictionary import MultispeakerDictionary
     from ..models import AcousticModel
 
 __all__ = ["PretrainedAligner"]
@@ -25,13 +25,13 @@ class PretrainedAligner(BaseAligner):
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
         Dictionary object for the pronunciation dictionary
     acoustic_model : :class:`~montreal_forced_aligner.models.AcousticModel`
         Archive containing the acoustic model and pronunciation dictionary
-    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -47,7 +47,7 @@ class PretrainedAligner(BaseAligner):
     def __init__(
         self,
         corpus: Corpus,
-        dictionary: Dictionary,
+        dictionary: MultispeakerDictionary,
         acoustic_model: AcousticModel,
         align_config: AlignConfig,
         temp_directory: Optional[str] = None,
@@ -78,7 +78,7 @@ class PretrainedAligner(BaseAligner):
 
     def setup(self) -> None:
         """Set up aligner"""
-        self.dictionary.nonsil_phones = self.acoustic_model.meta["phones"]
+        self.dictionary.config.non_silence_phones = self.acoustic_model.meta["phones"]
         super(PretrainedAligner, self).setup()
         self.acoustic_model.export_model(self.align_directory)
 
@@ -107,11 +107,7 @@ class PretrainedAligner(BaseAligner):
             Specifies the minimum count of words to include in derived probabilities, default is 1
         """
         pron_counts, utt_mapping = generate_pronunciations(self)
-        if self.dictionary.has_multiple:
-            dictionary_mapping = self.dictionary.dictionary_mapping()
-        else:
-            dictionary_mapping = {self.dictionary.name: self.dictionary}
-        for dict_name, dictionary in dictionary_mapping.items():
+        for dict_name, dictionary in self.dictionary.dictionary_mapping.items():
             counts = pron_counts[dict_name]
             mapping = utt_mapping[dict_name]
             if calculate_silence_probs:

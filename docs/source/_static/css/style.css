@@ -1,0 +1,82 @@
+.wy-nav-content {
+    max-width: 1200px !important;
+}
+.wy-table-responsive table td {
+    white-space: normal !important;
+}
+.wy-table-responsive {
+    overflow: visible !important;
+}
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+  white-space: normal;
+}
+
+:root {
+  --base-blue: 0, 53, 102;
+  --dark-blue: 0, 29, 61;
+  --light-blue: 14, 99, 179;
+  --base-yellow: 255, 195, 0;
+  --light-yellow: 255, 214, 10;
+  --pst-color-primary: var(--base-blue);
+  --pst-color-warning: var(--light-yellow);
+  --pst-color-info: var(--light-blue);
+
+    --pst-color-link: var(--light-blue);
+    --pst-color-link-hover: var(--dark-blue);
+
+    --pst-color-active-navigation: var(--dark-blue);
+    --pst-color-hover-navigation: var(--base-yellow);
+
+    --pst-color-navbar-link: var(--base-blue);
+    --pst-color-navbar-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-navbar-link-active: var(--pst-color-active-navigation);
+
+    --pst-color-sidebar-link: var(--base-blue);
+    --pst-color-sidebar-caption: var(--base-blue);
+    --pst-color-sidebar-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-sidebar-link-active: var(--pst-color-active-navigation);
+
+    --pst-color-toc-link: var(--base-blue);
+    --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-toc-link-active: var(--pst-color-active-navigation);
+}
+.btn-navigation{
+    background-color: #0E63B3;
+    border-color: #0E63B3;
+}
+.btn-navigation:hover {
+    background-color: #FFC300;
+    border-color: #FFC300;
+    color: #000814;
+}
+.i-navigation{
+    color: #003566;
+    padding: 20px;
+}
+.i-navigation:hover {
+    color: #FFC300;
+}
+
+.rst-table-cell{
+width: 100%;
+height: 100%;
+display: inline-block;
+text-align: center;
+
+}
+
+.supported {
+background-color: #E9F6EC;
+}
+
+.not-supported {
+background-color: #FBEAEC;
+}
+#navbar-icon-links i.fa-github-square::before, i.fa-github-square::before {
+    color: inherit;
+}
+
+dt:target {
+background-color: #FFD60A;
+}

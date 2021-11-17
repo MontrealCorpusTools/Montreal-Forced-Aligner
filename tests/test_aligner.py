@@ -14,8 +14,7 @@ def test_sick_mono(
     mono_align_config,
     mono_output_directory,
 ):
-    mono_train_config, align_config = mono_train_config
-    print(mono_train_config.training_configs[0].feature_config.use_mp)
+    mono_train_config, align_config, dictionary_config = mono_train_config
     data_directory = os.path.join(generated_dir, "temp", "mono_train_test")
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(
@@ -36,7 +35,7 @@ def test_sick_mono(
 
 
 def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
-    tri_train_config, align_config = tri_train_config
+    tri_train_config, align_config, dictionary_config = tri_train_config
     data_directory = os.path.join(generated_dir, "temp", "tri_test")
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(
@@ -46,7 +45,7 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config):
 
 
 def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
-    lda_train_config, align_config = lda_train_config
+    lda_train_config, align_config, dictionary_config = lda_train_config
     data_directory = os.path.join(generated_dir, "temp", "lda_test")
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(
@@ -56,7 +55,7 @@ def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config):
 
 
 def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config):
-    sat_train_config, align_config = sat_train_config
+    sat_train_config, align_config, dictionary_config = sat_train_config
     data_directory = os.path.join(generated_dir, "temp", "sat_test")
     shutil.rmtree(data_directory, ignore_errors=True)
     a = TrainableAligner(

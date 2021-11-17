@@ -1,4 +1,9 @@
-"""Class definitions for configuring MFA"""
+"""
+Configuration classes
+=====================
+
+
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List
@@ -6,14 +11,16 @@ from typing import TYPE_CHECKING, Any, Dict, List
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    ConfigDict = Dict[str, Any]
 import os
 
 import yaml
 
 from .align_config import AlignConfig, align_yaml_to_config, load_basic_align  # noqa
-from .command_config import load_command_configuration  # noqa
+from .base_config import BaseConfig
+from .command_config import CommandConfig, load_command_configuration  # noqa
+from .dictionary_config import DictionaryConfig  # noqa
 from .feature_config import FeatureConfig  # noqa
+from .g2p_config import G2PConfig, g2p_yaml_to_config, load_basic_g2p_config  # noqa
 from .segmentation_config import (  # noqa
     SegmentationConfig,
     load_basic_segmentation,
@@ -31,12 +38,53 @@ from .train_config import (  # noqa
     load_test_config,
     train_yaml_to_config,
 )
+from .train_g2p_config import (  # noqa
+    TrainG2PConfig,
+    load_basic_train_g2p_config,
+    train_g2p_yaml_to_config,
+)
 from .train_lm_config import TrainLMConfig, load_basic_train_lm, train_lm_yaml_to_config  # noqa
 from .transcribe_config import (  # noqa
     TranscribeConfig,
     load_basic_transcribe,
     transcribe_yaml_to_config,
 )
+
+__all__ = [
+    "TEMP_DIR",
+    "align_config",
+    "base_config",
+    "command_config",
+    "dictionary_config",
+    "feature_config",
+    "segmentation_config",
+    "speaker_classification_config",
+    "train_config",
+    "train_lm_config",
+    "transcribe_config",
+    "generate_config_path",
+    "generate_command_history_path",
+    "load_command_history",
+    "update_command_history",
+    "update_global_config",
+    "load_global_config",
+    "USE_COLORS",
+    "BLAS_THREADS",
+]
+
+BaseConfig.__module__ = "montreal_forced_aligner.config"
+AlignConfig.__module__ = "montreal_forced_aligner.config"
+CommandConfig.__module__ = "montreal_forced_aligner.config"
+FeatureConfig.__module__ = "montreal_forced_aligner.config"
+DictionaryConfig.__module__ = "montreal_forced_aligner.config"
+SegmentationConfig.__module__ = "montreal_forced_aligner.config"
+SpeakerClassificationConfig.__module__ = "montreal_forced_aligner.config"
+TrainingConfig.__module__ = "montreal_forced_aligner.config"
+TrainLMConfig.__module__ = "montreal_forced_aligner.config"
+TrainG2PConfig.__module__ = "montreal_forced_aligner.config"
+G2PConfig.__module__ = "montreal_forced_aligner.config"
+TranscribeConfig.__module__ = "montreal_forced_aligner.config"
+
 
 TEMP_DIR = os.path.expanduser("~/Documents/MFA")
 

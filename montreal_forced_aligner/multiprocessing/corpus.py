@@ -1,4 +1,9 @@
-"""Multiprocessing functions for loading corpora"""
+"""
+Corpus loading worker
+---------------------
+
+
+"""
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -7,7 +12,6 @@ import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, Union
 
-from ..corpus.classes import parse_file
 from ..exceptions import TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
@@ -35,9 +39,9 @@ class CorpusProcessWorker(mp.Process):
         Dictionary to catch errors
     return_q: :class:`~multiprocessing.Queue`
         Return queue for processed Files
-    stopped: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    stopped: :func:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Stop check for whether corpus loading should exit
-    finished_adding: :class:`~montreal_forced_aligner.multiprocess.helper.Stopped`
+    finished_adding: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
         Signal that the main thread has stopped adding new files to be processed
     """
 
@@ -60,6 +64,8 @@ class CorpusProcessWorker(mp.Process):
         """
         Run the corpus loading job
         """
+        from ..corpus.classes import parse_file
+
         while True:
             try:
                 arguments = self.job_q.get(timeout=1)

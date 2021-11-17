@@ -15,7 +15,7 @@ from montreal_forced_aligner.config import (
     load_command_configuration,
 )
 from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import Dictionary, MultispeakerDictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import log_config, setup_logger
@@ -52,12 +52,14 @@ def align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
         corpus_name = os.path.basename(args.corpus_directory)
     data_directory = os.path.join(temp_dir, corpus_name)
     if args.config_path:
-        align_config = align_yaml_to_config(args.config_path)
+        align_config, dictionary_config = align_yaml_to_config(args.config_path)
     else:
-        align_config = load_basic_align()
+        align_config, dictionary_config = load_basic_align()
     align_config.update_from_args(args)
+    dictionary_config.update_from_args(args)
     if unknown_args:
         align_config.update_from_unknown_args(unknown_args)
+    dictionary_config.update_from_unknown_args(unknown_args)
     conf_path = os.path.join(data_directory, "config.yml")
     if getattr(args, "clean", False) and os.path.exists(data_directory):
         print("Cleaning old directory!")
@@ -124,6 +126,7 @@ def align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
     os.makedirs(model_directory, exist_ok=True)
     os.makedirs(args.output_directory, exist_ok=True)
     acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
+    dictionary_config.update(acoustic_model.meta)
     acoustic_model.log_details(logger)
     audio_dir = None
     if args.audio_directory:
@@ -132,42 +135,23 @@ def align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
         corpus = Corpus(
             args.corpus_directory,
             data_directory,
+            dictionary_config,
             speaker_characters=args.speaker_characters,
             num_jobs=args.num_jobs,
             sample_rate=align_config.feature_config.sample_frequency,
             logger=logger,
             use_mp=align_config.use_mp,
-            punctuation=align_config.punctuation,
-            clitic_markers=align_config.clitic_markers,
             audio_directory=audio_dir,
         )
         logger.info(corpus.speaker_utterance_info())
-        if args.dictionary_path.lower().endswith(".yaml"):
-            dictionary = MultispeakerDictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=align_config.punctuation,
-                word_set=corpus.word_set,
-                clitic_markers=align_config.clitic_markers,
-                compound_markers=align_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-                strip_diacritics=acoustic_model.meta.get("strip_diacritics", None),
-                digraphs=acoustic_model.meta.get("digraphs", None),
-            )
-        else:
-            dictionary = Dictionary(
-                args.dictionary_path,
-                data_directory,
-                logger=logger,
-                punctuation=align_config.punctuation,
-                word_set=corpus.word_set,
-                clitic_markers=align_config.clitic_markers,
-                compound_markers=align_config.compound_markers,
-                multilingual_ipa=acoustic_model.meta["multilingual_ipa"],
-                strip_diacritics=acoustic_model.meta.get("strip_diacritics", None),
-                digraphs=acoustic_model.meta.get("digraphs", None),
-            )
+        dictionary = MultispeakerDictionary(
+            args.dictionary_path,
+            data_directory,
+            dictionary_config,
+            logger=logger,
+            word_set=corpus.word_set,
+        )
+
         acoustic_model.validate(dictionary)
 
         begin = time.time()

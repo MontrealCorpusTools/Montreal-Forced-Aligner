@@ -14,7 +14,7 @@ def test_configure(
     basic_corpus_dir,
     sick_dict_path,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     basic_align_config,
     english_acoustic_model,
 ):

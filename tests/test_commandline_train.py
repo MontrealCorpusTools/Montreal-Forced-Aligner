@@ -1,12 +1,9 @@
 import os
 
-import pytest
-
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
 
 
-# @pytest.mark.skip(reason='Optimization')
 def test_train_and_align_basic(
     basic_corpus_dir,
     sick_dict_path,
@@ -37,7 +34,6 @@ def test_train_and_align_basic(
     assert os.path.exists(textgrid_output_model_path)
 
 
-@pytest.mark.skip(reason="Optimization")
 def test_train_and_align_basic_speaker_dict(
     basic_corpus_dir,
     speaker_dictionary_path,

@@ -2,7 +2,7 @@ name: mfa
 channels:
   - conda-forge
 dependencies:
-  - python>=3.8   # or 2.7 if you are feeling nostalgic
+  - python>=3.8
   - numpy
   - librosa
   - tqdm

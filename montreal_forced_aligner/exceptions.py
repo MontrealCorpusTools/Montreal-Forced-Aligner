@@ -1,4 +1,8 @@
-"""Excepts for Montreal Forced Aligner"""
+"""
+Exception classes
+=================
+
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
@@ -8,7 +12,7 @@ from colorama import Fore, Style
 from .helper import comma_join
 
 if TYPE_CHECKING:
-    from .dictionary import DictionaryType
+    from .dictionary import PronunciationDictionary
     from .models import G2PModel
 
 
@@ -196,7 +200,7 @@ class ModelLoadError(ModelError):
 
 class DictionaryError(MFAError):
     """
-    Exception class for errors in creating Dictionary objects
+    Exception class for errors in creating dictionary objects
     """
 
     pass
@@ -214,7 +218,7 @@ class NoDefaultSpeakerDictionaryError(DictionaryError):
 
 class DictionaryPathError(DictionaryError):
     """
-    Exception class for errors in locating paths for Dictionary objects
+    Exception class for errors in locating paths for dictionary objects
 
     Parameters
     ----------
@@ -231,7 +235,7 @@ class DictionaryPathError(DictionaryError):
 
 class DictionaryFileError(DictionaryError):
     """
-    Exception class for file type being wrong for Dictionary objects
+    Exception class for file type being wrong for DictionaryModel objects
 
     Parameters
     ----------
@@ -396,13 +400,13 @@ class PronunciationOrthographyMismatchError(AlignerError):
 
     Parameters
     ----------
-    g2p_model: G2PModel
+    g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
         Specified G2P model
-    dictionary: Dictionary
+    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
         Specified dictionary
     """
 
-    def __init__(self, g2p_model: G2PModel, dictionary: DictionaryType):
+    def __init__(self, g2p_model: G2PModel, dictionary: PronunciationDictionary):
         super().__init__()
         missing_graphs = dictionary.graphemes - set(g2p_model.meta["graphemes"])
         missing_graphs = [f"{self.error_text(x)}" for x in sorted(missing_graphs)]

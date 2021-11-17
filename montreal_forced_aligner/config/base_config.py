@@ -5,17 +5,8 @@ from typing import TYPE_CHECKING, Collection
 
 import yaml
 
-from ..exceptions import ConfigError
-
 if TYPE_CHECKING:
     from argparse import Namespace
-
-DEFAULT_PUNCTUATION = r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘'
-
-DEFAULT_CLITIC_MARKERS = "'’"
-DEFAULT_COMPOUND_MARKERS = "-/"
-DEFAULT_STRIP_DIACRITICS = ["ː", "ˑ", "̩", "̆", "̑", "̯", "͡", "‿", "͜"]
-DEFAULT_DIGRAPHS = ["[dt][szʒʃʐʑʂɕç]", "[aoɔe][ʊɪ]"]
 
 
 PARSING_KEYS = [
@@ -39,7 +30,7 @@ class BaseConfig:
         """Update configuration parameters"""
         for k, v in data.items():
             if not hasattr(self, k):
-                raise ConfigError(f"No field found for key {k}")
+                continue
             setattr(self, k, v)
 
     def update_from_args(self, args: Namespace) -> None:

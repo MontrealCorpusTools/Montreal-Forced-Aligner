@@ -8,7 +8,7 @@ def test_adapt_basic(
     basic_corpus_dir,
     sick_dict_path,
     generated_dir,
-    large_dataset_dictionary,
+    english_dictionary,
     temp_dir,
     basic_align_config,
     english_acoustic_model,
@@ -17,7 +17,7 @@ def test_adapt_basic(
     command = [
         "adapt",
         basic_corpus_dir,
-        large_dataset_dictionary,
+        english_dictionary,
         english_acoustic_model,
         adapted_model_path,
         "-t",

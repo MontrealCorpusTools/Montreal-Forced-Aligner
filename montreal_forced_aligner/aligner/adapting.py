@@ -5,6 +5,7 @@ import os
 import shutil
 from typing import TYPE_CHECKING, Optional
 
+from ..abc import Trainer
 from ..exceptions import KaldiProcessingError
 from ..models import AcousticModel
 from ..multiprocessing import (
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
     from ..config import AlignConfig
     from ..corpus import Corpus
-    from ..dictionary import Dictionary
+    from ..dictionary import MultispeakerDictionary
     from ..models import MetaDict
     from .pretrained import PretrainedAligner
 
@@ -30,19 +31,19 @@ if TYPE_CHECKING:
 __all__ = ["AdaptingAligner"]
 
 
-class AdaptingAligner(BaseAligner):
+class AdaptingAligner(BaseAligner, Trainer):
     """
     Aligner adapts another acoustic model to the current data
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
         Dictionary object for the pronunciation dictionary
-    pretrained_aligner: :class:`~montreal_forced_aligner.aligner.pretrained.PretrainedAligner`
+    pretrained_aligner: :class:`~montreal_forced_aligner.aligner.PretrainedAligner`
         Pretrained aligner to use as input to training
-    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -58,7 +59,7 @@ class AdaptingAligner(BaseAligner):
     def __init__(
         self,
         corpus: Corpus,
-        dictionary: Dictionary,
+        dictionary: MultispeakerDictionary,
         previous_aligner: PretrainedAligner,
         align_config: AlignConfig,
         temp_directory: Optional[str] = None,
@@ -130,7 +131,7 @@ class AdaptingAligner(BaseAligner):
         """Next iteration's acoustic model path"""
         return os.path.join(self.working_directory, "final.mdl")
 
-    def adapt(self) -> None:
+    def train(self) -> None:
         """Run the adaptation"""
         done_path = os.path.join(self.adapt_directory, "done")
         dirty_path = os.path.join(self.adapt_directory, "dirty")
@@ -181,16 +182,16 @@ class AdaptingAligner(BaseAligner):
         from ..utils import get_mfa_version
 
         data = {
-            "phones": sorted(self.dictionary.nonsil_phones),
+            "phones": sorted(self.dictionary.config.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": self.acoustic_model.meta["architecture"],
             "train_date": str(datetime.now()),
             "features": self.previous_aligner.align_config.feature_config.params(),
-            "multilingual_ipa": self.dictionary.multilingual_ipa,
+            "multilingual_ipa": self.dictionary.config.multilingual_ipa,
         }
-        if self.dictionary.multilingual_ipa:
-            data["strip_diacritics"] = self.dictionary.strip_diacritics
-            data["digraphs"] = self.dictionary.digraphs
+        if self.dictionary.config.multilingual_ipa:
+            data["strip_diacritics"] = self.dictionary.config.strip_diacritics
+            data["digraphs"] = self.dictionary.config.digraphs
         return data
 
     def save(self, path, root_directory=None) -> None:

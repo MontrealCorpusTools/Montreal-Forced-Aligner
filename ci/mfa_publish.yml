@@ -1,0 +1,24 @@
+name: mfa_publish
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - numpy
+  - librosa
+  - tqdm
+  - requests
+  - colorama
+  - pyyaml
+  - kaldi
+  - sox
+  - openfst
+  - baumwelch
+  - ngram
+  - pynini
+  - setuptools
+  - setuptools_scm[toml]
+  - pip
+  - pip:
+     - build
+     - twine
+     - praatio >= 5.0

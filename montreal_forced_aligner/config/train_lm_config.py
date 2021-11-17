@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+from typing import Tuple
 
 import yaml
 
 from .base_config import BaseConfig
+from .dictionary_config import DictionaryConfig
 
 __all__ = ["TrainLMConfig", "train_lm_yaml_to_config", "load_basic_train_lm"]
 
@@ -35,7 +37,7 @@ class TrainLMConfig(BaseConfig):
         self.use_mp = True
 
 
-def train_lm_yaml_to_config(path: str) -> TrainLMConfig:
+def train_lm_yaml_to_config(path: str) -> Tuple[TrainLMConfig, DictionaryConfig]:
     """
     Helper function to load language model training configurations
 
@@ -46,25 +48,33 @@ def train_lm_yaml_to_config(path: str) -> TrainLMConfig:
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_lm_config.TrainLMConfig`
+    :class:`~montreal_forced_aligner.config.TrainLMConfig`
         Language model training configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
+    dictionary_config = DictionaryConfig()
     with open(path, "r", encoding="utf8") as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
         config = TrainLMConfig()
         config.update(data)
-    return config
+        dictionary_config.update(data)
+    return config, dictionary_config
 
 
-def load_basic_train_lm() -> TrainLMConfig:
+def load_basic_train_lm() -> Tuple[TrainLMConfig, DictionaryConfig]:
     """
     Helper function to load the default parameters
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.config.train_lm_config.TrainLMConfig`
+    :class:`~montreal_forced_aligner.config.TrainLMConfig`
         Default language model training configuration
+    :class:`~montreal_forced_aligner.config.DictionaryConfig`
+        Dictionary configuration
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    training_config = train_lm_yaml_to_config(os.path.join(base_dir, "basic_train_lm.yaml"))
-    return training_config
+    training_config, dictionary_config = train_lm_yaml_to_config(
+        os.path.join(base_dir, "basic_train_lm.yaml")
+    )
+    return training_config, dictionary_config

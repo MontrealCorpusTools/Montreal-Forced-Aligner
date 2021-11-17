@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ..abc import Trainer
 from .base import BaseAligner
 
 if TYPE_CHECKING:
@@ -11,24 +12,24 @@ if TYPE_CHECKING:
     from ..aligner.pretrained import PretrainedAligner
     from ..config import AlignConfig, TrainingConfig
     from ..corpus import Corpus
-    from ..dictionary import Dictionary
+    from ..dictionary import MultispeakerDictionary
 
 __all__ = ["TrainableAligner"]
 
 
-class TrainableAligner(BaseAligner):
+class TrainableAligner(BaseAligner, Trainer):
     """
     Aligner that aligns and trains acoustics models on a large dataset
 
     Parameters
     ----------
-    corpus : :class:`~montreal_forced_aligner.corpus.base.Corpus`
+    corpus : :class:`~montreal_forced_aligner.corpus.Corpus`
         Corpus object for the dataset
-    dictionary : :class:`~montreal_forced_aligner.dictionary.Dictionary`
+    dictionary : :class:`~montreal_forced_aligner.dictionary.MultispeakerDictionary`
         Dictionary object for the pronunciation dictionary
     training_config : :class:`~montreal_forced_aligner.config.TrainingConfig`
         Configuration to train a model
-    align_config : :class:`~montreal_forced_aligner.config.align_config.AlignConfig`
+    align_config : :class:`~montreal_forced_aligner.config.AlignConfig`
         Configuration for alignment
     temp_directory : str, optional
         Specifies the temporary directory root to save files need for Kaldi.
@@ -46,7 +47,7 @@ class TrainableAligner(BaseAligner):
     def __init__(
         self,
         corpus: Corpus,
-        dictionary: Dictionary,
+        dictionary: MultispeakerDictionary,
         training_config: TrainingConfig,
         align_config: AlignConfig,
         temp_directory: Optional[str] = None,
@@ -86,7 +87,7 @@ class TrainableAligner(BaseAligner):
             Path for root directory of temporary files
         """
         self.training_config.values()[-1].save(path, root_directory)
-        self.logger.info("Saved model to {}".format(path))
+        self.logger.info(f"Saved model to {path}")
 
     @property
     def meta(self) -> dict:
@@ -94,13 +95,17 @@ class TrainableAligner(BaseAligner):
         from ..utils import get_mfa_version
 
         data = {
-            "phones": sorted(self.dictionary.nonsil_phones),
+            "phones": sorted(self.dictionary.config.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": self.training_config.values()[-1].architecture,
             "phone_type": self.training_config.values()[-1].phone_type,
             "features": self.align_config.feature_config.params(),
         }
         return data
+
+    @property
+    def model_path(self) -> str:
+        return self.training_config.values()[-1].model_path
 
     def train(self, generate_final_alignments: bool = True) -> None:
         """

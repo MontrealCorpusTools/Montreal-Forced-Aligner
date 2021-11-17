@@ -118,7 +118,7 @@ def create_parser() -> ArgumentParser:
 
     Returns
     -------
-    ArgumentParser
+    :class:`~argparse.ArgumentParser`
         MFA argument parser
     """
     GLOBAL_CONFIG = load_global_config()
@@ -129,7 +129,7 @@ def create_parser() -> ArgumentParser:
 
         Parameters
         ----------
-        subparser: argparse.ArgumentParser
+        subparser: :class:`~argparse.ArgumentParser`
             Subparser to augment
         textgrid_output: bool
             Flag for whether the subparser is used for a command that generates TextGrids
@@ -195,7 +195,9 @@ def create_parser() -> ArgumentParser:
 
     _ = subparsers.add_parser("version")
 
-    align_parser = subparsers.add_parser("align")
+    align_parser = subparsers.add_parser(
+        "align", help="Align a corpus with a pretrained acoustic model"
+    )
     align_parser.add_argument("corpus_directory", help="Full path to the directory to align")
     align_parser.add_argument(
         "dictionary_path", help="Full path to the pronunciation dictionary to use"
@@ -228,7 +230,7 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(align_parser, textgrid_output=True)
 
-    adapt_parser = subparsers.add_parser("adapt")
+    adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
     adapt_parser.add_argument("corpus_directory", help="Full path to the directory to align")
     adapt_parser.add_argument(
         "dictionary_path", help="Full path to the pronunciation dictionary to use"
@@ -240,7 +242,7 @@ def create_parser() -> ArgumentParser:
     adapt_parser.add_argument(
         "output_paths",
         nargs="+",
-        help="Path to directory for aligned TextGrids, zip path to export acoustic model, or both",
+        help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
     adapt_parser.add_argument(
         "-o",
@@ -275,7 +277,9 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(adapt_parser, textgrid_output=True)
 
-    train_parser = subparsers.add_parser("train")
+    train_parser = subparsers.add_parser(
+        "train", help="Train a new acoustic model on a corpus and optionally export alignments"
+    )
     train_parser.add_argument(
         "corpus_directory", help="Full path to the source directory to align"
     )
@@ -285,7 +289,7 @@ def create_parser() -> ArgumentParser:
     train_parser.add_argument(
         "output_paths",
         nargs="+",
-        help="Path to directory for aligned TextGrids, zip path to export acoustic model, or both",
+        help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
     train_parser.add_argument(
         "--config_path",
@@ -317,7 +321,7 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(train_parser, textgrid_output=True)
 
-    validate_parser = subparsers.add_parser("validate")
+    validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
     validate_parser.add_argument(
         "corpus_directory", help="Full path to the source directory to align"
     )
@@ -348,10 +352,14 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(validate_parser)
 
-    g2p_model_help_message = f"""Full path to the archive containing pre-trained model or language ({', '.join(g2p_models)})
-    If not specified, then orthographic transcription is split into pronunciations."""
-    g2p_parser = subparsers.add_parser("g2p")
-    g2p_parser.add_argument("g2p_model_path", help=g2p_model_help_message, nargs="?")
+    g2p_parser = subparsers.add_parser(
+        "g2p", help="Generate a pronunciation dictionary using a G2P model"
+    )
+    g2p_parser.add_argument(
+        "g2p_model_path",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(g2p_models)}). If not specified, then orthographic transcription is split into pronunciations.",
+        nargs="?",
+    )
 
     g2p_parser.add_argument(
         "input_path",
@@ -368,7 +376,9 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(g2p_parser)
 
-    train_g2p_parser = subparsers.add_parser("train_g2p")
+    train_g2p_parser = subparsers.add_parser(
+        "train_g2p", help="Train a G2P model from a pronunciation dictionary"
+    )
     train_g2p_parser.add_argument("dictionary_path", help="Location of existing dictionary")
 
     train_g2p_parser.add_argument("output_model_path", help="Desired location of generated model")
@@ -382,14 +392,19 @@ def create_parser() -> ArgumentParser:
         "most of the data and validating on an unseen subset",
     )
     add_global_options(train_g2p_parser)
-
-    model_parser = subparsers.add_parser("model")
+    help_message = "Inspect, download, and save pretrained MFA models"
+    model_parser = subparsers.add_parser(
+        "model", aliases=["models"], description=help_message, help=help_message
+    )
 
     model_subparsers = model_parser.add_subparsers(dest="action")
     model_subparsers.required = True
-    model_download_parser = model_subparsers.add_parser("download")
+    help_message = "Download a pretrained model from the MFA repository"
+    model_download_parser = model_subparsers.add_parser(
+        "download", description=help_message, help=help_message
+    )
     model_download_parser.add_argument(
-        "model_type", help=f"Type of model to download, options: {', '.join(MODEL_TYPES)}"
+        "model_type", choices=sorted(MODEL_TYPES), help="Type of model to download"
     )
     model_download_parser.add_argument(
         "name",
@@ -397,24 +412,35 @@ def create_parser() -> ArgumentParser:
         "will list all available languages",
         nargs="?",
     )
-
-    model_list_parser = model_subparsers.add_parser("list")
+    help_message = "List of saved models"
+    model_list_parser = model_subparsers.add_parser(
+        "list", description=help_message, help=help_message
+    )
     model_list_parser.add_argument(
-        "model_type", nargs="?", help=f"Type of model to list, options: {', '.join(MODEL_TYPES)}"
+        "model_type", choices=sorted(MODEL_TYPES), nargs="?", help="Type of model to list"
     )
 
-    model_inspect_parser = model_subparsers.add_parser("inspect")
+    help_message = "Inspect a model and output its metadata"
+    model_inspect_parser = model_subparsers.add_parser(
+        "inspect", description=help_message, help=help_message
+    )
     model_inspect_parser.add_argument(
         "model_type",
+        choices=sorted(MODEL_TYPES),
         nargs="?",
-        help=f"Type of model to download, options: {', '.join(MODEL_TYPES)}",
+        help="Type of model to download",
     )
     model_inspect_parser.add_argument(
         "name", help="Name of pretrained model or path to MFA model to inspect"
     )
 
-    model_save_parser = model_subparsers.add_parser("save")
-    model_save_parser.add_argument("model_type", help="Type of MFA model")
+    help_message = "Save a MFA model to the pretrained directory for name-based referencing"
+    model_save_parser = model_subparsers.add_parser(
+        "save", description=help_message, help=help_message
+    )
+    model_save_parser.add_argument(
+        "model_type", choices=sorted(MODEL_TYPES), help="Type of MFA model"
+    )
     model_save_parser.add_argument(
         "path", help="Path to MFA model to save for invoking with just its name"
     )
@@ -430,7 +456,9 @@ def create_parser() -> ArgumentParser:
         action="store_true",
     )
 
-    train_lm_parser = subparsers.add_parser("train_lm")
+    train_lm_parser = subparsers.add_parser(
+        "train_lm", help="Train a language model from a corpus"
+    )
     train_lm_parser.add_argument(
         "source_path",
         help="Full path to the source directory to train from, alternatively "
@@ -463,7 +491,10 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(train_lm_parser)
 
-    train_dictionary_parser = subparsers.add_parser("train_dictionary")
+    train_dictionary_parser = subparsers.add_parser(
+        "train_dictionary",
+        help="Calculate pronunciation probabilities for a dictionary based on alignment results in a corpus",
+    )
     train_dictionary_parser.add_argument(
         "corpus_directory", help="Full path to the directory to align"
     )
@@ -491,10 +522,13 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(train_dictionary_parser)
 
-    train_ivector_parser = subparsers.add_parser("train_ivector")
+    train_ivector_parser = subparsers.add_parser(
+        "train_ivector",
+        help="Train an ivector extractor from a corpus and pretrained acoustic model",
+    )
     train_ivector_parser.add_argument(
         "corpus_directory",
-        help="Full path to the source directory to " "train the ivector extractor",
+        help="Full path to the source directory to train the ivector extractor",
     )
     train_ivector_parser.add_argument(
         "dictionary_path", help="Full path to the pronunciation dictionary to use"
@@ -524,10 +558,12 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(train_ivector_parser)
 
-    classify_speakers_parser = subparsers.add_parser("classify_speakers")
+    classify_speakers_parser = subparsers.add_parser(
+        "classify_speakers", help="Use an ivector extractor to cluster utterances into speakers"
+    )
     classify_speakers_parser.add_argument(
         "corpus_directory",
-        help="Full path to the source directory to " "run speaker classification",
+        help="Full path to the source directory to run speaker classification",
     )
     classify_speakers_parser.add_argument(
         "ivector_extractor_path", type=str, default="", help="Full path to ivector extractor model"
@@ -551,9 +587,11 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(classify_speakers_parser)
 
-    create_segments_parser = subparsers.add_parser("create_segments")
+    create_segments_parser = subparsers.add_parser(
+        "create_segments", help="Create segments based on voice activity dectection (VAD)"
+    )
     create_segments_parser.add_argument(
-        "corpus_directory", help="Full path to the source directory to " "run VAD segmentation"
+        "corpus_directory", help="Full path to the source directory to run VAD segmentation"
     )
     create_segments_parser.add_argument(
         "output_directory",
@@ -564,7 +602,10 @@ def create_parser() -> ArgumentParser:
     )
     add_global_options(create_segments_parser)
 
-    transcribe_parser = subparsers.add_parser("transcribe")
+    transcribe_parser = subparsers.add_parser(
+        "transcribe",
+        help="Transcribe utterances using an acoustic model, language model, and pronunciation dictionary",
+    )
     transcribe_parser.add_argument(
         "corpus_directory", help="Full path to the directory to transcribe"
     )
@@ -604,7 +645,7 @@ def create_parser() -> ArgumentParser:
     transcribe_parser.add_argument(
         "-e",
         "--evaluate",
-        help="Evaluate the transcription " "against golden texts",
+        help="Evaluate the transcription against golden texts",
         action="store_true",
     )
     add_global_options(transcribe_parser)
@@ -703,15 +744,20 @@ def create_parser() -> ArgumentParser:
         type=int,
     )
 
-    history_parser = subparsers.add_parser("history")
+    history_parser = subparsers.add_parser("history", help="Show previously run mfa commands")
+    _ = subparsers.add_parser("thirdparty", help="DEPRECATED: Please install Kaldi via conda.")
+    _ = subparsers.add_parser(
+        "download", help="DEPRECATED: Please use mfa model download instead."
+    )
 
     history_parser.add_argument("depth", help="Number of commands to list", nargs="?", default=10)
     history_parser.add_argument(
         "--verbose", help="Flag for whether to output additional information", action="store_true"
     )
 
-    _ = subparsers.add_parser("annotator")
-    _ = subparsers.add_parser("anchor")
+    _ = subparsers.add_parser(
+        "anchor", aliases=["annotator"], help="Launch Anchor Annotator (if installed)"
+    )
 
     return parser
 
@@ -795,6 +841,14 @@ def main() -> None:
             from montreal_forced_aligner.utils import get_mfa_version
 
             print(get_mfa_version())
+        elif args.subcommand == "thirdparty":  # Deprecated command
+            raise DeprecationWarning(
+                "Necessary thirdparty executables are now installed via conda. Please refer to the installation docs for the updated commands."
+            )
+        elif args.subcommand == "download":  # Deprecated command
+            raise DeprecationWarning(
+                "Downloading models is now run through the `mfa model download` command, please use that instead."
+            )
     except MFAError as e:
         if getattr(args, "debug", False):
             raise
