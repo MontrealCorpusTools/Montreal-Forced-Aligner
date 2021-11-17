@@ -1,9 +1,8 @@
 name: Publish Python distributions to PyPI and TestPyPI
 
 on:
-  release:
-    types:
-      - created
+  - push
+  - release
 
 jobs:
   build-n-publish:
@@ -57,13 +56,15 @@ jobs:
           .
       - name: Publish to Test PyPI
         if: startsWith(github.event.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@master
+        uses: pypa/gh-action-pypi-publish@v1
         with:
+          user: __token__
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository_url: https://test.pypi.org/legacy/
 
       - name: Publish to PyPI
         if: startsWith(github.event.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@master
+        uses: pypa/gh-action-pypi-publish@v1
         with:
+          user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
