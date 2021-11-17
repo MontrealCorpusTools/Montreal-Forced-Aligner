@@ -50,7 +50,12 @@ jobs:
 
       - name: Build a binary wheel and a source tarball
         run: |
-          python -m pep517.build --source --wheel --out-dir dist/ .
+          python -m
+          build
+          --sdist
+          --wheel
+          --outdir dist/
+          .
       - name: Publish to Test PyPI
         if: startsWith(github.event.ref, 'refs/tags')
         uses: pypa/gh-action-pypi-publish@master
