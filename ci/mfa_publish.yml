@@ -15,10 +15,8 @@ dependencies:
   - baumwelch
   - ngram
   - pynini
-  - setuptools
-  - setuptools_scm[toml]
+  - setuptools_scm
   - pip
   - pip:
-     - build
-     - twine
+     - pep517
      - praatio >= 5.0
