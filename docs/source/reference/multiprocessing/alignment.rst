@@ -60,23 +60,6 @@ Acoustic model adaptation
    map_acc_stats_func
 
 
-TextGrid Export
----------------
-
-.. currentmodule:: montreal_forced_aligner.multiprocessing.alignment
-
-.. autosummary::
-   :toctree: generated/
-
-   ctms_to_textgrids_mp
-   convert_ali_to_textgrids
-   ali_to_ctm_func
-   PhoneCtmProcessWorker
-   CleanupWordCtmProcessWorker
-   NoCleanupWordCtmProcessWorker
-   CombineProcessWorker
-   ExportPreparationProcessWorker
-   ExportTextGridProcessWorker
 
 Pronunciation probabilities
 ---------------------------

@@ -2,20 +2,22 @@
 from __future__ import annotations
 
 import functools
-import logging
 import multiprocessing as mp
 import os
 import queue
 import sys
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Union
 
 import tqdm
 
-from ..config import TEMP_DIR
+from ..abc import TopLevelMfaWorker
+from ..corpus.text_corpus import TextCorpusMixin
 from ..exceptions import G2PError
-from ..multiprocessing import Counter, Stopped
+from ..models import G2PModel
+from ..utils import Counter, Stopped
+from .mixins import G2PTopLevelMixin
 
 try:
     import pynini
@@ -32,10 +34,9 @@ except ImportError:
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
-    from ..models import G2PModel
 
 
-__all__ = ["Rewriter", "RewriterWorker", "PyniniDictionaryGenerator"]
+__all__ = ["Rewriter", "RewriterWorker", "PyniniCorpusGenerator", "PyniniWordListGenerator"]
 
 
 class Rewriter:
@@ -68,7 +69,7 @@ class RewriterWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: Dict[str, Union[str, Any]],
+        return_dict: dict[str, Union[str, Any]],
         rewriter: Rewriter,
         counter: Counter,
         stopped: Stopped,
@@ -105,7 +106,7 @@ class RewriterWorker(mp.Process):
         return
 
 
-def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
+def clean_up_word(word: str, graphemes: set[str]) -> tuple[str, list[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -133,76 +134,80 @@ def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
     return "".join(new_word), missing_graphemes
 
 
-class PyniniDictionaryGenerator:
+class OrthographyGenerator(G2PTopLevelMixin):
     """
-    Class for generating pronunciations from a G2P model
+    Abstract mixin class for generating "pronunciations" based off the orthographic word
     """
 
-    def __init__(
-        self,
-        g2p_model: G2PModel,
-        word_set: Collection[str],
-        temp_directory: Optional[str] = None,
-        num_jobs: int = 3,
-        num_pronunciations: int = 1,
-        logger: Optional[logging.Logger] = None,
-    ):
-        super(PyniniDictionaryGenerator, self).__init__()
-        if not temp_directory:
-            temp_directory = TEMP_DIR
-        temp_directory = os.path.join(temp_directory, "G2P")
-        self.model = g2p_model
+    def generate_pronunciations(self) -> dict[str, list[str]]:
+        """
+        Generate pronunciations for the word set
 
-        self.temp_directory = os.path.join(temp_directory, self.model.name)
-        log_dir = os.path.join(self.temp_directory, "logging")
-        os.makedirs(log_dir, exist_ok=True)
-        self.log_file = os.path.join(log_dir, "g2p.log")
-        if logger is not None:
-            self.logger = logger
-        else:
-            self.logger = logging.getLogger("g2p")
-            self.logger.setLevel(logging.INFO)
-            handler = logging.FileHandler(self.log_file, "w", "utf-8")
-            handler.setFormatter = logging.Formatter("%(name)s %(message)s")
-            self.logger.addHandler(handler)
-        self.words = word_set
-        self.num_jobs = num_jobs
-        self.num_pronunciations = num_pronunciations
+        Returns
+        -------
+        dict[str, list[str]]
+            Mapping of words to their "pronunciation"
+        """
+        pronunciations = {}
+        for word in self.words_to_g2p:
+            pronunciation = list(word)
+            pronunciations[word] = pronunciation
+        return pronunciations
 
-    def generate(self) -> Dict[str, List[str]]:
+
+class PyniniGenerator(G2PTopLevelMixin):
+    """
+    Class for generating pronunciations from a Pynini G2P model
+
+    Parameters
+    ----------
+    g2p_model_path: str
+        Path to G2PModel
+
+    Attributes
+    ----------
+    g2p_model: G2PModel
+        G2P model
+    """
+
+    def __init__(self, g2p_model_path: str, **kwargs):
+        self.g2p_model = G2PModel(g2p_model_path)
+        super().__init__(**kwargs)
+
+    def generate_pronunciations(self) -> dict[str, list[str]]:
         """
         Generate pronunciations
 
         Returns
         -------
-        Dict
+        dict[str, list[str]]
             Mappings of keys to their generated pronunciations
         """
-        if self.model.meta["architecture"] == "phonetisaurus":
+        if self.g2p_model.meta["architecture"] == "phonetisaurus":
             raise G2PError(
                 "Previously trained Phonetisaurus models from 1.1 and earlier are not currently supported. "
                 "Please retrain your model using 2.0+"
             )
 
         input_token_type = "utf8"
-        fst = pynini.Fst.read(self.model.fst_path)
+        fst = pynini.Fst.read(self.g2p_model.fst_path)
 
         output_token_type = "utf8"
-        if self.model.sym_path is not None and os.path.exists(self.model.sym_path):
-            output_token_type = pynini.SymbolTable.read_text(self.model.sym_path)
+        if self.g2p_model.sym_path is not None and os.path.exists(self.g2p_model.sym_path):
+            output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
         rewriter = Rewriter(fst, input_token_type, output_token_type, self.num_pronunciations)
 
         ind = 0
-        num_words = len(self.words)
-        words = list(self.words)
+        num_words = len(self.words_to_g2p)
+        words = list(self.words_to_g2p)
         begin = time.time()
         last_value = 0
         missing_graphemes = set()
-        print("Generating pronunciations...")
+        self.log_info("Generating pronunciations...")
         to_return = {}
         if num_words < 30 or self.num_jobs < 2:
             for word in words:
-                w, m = clean_up_word(word, self.model.meta["graphemes"])
+                w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes.update(m)
                 if not w:
                     continue
@@ -219,7 +224,7 @@ class PyniniDictionaryGenerator:
                     if ind == num_words:
                         break
                     try:
-                        w, m = clean_up_word(words[ind], self.model.meta["graphemes"])
+                        w, m = clean_up_word(words[ind], self.g2p_model.meta["graphemes"])
                         missing_graphemes.update(m)
                         if not w:
                             ind += 1
@@ -239,7 +244,7 @@ class PyniniDictionaryGenerator:
                 while True:
                     if ind == num_words:
                         break
-                    w, m = clean_up_word(words[ind], self.model.meta["graphemes"])
+                    w, m = clean_up_word(words[ind], self.g2p_model.meta["graphemes"])
                     missing_graphemes.update(m)
                     if not w:
                         ind += 1
@@ -254,32 +259,144 @@ class PyniniDictionaryGenerator:
                 p.join()
             if "MFA_EXCEPTION" in return_dict:
                 element, exc = return_dict["MFA_EXCEPTION"]
-                print(element)
+                self.log_error(f"Encountered error processing: {element}")
                 raise exc
-            for w in self.words:
+            for w in self.words_to_g2p:
                 if w in return_dict:
                     to_return[w] = return_dict[w]
-        self.logger.debug(f"Processed {num_words} in {time.time() - begin} seconds")
+        self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return
 
-    def output(self, outfile: str) -> None:
-        """
-        Output pronunciations to text file
 
-        Parameters
-        ----------
-        outfile: str
-            Path to save
-        """
-        results = self.generate()
-        with open(outfile, "w", encoding="utf8") as f:
-            for (word, pronunciation) in results.items():
-                if not pronunciation:
-                    continue
-                if isinstance(pronunciation, list):
-                    for p in pronunciation:
-                        if not p:
-                            continue
-                        f.write(f"{word}\t{p}\n")
-                else:
-                    f.write(f"{word}\t{pronunciation}\n")
+class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
+    """
+    Top-level worker for generating pronunciations from a word list and a Pynini G2P model
+
+    Parameters
+    ----------
+    word_list_path: str
+        Path to word list file
+
+    Attributes
+    ----------
+    word_list: list[str]
+        Word list to generate pronunciations
+    """
+
+    def __init__(self, word_list_path: str, **kwargs):
+        self.word_list_path = word_list_path
+        self.word_list = []
+        super().__init__(**kwargs)
+
+    @property
+    def data_directory(self) -> str:
+        """Data directory"""
+        return self.working_directory
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Name of the word list file"""
+        return os.path.splitext(os.path.basename(self.word_list_path))[0]
+
+    def setup(self) -> None:
+        """Set up the G2P generator"""
+        if self.initialized:
+            return
+        with open(self.word_list_path, "r", encoding="utf8") as f:
+            for line in f:
+                self.word_list.extend(line.strip().split())
+        if not self.include_bracketed:
+            self.word_list = [x for x in self.word_list if not self.check_bracketed(x)]
+        self.g2p_model.validate(self.words_to_g2p)
+        self.initialized = True
+
+    @property
+    def words_to_g2p(self) -> list[str]:
+        """Words to produce pronunciations"""
+        return self.word_list
+
+
+class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker):
+    """
+    Top-level worker for generating pronunciations from a corpus and a Pynini G2P model
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def setup(self) -> None:
+        """Set up the pronunciation generator"""
+        if self.initialized:
+            return
+        self._load_corpus()
+        self.g2p_model.validate(self.words_to_g2p)
+        self.initialized = True
+
+    @property
+    def words_to_g2p(self) -> list[str]:
+        """Words to produce pronunciations"""
+        word_list = self.corpus_word_set
+        if not self.include_bracketed:
+            word_list = [x for x in word_list if not self.check_bracketed(x)]
+        return word_list
+
+
+class OrthographicCorpusGenerator(OrthographyGenerator, TextCorpusMixin, TopLevelMfaWorker):
+    """
+    Top-level class for generating "pronunciations" from the orthography of a corpus
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def setup(self) -> None:
+        """Set up the pronunciation generator"""
+        if self.initialized:
+            return
+        self._load_corpus()
+        self.initialized = True
+
+    @property
+    def words_to_g2p(self) -> list[str]:
+        """Words to produce pronunciations"""
+        word_list = self.corpus_word_set
+        if not self.include_bracketed:
+            word_list = [x for x in word_list if not self.check_bracketed(x)]
+        return word_list
+
+
+class OrthographicWordListGenerator(OrthographyGenerator, G2PTopLevelMixin, TopLevelMfaWorker):
+    """
+    Top-level class for generating "pronunciations" from the orthography of a corpus
+
+    Parameters
+    ----------
+    word_list_path: str
+        Path to word list file
+
+    Attributes
+    ----------
+    word_list: list[str]
+        Word list to generate pronunciations
+    """
+
+    def __init__(self, word_list_path: str, **kwargs):
+        super().__init__(**kwargs)
+        self.word_list_path = word_list_path
+        self.word_list = []
+
+    def setup(self) -> None:
+        """Set up the pronunciation generator"""
+        if self.initialized:
+            return
+        with open(self.word_list_path, "r", encoding="utf8") as f:
+            for line in f:
+                self.word_list.extend(line.strip().split())
+        if not self.include_bracketed:
+            self.word_list = [x for x in self.word_list if not self.check_bracketed(x)]
+        self.initialized = True
+
+    @property
+    def words_to_g2p(self) -> list[str]:
+        """Words to produce pronunciations"""
+        return self.word_list

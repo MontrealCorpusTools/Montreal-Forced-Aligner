@@ -15,7 +15,7 @@ def test_transcribe(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
-    transcribe_config,
+    transcribe_config_path,
 ):
     output_path = os.path.join(generated_dir, "transcribe_test")
     command = [
@@ -32,7 +32,7 @@ def test_transcribe(
         "--debug",
         "-v",
         "--config_path",
-        transcribe_config,
+        transcribe_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
@@ -48,7 +48,7 @@ def test_transcribe_arpa(
     transcription_acoustic_model,
     transcription_language_model_arpa,
     temp_dir,
-    transcribe_config,
+    transcribe_config_path,
 ):
     if sys.platform == "win32":
         pytest.skip("No LM generation on Windows")
@@ -67,7 +67,7 @@ def test_transcribe_arpa(
         "--debug",
         "-v",
         "--config_path",
-        transcribe_config,
+        transcribe_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
@@ -82,7 +82,7 @@ def test_transcribe_speaker_dictionaries(
     generated_dir,
     transcription_language_model,
     temp_dir,
-    transcribe_config,
+    transcribe_config_path,
 ):
     output_path = os.path.join(generated_dir, "transcribe_test")
     command = [
@@ -98,7 +98,7 @@ def test_transcribe_speaker_dictionaries(
         "--clean",
         "--debug",
         "--config_path",
-        transcribe_config,
+        transcribe_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
@@ -111,7 +111,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
     generated_dir,
     transcription_language_model,
     temp_dir,
-    transcribe_config,
+    transcribe_config_path,
 ):
     output_path = os.path.join(generated_dir, "transcribe_test")
     command = [
@@ -127,7 +127,7 @@ def test_transcribe_speaker_dictionaries_evaluate(
         "--clean",
         "--debug",
         "--config_path",
-        transcribe_config,
+        transcribe_config_path,
         "--evaluate",
     ]
     args, unknown = parser.parse_known_args(command)

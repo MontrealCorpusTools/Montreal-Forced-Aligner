@@ -1,9 +1,0 @@
-beam: 100
-retry_beam: 400
-disable_sat: false
-
-features:
-  type: "mfcc"
-  use_energy: false
-  frame_shift: 10
-  snip_edges: true

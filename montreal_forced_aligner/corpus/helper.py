@@ -4,16 +4,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
-
-if TYPE_CHECKING:
-    from ..config.dictionary_config import DictionaryConfig
+from typing import Optional, Union
 
 import soundfile
 
+from ..dictionary.mixins import SanitizeFunction
 from ..exceptions import SoxError
 
-SoundFileInfoDict = Dict[str, Union[int, float, str]]
+SoundFileInfoDict = dict[str, Union[int, float, str]]
 
 supported_audio_extensions = [".flac", ".ogg", ".aiff", ".mp3"]
 
@@ -39,9 +37,7 @@ def load_text(path: str) -> str:
     return text
 
 
-def parse_transcription(
-    text: str, dictionary_config: Optional[DictionaryConfig] = None
-) -> List[str]:
+def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction]) -> list[str]:
     """
     Parse an orthographic transcription given punctuation and clitic markers
 
@@ -49,22 +45,19 @@ def parse_transcription(
     ----------
     text: str
         Orthographic text to parse
-    dictionary_config: Optional[DictionaryConfig]
-        Characters to treat as punctuation
+    sanitize_function: SanitizeFunction, optional
+        Function to sanitize words and strip punctuation
 
     Returns
     -------
     List
         Parsed orthographic transcript
     """
-    if dictionary_config is not None:
-        words = [dictionary_config.sanitize(x) for x in text.split()]
+    if sanitize_function is not None:
         words = [
-            x
-            for x in words
-            if x
-            and x not in dictionary_config.clitic_markers
-            and x not in dictionary_config.compound_markers
+            sanitize_function(w)
+            for w in text.split()
+            if w not in sanitize_function.clitic_markers + sanitize_function.compound_markers
         ]
     else:
         words = text.split()
@@ -72,8 +65,8 @@ def parse_transcription(
 
 
 def find_exts(
-    files: List[str],
-) -> Tuple[List[str], Dict[str, str], Dict[str, str], Dict[str, str], Dict[str, str]]:
+    files: list[str],
+) -> tuple[list[str], dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
     """
     Find and group sound file extensions and transcription file extensions
 
@@ -120,7 +113,7 @@ def find_exts(
     return identifiers, wav_files, lab_files, textgrid_files, other_audio_files
 
 
-def get_wav_info(file_path: str, sample_rate: int = 16000) -> dict:
+def get_wav_info(file_path: str) -> dict:
     """
     Get sound file information
 
@@ -128,8 +121,6 @@ def get_wav_info(file_path: str, sample_rate: int = 16000) -> dict:
     ----------
     file_path: str
         Sound file path
-    sample_rate: int
-        Default sample rate
 
     Returns
     -------
@@ -190,5 +181,5 @@ def get_wav_info(file_path: str, sample_rate: int = 16000) -> dict:
             use_sox = True
     return_dict["sox_string"] = ""
     if use_sox:
-        return_dict["sox_string"] = f"sox {file_path} -t wav -b 16 -r {sample_rate} - |"
+        return_dict["sox_string"] = f"sox {file_path} -t wav -b 16 - |"
     return return_dict

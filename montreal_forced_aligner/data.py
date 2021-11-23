@@ -4,34 +4,39 @@ Data classes
 
 """
 from dataclasses import dataclass
-from typing import List
 
 from praatio.utilities.constants import Interval
 
-__all__ = ["CtmInterval"]
+from .exceptions import CtmError
+
+__all__ = ["CtmInterval", "CtmType"]
 
 
 @dataclass
 class CtmInterval:
     """
     Data class for intervals derived from CTM files
-
-    Attributes
-    ----------
-    begin: float
-        Start time of interval
-    end: float
-        End time of interval
-    label: str
-        Text of interval
-    utterance: str
-        Utterance ID that the interval belongs to
     """
 
     begin: float
+    """Start time of interval"""
     end: float
+    """End time of interval"""
     label: str
+    """Text of interval"""
     utterance: str
+    """Utterance ID that the interval belongs to"""
+
+    def __post_init__(self):
+        """
+        Check on data validity
+
+        Raises
+        ------
+        CtmError
+            If begin or end are not valid"""
+        if self.end < -1 or self.begin == 1000000:
+            raise CtmError(self)
 
     def shift_times(self, offset: float):
         """
@@ -41,7 +46,6 @@ class CtmInterval:
         ----------
         offset: float
             Offset to add to the interval's begin and end
-
         """
         self.begin += offset
         self.end += offset
@@ -52,10 +56,12 @@ class CtmInterval:
 
         Returns
         -------
-        :class:`~praatio.utilities.constants.Interval`
+        :class:`praatio.utilities.constants.Interval`
             Derived PraatIO Interval
         """
+        if self.end < -1 or self.begin == 1000000:
+            raise CtmError(self)
         return Interval(self.begin, self.end, self.label)
 
 
-CtmType = List[CtmInterval]
+CtmType: list[CtmInterval]

@@ -7,7 +7,7 @@ from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 
 
-def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config):
+def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config_path):
     if sys.platform == "win32":
         pytest.skip("LM training not supported on Windows.")
     command = [
@@ -17,7 +17,7 @@ def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_conf
         "-t",
         temp_dir,
         "--config_path",
-        basic_train_lm_config,
+        basic_train_lm_config_path,
         "-q",
         "--clean",
     ]
@@ -26,7 +26,7 @@ def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_conf
     assert os.path.exists(args.output_model_path)
 
 
-def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config):
+def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
     if sys.platform == "win32":
         pytest.skip("LM training not supported on Windows.")
     text_dir = basic_split_dir[1]
@@ -37,7 +37,7 @@ def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_
         "-t",
         temp_dir,
         "--config_path",
-        basic_train_lm_config,
+        basic_train_lm_config_path,
         "-q",
         "--clean",
     ]
@@ -46,7 +46,7 @@ def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_
     assert os.path.exists(args.output_model_path)
 
 
-def test_train_lm_text_no_mp(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config):
+def test_train_lm_text_no_mp(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
     if sys.platform == "win32":
         pytest.skip("LM training not supported on Windows.")
     text_dir = basic_split_dir[1]
@@ -57,7 +57,7 @@ def test_train_lm_text_no_mp(basic_split_dir, temp_dir, generated_dir, basic_tra
         "-t",
         temp_dir,
         "--config_path",
-        basic_train_lm_config,
+        basic_train_lm_config_path,
         "-q",
         "--clean",
         "-j",

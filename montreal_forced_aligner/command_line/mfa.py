@@ -33,13 +33,6 @@ from montreal_forced_aligner.config import (
 )
 from montreal_forced_aligner.exceptions import MFAError
 from montreal_forced_aligner.models import MODEL_TYPES
-from montreal_forced_aligner.utils import (
-    get_available_acoustic_models,
-    get_available_dictionaries,
-    get_available_g2p_models,
-    get_available_ivector_extractors,
-    get_available_language_models,
-)
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -105,13 +98,6 @@ def history_save_handler() -> None:
         raise hooks.exception
 
 
-acoustic_models = get_available_acoustic_models()
-ivector_extractors = get_available_ivector_extractors()
-language_models = get_available_language_models()
-g2p_models = get_available_g2p_models()
-dictionaries = get_available_dictionaries()
-
-
 def create_parser() -> ArgumentParser:
     """
     Constructs the MFA argument parser
@@ -137,9 +123,11 @@ def create_parser() -> ArgumentParser:
         subparser.add_argument(
             "-t",
             "--temp_directory",
+            "--temporary_directory",
+            dest="temporary_directory",
             type=str,
-            default=GLOBAL_CONFIG["temp_directory"],
-            help=f"Temporary directory root to store MFA created files, default is {GLOBAL_CONFIG['temp_directory']}",
+            default=GLOBAL_CONFIG["temporary_directory"],
+            help=f"Temporary directory root to store MFA created files, default is {GLOBAL_CONFIG['temporary_directory']}",
         )
         subparser.add_argument(
             "--disable_mp",
@@ -204,7 +192,7 @@ def create_parser() -> ArgumentParser:
     )
     align_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
     )
     align_parser.add_argument(
         "output_directory",
@@ -237,7 +225,7 @@ def create_parser() -> ArgumentParser:
     )
     adapt_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
     )
     adapt_parser.add_argument(
         "output_paths",
@@ -250,12 +238,6 @@ def create_parser() -> ArgumentParser:
         type=str,
         default="",
         help="Full path to save adapted acoustic model",
-    )
-    adapt_parser.add_argument(
-        "--full_train",
-        action="store_true",
-        help="Specify whether to do a round of speaker-adapted training rather than the default "
-        "remapping approach to adaptation",
     )
     adapt_parser.add_argument(
         "--config_path", type=str, default="", help="Path to config file to use for alignment"
@@ -332,7 +314,7 @@ def create_parser() -> ArgumentParser:
         "acoustic_model_path",
         nargs="?",
         default="",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
     )
     validate_parser.add_argument(
         "-s",
@@ -343,12 +325,25 @@ def create_parser() -> ArgumentParser:
         "default is to use directory names",
     )
     validate_parser.add_argument(
+        "--config_path",
+        type=str,
+        default="",
+        help="Path to config file to use for training and alignment",
+    )
+    validate_parser.add_argument(
         "--test_transcriptions", help="Test accuracy of transcriptions", action="store_true"
     )
     validate_parser.add_argument(
         "--ignore_acoustics",
         help="Skip acoustic feature generation and associated validation",
         action="store_true",
+    )
+    validate_parser.add_argument(
+        "-a",
+        "--audio_directory",
+        type=str,
+        default="",
+        help="Audio directory root to use for finding audio files",
     )
     add_global_options(validate_parser)
 
@@ -357,7 +352,7 @@ def create_parser() -> ArgumentParser:
     )
     g2p_parser.add_argument(
         "g2p_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(g2p_models)}). If not specified, then orthographic transcription is split into pronunciations.",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['g2p'].get_available_models())}). If not specified, then orthographic transcription is split into pronunciations.",
         nargs="?",
     )
 
@@ -503,7 +498,7 @@ def create_parser() -> ArgumentParser:
     )
     train_dictionary_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
     )
     train_dictionary_parser.add_argument(
         "output_directory",
@@ -614,11 +609,11 @@ def create_parser() -> ArgumentParser:
     )
     transcribe_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
     )
     transcribe_parser.add_argument(
         "language_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(language_models)})",
+        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['language_model'].get_available_models())})",
     )
     transcribe_parser.add_argument(
         "output_directory",
@@ -658,9 +653,11 @@ def create_parser() -> ArgumentParser:
     config_parser.add_argument(
         "-t",
         "--temp_directory",
+        "--temporary_directory",
+        dest="temporary_directory",
         type=str,
         default="",
-        help=f"Set the default temporary directory, default is {GLOBAL_CONFIG['temp_directory']}",
+        help=f"Set the default temporary directory, default is {GLOBAL_CONFIG['temporary_directory']}",
     )
     config_parser.add_argument(
         "-j",

@@ -3,11 +3,12 @@ MFA workers
 
 .. toctree::
 
-   aligner
+   acoustic_modeling
+   alignment
    g2p
-   lm
+   language_modeling
+   ivector
    segmenter
    speaker_classifier
-   trainers
    transcriber
    validator

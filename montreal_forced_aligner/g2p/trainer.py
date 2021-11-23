@@ -14,15 +14,16 @@ import subprocess
 import sys
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Callable, NamedTuple, Optional
 
 import tqdm
 
-from ..config import TEMP_DIR
+from ..abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
+from ..dictionary.base_dictionary import PronunciationDictionaryMixin
 from ..helper import score
 from ..models import G2PModel
-from ..multiprocessing import Counter, Stopped
-from .generator import PyniniDictionaryGenerator
+from ..utils import Counter, Stopped
+from .generator import PyniniGenerator
 
 try:
     import pynini
@@ -35,23 +36,19 @@ try:
 except ImportError:
     pynini = None
     pywrapfst = None
-    TokenType = None
+    TokenType = Optional[str]
     Fst = None
 
     def convert(x):
+        """stub function"""
         pass
 
     G2P_DISABLED = True
 
-if TYPE_CHECKING:
-    from ..abc import Dictionary, DictionaryEntryType
-    from ..config.train_g2p_config import TrainG2PConfig
 
-
-Labels = List[Any]
+Labels = list[Any]
 
 TOKEN_TYPES = ["byte", "utf8"]
-DEV_NULL = open(os.devnull, "w")
 INF = float("inf")
 RAND_MAX = 32767
 
@@ -67,63 +64,7 @@ class RandomStart(NamedTuple):
     p_path: str
     c_path: str
     tempdir: str
-    train_opts: List[str]
-
-
-def compute_validation_errors(
-    gold_values: Dict[str, List[Dict[str, str]]],
-    hypothesis_values: Dict[str, List[str]],
-    num_jobs: int = 3,
-) -> Tuple[float, float]:
-    """
-    Computes validation errors
-
-    Parameters
-    ----------
-    gold_values: Dict
-        Gold labels
-    hypothesis_values: Dict
-        Hypothesis labels
-    num_jobs: int
-        Number of jobs to use
-
-    Returns
-    -------
-    float
-        Word error rate
-    float
-        Phone error rate
-    """
-    # Word-level measures.
-    correct = 0
-    incorrect = 0
-    # Label-level measures.
-    total_edits = 0
-    total_length = 0
-    # Since the edit distance algorithm is quadratic, let's do this with
-    # multiprocessing.
-    with mp.Pool(num_jobs) as pool:
-        to_comp = []
-        for word, hyp in hypothesis_values.items():
-            g = gold_values[word][0]["pronunciation"]
-            hyp = [h.split(" ") for h in hyp]
-            to_comp.append((g, hyp))
-        gen = pool.starmap(score, to_comp)
-        for (edits, length) in gen:
-            if edits == 0:
-                correct += 1
-            else:
-                incorrect += 1
-            total_edits += edits
-            total_length += length
-        for w, gold in gold_values.items():
-            if w not in hypothesis_values:
-                incorrect += 1
-                gold = gold[0]["pronunciation"]
-                total_edits += len(gold)
-                total_length += len(gold)
-
-    return 100 * incorrect / (correct + incorrect), 100 * total_edits / total_length
+    train_opts: list[str]
 
 
 class RandomStartWorker(mp.Process):
@@ -134,7 +75,7 @@ class RandomStartWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: Dict,
+        return_dict: dict,
         function: Callable,
         counter: Counter,
         stopped: Stopped,
@@ -161,7 +102,7 @@ class RandomStartWorker(mp.Process):
                 self.return_dict[fst_path] = likelihood
             except Exception:
                 self.stopped.stop()
-                self.return_dict["error"] = args, Exception(
+                self.return_dict["MFA_ERROR"] = args, Exception(
                     traceback.format_exception(*sys.exc_info())
                 )
             self.counter.increment()
@@ -173,14 +114,14 @@ class PairNGramAligner:
 
     _compactor = functools.partial(convert, fst_type="compact_string")
 
-    def __init__(self, temp_directory: str):
-        self.tempdir = temp_directory
-        self.g_path = os.path.join(self.tempdir, "g.far")
-        self.p_path = os.path.join(self.tempdir, "p.far")
-        self.c_path = os.path.join(self.tempdir, "c.fst")
-        self.align_path = os.path.join(self.tempdir, "align.fst")
-        self.afst_path = os.path.join(self.tempdir, "afst.far")
-        self.align_log_path = os.path.join(self.tempdir, "align.log")
+    def __init__(self, working_directory: str):
+        self.working_directory = working_directory
+        self.g_path = os.path.join(self.working_directory, "g.far")
+        self.p_path = os.path.join(self.working_directory, "p.far")
+        self.c_path = os.path.join(self.working_directory, "c.fst")
+        self.align_path = os.path.join(self.working_directory, "align.fst")
+        self.afst_path = os.path.join(self.working_directory, "afst.far")
+        self.align_log_path = os.path.join(self.working_directory, "align.log")
         self.logger = logging.getLogger("g2p_aligner")
         self.logger.setLevel(logging.DEBUG)
 
@@ -236,7 +177,7 @@ class PairNGramAligner:
         self.logger.info("Success! FAR path: %s; encoder path: %s", far_path, encoder_path)
 
     @staticmethod
-    def _label_union(labels: Set[int], epsilon: bool) -> Fst:
+    def _label_union(labels: set[int], epsilon: bool) -> Fst:
         """Creates FSA over a union of the labels."""
         side = pynini.Fst()
         src = side.add_state()
@@ -268,8 +209,8 @@ class PairNGramAligner:
     ) -> None:
         """Builds covering grammar and lexicon FARs."""
         # Sets of labels for the covering grammar.
-        g_labels: Set[int] = set()
-        p_labels: Set[int] = set()
+        g_labels: set[int] = set()
+        p_labels: set[int] = set()
         self.logger.info("Constructing grapheme and phoneme FARs")
         g_writer = pywrapfst.FarWriter.create(self.g_path)
         p_writer = pywrapfst.FarWriter.create(self.p_path)
@@ -300,7 +241,7 @@ class PairNGramAligner:
         covering.write(self.c_path)
 
     @staticmethod
-    def _random_start(random_start: RandomStart) -> Tuple[str, float]:
+    def _random_start(random_start: RandomStart) -> tuple[str, float]:
         """Performs a single random start."""
         start = time.time()
         logger = logging.getLogger("g2p_aligner")
@@ -384,7 +325,7 @@ class PairNGramAligner:
                         self.g_path,
                         self.p_path,
                         self.c_path,
-                        self.tempdir,
+                        self.working_directory,
                         train_opts,
                     )
                 )
@@ -397,8 +338,7 @@ class PairNGramAligner:
             job_queue = mp.JoinableQueue(cores + 2)
 
             # Actually runs starts.
-            self.logger.info("Random starts")
-            print("Calculating alignments...")
+            self.logger.info("Calculating alignments...")
             begin = time.time()
             last_value = 0
             ind = 0
@@ -440,8 +380,8 @@ class PairNGramAligner:
                 job_queue.join()
                 for p in procs:
                     p.join()
-            if "error" in return_dict:
-                element, exc = return_dict["error"]
+            if "MFA_ERROR" in return_dict:
+                element, exc = return_dict["MFA_ERROR"]
                 print(element)
                 raise exc
             (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
@@ -484,93 +424,232 @@ class PairNGramAligner:
         encoder.write(encoder_path)
 
 
-class PyniniTrainer:
+class PyniniValidator(PyniniGenerator):
     """
-    Class for G2P trainer that uses Pynini functionality
+    Class for running validation for G2P model training
 
     Parameters
     ----------
-    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
-        PronunciationDictionary to train from`
-    model_path: str
-        Output model path
-    train_config: TrainG2PConfig
-        Configuration for training G2P model
-    temp_directory: str, optional
-        Temporary directory, defaults to MFA's temporary directory
-    input_epsilon: bool
-        Flag for whether to allow for epsilon on input strings, default True
-    output_epsilon: bool
-        Flag for whether to allow for epsilon on output strings, default True
-    num_jobs: int
-        Number processes to use
-    verbose: bool
-        Flag for provide debug output to the terminal
+    word_list: list[str]
+        List of words to generate pronunciations
+    """
+
+    def __init__(self, word_list: list[str], **kwargs):
+        super().__init__(**kwargs)
+        self.word_list = word_list
+
+    @property
+    def words_to_g2p(self) -> list[str]:
+        """Words to produce pronunciations"""
+        return self.word_list
+
+
+class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
+    """
+    Abstract mixin class for G2P training
+
+    Parameters
+    ----------
+    validation_proportion: float
+        Proportion of words to use as the validation set, defaults to 0.1, only used if ``evaluate`` is True
+    num_pronunciations: int
+        Number of pronunciations to generate
+    evaluate: bool
+        Flag for whether to evaluate the model performance on an validation set
+
+    Attributes
+    ----------
+    g2p_training_dictionary: dict[str, list[str]]
+        Dictionary of words to pronunciations to train from
+    g2p_validation_dictionary: dict[str, list[str]]
+        Dictionary of words to pronunciations to validate performance against
+    g2p_graphemes: set[str]
+        Set of graphemes in the training set
     """
 
     def __init__(
         self,
-        dictionary: Dictionary,
-        model_path: str,
-        train_config: TrainG2PConfig,
-        temp_directory: Optional[str] = None,
+        validation_proportion: float = 0.1,
+        num_pronunciations: int = 1,
+        evaluate: bool = False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.evaluate = evaluate
+        self.validation_proportion = validation_proportion
+        self.num_pronunciations = num_pronunciations
+        self.g2p_training_dictionary = {}
+        self.g2p_validation_dictionary = None
+        self.g2p_graphemes = set()
+
+
+class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
+    """
+    Top-level G2P trainer that uses Pynini functionality
+
+    Parameters
+    ----------
+    order: int
+        Order of the ngram model, defaults to 7
+    random_starts: int, defaults to 25
+        Number of random starts to use in initialization
+    seed: int
+        Seed for randomization, defaults to 1917
+    delta: float
+        Comparison/quatization delta for Baum-Welch training, defaults to 1/1024
+    lr: float
+        Learning rate for Baum-Welch training, defaults to 1.0
+    batch_size:int
+        Batch size for Baum-Welch training, defaults to 200
+    num_iterations:int
+        Maximum number of iterations to use in Baum-Welch training, defaults to 10
+    smoothing_method:str
+        Smoothing method for the ngram model, defaults to "kneser_ney"
+    pruning_method:str
+        Pruning method for pruning the ngram model, defaults to "relative_entropy"
+    model_size: int
+        Target number of ngrams for pruning, defaults to 1000000
+    input_epsilon: bool
+        Flag for whether to allow for epsilon on input strings, default True
+    output_epsilon: bool
+        Flag for whether to allow for epsilon on output strings, default True
+    fst_default_cache_gc: str
+        String to pass to OpenFst binaries for GC behavior
+    fst_default_cache_gc_limit: str
+        String to pass to OpenFst binaries for GC behavior
+    """
+
+    def __init__(
+        self,
+        order: int = 7,
+        random_starts: int = 25,
+        seed: int = 1917,
+        delta: float = 1 / 1024,
+        lr: float = 1.0,
+        batch_size: int = 200,
+        num_iterations: int = 10,
+        smoothing_method: str = "kneser_ney",
+        pruning_method: str = "relative_entropy",
+        model_size: int = 1000000,
         input_epsilon: bool = True,
         output_epsilon: bool = True,
-        num_jobs: int = 3,
-        verbose: bool = False,
+        fst_default_cache_gc="",
+        fst_default_cache_gc_limit="",
+        **kwargs,
     ):
-        super(PyniniTrainer, self).__init__()
-        if not temp_directory:
-            temp_directory = TEMP_DIR
-        self.temp_directory = os.path.join(temp_directory, "G2P")
-        self.train_config = train_config
-        self.verbose = verbose
-        self.models_temp_dir = os.path.join(temp_directory, "models", "G2P")
-
-        self.name, _ = os.path.splitext(os.path.basename(model_path))
-        self.temp_directory = os.path.join(self.temp_directory, self.name)
-        os.makedirs(self.temp_directory, exist_ok=True)
-        os.makedirs(self.models_temp_dir, exist_ok=True)
-        self.model_path = model_path
-        self.fst_path = os.path.join(self.temp_directory, "model.fst")
-        self.far_path = os.path.join(self.temp_directory, self.name + ".far")
-        self.encoder_path = os.path.join(self.temp_directory, self.name + ".enc")
-        self.dictionary = dictionary
+        super().__init__(**kwargs)
+        self.order = order
+        self.random_starts = random_starts
+        self.seed = seed
+        self.delta = delta
+        self.lr = lr
+        self.batch_size = batch_size
+        self.num_iterations = num_iterations
+        self.smoothing_method = smoothing_method
+        self.pruning_method = pruning_method
+        self.model_size = model_size
         self.input_epsilon = input_epsilon
         self.output_epsilon = output_epsilon
-        self.num_jobs = num_jobs
-        if not self.train_config.use_mp:
-            self.num_jobs = 1
-        self.fst_default_cache_gc = ""
-        self.fst_default_cache_gc_limit = ""
-        self.train_log_path = os.path.join(self.temp_directory, "train.log")
+        self.fst_default_cache_gc = fst_default_cache_gc
+        self.fst_default_cache_gc_limit = fst_default_cache_gc_limit
 
-        self.logger = logging.getLogger("g2p_trainer")
-        self.logger.setLevel(logging.DEBUG)
+    @property
+    def data_source_identifier(self) -> str:
+        """Dictionary name"""
+        return self.dictionary_model.name
 
-        handler = logging.FileHandler(self.train_log_path)
-        handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        handler = logging.StreamHandler(sys.stdout)
-        if self.verbose:
-            handler.setLevel(logging.DEBUG)
-        else:
-            handler.setLevel(logging.INFO)
-        formatter = logging.Formatter("%(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.model_log_path = os.path.join(self.temp_directory, "model.log")
-        self.sym_path = os.path.join(self.temp_directory, "phones.sym")
-        self.output_token_type = None
+    @property
+    def data_directory(self) -> str:
+        """Data directory for trainer"""
+        return self.working_directory
+
+    @property
+    def workflow_identifier(self) -> str:
+        """Identifier for Pynini G2P trainer"""
+        return "pynini_train_g2p"
+
+    @property
+    def configuration(self) -> MetaDict:
+        """Configuration for G2P trainer"""
+        config = super().configuration
+        config.update({"dictionary_path": self.dictionary_model.path})
+        return config
+
+    def train_iteration(self) -> None:
+        """Train iteration, not used"""
+        pass
+
+    def setup(self) -> None:
+        """Setup for G2P training"""
+        if self.initialized:
+            return
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.g2p_training_dictionary = self.words
+        self.initialize_training()
+        self.initialized = True
+
+    @property
+    def architecture(self) -> str:
+        """Pynini"""
+        return "pynini"
+
+    @property
+    def meta(self) -> MetaDict:
+        """Metadata for exported G2P model"""
+        from datetime import datetime
+
+        from ..utils import get_mfa_version
+
+        return {
+            "version": get_mfa_version(),
+            "architecture": self.architecture,
+            "train_date": str(datetime.now()),
+            "phones": sorted(self.non_silence_phones),
+            "graphemes": self.graphemes,
+        }
+
+    @property
+    def input_path(self) -> str:
+        """Path to temporary file to store training data"""
+        return os.path.join(self.working_directory, "input.txt")
+
+    def initialize_training(self) -> None:
+        """Initialize training G2P model"""
+        if self.evaluate:
+            word_dict = self.g2p_training_dictionary
+            words = sorted(word_dict.keys())
+            total_items = len(words)
+            validation_items = int(total_items * self.validation_proportion)
+            validation_words = random.sample(words, validation_items)
+            self.g2p_training_dictionary = {
+                k: v for k, v in word_dict.items() if k not in validation_words
+            }
+            self.g2p_validation_dictionary = {
+                k: v for k, v in word_dict.items() if k in validation_words
+            }
+        for k in self.g2p_training_dictionary.keys():
+            self.g2p_graphemes.update(k)
+        phones_path = os.path.join(self.working_directory, "phones_only.txt")
+
+        with open(self.input_path, "w", encoding="utf8") as f2, open(
+            phones_path, "w", encoding="utf8"
+        ) as phonef:
+            for word, v in self.g2p_training_dictionary.items():
+                if re.match(r"\W", word) is not None:
+                    continue
+                for v2 in v:
+                    f2.write(f"{word}\t{' '.join(v2['pronunciation'])}\n")
+                for v2 in v:
+                    phonef.write(f"{' '.join(v2['pronunciation'])}\n")
+        subprocess.call(["ngramsymbols", phones_path, self.sym_path])
+        os.remove(phones_path)
 
     def clean_up(self) -> None:
         """
         Clean up temporary files
         """
-        for name in os.listdir(self.temp_directory):
-            path = os.path.join(self.temp_directory, name)
+        for name in os.listdir(self.working_directory):
+            path = os.path.join(self.working_directory, name)
             if os.path.isdir(path):
                 shutil.rmtree(path, ignore_errors=True)
             elif not name.endswith(".log"):
@@ -581,15 +660,17 @@ class PyniniTrainer:
         Generate an ngram G2P model from FAR strings
         """
         assert os.path.exists(self.far_path)
-        with open(self.model_log_path, "w", encoding="utf8") as logf:
-            ngram_count_path = os.path.join(self.temp_directory, "ngram.count")
-            ngram_make_path = os.path.join(self.temp_directory, "ngram.make")
-            ngram_shrink_path = os.path.join(self.temp_directory, "ngram.shrink")
+        with open(
+            os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
+        ) as logf:
+            ngram_count_path = os.path.join(self.working_directory, "ngram.count")
+            ngram_make_path = os.path.join(self.working_directory, "ngram.make")
+            ngram_shrink_path = os.path.join(self.working_directory, "ngram.shrink")
             ngramcount_proc = subprocess.Popen(
                 [
                     "ngramcount",
                     "--require_symbols=false",
-                    "--order={}".format(self.train_config.order),
+                    f"--order={self.order}",
                     self.far_path,
                     ngram_count_path,
                 ],
@@ -600,7 +681,7 @@ class PyniniTrainer:
             ngrammake_proc = subprocess.Popen(
                 [
                     "ngrammake",
-                    "--method=" + self.train_config.smoothing_method,
+                    f"--method={self.smoothing_method}",
                     ngram_count_path,
                     ngram_make_path,
                 ],
@@ -611,8 +692,8 @@ class PyniniTrainer:
             ngramshrink_proc = subprocess.Popen(
                 [
                     "ngramshrink",
-                    "--method=" + self.train_config.pruning_method,
-                    "--target_number_of_ngrams={}".format(self.train_config.model_size),
+                    f"--method={self.pruning_method}",
+                    f"--target_number_of_ngrams={self.model_size}",
                     ngram_make_path,
                     ngram_shrink_path,
                 ],
@@ -630,110 +711,153 @@ class PyniniTrainer:
         os.remove(ngram_make_path)
         os.remove(ngram_shrink_path)
 
-        directory, filename = os.path.split(self.model_path)
-        basename, _ = os.path.splitext(filename)
-        model = G2PModel.empty(basename, root_directory=self.models_temp_dir)
-        model.add_meta_file(self.dictionary)
-        model.add_fst_model(self.temp_directory)
-        model.add_sym_path(self.temp_directory)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-        basename, _ = os.path.splitext(self.model_path)
-        model.dump(basename)
-        model.clean_up()
-        self.clean_up()
-        self.logger.info(f"Saved model to {self.model_path}")
-
-    def train(self, word_dict: Optional[Dict[str, DictionaryEntryType]] = None) -> None:
+    def export_model(self, output_model_path: str) -> None:
         """
-        Train a G2P model
+        Export G2P model to specified path
 
         Parameters
         ----------
-        word_dict: Dict[str, DictionaryEntryType]
-            PronunciationDictionary of words to pronunciations, optional, defaults to the dictionary's
-            set of words
+        output_model_path:str
+            Path to export model
         """
-        input_path = os.path.join(self.temp_directory, "input.txt")
-        phones_path = os.path.join(self.temp_directory, "phones_only.txt")
-        if word_dict is None:
-            word_dict = self.dictionary.actual_words
-        with open(input_path, "w", encoding="utf8") as f2, open(
-            phones_path, "w", encoding="utf8"
-        ) as phonef:
-            for word, v in word_dict.items():
-                if re.match(r"\W", word) is not None:
-                    continue
-                for v2 in v:
-                    f2.write(f"{word}\t{' '.join(v2['pronunciation'])}\n")
-                for v2 in v:
-                    phonef.write(f"{' '.join(v2['pronunciation'])}\n")
-        subprocess.call(["ngramsymbols", phones_path, self.sym_path])
-        os.remove(phones_path)
-        aligner = PairNGramAligner(self.temp_directory)
+        directory, filename = os.path.split(output_model_path)
+        basename, _ = os.path.splitext(filename)
+        models_temp_dir = os.path.join(self.working_directory, "model_archive_tempo")
+        model = G2PModel.empty(basename, root_directory=models_temp_dir)
+        model.add_meta_file(self)
+        model.add_fst_model(self.working_directory)
+        model.add_sym_path(self.working_directory)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        basename, _ = os.path.splitext(output_model_path)
+        model.dump(basename)
+        model.clean_up()
+        self.clean_up()
+        self.logger.info(f"Saved model to {output_model_path}")
+
+    @property
+    def fst_path(self):
+        """Internal temporary FST file"""
+        return os.path.join(self.working_directory, "model.fst")
+
+    @property
+    def far_path(self):
+        """Internal temporary FAR file"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
+
+    @property
+    def encoder_path(self):
+        """Internal temporary encoder file"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.enc")
+
+    @property
+    def sym_path(self):
+        """Internal temporary symbol file"""
+        return os.path.join(self.working_directory, "phones.sym")
+
+    def train(self) -> None:
+        """
+        Train a G2P model
+        """
+        aligner = PairNGramAligner(self.working_directory)
         input_token_type = "utf8"
-        self.output_token_type = pynini.SymbolTable.read_text(self.sym_path)
+        output_token_type = pynini.SymbolTable.read_text(self.sym_path)
         begin = time.time()
         if not os.path.exists(self.far_path) or not os.path.exists(self.encoder_path):
             aligner.align(
-                input_path,
+                self.input_path,
                 self.far_path,
                 self.encoder_path,
                 input_token_type,
                 self.input_epsilon,
-                self.output_token_type,
+                output_token_type,
                 self.output_epsilon,
                 self.num_jobs,
-                self.train_config.random_starts,
-                self.train_config.seed,
-                self.train_config.batch_size,
-                self.train_config.delta,
-                self.train_config.lr,
-                self.train_config.max_iterations,
+                self.random_starts,
+                self.seed,
+                self.batch_size,
+                self.delta,
+                self.lr,
+                self.num_iterations,
                 self.fst_default_cache_gc,
                 self.fst_default_cache_gc_limit,
             )
-        self.logger.debug(f"Aligning {len(word_dict)} words took {time.time() - begin} seconds")
+        self.logger.debug(
+            f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
+        )
         begin = time.time()
         self.generate_model()
         self.logger.debug(
-            f"Generating model for {len(word_dict)} words took {time.time() - begin} seconds"
+            f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
         )
 
-    def validate(self) -> None:
+    def finalize_training(self) -> None:
+        """Finalize training"""
+        if self.evaluate:
+            self.evaluate_g2p_model()
+
+    def evaluate_g2p_model(self) -> None:
         """
         Validate the G2P model against held out data
         """
+        temp_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
+        self.export_model(temp_model_path)
 
-        word_dict = self.dictionary.actual_words
-        validation = 0.1
-        words = word_dict.keys()
-        total_items = len(words)
-        validation_items = int(total_items * validation)
-        validation_words = random.sample(words, validation_items)
-        training_dictionary = {k: v for k, v in word_dict.items() if k not in validation_words}
-        validation_dictionary = {k: v for k, v in word_dict.items() if k in validation_words}
-        train_graphemes = set()
-        for k in word_dict.keys():
-            train_graphemes.update(k)
-        self.train(training_dictionary)
-
-        model = G2PModel(self.model_path, root_directory=self.temp_directory)
-
-        gen = PyniniDictionaryGenerator(
-            model,
-            validation_dictionary.keys(),
-            temp_directory=os.path.join(self.temp_directory, "validation"),
+        gen = PyniniValidator(
+            g2p_model_path=temp_model_path,
+            word_list=list(self.g2p_validation_dictionary.keys()),
+            temporary_directory=os.path.join(self.working_directory, "validation"),
             num_jobs=self.num_jobs,
-            num_pronunciations=self.train_config.num_pronunciations,
+            num_pronunciations=self.num_pronunciations,
         )
-        output = gen.generate()
+        output = gen.generate_pronunciations()
+        self.compute_validation_errors(output)
+
+    def compute_validation_errors(
+        self,
+        hypothesis_values: dict[str, list[str]],
+    ):
+        """
+        Computes validation errors
+
+        Parameters
+        ----------
+        hypothesis_values: dict[str, list[str]]
+            Hypothesis labels
+        """
         begin = time.time()
-        wer, ler = compute_validation_errors(validation_dictionary, output, num_jobs=self.num_jobs)
-        print(f"WER:\t{wer:.2f}")
-        print(f"LER:\t{ler:.2f}")
+        # Word-level measures.
+        correct = 0
+        incorrect = 0
+        # Label-level measures.
+        total_edits = 0
+        total_length = 0
+        # Since the edit distance algorithm is quadratic, let's do this with
+        # multiprocessing.
+        with mp.Pool(self.num_jobs) as pool:
+            to_comp = []
+            for word, hyp in hypothesis_values.items():
+                g = self.g2p_validation_dictionary[word][0]["pronunciation"]
+                hyp = [h.split(" ") for h in hyp]
+                to_comp.append((g, hyp, True))  # Multiple hypotheses to compare
+            gen = pool.starmap(score, to_comp)
+            for (edits, length) in gen:
+                if edits == 0:
+                    correct += 1
+                else:
+                    incorrect += 1
+                total_edits += edits
+                total_length += length
+            for w, gold in self.g2p_validation_dictionary.items():
+                if w not in hypothesis_values:
+                    incorrect += 1
+                    gold = gold[0]["pronunciation"]
+                    total_edits += len(gold)
+                    total_length += len(gold)
+        wer = 100 * incorrect / (correct + incorrect)
+        ler = 100 * total_edits / total_length
         self.logger.info(f"WER:\t{wer:.2f}")
         self.logger.info(f"LER:\t{ler:.2f}")
         self.logger.debug(
-            f"Computation of errors for {len(validation_dictionary)} words took {time.time() - begin} seconds"
+            f"Computation of errors for {len(self.g2p_validation_dictionary)} words took {time.time() - begin} seconds"
         )

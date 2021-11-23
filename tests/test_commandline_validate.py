@@ -21,3 +21,27 @@ def test_validate_corpus(
     ]
     args, unknown = parser.parse_known_args(command)
     run_validate_corpus(args)
+
+
+def test_validate_training_corpus(
+    multilingual_ipa_tg_corpus_dir,
+    english_ipa_acoustic_model,
+    english_dictionary,
+    temp_dir,
+    mono_train_config_path,
+):
+
+    command = [
+        "validate",
+        multilingual_ipa_tg_corpus_dir,
+        english_dictionary,
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "--config_path",
+        mono_train_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_validate_corpus(args)

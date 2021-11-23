@@ -2,110 +2,79 @@
 
 from __future__ import annotations
 
-import logging
 import math
 import os
+import re
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Collection, Optional
 
 if TYPE_CHECKING:
-    from ..abc import ReversedMappingType, DictionaryEntryType
+    from .multispeaker import MultispeakerDictionaryMixin
+    from ..abc import DictionaryEntryType, MappingType, ReversedMappingType, WordsType, MetaDict
+    from ..data import CtmType
+    from .mixins import SanitizeFunction
 
-from ..abc import Dictionary
-from ..config.dictionary_config import DictionaryConfig
+from ..abc import TemporaryDirectoryMixin
+from ..data import CtmInterval
 from ..exceptions import DictionaryError, DictionaryFileError
 from ..models import DictionaryModel
 from ..utils import thirdparty_binary
-from .data import DictionaryData
+from .mixins import DictionaryMixin
 
 __all__ = [
-    "PronunciationDictionary",
+    "PronunciationDictionaryMixin",
 ]
 
 
-class PronunciationDictionary(Dictionary):
+class PronunciationDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
     """
-    Class containing information about a pronunciation dictionary
+    Abstract mixin class containing information about a pronunciation dictionary
 
     Parameters
     ----------
-    dictionary_model : :class:`~montreal_forced_aligner.models.DictionaryModel`
-        MFA Dictionary model
-    output_directory : str
-        Path to a directory to store files for Kaldi
-    config: DictionaryConfig
-        Configuration for generating lexicons
-    word_set : Collection[str], optional
-        Word set to limit output files
-    logger: :class:`~logging.Logger`, optional
-        Logger to output information to
+    dictionary_path : str
+        Path to pronunciation dictionary
+
+    Attributes
+    ----------
+    dictionary_model: DictionaryModel
+        Dictionary model to load
+    words: WordsType
+        Words mapped to their pronunciations
+    graphemes: set[str]
+        Set of graphemes in the dictionary
+    words_mapping: MappingType
+        Mapping of words to integer IDs
+    lexicon_word_set: set[str]
+        Word set to limit output of lexicon files
     """
 
-    topo_template = "<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>"
-    topo_sil_template = "<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>"
-    topo_transition_template = "<Transition> {} {}"
-    positions: List[str] = ["_B", "_E", "_I", "_S"]
-
-    def __init__(
-        self,
-        dictionary_model: Union[DictionaryModel, str],
-        output_directory: str,
-        config: Optional[DictionaryConfig] = None,
-        word_set: Optional[Collection[str]] = None,
-        logger: Optional[logging.Logger] = None,
-    ):
-        if isinstance(dictionary_model, str):
-            dictionary_model = DictionaryModel(dictionary_model)
-        if config is None:
-            config = DictionaryConfig()
-        super().__init__(dictionary_model, config)
-        self.output_directory = os.path.join(output_directory, self.name)
-        os.makedirs(self.output_directory, exist_ok=True)
-        self.log_file = os.path.join(self.output_directory, f"{self.name}.log")
-        if logger is None:
-            self.logger = logging.getLogger("dictionary_setup")
-            self.logger.setLevel(logging.INFO)
-            handler = logging.FileHandler(self.log_file, "w", "utf-8")
-            handler.setFormatter = logging.Formatter("%(name)s %(message)s")
-            self.logger.addHandler(handler)
-        else:
-            self.logger = logger
-        self.oovs_found = Counter()
-
+    def __init__(self, dictionary_path, **kwargs):
+        super().__init__(**kwargs)
+        self.dictionary_model = DictionaryModel(dictionary_path)
+        os.makedirs(self.dictionary_output_directory, exist_ok=True)
         self.words = {}
         self.graphemes = set()
-        self.all_words = defaultdict(list)
-        self.words[self.config.silence_word] = [
-            {"pronunciation": (self.config.nonoptional_silence_phone,), "probability": 1}
+        self.words[self.silence_word] = [
+            {"pronunciation": (self.nonoptional_silence_phone,), "probability": 1}
         ]
-        self.words[self.config.oov_word] = [
-            {"pronunciation": (self.config.oov_phone,), "probability": 1}
-        ]
+        self.words[self.oov_word] = [{"pronunciation": (self.oov_phone,), "probability": 1}]
 
-        progress = f'Parsing dictionary "{self.name}"'
-        if self.dictionary_model.pronunciation_probabilities:
-            progress += " with pronunciation probabilities"
-        else:
-            progress += " without pronunciation probabilities"
-        if self.dictionary_model.silence_probabilities:
-            progress += " with silence probabilities"
-        else:
-            progress += " without silence probabilities"
-        self.logger.info(progress)
         with open(self.dictionary_model.path, "r", encoding="utf8") as inf:
             for i, line in enumerate(inf):
                 line = line.strip()
                 if not line:
                     continue
                 line = line.split()
-                word = self.config.sanitize(line.pop(0).lower())
+                word = self.sanitize(line.pop(0).lower())
                 if not line:
                     raise DictionaryError(
                         f"Line {i} of {self.dictionary_model.path} does not have a pronunciation."
                     )
-                if word in [self.config.silence_word, self.config.oov_word]:
+                if word in [self.silence_word, self.oov_word]:
                     continue
                 self.graphemes.update(word)
                 prob = 1
@@ -121,8 +90,8 @@ class PronunciationDictionary(Dictionary):
                     right_sil_prob = None
                     left_sil_prob = None
                     left_nonsil_prob = None
-                if self.config.multilingual_ipa:
-                    pron = self.config.parse_ipa(line)
+                if self.multilingual_ipa:
+                    pron = self.parse_ipa(line)
                 else:
                     pron = tuple(line)
                 pronunciation = {
@@ -133,10 +102,10 @@ class PronunciationDictionary(Dictionary):
                     "left_sil_prob": left_sil_prob,
                     "left_nonsil_prob": left_nonsil_prob,
                 }
-                if self.config.multilingual_ipa:
+                if self.multilingual_ipa:
                     pronunciation["original_pronunciation"] = tuple(line)
-                if not any(x in self.config.silence_phones for x in pron):
-                    self.config.non_silence_phones.update(pron)
+                if not any(x in self.silence_phones for x in pron):
+                    self.non_silence_phones.update(pron)
                 if word in self.words and pron in {x["pronunciation"] for x in self.words[word]}:
                     continue
                 if word not in self.words:
@@ -144,41 +113,45 @@ class PronunciationDictionary(Dictionary):
                 self.words[word].append(pronunciation)
                 # test whether a word is a clitic
                 is_clitic = False
-                for cm in self.config.clitic_markers:
+                for cm in self.clitic_markers:
                     if word.startswith(cm) or word.endswith(cm):
                         is_clitic = True
                 if is_clitic:
-                    self.config.clitic_set.add(word)
+                    self.clitic_set.add(word)
         self.words_mapping = {}
-        if word_set is not None:
-            word_set = {y for x in word_set for y in self._lookup(x)}
-            word_set.add(self.config.silence_word)
-            word_set.add(self.config.oov_word)
-        self.word_set = word_set
-        if self.word_set is not None:
-            self.word_set = self.word_set | self.config.clitic_set
+        self.lexicon_word_set = None
         if not self.graphemes:
             raise DictionaryFileError(
                 f"No words were found in the dictionary path {self.dictionary_model.path}"
             )
+
+    @property
+    def name(self) -> str:
+        """Name of the dictionary"""
+        return self.dictionary_model.name
 
     def __hash__(self) -> Any:
         """Return the hash of a given dictionary"""
         return hash(self.dictionary_model.path)
 
     @property
-    def output_paths(self) -> Dict[str, str]:
+    def dictionary_output_directory(self) -> str:
+        """Temporary directory to store all dictionary information"""
+        return os.path.join(self.temporary_directory, self.name)
+
+    @property
+    def output_paths(self) -> dict[str, str]:
         """
         Mapping of output directory for this dictionary
         """
-        return {self.name: self.output_directory}
+        return {self.name: self.dictionary_output_directory}
 
     @property
-    def silences(self) -> Set[str]:
+    def silences(self) -> set[str]:
         """
         Set of symbols that correspond to silence
         """
-        return self.config.silence_phones
+        return self.silence_phones
 
     def data(self, word_set: Optional[Collection[str]] = None) -> DictionaryData:
         """
@@ -199,9 +172,9 @@ class PronunciationDictionary(Dictionary):
             """Check whether a word should be included in the output"""
             if word in word_set:
                 return True
-            if word in self.config.clitic_set:
+            if word in self.clitic_set:
                 return True
-            if word in self.config.specials_set:
+            if word in self.specials_set:
                 return True
             return False
 
@@ -216,16 +189,16 @@ class PronunciationDictionary(Dictionary):
             reversed_word_mapping = self.reversed_word_mapping
             words = self.words
         return DictionaryData(
-            self.config,
+            self.dictionary_options,
+            self.construct_sanitize_function(),
             words_mapping,
             reversed_word_mapping,
-            self.reversed_phone_mapping,
             words,
         )
 
-    def set_word_set(self, word_set: Collection[str]) -> None:
+    def set_lexicon_word_set(self, word_set: Collection[str]) -> None:
         """
-        Limit output to a subset of overall words
+        Limit lexicon output to a subset of overall words
 
         Parameters
         ----------
@@ -233,21 +206,19 @@ class PronunciationDictionary(Dictionary):
             Word set to limit generated files to
         """
         word_set = {y for x in word_set for y in self._lookup(x)}
-        word_set.add(self.config.silence_word)
-        word_set.add(self.config.oov_word)
-        self.word_set = word_set | self.config.clitic_set
+        word_set.add(self.silence_word)
+        word_set.add(self.oov_word)
+        self.lexicon_word_set = word_set | self.clitic_set
         self.generate_mappings()
 
     @property
-    def actual_words(self) -> Dict[str, "DictionaryEntryType"]:
+    def actual_words(self) -> dict[str, "DictionaryEntryType"]:
         """
         Mapping of words to integer IDs without Kaldi-internal words
         """
-        return {
-            k: v for k, v in self.words.items() if k not in self.config.specials_set and len(v)
-        }
+        return {k: v for k, v in self.words.items() if k not in self.specials_set and len(v)}
 
-    def split_clitics(self, item: str) -> List[str]:
+    def split_clitics(self, item: str) -> list[str]:
         """
         Split a word into subwords based on clitic and compound markers
 
@@ -258,7 +229,7 @@ class PronunciationDictionary(Dictionary):
 
         Returns
         -------
-        List[str]
+        list[str]
             List of subwords
         """
         return self.data().split_clitics(item)
@@ -282,19 +253,15 @@ class PronunciationDictionary(Dictionary):
         bool
             True if there is no word set on the dictionary, or if the word is in the given word set
         """
-        if self.word_set is None:
+        if self.lexicon_word_set is None:
             return False
-        if word not in self.word_set and word not in self.config.clitic_set:
+        if word not in self.lexicon_word_set and word not in self.clitic_set:
             return True
         return False
 
-    @property
-    def phone_mapping(self) -> Dict[str, int]:
-        return self.config.phone_mapping
-
     def generate_mappings(self) -> None:
         """
-        Generate phone and word mappings from text to integer IDs
+        Generate word mappings from text to integer IDs
         """
         self.words_mapping = {}
         i = 0
@@ -343,19 +310,19 @@ class PronunciationDictionary(Dictionary):
                     disambig = last_used[pron]
                 p["disambiguation"] = disambig
         if last_used:
-            self.config.max_disambiguation_symbol = max(
-                self.config.max_disambiguation_symbol, max(last_used.values())
+            self.max_disambiguation_symbol = max(
+                self.max_disambiguation_symbol, max(last_used.values())
             )
 
-    def create_utterance_fst(self, text: List[str], frequent_words: List[Tuple[str, int]]) -> str:
+    def create_utterance_fst(self, text: list[str], frequent_words: list[tuple[str, int]]) -> str:
         """
         Create an FST for an utterance with frequent words as a unigram language model
 
         Parameters
         ----------
-        text: List[str]
+        text: list[str]
             Text of the utterance
-        frequent_words: List[Tuple[str, int]]
+        frequent_words: list[tuple[str, int]]
             Frequent words to incorporate into the FST
         Returns
         -------
@@ -374,7 +341,7 @@ class PronunciationDictionary(Dictionary):
         fst_text += f"0 {-1 * math.log(1 / num_words)}\n"
         return fst_text
 
-    def to_int(self, item: str) -> List[int]:
+    def to_int(self, item: str) -> list[int]:
         """
         Convert a given word into integer IDs
 
@@ -385,12 +352,12 @@ class PronunciationDictionary(Dictionary):
 
         Returns
         -------
-        List[int]
+        list[int]
             List of integer IDs corresponding to each subword
         """
         return self.data().to_int(item)
 
-    def _lookup(self, item: str) -> List[str]:
+    def _lookup(self, item: str) -> list[str]:
         """
         Look up a word and return the list of sub words if necessary taking into account clitic and compound markers
 
@@ -401,7 +368,7 @@ class PronunciationDictionary(Dictionary):
 
         Returns
         -------
-        List[str]
+        list[str]
             List of subwords that are in the dictionary
         """
         return self.data().lookup(item)
@@ -448,30 +415,42 @@ class PronunciationDictionary(Dictionary):
         """
         The integer id for out of vocabulary items
         """
-        return self.words_mapping[self.config.oov_word]
+        return self.words_mapping[self.oov_word]
 
     @property
     def phones_dir(self) -> str:
         """
         Directory to store information Kaldi needs about phones
         """
-        return os.path.join(self.output_directory, "phones")
+        return os.path.join(os.path.dirname(self.dictionary_output_directory), "phones")
 
     @property
     def words_symbol_path(self) -> str:
         """
         Path of word to int mapping file for the dictionary
         """
-        return os.path.join(self.output_directory, "words.txt")
+        return os.path.join(self.dictionary_output_directory, "words.txt")
 
     @property
-    def disambig_path(self) -> str:
+    def lexicon_fst_path(self) -> str:
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(self.output_directory, "L_disambig.fst")
+        return os.path.join(self.dictionary_output_directory, "L.fst")
 
-    def write(self, write_disambiguation: Optional[bool] = False) -> None:
+    @property
+    def lexicon_disambig_fst_path(self) -> str:
+        """
+        Path of disambiguated lexicon fst (L.fst)
+        """
+        return os.path.join(self.dictionary_output_directory, "L_disambig.fst")
+
+    def write(
+        self,
+        write_disambiguation: bool = False,
+        debug=False,
+        multispeaker_dictionary: Optional[MultispeakerDictionaryMixin] = None,
+    ) -> None:
         """
         Write the files necessary for Kaldi
 
@@ -479,44 +458,36 @@ class PronunciationDictionary(Dictionary):
         ----------
         write_disambiguation: bool, optional
             Flag for including disambiguation information
+        debug: bool, optional
+            Flag for whether to keep temporary files, defaults to False
+        multispeaker_dictionary: MultispeakerDictionaryMixin, optional
+            Main dictionary that has phone mapping IDs
         """
-        self.logger.info("Creating dictionary information...")
-        os.makedirs(self.phones_dir, exist_ok=True)
-        self.generate_mappings()
         self._write_graphemes()
-        self._write_phone_map_file()
-        self._write_phone_sets()
-        self._write_phone_symbol_table()
-        self._write_disambig()
-        self._write_topo()
-        self._write_word_boundaries()
-        self._write_extra_questions()
         self._write_word_file()
-        self._write_align_lexicon()
+        self._write_align_lexicon(multispeaker_dictionary)
         if write_disambiguation:
-            self._write_fst_text_disambiguated()
+            self._write_fst_text_disambiguated(multispeaker_dictionary)
         else:
             self._write_basic_fst_text()
-        self._write_fst_binary(write_disambiguation=write_disambiguation)
-        self.cleanup()
+        self._write_fst_binary(multispeaker_dictionary, write_disambiguation=write_disambiguation)
+        if not debug:
+            self.cleanup()
 
     def cleanup(self) -> None:
         """
         Clean up temporary files in the output directory
         """
-        if not self.config.debug:
-            if os.path.exists(os.path.join(self.output_directory, "temp.fst")):
-                os.remove(os.path.join(self.output_directory, "temp.fst"))
-            if os.path.exists(os.path.join(self.output_directory, "lexicon.text.fst")):
-                os.remove(os.path.join(self.output_directory, "lexicon.text.fst"))
+        if os.path.exists(os.path.join(self.dictionary_output_directory, "temp.fst")):
+            os.remove(os.path.join(self.dictionary_output_directory, "temp.fst"))
+        if os.path.exists(os.path.join(self.dictionary_output_directory, "lexicon.text.fst")):
+            os.remove(os.path.join(self.dictionary_output_directory, "lexicon.text.fst"))
 
     def _write_graphemes(self) -> None:
         """
         Write graphemes to temporary directory
         """
-        outfile = os.path.join(self.output_directory, "graphemes.txt")
-        if os.path.exists(outfile):
-            return
+        outfile = os.path.join(self.dictionary_output_directory, "graphemes.txt")
         with open(outfile, "w", encoding="utf8") as f:
             for char in sorted(self.graphemes):
                 f.write(char + "\n")
@@ -553,72 +524,11 @@ class PronunciationDictionary(Dictionary):
                     else:
                         f.write(f"{w}\t{phones}\n")
 
-    def _write_phone_map_file(self) -> None:
-        """
-        Write the phone map to the temporary directory
-        """
-        outfile = os.path.join(self.output_directory, "phone_map.txt")
-        if os.path.exists(outfile):
-            return
-        with open(outfile, "w", encoding="utf8") as f:
-            for sp in self.config.silence_phones:
-                if self.config.position_dependent_phones:
-                    new_phones = [sp + x for x in ["", ""] + self.positions]
-                else:
-                    new_phones = [sp]
-                f.write(" ".join(new_phones) + "\n")
-            for nsp in self.config.non_silence_phones:
-                if self.config.position_dependent_phones:
-                    new_phones = [nsp + x for x in [""] + self.positions]
-                else:
-                    new_phones = [nsp]
-                f.write(" ".join(new_phones) + "\n")
-
-    def _write_phone_symbol_table(self) -> None:
-        """
-        Write the phone mapping to the temporary directory
-        """
-        outfile = os.path.join(self.output_directory, "phones.txt")
-        if os.path.exists(outfile):
-            return
-        with open(outfile, "w", encoding="utf8") as f:
-            for p, i in sorted(self.phone_mapping.items(), key=lambda x: x[1]):
-                f.write(f"{p} {i}\n")
-
-    def _write_word_boundaries(self) -> None:
-        """
-        Write the word boundaries file to the temporary directory
-        """
-        boundary_path = os.path.join(self.output_directory, "phones", "word_boundary.txt")
-        boundary_int_path = os.path.join(self.output_directory, "phones", "word_boundary.int")
-        if os.path.exists(boundary_path) and os.path.exists(boundary_int_path):
-            return
-        with open(boundary_path, "w", encoding="utf8") as f, open(
-            boundary_int_path, "w", encoding="utf8"
-        ) as intf:
-            if self.config.position_dependent_phones:
-                for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
-                    if p == "<eps>" or p.startswith("#"):
-                        continue
-                    cat = "nonword"
-                    if p.endswith("_B"):
-                        cat = "begin"
-                    elif p.endswith("_S"):
-                        cat = "singleton"
-                    elif p.endswith("_I"):
-                        cat = "internal"
-                    elif p.endswith("_E"):
-                        cat = "end"
-                    f.write(" ".join([p, cat]) + "\n")
-                    intf.write(" ".join([str(self.phone_mapping[p]), cat]) + "\n")
-
     def _write_word_file(self) -> None:
         """
         Write the word mapping to the temporary directory
         """
-        words_path = os.path.join(self.output_directory, "words.txt")
-        if os.path.exists(words_path):
-            return
+        words_path = os.path.join(self.dictionary_output_directory, "words.txt")
         if sys.platform == "win32":
             newline = ""
         else:
@@ -627,10 +537,16 @@ class PronunciationDictionary(Dictionary):
             for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write(f"{w} {i}\n")
 
-    def _write_align_lexicon(self) -> None:
+    def _write_align_lexicon(
+        self, multispeaker_dictionary: Optional[MultispeakerDictionaryMixin] = None
+    ) -> None:
         """
         Write the alignment lexicon text file to the temporary directory
         """
+        if multispeaker_dictionary is None:
+            phone_mapping = self.phone_mapping
+        else:
+            phone_mapping = multispeaker_dictionary.phone_mapping
         path = os.path.join(self.phones_dir, "align_lexicon.int")
         if os.path.exists(path):
             return
@@ -647,7 +563,7 @@ class PronunciationDictionary(Dictionary):
                 ):
 
                     phones = list(pron["pronunciation"])
-                    if self.config.position_dependent_phones:
+                    if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"
                         else:
@@ -658,191 +574,51 @@ class PronunciationDictionary(Dictionary):
                                     phones[j] += "_E"
                                 else:
                                     phones[j] += "_I"
-                    p = " ".join(str(self.phone_mapping[x]) for x in phones)
+                    p = " ".join(str(phone_mapping[x]) for x in phones)
                     f.write(f"{i} {i} {p}\n".format(i=i, p=p))
 
-    def _write_topo(self) -> None:
-        """
-        Write the topo file to the temporary directory
-        """
-        filepath = os.path.join(self.output_directory, "topo")
-        if os.path.exists(filepath):
-            return
-        sil_transp = 1 / (self.config.num_silence_states - 1)
-        initial_transition = [
-            self.topo_transition_template.format(x, sil_transp)
-            for x in range(self.config.num_silence_states - 1)
-        ]
-        middle_transition = [
-            self.topo_transition_template.format(x, sil_transp)
-            for x in range(1, self.config.num_silence_states)
-        ]
-        final_transition = [
-            self.topo_transition_template.format(self.config.num_silence_states - 1, 0.75),
-            self.topo_transition_template.format(self.config.num_silence_states, 0.25),
-        ]
-        with open(filepath, "w") as f:
-            f.write("<Topology>\n")
-            f.write("<TopologyEntry>\n")
-            f.write("<ForPhones>\n")
-            phones = self.config.kaldi_non_silence_phones
-            f.write(f"{' '.join(str(self.phone_mapping[x]) for x in phones)}\n")
-            f.write("</ForPhones>\n")
-            states = [
-                self.topo_template.format(cur_state=x, next_state=x + 1)
-                for x in range(self.config.num_non_silence_states)
-            ]
-            f.write("\n".join(states))
-            f.write(f"\n<State> {self.config.num_non_silence_states} </State>\n")
-            f.write("</TopologyEntry>\n")
-
-            f.write("<TopologyEntry>\n")
-            f.write("<ForPhones>\n")
-
-            phones = self.config.kaldi_silence_phones
-            f.write(f"{' '.join(str(self.phone_mapping[x]) for x in phones)}\n")
-            f.write("</ForPhones>\n")
-            states = []
-            for i in range(self.config.num_silence_states):
-                if i == 0:
-                    transition = " ".join(initial_transition)
-                elif i == self.config.num_silence_states - 1:
-                    transition = " ".join(final_transition)
-                else:
-                    transition = " ".join(middle_transition)
-                states.append(self.topo_sil_template.format(cur_state=i, transitions=transition))
-            f.write("\n".join(states))
-            f.write(f"\n<State> {self.config.num_silence_states} </State>\n")
-            f.write("</TopologyEntry>\n")
-            f.write("</Topology>\n")
-
-    def _write_phone_sets(self) -> None:
-        """
-        Write phone symbol sets to the temporary directory
-        """
-        sharesplit = ["shared", "split"]
-        if not self.config.shared_silence_phones:
-            sil_sharesplit = ["not-shared", "not-split"]
-        else:
-            sil_sharesplit = sharesplit
-
-        sets_file = os.path.join(self.output_directory, "phones", "sets.txt")
-        roots_file = os.path.join(self.output_directory, "phones", "roots.txt")
-
-        sets_int_file = os.path.join(self.output_directory, "phones", "sets.int")
-        roots_int_file = os.path.join(self.output_directory, "phones", "roots.int")
-        if (
-            os.path.exists(sets_file)
-            and os.path.exists(roots_file)
-            and os.path.exists(sets_int_file)
-            and os.path.exists(roots_int_file)
-        ):
-            return
-
-        with open(sets_file, "w", encoding="utf8") as setf, open(
-            roots_file, "w", encoding="utf8"
-        ) as rootf, open(sets_int_file, "w", encoding="utf8") as setintf, open(
-            roots_int_file, "w", encoding="utf8"
-        ) as rootintf:
-
-            # process silence phones
-            for i, sp in enumerate(self.config.silence_phones):
-                if self.config.position_dependent_phones:
-                    mapped = [sp + x for x in [""] + self.positions]
-                else:
-                    mapped = [sp]
-                setf.write(" ".join(mapped) + "\n")
-                setintf.write(" ".join(map(str, (self.phone_mapping[x] for x in mapped))) + "\n")
-                if i == 0:
-                    line = sil_sharesplit + mapped
-                    lineint = sil_sharesplit + [str(self.phone_mapping[x]) for x in mapped]
-                else:
-                    line = sharesplit + mapped
-                    lineint = sharesplit + [str(self.phone_mapping[x]) for x in mapped]
-                rootf.write(" ".join(line) + "\n")
-                rootintf.write(" ".join(lineint) + "\n")
-
-            # process nonsilence phones
-            for nsp in sorted(self.config.non_silence_phones):
-                if self.config.position_dependent_phones:
-                    mapped = [nsp + x for x in self.positions]
-                else:
-                    mapped = [nsp]
-                setf.write(" ".join(mapped) + "\n")
-                setintf.write(" ".join(map(str, (self.phone_mapping[x] for x in mapped))) + "\n")
-                line = sharesplit + mapped
-                lineint = sharesplit + [str(self.phone_mapping[x]) for x in mapped]
-                rootf.write(" ".join(line) + "\n")
-                rootintf.write(" ".join(lineint) + "\n")
-
-    def _write_extra_questions(self) -> None:
-        """
-        Write extra questions symbols to the temporary directory
-        """
-        phone_extra = os.path.join(self.phones_dir, "extra_questions.txt")
-        phone_extra_int = os.path.join(self.phones_dir, "extra_questions.int")
-        if os.path.exists(phone_extra) and os.path.exists(phone_extra_int):
-            return
-        with open(phone_extra, "w", encoding="utf8") as outf, open(
-            phone_extra_int, "w", encoding="utf8"
-        ) as intf:
-            silences = self.config.kaldi_silence_phones
-            outf.write(" ".join(silences) + "\n")
-            intf.write(" ".join(str(self.phone_mapping[x]) for x in silences) + "\n")
-
-            non_silences = self.config.kaldi_non_silence_phones
-            outf.write(" ".join(non_silences) + "\n")
-            intf.write(" ".join(str(self.phone_mapping[x]) for x in non_silences) + "\n")
-            if self.config.position_dependent_phones:
-                for p in self.positions:
-                    line = [x + p for x in sorted(self.config.non_silence_phones)]
-                    outf.write(" ".join(line) + "\n")
-                    intf.write(" ".join(str(self.phone_mapping[x]) for x in line) + "\n")
-                for p in [""] + self.positions:
-                    line = [x + p for x in sorted(self.config.silence_phones)]
-                    outf.write(" ".join(line) + "\n")
-                    intf.write(" ".join(str(self.phone_mapping[x]) for x in line) + "\n")
-
-    def _write_disambig(self) -> None:
-        """
-        Write disambiguation symbols to the temporary directory
-        """
-        disambig = os.path.join(self.phones_dir, "disambiguation_symbols.txt")
-        disambig_int = os.path.join(self.phones_dir, "disambiguation_symbols.int")
-        if os.path.exists(disambig) and os.path.exists(disambig_int):
-            return
-        with open(disambig, "w", encoding="utf8") as outf, open(
-            disambig_int, "w", encoding="utf8"
-        ) as intf:
-            for d in sorted(
-                self.config.disambiguation_symbols, key=lambda x: self.phone_mapping[x]
-            ):
-                outf.write(f"{d}\n")
-                intf.write(f"{self.phone_mapping[d]}\n")
-
-    def _write_fst_binary(self, write_disambiguation: Optional[bool] = False) -> None:
+    def _write_fst_binary(
+        self,
+        multispeaker_dictionary: Optional[MultispeakerDictionaryMixin] = None,
+        write_disambiguation: Optional[bool] = False,
+    ) -> None:
         """
         Write the binary fst file to the temporary directory
 
+        See Also
+        --------
+        :kaldi_src:`fstaddselfloops`
+            Relevant Kaldi binary
+        :openfst_src:`fstcompile`
+            Relevant OpenFst binary
+        :openfst_src:`fstarcsort`
+            Relevant OpenFst binary
+
         Parameters
         ----------
+        multispeaker_dictionary: MultispeakerDictionaryMixin, optional
+            Main dictionary with phone mappings
         write_disambiguation: bool, optional
             Flag for including disambiguation symbols
         """
         if write_disambiguation:
-            lexicon_fst_path = os.path.join(self.output_directory, "lexicon_disambig.text.fst")
-            output_fst = os.path.join(self.output_directory, "L_disambig.fst")
+            lexicon_fst_path = os.path.join(
+                self.dictionary_output_directory, "lexicon_disambig.text.fst"
+            )
+            output_fst = os.path.join(self.dictionary_output_directory, "L_disambig.fst")
         else:
-            lexicon_fst_path = os.path.join(self.output_directory, "lexicon.text.fst")
-            output_fst = os.path.join(self.output_directory, "L.fst")
-        if os.path.exists(output_fst):
-            return
+            lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
+            output_fst = os.path.join(self.dictionary_output_directory, "L.fst")
+        if multispeaker_dictionary is not None:
+            phone_mapping = multispeaker_dictionary.phone_mapping
+            phones_file_path = multispeaker_dictionary.phone_symbol_table_path
+        else:
+            phone_mapping = self.phone_mapping
+            phones_file_path = os.path.join(self.dictionary_output_directory, "phones.txt")
+        words_file_path = os.path.join(self.dictionary_output_directory, "words.txt")
 
-        phones_file_path = os.path.join(self.output_directory, "phones.txt")
-        words_file_path = os.path.join(self.output_directory, "words.txt")
-
-        log_path = os.path.join(self.output_directory, "fst.log")
-        temp_fst_path = os.path.join(self.output_directory, "temp.fst")
+        log_path = os.path.join(self.dictionary_output_directory, "fst.log")
+        temp_fst_path = os.path.join(self.dictionary_output_directory, "temp.fst")
         with open(log_path, "w") as log_file:
             compile_proc = subprocess.Popen(
                 [
@@ -858,11 +634,15 @@ class PronunciationDictionary(Dictionary):
             )
             compile_proc.communicate()
             if write_disambiguation:
-                temp2_fst_path = os.path.join(self.output_directory, "temp2.fst")
-                phone_disambig_path = os.path.join(self.output_directory, "phone_disambig.txt")
-                word_disambig_path = os.path.join(self.output_directory, "word_disambig.txt")
+                temp2_fst_path = os.path.join(self.dictionary_output_directory, "temp2.fst")
+                word_disambig_path = os.path.join(
+                    self.dictionary_output_directory, "word_disambig0.txt"
+                )
+                phone_disambig_path = os.path.join(
+                    self.dictionary_output_directory, "phone_disambig0.txt"
+                )
                 with open(phone_disambig_path, "w") as f:
-                    f.write(str(self.phone_mapping["#0"]))
+                    f.write(str(phone_mapping["#0"]))
                 with open(word_disambig_path, "w") as f:
                     f.write(str(self.words_mapping["#0"]))
                 selfloop_proc = subprocess.Popen(
@@ -904,24 +684,24 @@ class PronunciationDictionary(Dictionary):
         sil_disambiguation = None
         nonoptional_silence = None
         optional_silence_phone = None
-        lexicon_fst_path = os.path.join(self.output_directory, "lexicon.text.fst")
+        lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
         start_state = 0
         silence_state = 0
         silence_cost = 0
         no_silence_cost = 0
         loop_state = 0
         next_state = 1
-        if self.config.silence_probability:
-            optional_silence_phone = self.config.optional_silence_phone
-            nonoptional_silence = self.config.nonoptional_silence_phone
+        if self.silence_probability:
+            optional_silence_phone = self.optional_silence_phone
+            nonoptional_silence = self.nonoptional_silence_phone
 
-            silence_cost = -1 * math.log(self.config.silence_probability)
-            no_silence_cost = -1 * math.log(1.0 - self.config.silence_probability)
+            silence_cost = -1 * math.log(self.silence_probability)
+            no_silence_cost = -1 * math.log(1.0 - self.silence_probability)
             loop_state = 1
             silence_state = 2
 
         with open(lexicon_fst_path, "w", encoding="utf8") as outf:
-            if self.config.silence_probability:
+            if self.silence_probability:
                 outf.write(
                     "\t".join(
                         map(str, [start_state, loop_state, "<eps>", "<eps>", no_silence_cost])
@@ -987,7 +767,7 @@ class PronunciationDictionary(Dictionary):
                 ):
                     phones = list(pron["pronunciation"])
                     prob = pron["probability"]
-                    if self.config.position_dependent_phones:
+                    if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"
                         else:
@@ -1016,7 +796,7 @@ class PronunciationDictionary(Dictionary):
                             current_state = next_state
                             next_state += 1
                         else:  # transition on last phone to loop state
-                            if self.config.silence_probability:
+                            if self.silence_probability:
                                 outf.write(
                                     f"{current_state}\t{loop_state}\t{p}\t{word_or_eps}\t{local_no_silence_cost}\n"
                                 )
@@ -1031,22 +811,34 @@ class PronunciationDictionary(Dictionary):
 
             outf.write(f"{loop_state}\t0\n")
 
-    def _write_fst_text_disambiguated(self) -> None:
+    def _write_fst_text_disambiguated(
+        self, multispeaker_dictionary: Optional[MultispeakerDictionaryMixin] = None
+    ) -> None:
         """
         Write the text L_disambig.fst file to the temporary directory
+
+        Parameters
+        ----------
+        multispeaker_dictionary: MultispeakerDictionaryMixin, optional
+            Main dictionary with phone mappings
         """
-        lexicon_fst_path = os.path.join(self.output_directory, "lexicon_disambig.text.fst")
-        sil_disambiguation = f"#{self.config.max_disambiguation_symbol + 1}"
-        assert self.config.silence_probability
+        lexicon_fst_path = os.path.join(
+            self.dictionary_output_directory, "lexicon_disambig.text.fst"
+        )
+        if multispeaker_dictionary is not None:
+            sil_disambiguation = f"#{multispeaker_dictionary.max_disambiguation_symbol + 1}"
+        else:
+            sil_disambiguation = f"#{self.max_disambiguation_symbol + 1}"
+        assert self.silence_probability
         start_state = 0
         loop_state = 1
         silence_state = 2
         next_state = 3
 
-        silence_phone = self.config.nonoptional_silence_phone
+        silence_phone = self.nonoptional_silence_phone
 
-        silence_cost = -1 * math.log(self.config.silence_probability)
-        no_silence_cost = -1 * math.log(1 - self.config.silence_probability)
+        silence_cost = -1 * math.log(self.silence_probability)
+        no_silence_cost = -1 * math.log(1 - self.silence_probability)
 
         with open(lexicon_fst_path, "w", encoding="utf8") as outf:
             outf.write(
@@ -1075,7 +867,7 @@ class PronunciationDictionary(Dictionary):
                     phones = list(pron["pronunciation"])
                     prob = pron["probability"]
                     disambig_symbol = pron["disambiguation"]
-                    if self.config.position_dependent_phones:
+                    if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"
                         else:
@@ -1116,3 +908,321 @@ class PronunciationDictionary(Dictionary):
                     )
 
             outf.write(f"{loop_state}\t0.0\n")
+
+
+class PronunciationDictionary(PronunciationDictionaryMixin):
+    """
+    Class for processing pronunciation dictionaries
+    """
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Dictionary name"""
+        return f"{self.name}"
+
+    @property
+    def identifier(self) -> str:
+        """Dictionary name"""
+        return f"{self.data_source_identifier}"
+
+    @property
+    def output_directory(self) -> str:
+        """Temporary directory for the dictionary"""
+        return os.path.join(self.temporary_directory, self.identifier)
+
+
+@dataclass
+class DictionaryData:
+    """
+    Information required for parsing Kaldi-internal ids to text
+
+    Attributes
+    ----------
+    dictionary_options: MetaDict
+        Options for the dictionary
+    sanitize_function: SanitizeFunction
+        Function to sanitize text
+    words_mapping: MappingType
+        Mapping from words to their integer IDs
+    reversed_words_mapping: ReversedMappingType
+        Mapping from integer IDs to words
+    words: WordsType
+        Words and their associated pronunciations
+    """
+
+    dictionary_options: MetaDict
+    sanitize_function: SanitizeFunction
+    words_mapping: MappingType
+    reversed_words_mapping: ReversedMappingType
+    words: WordsType
+
+    @property
+    def oov_word(self) -> str:
+        """Out of vocabulary code"""
+        return self.dictionary_options["oov_word"]
+
+    @property
+    def oov_int(self) -> int:
+        """Out of vocabulary integer ID"""
+        return self.words_mapping[self.oov_word]
+
+    @property
+    def compound_markers(self) -> list[str]:
+        """Characters that separate compound words"""
+        return self.dictionary_options["compound_markers"]
+
+    @property
+    def clitic_markers(self) -> list[str]:
+        """Characters that mark clitics"""
+        return self.dictionary_options["clitic_markers"]
+
+    @property
+    def clitic_set(self) -> set[str]:
+        """Set of clitics"""
+        return self.dictionary_options["clitic_set"]
+
+    @property
+    def punctuation(self) -> list[str]:
+        """Characters to treat as punctuation"""
+        return self.dictionary_options["punctuation"]
+
+    @property
+    def strip_diacritics(self) -> list[str]:
+        """IPA diacritics to strip in multilingual IPA mode"""
+        return self.dictionary_options["strip_diacritics"]
+
+    @property
+    def multilingual_ipa(self) -> bool:
+        """Flag for multilingual IPA mode"""
+        return self.dictionary_options["multilingual_ipa"]
+
+    @property
+    def silence_phones(self) -> set[str]:
+        """Silence phones"""
+        return {
+            self.dictionary_options["oov_phone"],
+            self.dictionary_options["optional_silence_phone"],
+            self.dictionary_options["nonoptional_silence_phone"],
+            self.dictionary_options["other_noise_phone"],
+        }
+
+    def split_clitics(
+        self,
+        item: str,
+    ) -> list[str]:
+        """
+        Split a word into subwords based on dictionary information
+
+        Parameters
+        ----------
+        item: str
+            Word to split
+
+        Returns
+        -------
+        list[str]
+            List of subwords
+        """
+        if item in self.words:
+            return [item]
+        if any(x in item for x in self.compound_markers):
+            s = re.split(rf"[{''.join(self.compound_markers)}]", item)
+            if any(x in item for x in self.clitic_markers):
+                new_s = []
+                for seg in s:
+                    if any(x in seg for x in self.clitic_markers):
+                        new_s.extend(self.split_clitics(seg))
+                    else:
+                        new_s.append(seg)
+                s = new_s
+            return s
+        if any(
+            x in item and not item.endswith(x) and not item.startswith(x)
+            for x in self.clitic_markers
+        ):
+            initial, final = re.split(rf"[{''.join(self.clitic_markers)}]", item, maxsplit=1)
+            if any(x in final for x in self.clitic_markers):
+                final = self.split_clitics(final)
+            else:
+                final = [final]
+            for clitic in self.clitic_markers:
+                if initial + clitic in self.clitic_set:
+                    return [initial + clitic] + final
+                elif clitic + final[0] in self.clitic_set:
+                    final[0] = clitic + final[0]
+                    return [initial] + final
+        return [item]
+
+    def lookup(
+        self,
+        item: str,
+    ) -> list[str]:
+        """
+        Look up a word and return the list of sub words if necessary
+        taking into account clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[str]
+            List of subwords that are in the dictionary
+        """
+
+        if item in self.words:
+            return [item]
+        sanitized = self.sanitize_function(item)
+        if sanitized in self.words:
+            return [sanitized]
+        split = self.split_clitics(sanitized)
+        oov_count = sum(1 for x in split if x not in self.words)
+        if oov_count < len(
+            split
+        ):  # Only returned split item if it gains us any transcribed speech
+            return split
+        return [sanitized]
+
+    def to_int(
+        self,
+        item: str,
+    ) -> list[int]:
+        """
+        Convert a given word into integer IDs
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[int]
+            List of integer IDs corresponding to each subword
+        """
+        if item == "":
+            return []
+        sanitized = self.lookup(item)
+        text_int = []
+        for item in sanitized:
+            if not item:
+                continue
+            if item not in self.words_mapping:
+                text_int.append(self.oov_int)
+            else:
+                text_int.append(self.words_mapping[item])
+        return text_int
+
+    def check_word(self, item: str) -> bool:
+        """
+        Check whether a word is in the dictionary, takes into account sanitization and
+        clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to check
+
+        Returns
+        -------
+        bool
+            True if the look up would not result in an OOV item
+        """
+        if item == "":
+            return False
+        if item in self.words:
+            return True
+        sanitized = self.sanitize_function(item)
+        if sanitized in self.words:
+            return True
+
+        sanitized = self.split_clitics(sanitized)
+        if all(s in self.words for s in sanitized):
+            return True
+        return False
+
+    def map_to_original_pronunciation(
+        self, phones: CtmType, subpronunciations: list[DictionaryEntryType]
+    ) -> CtmType:
+        """
+        Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
+
+        Parameters
+        ----------
+        phones: list[CtmInterval]
+            List of aligned phones
+        subpronunciations: list[DictionaryEntryType]
+            Pronunciations of each sub word to reconstruct the transcriptions
+
+        Returns
+        -------
+        list[CtmInterval]
+            Intervals with their original IPA pronunciation rather than the internal simplified form
+        """
+        transcription = tuple(x.label for x in phones)
+        new_phones = []
+        mapping_ind = 0
+        transcription_ind = 0
+        for pronunciations in subpronunciations:
+            pron = None
+            if mapping_ind >= len(phones):
+                break
+            for p in pronunciations:
+                if (
+                    "original_pronunciation" in p
+                    and transcription == p["pronunciation"] == p["original_pronunciation"]
+                ) or (transcription == p["pronunciation"] and "original_pronunciation" not in p):
+                    new_phones.extend(phones)
+                    mapping_ind += len(phones)
+                    break
+                if (
+                    p["pronunciation"]
+                    == transcription[
+                        transcription_ind : transcription_ind + len(p["pronunciation"])
+                    ]
+                    and pron is None
+                ):
+                    pron = p
+            if mapping_ind >= len(phones):
+                break
+            if not pron:
+                new_phones.extend(phones)
+                mapping_ind += len(phones)
+                break
+            to_extend = phones[transcription_ind : transcription_ind + len(pron["pronunciation"])]
+            transcription_ind += len(pron["pronunciation"])
+            p = pron
+            if (
+                "original_pronunciation" not in p
+                or p["pronunciation"] == p["original_pronunciation"]
+            ):
+                new_phones.extend(to_extend)
+                mapping_ind += len(to_extend)
+                break
+            for pi in p["original_pronunciation"]:
+                if pi == phones[mapping_ind].label:
+                    new_phones.append(phones[mapping_ind])
+                else:
+                    modded_phone = pi
+                    new_p = phones[mapping_ind].label
+                    for diacritic in self.strip_diacritics:
+                        modded_phone = modded_phone.replace(diacritic, "")
+                    if modded_phone == new_p:
+                        phones[mapping_ind].label = pi
+                        new_phones.append(phones[mapping_ind])
+                    elif mapping_ind != len(phones) - 1:
+                        new_p = phones[mapping_ind].label + phones[mapping_ind + 1].label
+                        if modded_phone == new_p:
+                            new_phones.append(
+                                CtmInterval(
+                                    phones[mapping_ind].begin,
+                                    phones[mapping_ind + 1].end,
+                                    new_p,
+                                    phones[mapping_ind].utterance,
+                                )
+                            )
+                            mapping_ind += 1
+                mapping_ind += 1
+        return new_phones

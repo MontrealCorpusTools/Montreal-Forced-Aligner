@@ -3,7 +3,8 @@ import os
 import pytest
 from praatio import textgrid as tgio
 
-from montreal_forced_aligner.command_line.align import load_basic_align, run_align_corpus
+from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
+from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.exceptions import PronunciationAcousticMismatchError
 
@@ -40,15 +41,12 @@ def test_align_arguments(
         "-q",
         "--clean",
         "--debug",
-        "--disable_sat",
+        "--uses_speaker_adaptation",
+        "False",
     ]
     args, unknown_args = parser.parse_known_args(command)
-    print(args, unknown_args)
-    align_config, dictionary_config = load_basic_align()
-    assert not align_config.disable_sat
-    if unknown_args:
-        align_config.update_from_unknown_args(unknown_args)
-    assert align_config.disable_sat
+    params = PretrainedAligner.parse_parameters(args=args, unknown_args=unknown_args)
+    assert not params["uses_speaker_adaptation"]
 
 
 # @pytest.mark.skip(reason='Optimization')
@@ -58,7 +56,7 @@ def test_align_basic(
     generated_dir,
     english_dictionary,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
 ):
     command = [
@@ -70,7 +68,7 @@ def test_align_basic(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -88,7 +86,7 @@ def test_align_basic(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -112,7 +110,7 @@ def test_align_basic(
         assert os.path.exists(path)
         mod_times[path] = os.stat(path).st_mtime
 
-    align_temp_dir = os.path.join(temp_dir, "basic", "align")
+    align_temp_dir = os.path.join(temp_dir, "basic_pretrained_aligner", "pretrained_aligner")
     assert os.path.exists(align_temp_dir)
 
     backup_textgrid_dir = os.path.join(align_temp_dir, "textgrids")
@@ -127,7 +125,7 @@ def test_align_basic(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--debug",
         "--disable_mp",
@@ -150,7 +148,7 @@ def test_align_basic(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--disable_textgrid_cleanup",
         "--clean",
@@ -170,7 +168,7 @@ def test_align_multilingual(
     english_uk_ipa_dictionary,
     generated_dir,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
     english_ipa_acoustic_model,
 ):
@@ -184,7 +182,7 @@ def test_align_multilingual(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -198,7 +196,7 @@ def test_align_multilingual_speaker_dict(
     ipa_speaker_dict_path,
     generated_dir,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_ipa_acoustic_model,
 ):
 
@@ -211,7 +209,7 @@ def test_align_multilingual_speaker_dict(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -225,7 +223,7 @@ def test_align_multilingual_tg_speaker_dict(
     ipa_speaker_dict_path,
     generated_dir,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_ipa_acoustic_model,
 ):
 
@@ -238,7 +236,7 @@ def test_align_multilingual_tg_speaker_dict(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -252,7 +250,7 @@ def test_align_split(
     english_us_ipa_dictionary,
     generated_dir,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
     english_ipa_acoustic_model,
 ):
@@ -266,7 +264,7 @@ def test_align_split(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",
@@ -283,7 +281,7 @@ def test_align_stereo(
     generated_dir,
     english_dictionary,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
 ):
     output_dir = os.path.join(generated_dir, "stereo_output")
@@ -296,7 +294,7 @@ def test_align_stereo(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",

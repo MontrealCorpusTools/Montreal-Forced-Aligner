@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Collection, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 import numpy
 from colorama import Fore, Style
@@ -27,7 +27,42 @@ __all__ = [
     "score",
     "edit_distance",
     "output_mapping",
+    "parse_old_features",
 ]
+
+
+def parse_old_features(config: MetaDict) -> MetaDict:
+    """
+    Backwards compatibility function to parse old feature configuration blocks
+
+    Parameters
+    ----------
+    config: MetaDict
+        Configuration parameters
+
+    Returns
+    -------
+    MetaDict
+        Up to date versions of feature blocks
+    """
+    feature_key_remapping = {
+        "type": "feature_type",
+        "deltas": "uses_deltas",
+        "lda": "uses_splices",
+        "fmllr": "uses_speaker_adaptation",
+    }
+    if "features" in config:
+
+        for key, new_key in feature_key_remapping.items():
+            if key in config["features"]:
+                config["features"][new_key] = config["features"][key]
+                del config["features"][key]
+    else:
+        for key, new_key in feature_key_remapping.items():
+            if key in config:
+                config[new_key] = config[key]
+                del config[key]
+    return config
 
 
 class TerminalPrinter:
@@ -36,7 +71,7 @@ class TerminalPrinter:
 
     Attributes
     ----------
-    colors: Dict[str,str]
+    colors: Dict[str, str]
         Mapping of color names to terminal codes in colorama (or empty strings
         if the global terminal_colors flag is set to False)
     """
@@ -65,13 +100,13 @@ class TerminalPrinter:
             self.colors["reset"] = Style.RESET_ALL
             self.colors["normal"] = Style.NORMAL
 
-    def colorize(self, text: str, color: str) -> str:
+    def colorize(self, text: Any, color: str) -> str:
         """
         Colorize a string
 
         Parameters
         ----------
-        text: str
+        text: Any
             Text to colorize
         color: str
             Colorama code or empty string to wrap the text
@@ -165,7 +200,7 @@ class TerminalPrinter:
         if isinstance(value, (list, tuple, set)):
             value = comma_join([self.colorize(x, value_color) for x in sorted(value)])
         else:
-            value = self.colorize(value, value_color)
+            value = self.colorize(str(value), value_color)
         indent = ("  " * level) + "-"
         subsequent_indent = "  " * (level + 1)
         if key:
@@ -177,13 +212,14 @@ class TerminalPrinter:
         print(wrapper.fill(f"{self.colorize(key, key_color)} {value}"))
 
 
-def comma_join(sequence: Collection[Any]) -> str:
+def comma_join(sequence: list[Any]) -> str:
     """
-    Helper function to combine a list into a human-readable expression with commas and a final "and" separator
+    Helper function to combine a list into a human-readable expression with commas and a
+    final "and" separator
 
     Parameters
     ----------
-    sequence: Collection[Any]
+    sequence: List[Any]
         Items to join together into a list
 
     Returns
@@ -255,6 +291,14 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
     """
     Helper function to save mapping information (i.e., utt2spk) in Kaldi scp format
 
+    CorpusMappingType is either a dictionary of key to value for
+    one-to-one mapping case and a dictionary of key to list of values for one-to-many case.
+
+    See Also
+    --------
+    :func:`~montreal_forced_aligner.helper.save_scp`
+        For another function that saves SCPs from lists
+
     Parameters
     ----------
     mapping: CorpusMappingType
@@ -280,7 +324,15 @@ def save_scp(
     scp: ScpType, path: str, sort: Optional[bool] = True, multiline: Optional[bool] = False
 ) -> None:
     """
-    Helper function to save an arbitrary SCP
+    Helper function to save an arbitrary SCP.
+
+    ScpType is either a list of tuples (str, str) for one-to-one mapping files or
+    a list of tuples (str, list) for one-to-many mappings.
+
+    See Also
+    --------
+    :kaldi_docs:`io#io_sec_scp_details`
+        For more information on the SCP format
 
     Parameters
     ----------
@@ -313,7 +365,16 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
     """
     Load a Kaldi script file (.scp)
 
-    See http://kaldi-asr.org/doc/io.html#io_sec_scp_details for more information
+    Scp files in Kaldi can either be one-to-one or one-to-many, with the first element separated by
+    whitespace as the key and the remaining whitespace-delimited elements the values.
+
+    Returns a dictionary of key to value for
+    one-to-one mapping case and a dictionary of key to list of values for one-to-many case.
+
+    See Also
+    --------
+    :kaldi_docs:`io#io_sec_scp_details`
+        For more information on the SCP format
 
     Parameters
     ----------
@@ -324,9 +385,9 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
 
     Returns
     -------
-    dict
-        PronunciationDictionary where the keys are the first couple and the values are all
-        other columns in the script file
+    CorpusMappingType
+        Dictionary where the keys are the first column and the values are all
+        other columns in the scp file
 
     """
     scp = {}
@@ -351,15 +412,16 @@ def edit_distance(x: Labels, y: Labels) -> int:
     """
     Compute edit distance between two sets of labels
 
-    For a more expressive version of the same, see:
-
-         https://gist.github.com/kylebgorman/8034009
+    See Also
+    --------
+    `https://gist.github.com/kylebgorman/8034009`_
+         For a more expressive version of this function
 
     Parameters
     ----------
     x: Labels
         First sequence to compare
-    y: Lables
+    y: Labels
         Second sequence to compare
 
     Returns
@@ -384,7 +446,7 @@ def edit_distance(x: Labels, y: Labels) -> int:
     return int(table[-1][-1])
 
 
-def score(gold: Labels, hypo: (Labels, List)) -> Tuple[int, int]:
+def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
@@ -394,6 +456,8 @@ def score(gold: Labels, hypo: (Labels, List)) -> Tuple[int, int]:
         The reference labels
     hypo: Labels
         The hypothesized labels
+    multiple_hypotheses: bool
+        Flag for whether the hypotheses contain multiple
 
     Returns
     -------
@@ -402,7 +466,7 @@ def score(gold: Labels, hypo: (Labels, List)) -> Tuple[int, int]:
     int
         Length of the gold labels
     """
-    if isinstance(hypo, list):
+    if multiple_hypotheses:
         edits = 100000
         for h in hypo:
             e = edit_distance(gold, h)

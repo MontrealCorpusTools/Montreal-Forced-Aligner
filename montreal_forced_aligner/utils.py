@@ -6,45 +6,43 @@ Utility functions
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 import os
 import shutil
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+import traceback
+from queue import Empty
+from typing import Any, Callable, Optional, Union
 
-import yaml
 from colorama import Fore, Style
 
 from .exceptions import KaldiProcessingError, ThirdpartyError
 from .models import MODEL_TYPES
 
-if TYPE_CHECKING:
-    from .config.base_config import BaseConfig
-
 __all__ = [
     "thirdparty_binary",
-    "get_available_dictionaries",
-    "log_config",
     "log_kaldi_errors",
-    "get_available_models",
-    "get_available_language_models",
-    "get_available_acoustic_models",
-    "get_available_g2p_models",
-    "get_pretrained_language_model_path",
-    "get_pretrained_g2p_path",
-    "get_pretrained_ivector_path",
-    "get_pretrained_path",
-    "get_pretrained_acoustic_path",
-    "get_dictionary_path",
-    "get_available_ivector_extractors",
     "guess_model_type",
     "parse_logs",
-    "setup_logger",
     "CustomFormatter",
+    "Counter",
+    "Stopped",
+    "ProcessWorker",
+    "run_mp",
+    "run_non_mp",
 ]
 
 
-def get_mfa_version():
+def get_mfa_version() -> str:
+    """
+    Get the current MFA version
+
+    Returns
+    -------
+    str
+        MFA version
+    """
     try:
         from .version import version as __version__  # noqa
     except ImportError:
@@ -79,43 +77,7 @@ def thirdparty_binary(binary_name: str) -> str:
     return bin_path
 
 
-def parse_logs(log_directory: str) -> None:
-    """
-    Parse the output of a Kaldi run for any errors and raise relevant MFA exceptions
-
-    Parameters
-    ----------
-    log_directory: str
-        Log directory to parse
-
-    Raises
-    ------
-    KaldiProcessingError
-        If any log files contained error lines
-
-    """
-    error_logs = []
-    for name in os.listdir(log_directory):
-        log_path = os.path.join(log_directory, name)
-        with open(log_path, "r", encoding="utf8") as f:
-            for line in f:
-                line = line.strip()
-                if "error while loading shared libraries: libopenblas.so.0" in line:
-                    raise ThirdpartyError("libopenblas.so.0", open_blas=True)
-                for libc_version in ["GLIBC_2.27", "GLIBCXX_3.4.20"]:
-                    if libc_version in line:
-                        raise ThirdpartyError(libc_version, libc=True)
-                if "sox FAIL formats" in line:
-                    f = line.split(" ")[-1]
-                    raise ThirdpartyError(f, sox=True)
-                if line.startswith("ERROR") or line.startswith("ASSERTION_FAILED"):
-                    error_logs.append(log_path)
-                    break
-    if error_logs:
-        raise KaldiProcessingError(error_logs)
-
-
-def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
+def log_kaldi_errors(error_logs: list[str], logger: logging.Logger) -> None:
     """
     Save details of Kaldi processing errors to a logger
 
@@ -135,33 +97,7 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def get_available_models(model_type: str) -> List[str]:
-    """
-    Get a list of available models for a given model type
-
-    Parameters
-    ----------
-    model_type: str
-        Model type to search
-
-    Returns
-    -------
-    List[str]
-        List of model names
-    """
-    from .config import TEMP_DIR
-
-    pretrained_dir = os.path.join(TEMP_DIR, "pretrained_models", model_type)
-    os.makedirs(pretrained_dir, exist_ok=True)
-    available = []
-    model_class = MODEL_TYPES[model_type]
-    for f in os.listdir(pretrained_dir):
-        if model_class is None or model_class.valid_extension(f):
-            available.append(os.path.splitext(f)[0])
-    return available
-
-
-def guess_model_type(path: str) -> List[str]:
+def guess_model_type(path: str) -> list[str]:
     """
     Guess a model type given a path
 
@@ -183,176 +119,6 @@ def guess_model_type(path: str) -> List[str]:
         if ext in mc.extensions:
             possible.append(m)
     return possible
-
-
-def get_available_acoustic_models() -> List[str]:
-    """
-    Return a list of all available acoustic models
-
-    Returns
-    -------
-    List[str]
-        Pretrained acoustic models
-    """
-    return get_available_models("acoustic")
-
-
-def get_available_g2p_models() -> List[str]:
-    """
-    Return a list of all available G2P models
-
-    Returns
-    -------
-    List[str]
-        Pretrained G2P models
-    """
-    return get_available_models("g2p")
-
-
-def get_available_ivector_extractors() -> List[str]:
-    """
-    Return a list of all available ivector extractors
-
-    Returns
-    -------
-    List[str]
-        Pretrained ivector extractors
-    """
-    return get_available_models("ivector")
-
-
-def get_available_language_models() -> List[str]:
-    """
-    Return a list of all available language models
-
-    Returns
-    -------
-    List[str]
-        Pretrained language models
-    """
-    return get_available_models("language_model")
-
-
-def get_available_dictionaries() -> List[str]:
-    """
-    Return a list of all available dictionaries
-
-    Returns
-    -------
-    List[str]
-        Saved dictionaries
-    """
-    return get_available_models("dictionary")
-
-
-def get_pretrained_path(model_type: str, name: str, enforce_existence: bool = True) -> str:
-    """
-    Generate a path to a pretrained model based on its name and model type
-
-    Parameters
-    ----------
-    model_type: str
-        Type of model
-    name: str
-        Name of model
-    enforce_existence: bool
-        Flag to return None if the path doesn't exist, defaults to True
-
-    Returns
-    -------
-    str
-        Path to model
-    """
-    from .config import TEMP_DIR
-
-    pretrained_dir = os.path.join(TEMP_DIR, "pretrained_models", model_type)
-    model_class = MODEL_TYPES[model_type]
-    return model_class.generate_path(pretrained_dir, name, enforce_existence)
-
-
-def get_pretrained_acoustic_path(name: str) -> str:
-    """
-    Generate a path to a given pretrained acoustic model
-
-    Parameters
-    ----------
-    name: str
-        Name of model
-
-    Returns
-    -------
-    str
-        Full path to model
-    """
-    return get_pretrained_path("acoustic", name)
-
-
-def get_pretrained_ivector_path(name: str) -> str:
-    """
-    Generate a path to a given pretrained ivector extractor
-
-    Parameters
-    ----------
-    name: str
-        Name of model
-
-    Returns
-    -------
-    str
-        Full path to model
-    """
-    return get_pretrained_path("ivector", name)
-
-
-def get_pretrained_language_model_path(name: str) -> str:
-    """
-    Generate a path to a given pretrained language model
-
-    Parameters
-    ----------
-    name: str
-        Name of model
-
-    Returns
-    -------
-    str
-        Full path to model
-    """
-    return get_pretrained_path("language_model", name)
-
-
-def get_pretrained_g2p_path(name: str) -> str:
-    """
-    Generate a path to a given pretrained G2P model
-
-    Parameters
-    ----------
-    name: str
-        Name of model
-
-    Returns
-    -------
-    str
-        Full path to model
-    """
-    return get_pretrained_path("g2p", name)
-
-
-def get_dictionary_path(name: str) -> str:
-    """
-    Generate a path to a given saved dictionary
-
-    Parameters
-    ----------
-    name: str
-        Name of dictionary
-
-    Returns
-    -------
-    str
-        Full path to dictionary
-    """
-    return get_pretrained_path("dictionary", name)
 
 
 class CustomFormatter(logging.Formatter):
@@ -411,57 +177,248 @@ class CustomFormatter(logging.Formatter):
         )
 
 
-def setup_logger(
-    identifier: str, output_directory: str, console_level: str = "info"
-) -> logging.Logger:
+def parse_logs(log_directory: str) -> None:
     """
-    Construct a logger for a command line run
+    Parse the output of a Kaldi run for any errors and raise relevant MFA exceptions
 
     Parameters
     ----------
-    identifier: str
-        Name of the MFA utility
-    output_directory: str
-        Top level logging directory
-    console_level: str, optional
-        Level to output to the console, defaults to "info"
+    log_directory: str
+        Log directory to parse
+
+    Raises
+    ------
+    KaldiProcessingError
+        If any log files contained error lines
+
+    """
+    error_logs = []
+    for name in os.listdir(log_directory):
+        log_path = os.path.join(log_directory, name)
+        with open(log_path, "r", encoding="utf8") as f:
+            for line in f:
+                line = line.strip()
+                if "error while loading shared libraries: libopenblas.so.0" in line:
+                    raise ThirdpartyError("libopenblas.so.0", open_blas=True)
+                for libc_version in ["GLIBC_2.27", "GLIBCXX_3.4.20"]:
+                    if libc_version in line:
+                        raise ThirdpartyError(libc_version, libc=True)
+                if "sox FAIL formats" in line:
+                    f = line.split(" ")[-1]
+                    raise ThirdpartyError(f, sox=True)
+                if line.startswith("ERROR") or line.startswith("ASSERTION_FAILED"):
+                    error_logs.append(log_path)
+                    break
+    if error_logs:
+        raise KaldiProcessingError(error_logs)
+
+
+class Counter(object):
+    """
+    Multiprocessing counter object for keeping track of progress
+
+    Attributes
+    ----------
+    val: :func:`~multiprocessing.Value`
+        Integer to increment
+    lock: :class:`~multiprocessing.Lock`
+        Lock for process safety
+    """
+
+    def __init__(self, init_val: int = 0):
+        self.val = mp.Value("i", init_val)
+        self.lock = mp.Lock()
+
+    def increment(self) -> None:
+        """Increment the counter"""
+        with self.lock:
+            self.val.value += 1
+
+    def value(self) -> int:
+        """Get the current value of the counter"""
+        with self.lock:
+            return self.val.value
+
+
+class Stopped(object):
+    """
+    Multiprocessing class for detecting whether processes should stop processing and exit ASAP
+
+    Attributes
+    ----------
+    val: :func:`~multiprocessing.Value`
+        0 if not stopped, 1 if stopped
+    lock: :class:`~multiprocessing.Lock`
+        Lock for process safety
+    _source: multiprocessing.Value
+        1 if it was a Ctrl+C event that stopped it, 0 otherwise
+    """
+
+    def __init__(self, initval: Union[bool, int] = False):
+        self.val = mp.Value("i", initval)
+        self.lock = mp.Lock()
+        self._source = mp.Value("i", 0)
+
+    def stop(self) -> None:
+        """Signal that work should stop asap"""
+        with self.lock:
+            self.val.value = True
+
+    def stop_check(self) -> int:
+        """Check whether a process should stop"""
+        with self.lock:
+            return self.val.value
+
+    def set_sigint_source(self) -> None:
+        """Set the source as a ctrl+c"""
+        with self.lock:
+            self._source.value = True
+
+    def source(self) -> int:
+        """Get the source value"""
+        with self.lock:
+            return self._source.value
+
+
+class ProcessWorker(mp.Process):
+    """
+    Multiprocessing function work
+
+    Parameters
+    ----------
+    job_name: int
+        Integer number of job
+    job_q: :class:`~multiprocessing.Queue`
+        Job queue to pull arguments from
+    function: Callable
+        Multiprocessing function to call on arguments from job_q
+    return_dict: Dict
+        Dictionary for collecting errors
+    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+        Stop check
+    return_info: Dict[int, Any], optional
+        Optional dictionary to fill if the function should return information to main thread
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        job_q: mp.Queue,
+        function: Callable,
+        return_dict: dict,
+        stopped: Stopped,
+        return_info: Optional[dict[int, Any]] = None,
+    ):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.function = function
+        self.job_q = job_q
+        self.return_dict = return_dict
+        self.return_info = return_info
+        self.stopped = stopped
+
+    def run(self) -> None:
+        """
+        Run through the arguments in the queue apply the function to them
+        """
+        try:
+            arguments = self.job_q.get(timeout=1)
+        except Empty:
+            return
+        self.job_q.task_done()
+        try:
+            result = self.function(*arguments)
+            if self.return_info is not None:
+                self.return_info[self.job_name] = result
+        except Exception:
+            self.stopped.stop()
+            self.return_dict["error"] = arguments, Exception(
+                traceback.format_exception(*sys.exc_info())
+            )
+
+
+def run_non_mp(
+    function: Callable,
+    argument_list: list[tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[dict[Any, Any]]:
+    """
+    Similar to :func:`run_mp`, but no additional processes are used and the jobs are evaluated in sequential order
+
+    Parameters
+    ----------
+    function: Callable
+        Multiprocessing function to evaluate
+    argument_list: List
+        List of arguments to process
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: Dict, optional
+        If the function returns information, supply the return dict to populate
 
     Returns
     -------
-    :class:`~logging.Logger`
-        Logger to use
+    Dict, optional
+        If the function returns information, returns the dictionary it was supplied with
     """
-    os.makedirs(output_directory, exist_ok=True)
-    log_path = os.path.join(output_directory, f"{identifier}.log")
-    if os.path.exists(log_path):
-        os.remove(log_path)
-    logger = logging.getLogger(identifier)
-    logger.setLevel(logging.DEBUG)
+    if return_info:
+        info = {}
+        for i, args in enumerate(argument_list):
+            info[i] = function(*args)
+        parse_logs(log_directory)
+        return info
 
-    handler = logging.FileHandler(log_path, encoding="utf8")
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, console_level.upper()))
-    handler.setFormatter(CustomFormatter())
-    logger.addHandler(handler)
-    logger.debug(f"Set up logger for MFA version: {get_mfa_version()}")
-    return logger
+    for args in argument_list:
+        function(*args)
+    parse_logs(log_directory)
 
 
-def log_config(logger: logging.Logger, config: Union[Dict[str, Any], BaseConfig]) -> None:
+def run_mp(
+    function: Callable,
+    argument_list: list[tuple[Any, ...]],
+    log_directory: str,
+    return_info: bool = False,
+) -> Optional[dict[int, Any]]:
     """
-    Output a configuration to a Logger
+    Apply a function for each job in parallel
 
     Parameters
     ----------
-    logger: :class:`~logging.Logger`
-        Logger to save to
-    config: Dict[str, Any] or :class:`~montreal_forced_aligner.config.BaseConfig`
-        Configuration to dump
+    function: Callable
+        Multiprocessing function to apply
+    argument_list: List
+        List of arguments for each job
+    log_directory: str
+        Directory that all log information from the processes goes to
+    return_info: Dict, optional
+        If the function returns information, supply the return dict to populate
     """
-    stream = yaml.dump(config)
-    logger.debug(stream)
+    from .config import BLAS_THREADS
+
+    os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
+    os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
+    stopped = Stopped()
+    manager = mp.Manager()
+    job_queue = manager.Queue()
+    return_dict = manager.dict()
+    info = None
+    if return_info:
+        info = manager.dict()
+    for a in argument_list:
+        job_queue.put(a)
+    procs = []
+    for i in range(len(argument_list)):
+        p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
+        procs.append(p)
+        p.start()
+
+    for p in procs:
+        p.join()
+    if "error" in return_dict:
+        _, exc = return_dict["error"]
+        raise exc
+
+    parse_logs(log_directory)
+    if return_info:
+        return info

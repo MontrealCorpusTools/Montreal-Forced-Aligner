@@ -11,7 +11,7 @@ def test_basic_ivector(
     generated_dir,
     english_dictionary,
     temp_dir,
-    train_ivector_config,
+    train_ivector_config_path,
     english_acoustic_model,
     ivector_output_model_path,
 ):
@@ -24,7 +24,7 @@ def test_basic_ivector(
         "-t",
         temp_dir,
         "--config_path",
-        train_ivector_config,
+        train_ivector_config_path,
         "-q",
         "--clean",
         "--debug",

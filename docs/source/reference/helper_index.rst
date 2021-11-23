@@ -9,6 +9,5 @@ Helper
    data
    exceptions
    helper
-   multiprocessing/index
    textgrid
    utils

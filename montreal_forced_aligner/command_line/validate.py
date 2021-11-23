@@ -2,19 +2,11 @@
 from __future__ import annotations
 
 import os
-import shutil
-import time
 from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.config import TEMP_DIR
-from montreal_forced_aligner.config.dictionary_config import DictionaryConfig
-from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.exceptions import ArgumentError
-from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.utils import setup_logger
-from montreal_forced_aligner.validator import CorpusValidator
+from montreal_forced_aligner.validator import PretrainedValidator, TrainingValidator
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -34,69 +26,30 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
     unknown_args: List[str]
         Optional arguments that will be passed to configuration objects
     """
-    command = "validate"
-    all_begin = time.time()
-    if not args.temp_directory:
-        temp_dir = TEMP_DIR
-    else:
-        temp_dir = os.path.expanduser(args.temp_directory)
-    corpus_name = os.path.basename(args.corpus_directory)
-    if corpus_name == "":
-        args.corpus_directory = os.path.dirname(args.corpus_directory)
-        corpus_name = os.path.basename(args.corpus_directory)
-    data_directory = os.path.join(temp_dir, corpus_name)
-    shutil.rmtree(data_directory, ignore_errors=True)
-
-    os.makedirs(data_directory, exist_ok=True)
-    model_directory = os.path.join(data_directory, "acoustic_models")
-    os.makedirs(model_directory, exist_ok=True)
-    if getattr(args, "verbose", False):
-        log_level = "debug"
-    else:
-        log_level = "info"
-    logger = setup_logger(command, data_directory, console_level=log_level)
-    dictionary_config = DictionaryConfig()
-    acoustic_model = None
     if args.acoustic_model_path:
-        acoustic_model = AcousticModel(args.acoustic_model_path, root_directory=model_directory)
-        acoustic_model.log_details(logger)
-        dictionary_config.update(acoustic_model.meta)
-    dictionary = MultispeakerDictionary(
-        args.dictionary_path,
-        data_directory,
-        dictionary_config,
-        logger=logger,
-    )
-    if acoustic_model:
-        acoustic_model.validate(dictionary)
-
-    corpus = Corpus(
-        args.corpus_directory,
-        data_directory,
-        dictionary_config,
-        speaker_characters=args.speaker_characters,
-        num_jobs=getattr(args, "num_jobs", 3),
-        logger=logger,
-        use_mp=not args.disable_mp,
-    )
-    a = CorpusValidator(
-        corpus,
-        dictionary,
-        temp_directory=data_directory,
-        ignore_acoustics=getattr(args, "ignore_acoustics", False),
-        test_transcriptions=getattr(args, "test_transcriptions", False),
-        use_mp=not args.disable_mp,
-        logger=logger,
-    )
-    begin = time.time()
-    a.validate()
-    logger.debug(f"Validation took {time.time() - begin} seconds")
-    logger.info("All done!")
-    logger.debug(f"Done! Everything took {time.time() - all_begin} seconds")
-    handlers = logger.handlers[:]
-    for handler in handlers:
-        handler.close()
-        logger.removeHandler(handler)
+        validator = PretrainedValidator(
+            acoustic_model_path=args.acoustic_model_path,
+            corpus_directory=args.corpus_directory,
+            audio_directory=args.audio_directory,
+            dictionary_path=args.dictionary_path,
+            temporary_directory=args.temporary_directory,
+            **PretrainedValidator.parse_parameters(args.config_path, args, unknown_args),
+        )
+    else:
+        validator = TrainingValidator(
+            corpus_directory=args.corpus_directory,
+            audio_directory=args.audio_directory,
+            dictionary_path=args.dictionary_path,
+            temporary_directory=args.temporary_directory,
+            **TrainingValidator.parse_parameters(args.config_path, args, unknown_args),
+        )
+    try:
+        validator.validate()
+    except Exception:
+        validator.dirty = True
+        raise
+    finally:
+        validator.cleanup()
 
 
 def validate_args(args: Namespace) -> None:

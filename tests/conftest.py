@@ -1,24 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-# from montreal_forced_aligner.command_line.mfa import fix_path
-
-# fix_path()
-
-
-if TYPE_CHECKING:
-    from montreal_forced_aligner.config import FeatureConfig
-
 import os
 import shutil
 
 import pytest
 import yaml
-
-from montreal_forced_aligner.config import align_yaml_to_config, train_yaml_to_config
-from montreal_forced_aligner.corpus import Corpus
-from montreal_forced_aligner.dictionary import MultispeakerDictionary
 
 
 @pytest.fixture(scope="session")
@@ -68,14 +54,8 @@ def generated_dir(test_dir):
 
 @pytest.fixture(scope="session")
 def temp_dir(generated_dir):
+
     return os.path.join(generated_dir, "temp")
-
-
-@pytest.fixture(scope="session")
-def config_dir(generated_dir):
-    path = os.path.join(generated_dir, "configs")
-    os.makedirs(path, exist_ok=True)
-    return path
 
 
 @pytest.fixture(scope="session")
@@ -88,18 +68,15 @@ def english_acoustic_model():
 
 @pytest.fixture(scope="session")
 def english_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model, get_pretrained_path
+    from montreal_forced_aligner.command_line.model import download_model
 
     download_model("dictionary", "english")
-    return get_pretrained_path("dictionary", "english")
+    return "english"
 
 
 @pytest.fixture(scope="session")
 def basic_dictionary_config():
-    from montreal_forced_aligner.config.dictionary_config import DictionaryConfig
-
-    config = DictionaryConfig(debug=True)
-    return config
+    return {}
 
 
 @pytest.fixture(scope="session")
@@ -112,10 +89,10 @@ def english_ipa_acoustic_model():
 
 @pytest.fixture(scope="session")
 def english_us_ipa_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model, get_pretrained_path
+    from montreal_forced_aligner.command_line.model import download_model
 
     download_model("dictionary", "english_us_ipa")
-    return get_pretrained_path("dictionary", "english_us_ipa")
+    return "english_us_ipa"
 
 
 @pytest.fixture(scope="session")
@@ -157,7 +134,7 @@ def transcription_language_model_arpa(language_model_dir, generated_dir):
 
 @pytest.fixture(scope="session")
 def corpus_root_dir(generated_dir):
-    return os.path.join(generated_dir, "corpus")
+    return os.path.join(generated_dir, "constructed_test_corpora")
 
 
 @pytest.fixture(scope="session")
@@ -168,15 +145,6 @@ def output_model_dir(generated_dir):
 @pytest.fixture(scope="session")
 def mono_align_model_path(output_model_dir):
     return os.path.join(output_model_dir, "mono_model.zip")
-
-
-@pytest.fixture(scope="session")
-def default_feature_config() -> FeatureConfig:
-    from montreal_forced_aligner.config import FeatureConfig
-
-    fc = FeatureConfig()
-    fc.use_mp = False
-    return fc
 
 
 @pytest.fixture(scope="session")
@@ -596,19 +564,13 @@ def acoustic_corpus_textgrid_path(basic_dir):
 
 
 @pytest.fixture(scope="session")
-def sick_dict(sick_dict_path, generated_dir, basic_dictionary_config):
-    output_directory = os.path.join(generated_dir, "sickcorpus")
-
-    dictionary = MultispeakerDictionary(sick_dict_path, output_directory, basic_dictionary_config)
-    dictionary.write()
-    return dictionary
+def sick_dict(sick_dict_path, generated_dir):
+    return sick_dict_path
 
 
 @pytest.fixture(scope="session")
 def sick_corpus(basic_corpus_dir, generated_dir, basic_dictionary_config):
-    output_directory = os.path.join(generated_dir, "sickcorpus")
-    corpus = Corpus(basic_corpus_dir, output_directory, basic_dictionary_config, num_jobs=2)
-    return corpus
+    return basic_corpus_dir
 
 
 @pytest.fixture(scope="session")
@@ -676,58 +638,48 @@ def config_directory(test_dir):
 
 
 @pytest.fixture(scope="session")
-def basic_train_config(config_directory):
+def basic_train_config_path(config_directory):
     return os.path.join(config_directory, "basic_train_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def transcribe_config(config_directory):
+def transcribe_config_path(config_directory):
     return os.path.join(config_directory, "transcribe.yaml")
 
 
 @pytest.fixture(scope="session")
-def g2p_config(config_directory):
+def g2p_config_path(config_directory):
     return os.path.join(config_directory, "g2p_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def train_g2p_config(config_directory):
+def train_g2p_config_path(config_directory):
     return os.path.join(config_directory, "train_g2p_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def basic_train_lm_config(config_directory):
+def basic_train_lm_config_path(config_directory):
     return os.path.join(config_directory, "basic_train_lm.yaml")
 
 
 @pytest.fixture(scope="session")
-def different_punctuation_config(config_directory):
+def different_punctuation_config_path(config_directory):
     return os.path.join(config_directory, "different_punctuation_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def basic_align_config(config_directory):
+def basic_align_config_path(config_directory):
     return os.path.join(config_directory, "basic_align_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def basic_segment_config(config_directory):
+def basic_segment_config_path(config_directory):
     return os.path.join(config_directory, "basic_segment_config.yaml")
 
 
 @pytest.fixture(scope="session")
-def train_ivector_config(config_directory):
+def train_ivector_config_path(config_directory):
     return os.path.join(config_directory, "ivector_train.yaml")
-
-
-@pytest.fixture(scope="session")
-def mono_train_config_path(config_directory):
-    return os.path.join(config_directory, "mono_train.yaml")
-
-
-@pytest.fixture(scope="session")
-def mono_train_config(mono_train_config_path):
-    return train_yaml_to_config(mono_train_config_path)
 
 
 @pytest.fixture(scope="session")
@@ -736,37 +688,32 @@ def mono_align_config_path(config_directory):
 
 
 @pytest.fixture(scope="session")
-def mono_align_config(mono_align_config_path):
-    return align_yaml_to_config(mono_align_config_path)[0]
+def mono_train_config_path(config_directory):
+    return os.path.join(config_directory, "mono_train.yaml")
 
 
 @pytest.fixture(scope="session")
-def tri_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, "tri_train.yaml"))
+def tri_train_config_path(config_directory):
+    return os.path.join(config_directory, "tri_train.yaml")
 
 
 @pytest.fixture(scope="session")
-def lda_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, "lda_train.yaml"))
+def lda_train_config_path(config_directory):
+    return os.path.join(config_directory, "lda_train.yaml")
 
 
 @pytest.fixture(scope="session")
-def sat_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, "sat_train.yaml"))
+def sat_train_config_path(config_directory):
+    return os.path.join(config_directory, "sat_train.yaml")
 
 
 @pytest.fixture(scope="session")
-def lda_sat_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, "lda_sat_train.yaml"))
+def lda_sat_train_config_path(config_directory):
+    return os.path.join(config_directory, "lda_sat_train.yaml")
 
 
 @pytest.fixture(scope="session")
-def ivector_train_config(config_directory):
-    return train_yaml_to_config(os.path.join(config_directory, "ivector_train.yaml"))
-
-
-@pytest.fixture(scope="session")
-def multispeaker_dictionary_config(generated_dir, sick_dict_path):
+def multispeaker_dictionary_config_path(generated_dir, sick_dict_path):
     path = os.path.join(generated_dir, "multispeaker_dictionary.yaml")
     with open(path, "w", encoding="utf8") as f:
         yaml.safe_dump({"default": "english", "michael": sick_dict_path}, f)
@@ -781,3 +728,8 @@ def ipa_speaker_dict_path(generated_dir, english_uk_ipa_dictionary, english_us_i
             {"default": english_us_ipa_dictionary, "speaker": english_uk_ipa_dictionary}, f
         )
     return path
+
+
+@pytest.fixture(scope="session")
+def test_align_config():
+    return {"beam": 100, "retry_beam": 400}

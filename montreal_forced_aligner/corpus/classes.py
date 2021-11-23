@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import traceback
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from praatio import textgrid
 from praatio.utilities.constants import Interval
@@ -13,15 +13,10 @@ from ..exceptions import CorpusError, TextGridParseError, TextParseError
 from .helper import get_wav_info, load_text, parse_transcription
 
 if TYPE_CHECKING:
-    from ..config.align_config import AlignConfig
-    from ..config.dictionary_config import DictionaryConfig
-    from ..dictionary import Dictionary, DictionaryData
+    from ..abc import MetaDict
+    from ..dictionary import DictionaryData
+    from ..dictionary.base_dictionary import PronunciationDictionaryMixin
     from ..textgrid import CtmType
-    from ..trainers import BaseTrainer, LdaTrainer, SatTrainer
-
-    ConfigType = Union[BaseTrainer, AlignConfig]
-    FmllrConfigType = Union[SatTrainer, AlignConfig]
-    LdaConfigType = Union[LdaTrainer, AlignConfig]
 
 
 __all__ = ["parse_file", "File", "Speaker", "Utterance"]
@@ -29,12 +24,11 @@ __all__ = ["parse_file", "File", "Speaker", "Utterance"]
 
 def parse_file(
     file_name: str,
-    wav_path: str,
-    text_path: str,
+    wav_path: Optional[str],
+    text_path: Optional[str],
     relative_path: str,
     speaker_characters: Union[int, str],
-    sample_rate: int = 16000,
-    dictionary_config: Optional[DictionaryConfig] = None,
+    sanitize_function: Optional[Callable] = None,
     stop_check: Optional[Callable] = None,
 ) -> File:
     """
@@ -52,12 +46,8 @@ def parse_file(
         Relative path from the corpus directory root
     speaker_characters: int, optional
         Number of characters in the file name to specify the speaker
-    sample_rate: int
-        Default sample rate for the corpus
-    punctuation: str
-        Orthographic characters to be treated as punctuation
-    clitic_markers: str
-        Orthographic characters to be treated as clitic markers
+    sanitize_function: Callable, optional
+        Function to sanitize words and strip punctuation
     stop_check: Callable
         Check whether to stop parsing early
 
@@ -69,7 +59,7 @@ def parse_file(
     file = File(wav_path, text_path, relative_path=relative_path)
     if file.has_sound_file:
         root = os.path.dirname(wav_path)
-        file.wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
+        file.wav_info = get_wav_info(wav_path)
     else:
         root = os.path.dirname(text_path)
     if not speaker_characters:
@@ -85,7 +75,7 @@ def parse_file(
         root_speaker = Speaker(speaker_name)
     file.load_text(
         root_speaker=root_speaker,
-        dictionary_config=dictionary_config,
+        sanitize_function=sanitize_function,
         stop_check=stop_check,
     )
     return file
@@ -116,7 +106,7 @@ class Speaker:
         self.name = name
         self.utterances = {}
         self.cmvn = None
-        self.dictionary: Optional[Dictionary] = None
+        self.dictionary: Optional[PronunciationDictionaryMixin] = None
         self.dictionary_data: Optional[DictionaryData] = None
 
     def __getstate__(self):
@@ -219,7 +209,7 @@ class Speaker:
             self.add_utterance(u)
         speaker.utterances = []
 
-    def word_set(self) -> Set[str]:
+    def word_set(self) -> set[str]:
         """
         Generate the word set of all the words in a speaker's utterances
 
@@ -231,10 +221,16 @@ class Speaker:
         words = set()
         for u in self.utterances.values():
             if u.text:
-                words.update(u.text.split())
+                text = u.text.split()
+                for word in text:
+                    if self.dictionary:
+                        word = self.dictionary._lookup(word)
+                        words.update(word)
+                    else:
+                        words.add(word)
         return words
 
-    def set_dictionary(self, dictionary: Dictionary) -> None:
+    def set_dictionary(self, dictionary: PronunciationDictionaryMixin) -> None:
         """
         Set the dictionary for the speaker
 
@@ -247,7 +243,7 @@ class Speaker:
         self.dictionary_data = dictionary.data(self.word_set())
 
     @property
-    def files(self) -> Set["File"]:
+    def files(self) -> set["File"]:
         """Files that the speaker is associated with"""
         files = set()
         for u in self.utterances.values():
@@ -301,8 +297,8 @@ class File:
             raise CorpusError("File objects must have either a wav_path or text_path")
         self.relative_path = relative_path
         self.wav_info = None
-        self.speaker_ordering: List[Speaker] = []
-        self.utterances: Dict[str, Utterance] = {}
+        self.speaker_ordering: list[Speaker] = []
+        self.utterances: dict[str, Utterance] = {}
         self.aligned = False
 
     def __repr__(self):
@@ -484,7 +480,7 @@ class File:
     def load_text(
         self,
         root_speaker: Optional[Speaker] = None,
-        dictionary_config: Optional[DictionaryConfig] = None,
+        sanitize_function: Optional[Callable] = None,
         stop_check: Optional[Callable] = None,
     ) -> None:
         """
@@ -494,10 +490,8 @@ class File:
         ----------
         root_speaker: :class:`~montreal_forced_aligner.corpus.Speaker`, optional
             Speaker derived from the root directory, ignored for TextGrids
-        punctuation: str
-            Orthographic characters to treat as punctuation
-        clitic_markers: str
-            Orthographic characters to treat as clitic markers
+        sanitize_function: Callable, optional
+            Function to sanitize words and strip punctuation
         stop_check: Callable
             Function to check whether this should break early
         """
@@ -506,7 +500,7 @@ class File:
                 text = load_text(self.text_path)
             except UnicodeDecodeError:
                 raise TextParseError(self.text_path)
-            words = parse_transcription(text, dictionary_config)
+            words = parse_transcription(text, sanitize_function)
             utterance = Utterance(speaker=root_speaker, file=self, text=" ".join(words))
             self.add_utterance(utterance)
         elif self.text_type == "textgrid":
@@ -540,7 +534,7 @@ class File:
                     if stop_check is not None and stop_check():
                         return
                     text = text.lower().strip()
-                    words = parse_transcription(text, dictionary_config)
+                    words = parse_transcription(text, sanitize_function)
                     if not words:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
@@ -711,7 +705,7 @@ class Utterance:
         self.feature_length = None
         self.phone_labels: Optional[CtmType] = None
         self.word_labels: Optional[CtmType] = None
-        self.oovs = []
+        self.oovs = set()
         self.speaker.add_utterance(self)
         self.file.add_utterance(self)
 
@@ -895,7 +889,7 @@ class Utterance:
         return self.file.duration
 
     @property
-    def meta(self) -> Dict[str, Any]:
+    def meta(self) -> MetaDict:
         """Metadata dictionary for the utterance"""
         return {
             "speaker": self.speaker.name,
@@ -927,7 +921,7 @@ class Utterance:
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
 
-    def text_for_scp(self) -> List[str]:
+    def text_for_scp(self) -> list[str]:
         """
         Generate the text for exporting to Kaldi's text scp
 
@@ -938,7 +932,7 @@ class Utterance:
         """
         return self.text.split()
 
-    def text_int_for_scp(self) -> Optional[List[int]]:
+    def text_int_for_scp(self) -> Optional[list[int]]:
         """
         Generate the text for exporting to Kaldi's text int scp
 
@@ -955,11 +949,11 @@ class Utterance:
             lookup = self.speaker.dictionary.to_int(t)
             for w in lookup:
                 if w == self.speaker.dictionary.oov_int:
-                    self.oovs.append(text[i])
+                    self.oovs.add(text[i])
                 new_text.append(w)
         return new_text
 
-    def segment_for_scp(self) -> List[Any]:
+    def segment_for_scp(self) -> list[Any]:
         """
         Generate data for Kaldi's segments scp file
 
