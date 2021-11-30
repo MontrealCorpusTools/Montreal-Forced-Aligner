@@ -73,6 +73,7 @@ def download_model(model_type: str, name: str) -> None:
     try:
         model_class = MODEL_TYPES[model_type]
         extension = model_class.extensions[0]
+        os.makedirs(model_class.pretrained_directory(), exist_ok=True)
         out_path = model_class.get_pretrained_path(name, enforce_existence=False)
     except KeyError:
         raise NotImplementedError(
