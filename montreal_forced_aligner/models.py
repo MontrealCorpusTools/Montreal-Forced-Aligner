@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from .abc import MetaDict
-    from .dictionary.base_dictionary import DictionaryMixin, PronunciationDictionaryMixin
+    from .dictionary.base import DictionaryMixin, PronunciationDictionaryMixin
 
 
 # default format for output
@@ -60,10 +60,10 @@ class Archive(MfaModel):
     extensions = [".zip"]
 
     def __init__(self, source: str, root_directory: Optional[str] = None):
-        from .config import TEMP_DIR
+        from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = os.path.join(TEMP_DIR, "extracted_models")
+            root_directory = os.path.join(get_temporary_directory(), "extracted_models")
         self.root_directory = root_directory
         self.source = source
         self._meta = {}
@@ -120,12 +120,12 @@ class Archive(MfaModel):
 
         Returns
         -------
-        Union[AcousticModel, G2PModel, LanguageModel, IvectorExtractor]
+        :class:`~montreal_forced_aligner.models.AcousticModel`, :class:`~montreal_forced_aligner.models.G2PModel`, :class:`~montreal_forced_aligner.models.LanguageModel`, or :class:`~montreal_forced_aligner.models.IvectorExtractorModel`
             Subclass model that was auto detected
 
         Raises
         ------
-        ModelLoadError
+        :class:`~montreal_forced_aligner.exceptions.ModelLoadError`
             If the model type cannot be determined
         """
         for f in os.listdir(self.dirname):
@@ -209,7 +209,7 @@ class Archive(MfaModel):
 
         Parameters
         ----------
-        trainer: ModelExporterMixin
+        trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             The trainer to construct the metadata from
         """
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
@@ -231,13 +231,13 @@ class Archive(MfaModel):
 
         Returns
         -------
-        Archive, IvectorExtractorModel, AcousticModel, G2PModel, LanguageModel
+        :class:`~montreal_forced_aligner.models.Archive`, :class:`~montreal_forced_aligner.models.AcousticModel`, :class:`~montreal_forced_aligner.models.G2PModel`, :class:`~montreal_forced_aligner.models.LanguageModel`, or :class:`~montreal_forced_aligner.models.IvectorExtractorModel`
             Model constructed from the empty directory
         """
-        from .config import TEMP_DIR
+        from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = TEMP_DIR
+            root_directory = get_temporary_directory()
 
         os.makedirs(root_directory, exist_ok=True)
         source = os.path.join(root_directory, head)
@@ -306,7 +306,7 @@ class AcousticModel(Archive):
 
         Parameters
         ----------
-        trainer: ModelExporterMixin
+        trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             Trainer to supply metadata information about the acoustic model
         """
         with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
@@ -461,12 +461,12 @@ class AcousticModel(Archive):
 
         Parameters
         ----------
-        dictionary: Union[PronunciationDictionaryMixin, G2PModel]
+        dictionary: Union[:class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`, :class:`~montreal_forced_aligner.models.G2PModel`]
             PronunciationDictionaryMixin or G2P model to compare phone sets with
 
         Raises
         ------
-        PronunciationAcousticMismatchError
+        :class:`~montreal_forced_aligner.exceptions.PronunciationAcousticMismatchError`
             If there are phones missing from the acoustic model
         """
         if isinstance(dictionary, G2PModel):
@@ -555,7 +555,7 @@ class G2PModel(Archive):
 
         Parameters
         ----------
-        dictionary: PronunciationDictionaryMixin
+        dictionary: :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
             Pronunciation dictionary that was the training data for the G2P model
         architecture: str, optional
             Architecture of the G2P model, defaults to "pynini"
@@ -674,10 +674,10 @@ class LanguageModel(Archive):
     def __init__(self, source: str, root_directory: Optional[str] = None):
         if source in LanguageModel.get_available_models():
             source = LanguageModel.get_pretrained_path(source)
-        from .config import TEMP_DIR
+        from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = TEMP_DIR
+            root_directory = get_temporary_directory()
 
         if source.endswith(self.arpa_extension):
             self.root_directory = root_directory
@@ -868,7 +868,7 @@ class DictionaryModel(MfaModel):
 
         Returns
         -------
-        dict[str, DictionaryModel]
+        dict[str, :class:`~montreal_forced_aligner.models.DictionaryModel`]
             Mapping of component pronunciation dictionaries
         """
         mapping = {}

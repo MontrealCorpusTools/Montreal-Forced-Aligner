@@ -5,39 +5,39 @@ import os
 import shutil
 import subprocess
 import time
-from typing import TYPE_CHECKING, Dict, List, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from ..abc import AdapterMixin
-from ..exceptions import KaldiProcessingError
-from ..models import AcousticModel
-from ..utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
-from .pretrained import PretrainedAligner
+from montreal_forced_aligner.abc import AdapterMixin
+from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
-    from ..models import MetaDict
+    from montreal_forced_aligner.models import MetaDict
 
 
 __all__ = ["AdaptingAligner"]
 
 
 class MapAccStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.map_acc_stats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`"""
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
     model_path: str
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
+    ali_paths: dict[str, str]
+    acc_paths: dict[str, str]
 
 
 def map_acc_stats_func(
     log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
+    dictionaries: list[str],
+    feature_strings: dict[str, str],
     model_path: str,
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
+    ali_paths: dict[str, str],
+    acc_paths: dict[str, str],
 ) -> None:
     """
     Multiprocessing function for accumulating mapped stats for adapting acoustic models to new
@@ -45,9 +45,9 @@ def map_acc_stats_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.train_map`
+    :meth:`.AdaptingAligner.train_map`
         Main function that calls this function in parallel
-    :meth:`.Job.map_acc_stats_arguments`
+    :meth:`.AdaptingAligner.map_acc_stats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-acc-stats-ali`
         Relevant Kaldi binary
@@ -56,16 +56,16 @@ def map_acc_stats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
     model_path: str
         Path to the acoustic model file
-    ali_paths: Dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
-    acc_paths: Dict[str, str]
-        PronunciationDictionary of accumulated stats files per dictionary name
+    ali_paths: dict[str, str]
+        Dictionary of alignment archives per dictionary name
+    acc_paths: dict[str, str]
+        Dictionary of accumulated stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -95,6 +95,13 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     mapping_tau: int
         Tau to use in mapping stats between new domain data and pretrained model
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`
+        For dictionary, corpus, and alignment parameters
+    :class:`~montreal_forced_aligner.abc.AdapterMixin`
+        For adapting parameters
+
     Attributes
     ----------
     initialized: bool
@@ -109,13 +116,13 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         self.initialized = False
         self.adaptation_done = False
 
-    def map_acc_stats_arguments(self, alignment=False) -> List[MapAccStatsArguments]:
+    def map_acc_stats_arguments(self, alignment=False) -> list[MapAccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.map_acc_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.MapAccStatsArguments`
+        list[:class:`~montreal_forced_aligner.alignment.adapting.MapAccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -176,9 +183,9 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.map_acc_stats_func`
+        :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.map_acc_stats_arguments`
+        :meth:`.AdaptingAligner.map_acc_stats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`gmm-sum-accs`
             Relevant Kaldi binary
@@ -186,7 +193,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             Relevant Kaldi binary
         :kaldi_src:`gmm-est`
             Relevant Kaldi binary
-        :kaldi_steps:'train_map`
+        :kaldi_steps:`train_map`
             Reference Kaldi script
 
         """

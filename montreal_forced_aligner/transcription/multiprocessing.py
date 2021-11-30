@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, NamedTuple, TextIO
 
 from ..abc import MetaDict
 from ..utils import thirdparty_binary
@@ -34,6 +34,128 @@ __all__ = [
     "decode_func",
     "create_hclg_func",
 ]
+
+
+class CreateHclgArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`"""
+
+    log_path: str
+    working_directory: str
+    path_template: str
+    words_path: str
+    carpa_path: str
+    small_arpa_path: str
+    medium_arpa_path: str
+    big_arpa_path: str
+    model_path: str
+    disambig_L_path: str
+    disambig_int_path: str
+    hclg_options: MetaDict
+    words_mapping: MappingType
+
+    @property
+    def hclg_path(self) -> str:
+        return self.path_template.format(file_name="HCLG")
+
+
+class DecodeArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    decode_options: MetaDict
+    model_path: str
+    lat_paths: dict[str, str]
+    words_paths: dict[str, str]
+    hclg_paths: dict[str, str]
+
+
+class ScoreArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    score_options: MetaDict
+    lat_paths: dict[str, str]
+    rescored_lat_paths: dict[str, str]
+    carpa_rescored_lat_paths: dict[str, str]
+    words_paths: dict[str, str]
+    tra_paths: dict[str, str]
+
+
+class LmRescoreArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    lm_rescore_options: MetaDict
+    lat_paths: dict[str, str]
+    rescored_lat_paths: dict[str, str]
+    old_g_paths: dict[str, str]
+    new_g_paths: dict[str, str]
+
+
+class CarpaLmRescoreArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    lat_paths: dict[str, str]
+    rescored_lat_paths: dict[str, str]
+    old_g_paths: dict[str, str]
+    new_g_paths: dict[str, str]
+
+
+class InitialFmllrArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    model_path: str
+    fmllr_options: MetaDict
+    pre_trans_paths: dict[str, str]
+    lat_paths: dict[str, str]
+    spk2utt_paths: dict[str, str]
+
+
+class LatGenFmllrArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    model_path: str
+    decode_options: MetaDict
+    words_paths: dict[str, str]
+    hclg_paths: dict[str, str]
+    tmp_lat_paths: dict[str, str]
+
+
+class FinalFmllrArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    model_path: str
+    fmllr_options: MetaDict
+    trans_paths: dict[str, str]
+    spk2utt_paths: dict[str, str]
+    tmp_lat_paths: dict[str, str]
+
+
+class FmllrRescoreArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    model_path: str
+    fmllr_options: MetaDict
+    tmp_lat_paths: dict[str, str]
+    final_lat_paths: dict[str, str]
 
 
 def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: TextIO) -> None:
@@ -321,7 +443,7 @@ def compose_g_carpa(
         Input ARPA model path
     temp_carpa_path: str
         Temporary CARPA model path
-    words_mapping: Dict[str, int]
+    words_mapping: dict[str, int]
         Words symbols mapping
     carpa_path: str
         Path to save output G.carpa
@@ -410,9 +532,9 @@ def create_hclg_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.create_hclgs`
+    :meth:`.Transcriber.create_hclgs`
         Main function that calls this function in parallel
-    :meth:`.Job.create_hclgs_arguments`
+    :meth:`.Transcriber.create_hclgs_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`add-self-loops`
         Relevant Kaldi binary
@@ -433,19 +555,19 @@ def create_hclg_func(
         Path to G.carpa file
     small_arpa_path: str
         Path to small ARPA file
-    medium_arpa_path:
+    medium_arpa_path: str
         Path to medium ARPA file
-    big_arpa_path:
+    big_arpa_path: str
         Path to big ARPA file
     model_path: str
         Path to acoustic model file
-    disambig_L_path:
+    disambig_L_path: str
         Path to L_disambig.fst file
-    disambig_int_path:
+    disambig_int_path: str
         Path to dictionary's disambiguation symbols file
-    hclg_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    hclg_options: dict[str, Any]
         Configuration options for composing HCLG.fst
-    words_mapping: Dict[str, int]
+    words_mapping: dict[str, int]
         Word labels to integer ID mapping
     """
     hclg_path = path_template.format(file_name="HCLG")
@@ -550,9 +672,9 @@ def decode_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe`
+    :meth:`.Transcriber.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Job.decode_arguments`
+    :meth:`.Transcriber.decode_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-latgen-faster`
         Relevant Kaldi binary
@@ -561,19 +683,19 @@ def decode_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    decode_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    decode_options: dict[str, Any]
         Options for decoding
     model_path: str
         Path to acoustic model file
-    lat_paths: Dict[str, str]
+    lat_paths: dict[str, str]
         Dictionary of lattice archive paths per dictionary name
-    word_symbol_paths: Dict[str, str]
+    word_symbol_paths: dict[str, str]
         Dictionary of word symbol paths per dictionary name
-    hclg_paths: Dict[str, str]
+    hclg_paths: dict[str, str]
         Dictionary of HCLG.fst paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -633,9 +755,9 @@ def score_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.score_transcriptions`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.score_transcriptions`
         Main function that calls this function in parallel
-    :meth:`.Job.score_arguments`
+    :meth:`.Transcriber.score_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-scale`
         Relevant Kaldi binary
@@ -648,19 +770,19 @@ def score_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    score_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    score_options: dict[str, Any]
         Options for scoring
-    lat_paths: Dict[str, str]
+    lat_paths: dict[str, str]
         Dictionary of lattice archive paths per dictionary name
-    rescored_lat_paths: Dict[str, str]
+    rescored_lat_paths: dict[str, str]
         Dictionary of medium G.fst rescored lattice archive paths per dictionary name
-    carpa_rescored_lat_paths: Dict[str, str]
+    carpa_rescored_lat_paths: dict[str, str]
         Dictionary of carpa-rescored lattice archive paths per dictionary name
-    words_paths: Dict[str, str]
+    words_paths: dict[str, str]
         Dictionary of word symbol paths per dictionary name
-    tra_paths: Dict[str, str]
+    tra_paths: dict[str, str]
         Dictionary of transcription archive paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -727,9 +849,9 @@ def lm_rescore_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Job.lm_rescore_arguments`
+    :meth:`.Transcriber.lm_rescore_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-lmrescore-pruned`
         Relevant Kaldi binary
@@ -740,17 +862,17 @@ def lm_rescore_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    lm_rescore_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    lm_rescore_options: dict[str, Any]
         Options for rescoring
-    lat_paths: Dict[str, str]
+    lat_paths: dict[str, str]
         Dictionary of lattice archive paths per dictionary name
-    rescored_lat_paths: Dict[str, str]
+    rescored_lat_paths: dict[str, str]
         Dictionary of rescored lattice archive paths per dictionary name
-    old_g_paths: Dict[str, str]
+    old_g_paths: dict[str, str]
         Dictionary of small G.fst paths per dictionary name
-    new_g_paths: Dict[str, str]
+    new_g_paths: dict[str, str]
         Dictionary of medium G.fst paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -801,9 +923,9 @@ def carpa_lm_rescore_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Job.carpa_lm_rescore_arguments`
+    :meth:`.Transcriber.carpa_lm_rescore_arguments`
         Job method for generating arguments for this function
     :openfst_src:`fstproject`
         Relevant OpenFst binary
@@ -816,16 +938,16 @@ def carpa_lm_rescore_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    lat_paths: Dict[str, str]
-        PronunciationDictionary of lattice archive paths per dictionary name
-    rescored_lat_paths: Dict[str, str]
-        PronunciationDictionary of rescored lattice archive paths per dictionary name
-    old_g_paths: Dict[str, str]
-        PronunciationDictionary of medium G.fst paths per dictionary name
-    new_g_paths: Dict[str, str]
-        PronunciationDictionary of large G.carpa paths per dictionary name
+    lat_paths: dict[str, str]
+        Dictionary of lattice archive paths per dictionary name
+    rescored_lat_paths: dict[str, str]
+        Dictionary of rescored lattice archive paths per dictionary name
+    old_g_paths: dict[str, str]
+        Dictionary of medium G.fst paths per dictionary name
+    new_g_paths: dict[str, str]
+        Dictionary of large G.carpa paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -888,9 +1010,9 @@ def initial_fmllr_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe_fmllr`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Job.initial_fmllr_arguments`
+    :meth:`.Transcriber.initial_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-to-post`
         Relevant Kaldi binary
@@ -905,19 +1027,19 @@ def initial_fmllr_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    fmllr_options: dict[str, Any]
         Options for calculating fMLLR transforms
-    trans_paths: Dict[str, str]
+    trans_paths: dict[str, str]
         Dictionary of transform archives per dictionary name
-    lat_paths: Dict[str, str]
+    lat_paths: dict[str, str]
         Dictionary of lattice archive paths per dictionary name
-    spk2utt_paths: Dict[str, str]
+    spk2utt_paths: dict[str, str]
         Dictionary of spk2utt scp files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -998,9 +1120,9 @@ def lat_gen_fmllr_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe_fmllr`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Job.lat_gen_fmllr_arguments`
+    :meth:`.Transcriber.lat_gen_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-latgen-faster`
         Relevant Kaldi binary
@@ -1009,19 +1131,19 @@ def lat_gen_fmllr_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    decode_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    decode_options: dict[str, Any]
         Options for decoding
-    word_symbol_paths: Dict[str, str]
+    word_symbol_paths: dict[str, str]
         Dictionary of word symbol paths per dictionary name
-    hclg_paths: Dict[str, str]
+    hclg_paths: dict[str, str]
         Dictionary of HCLG.fst paths per dictionary name
-    tmp_lat_paths: Dict[str, str]
+    tmp_lat_paths: dict[str, str]
         Dictionary of temporary lattice archive paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -1067,9 +1189,9 @@ def final_fmllr_est_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe_fmllr`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Job.final_fmllr_arguments`
+    :meth:`.Transcriber.final_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-determinize-pruned`
         Relevant Kaldi binary
@@ -1086,19 +1208,19 @@ def final_fmllr_est_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    fmllr_options: dict[str, Any]
         Options for calculating fMLLR transforms
-    trans_paths: Dict[str, str]
+    trans_paths: dict[str, str]
         Dictionary of transform archives per dictionary name
-    spk2utt_paths: Dict[str, str]
+    spk2utt_paths: dict[str, str]
         Dictionary of spk2utt scp files per dictionary name
-    tmp_lat_paths: Dict[str, str]
+    tmp_lat_paths: dict[str, str]
         Dictionary of temporary lattice archive paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -1194,9 +1316,9 @@ def fmllr_rescore_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.transcription.transcribe_fmllr`
+    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Job.fmllr_rescore_arguments`
+    :meth:`.Transcriber.fmllr_rescore_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-rescore-lattice`
         Relevant Kaldi binary
@@ -1207,17 +1329,17 @@ def fmllr_rescore_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
     model_path: str
         Path to acoustic model file
-    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    fmllr_options: dict[str, Any]
         Options for calculating fMLLR transforms
-    tmp_lat_paths: Dict[str, str]
+    tmp_lat_paths: dict[str, str]
         Dictionary of temporary lattice archive paths per dictionary name
-    final_lat_paths: Dict[str, str]
+    final_lat_paths: dict[str, str]
         Dictionary of lattice archive paths per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:

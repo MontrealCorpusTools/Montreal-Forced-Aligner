@@ -9,58 +9,66 @@ import statistics
 import subprocess
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 from tqdm import tqdm
 
-from ..abc import MfaWorker, ModelExporterMixin, TrainerMixin
-from ..alignment.base import AlignMixin
-from ..corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from ..corpus.features import FeatureConfigMixin
-from ..exceptions import KaldiProcessingError
-from ..models import AcousticModel
-from ..utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
+from montreal_forced_aligner.alignment.base import AlignMixin
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
+from montreal_forced_aligner.corpus.features import FeatureConfigMixin
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.utils import (
+    log_kaldi_errors,
+    parse_logs,
+    run_mp,
+    run_non_mp,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
-    from ..abc import MetaDict
-    from ..corpus.multiprocessing import Job
+    from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.corpus.multiprocessing import Job
 
 
 __all__ = ["AcousticModelTrainingMixin"]
 
 
 class AlignmentImprovementArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compute_alignment_improvement_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`"""
 
     log_path: str
-    dictionaries: List[str]
+    dictionaries: list[str]
     model_path: str
-    text_int_paths: Dict[str, str]
-    word_boundary_paths: Dict[str, str]
-    ali_paths: Dict[str, str]
+    text_int_paths: dict[str, str]
+    word_boundary_paths: dict[str, str]
+    ali_paths: dict[str, str]
     frame_shift: int
-    reversed_phone_mappings: Dict[str, Dict[int, str]]
-    positions: Dict[str, List[str]]
-    phone_ctm_paths: Dict[str, str]
+    reversed_phone_mappings: dict[str, dict[int, str]]
+    positions: dict[str, list[str]]
+    phone_ctm_paths: dict[str, str]
 
 
 class AccStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_func`"""
+    """
+    Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
+    """
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    ali_paths: dict[str, str]
+    acc_paths: dict[str, str]
     model_path: str
 
 
 def acc_stats_func(
     log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
+    dictionaries: list[str],
+    feature_strings: dict[str, str],
+    ali_paths: dict[str, str],
+    acc_paths: dict[str, str],
     model_path: str,
 ) -> None:
     """
@@ -68,9 +76,9 @@ def acc_stats_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats`
+    :meth:`.AcousticModelTrainingMixin.acc_stats`
         Main function that calls this function in parallel
-    :meth:`.Job.acc_stats_arguments`
+    :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-acc-stats-ali`
         Relevant Kaldi binary
@@ -79,13 +87,13 @@ def acc_stats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    ali_paths: Dict[str, str]
+    ali_paths: dict[str, str]
         Dictionary of alignment archives per dictionary name
-    acc_paths: Dict[str, str]
+    acc_paths: dict[str, str]
         Dictionary of accumulated stats files per dictionary name
     model_path: str
         Path to the acoustic model file
@@ -109,24 +117,24 @@ def acc_stats_func(
 
 def compute_alignment_improvement_func(
     log_path: str,
-    dictionaries: List[str],
+    dictionaries: list[str],
     model_path: str,
-    text_int_paths: Dict[str, str],
-    word_boundary_paths: Dict[str, str],
-    ali_paths: Dict[str, str],
+    text_int_paths: dict[str, str],
+    word_boundary_paths: dict[str, str],
+    ali_paths: dict[str, str],
     frame_shift: int,
-    reversed_phone_mappings: Dict[str, Dict[int, str]],
-    positions: Dict[str, List[str]],
-    phone_ctm_paths: Dict[str, str],
+    reversed_phone_mappings: dict[str, dict[int, str]],
+    positions: dict[str, list[str]],
+    phone_ctm_paths: dict[str, str],
 ) -> None:
     """
     Multiprocessing function for computing alignment improvement over training
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.compute_alignment_improvement`
+    :meth:`.AcousticModelTrainingMixin.compute_alignment_improvement`
         Main function that calls this function in parallel
-    :meth:`.Job.alignment_improvement_arguments`
+    :meth:`.AcousticModelTrainingMixin.alignment_improvement_arguments`
         Job method for generating arguments for the helper function
     :kaldi_src:`linear-to-nbest`
         Relevant Kaldi binary
@@ -143,24 +151,24 @@ def compute_alignment_improvement_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
     model_path: str
         Path to the acoustic model file
-    text_int_paths: Dict[str, str]
-        PronunciationDictionary of text int files per dictionary name
-    word_boundary_paths: Dict[str, str]
-        PronunciationDictionary of word boundary files per dictionary name
-    ali_paths: Dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
+    text_int_paths: dict[str, str]
+        Dictionary of text int files per dictionary name
+    word_boundary_paths: dict[str, str]
+        Dictionary of word boundary files per dictionary name
+    ali_paths: dict[str, str]
+        Dictionary of alignment archives per dictionary name
     frame_shift: int
         Frame shift of feature generation, in ms
-    reversed_phone_mappings: Dict[str, Dict[int, str]]
+    reversed_phone_mappings: dict[str, dict[int, str]]
         Mapping of phone IDs to phone labels per dictionary name
-    positions: Dict[str, List[str]]
+    positions: dict[str, list[str]]
         Positions per dictionary name
-    phone_ctm_paths: Dict[str, str]
-        PronunciationDictionary of phone ctm files per dictionary name
+    phone_ctm_paths: dict[str, str]
+        Dictionary of phone ctm files per dictionary name
     """
     try:
 
@@ -255,23 +263,23 @@ def compute_alignment_improvement_func(
 
 
 def compare_alignments(
-    alignments_one: Dict[str, List[Tuple[float, float, str]]],
-    alignments_two: Dict[str, List[Tuple[float, float, str]]],
+    alignments_one: dict[str, list[tuple[float, float, str]]],
+    alignments_two: dict[str, list[tuple[float, float, str]]],
     frame_shift: int,
-) -> Tuple[int, Optional[float]]:
+) -> tuple[int, Optional[float]]:
     """
     Compares two sets of alignments for difference
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.compute_alignment_improvement`
+    :meth:`.AcousticModelTrainingMixin.compute_alignment_improvement`
         Main function that calls this function
 
     Parameters
     ----------
-    alignments_one: Dict
+    alignments_one: dict[str, list[tuple[float, float, str]]]
         First set of alignments
-    alignments_two: Dict
+    alignments_two: dict[str, list[tuple[float, float, str]]]
         Second set of alignments
     frame_shift: int
         Frame shift in feature generation, in ms
@@ -331,7 +339,7 @@ class AcousticModelTrainingMixin(
     ----------
     identifier : str
         Identifier for the trainer
-    worker: AcousticCorpusPronunciationMixin
+    worker: :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
         Top-level worker
     num_iterations : int
         Number of iterations, defaults to 40
@@ -345,6 +353,19 @@ class AcousticModelTrainingMixin(
         Exponent for number of gaussians according to occurrence counts, defaults to 0.25
     initial_gaussians : int
         Initial number of gaussians, defaults to 0
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.mixins.AlignMixin`
+        For alignment parameters
+    :class:`~montreal_forced_aligner.abc.TrainerMixin`
+        For training parameters
+    :class:`~montreal_forced_aligner.corpus.features.FeatureConfigMixin`
+        For feature generation parameters
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For MFA processing parameters
+    :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+        For model export parameters
 
     Attributes
     ----------
@@ -379,13 +400,13 @@ class AcousticModelTrainingMixin(
         self.training_complete = False
         self.realignment_iterations = []  # Gets set later
 
-    def acc_stats_arguments(self) -> List[AccStatsArguments]:
+    def acc_stats_arguments(self) -> list[AccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AccStatsArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -401,13 +422,13 @@ class AcousticModelTrainingMixin(
             for j in self.jobs
         ]
 
-    def alignment_improvement_arguments(self) -> List[AlignmentImprovementArguments]:
+    def alignment_improvement_arguments(self) -> list[AlignmentImprovementArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compute_alignment_improvement_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AlignmentImprovementArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AlignmentImprovementArguments`]
             Arguments for processing
         """
         return [
@@ -435,7 +456,7 @@ class AcousticModelTrainingMixin(
 
     def log_debug(self, message: str) -> None:
         """
-        Log a debug message. This function is a wrapper around the worker's :meth:`Logging.logger.debug`
+        Log a debug message. This function is a wrapper around the worker's :meth:`logging.Logger.debug`
 
         Parameters
         ----------
@@ -446,7 +467,7 @@ class AcousticModelTrainingMixin(
 
     def log_error(self, message: str) -> None:
         """
-        Log an info message. This function is a wrapper around the worker's :meth:`Logging.logger.info`
+        Log an info message. This function is a wrapper around the worker's :meth:`logging.Logger.info`
 
         Parameters
         ----------
@@ -457,7 +478,7 @@ class AcousticModelTrainingMixin(
 
     def log_warning(self, message: str) -> None:
         """
-        Log a warning message. This function is a wrapper around the worker's :meth:`Logging.logger.warning`
+        Log a warning message. This function is a wrapper around the worker's :meth:`logging.Logger.warning`
 
         Parameters
         ----------
@@ -468,7 +489,7 @@ class AcousticModelTrainingMixin(
 
     def log_info(self, message: str) -> None:
         """
-        Log an error message. This function is a wrapper around the worker's :meth:`Logging.logger.error`
+        Log an error message. This function is a wrapper around the worker's :meth:`logging.Logger.error`
 
         Parameters
         ----------
@@ -483,7 +504,7 @@ class AcousticModelTrainingMixin(
         return self.worker.logger
 
     @property
-    def jobs(self) -> List[Job]:
+    def jobs(self) -> list[Job]:
         """Top-level worker's job objects"""
         return self.worker.jobs
 
@@ -535,14 +556,6 @@ class AcousticModelTrainingMixin(
                 "using full corpus for this training block."
             )
 
-        self.logger.debug(
-            f"Initialization for {self.identifier} took {time.time() - begin} seconds"
-        )
-        done_path = os.path.join(self.working_directory, "done")
-        if os.path.exists(done_path):
-            self.logger.info(f"{self.identifier} training already done, skipping initialization.")
-            return
-        begin = time.time()
         try:
             self._trainer_initialization()
             parse_logs(self.working_log_directory)
@@ -554,8 +567,11 @@ class AcousticModelTrainingMixin(
                 e.update_log_file(self.logger)
             raise
         self.iteration = 1
+        self.worker.current_trainer = self
         self.logger.info("Initialization complete!")
-        self.logger.debug(f"Initialization took {time.time() - begin} seconds")
+        self.logger.debug(
+            f"Initialization for {self.identifier} took {time.time() - begin} seconds"
+        )
 
     @abstractmethod
     def _trainer_initialization(self) -> None:
@@ -616,15 +632,15 @@ class AcousticModelTrainingMixin(
         """Increment the current number of gaussians"""
         self.current_gaussians += self.gaussian_increment
 
-    def accumulate_alignment_stats(self):
+    def acc_stats(self):
         """
         Multiprocessing function that accumulates stats for GMM training.
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.acc_stats_arguments`
+        :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`gmm-sum-accs`
             Relevant Kaldi binary
@@ -705,7 +721,7 @@ class AcousticModelTrainingMixin(
 
     def parse_iteration_alignments(
         self, iteration=Optional[int]
-    ) -> Dict[str, List[Tuple[float, float, str]]]:
+    ) -> dict[str, list[tuple[float, float, str]]]:
         """
         Function to parse phone CTMs in a given iteration
 
@@ -716,7 +732,7 @@ class AcousticModelTrainingMixin(
 
         Returns
         -------
-        Dict
+        dict[str, list[tuple[float, float, str]]]
             Per utterance CtmIntervals
         """
         if iteration is None:
@@ -791,14 +807,14 @@ class AcousticModelTrainingMixin(
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
-            self._align()
+            self.align_utterances()
             self.logger.debug(
                 f"Analyzing information for alignment in iteration {self.iteration}..."
             )
             self.compile_information()
             if self.debug:
                 self.compute_alignment_improvement()
-        self.accumulate_alignment_stats()
+        self.acc_stats()
 
         parse_logs(self.working_log_directory)
         if self.iteration < self.final_gaussian_iteration:
@@ -871,6 +887,7 @@ class AcousticModelTrainingMixin(
                 except FileNotFoundError:
                     pass
         self.training_complete = True
+        self.worker.current_trainer = None
 
     @property
     def final_gaussian_iteration(self) -> int:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING, Collection, Optional
+from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.alignment import AdaptingAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["adapt_model", "validate_args", "run_adapt_model"]
 
 
-def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None) -> None:
+def adapt_model(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Run the acoustic model adaptation
 
@@ -23,7 +23,7 @@ def adapt_model(args: Namespace, unknown_args: Optional[Collection[str]] = None)
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
     adapter = AdaptingAligner(
@@ -104,7 +104,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_adapt_model(args: Namespace, unknown_args: Optional[Collection] = None) -> None:
+def run_adapt_model(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Wrapper function for running acoustic model adaptation
 
@@ -112,7 +112,7 @@ def run_adapt_model(args: Namespace, unknown_args: Optional[Collection] = None) 
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

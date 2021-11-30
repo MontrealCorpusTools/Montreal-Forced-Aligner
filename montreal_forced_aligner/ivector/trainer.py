@@ -1,4 +1,4 @@
-"""Class definition for IvectorExtractorTrainer"""
+"""Class definition for TrainableIvectorExtractor"""
 from __future__ import annotations
 
 import os
@@ -12,7 +12,7 @@ import yaml
 from ..abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from ..acoustic_modeling.base import AcousticModelTrainingMixin
 from ..corpus.features import IvectorConfigMixin
-from ..corpus.ivector_corpus import IvectorCorpus
+from ..corpus.ivector_corpus import IvectorCorpusMixin
 from ..exceptions import ConfigError, KaldiProcessingError
 from ..models import IvectorExtractorModel
 from ..utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp, thirdparty_binary
@@ -20,12 +20,23 @@ from ..utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp, thirdparty
 if TYPE_CHECKING:
     from argparse import Namespace
 
-__all__ = ["IvectorExtractorTrainer", "DubmTrainer"]
+__all__ = [
+    "TrainableIvectorExtractor",
+    "DubmTrainer",
+    "IvectorTrainer",
+    "IvectorModelTrainingMixin",
+    "acc_ivector_stats_func",
+]
 
 
 class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
     """
     Abstract mixin for training ivector extractor models
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.acoustic_modeling.base.AcousticModelTrainingMixin`
+        For acoustic model training parsing parameters
     """
 
     def export_model(self, output_model_path: str) -> None:
@@ -48,7 +59,7 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
 
 
 class GmmGselectArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.gmm_gselect_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -59,7 +70,7 @@ class GmmGselectArguments(NamedTuple):
 
 
 class AccGlobalStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_global_stats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -71,7 +82,7 @@ class AccGlobalStatsArguments(NamedTuple):
 
 
 class GaussToPostArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.gauss_to_post_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -82,7 +93,7 @@ class GaussToPostArguments(NamedTuple):
 
 
 class AccIvectorStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_ivector_stats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -106,9 +117,9 @@ def gmm_gselect_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.ivector.gmm_gselect`
+    :meth:`.DubmTrainer.gmm_gselect`
         Main function that calls this function in parallel
-    :meth:`.Job.gmm_gselect_arguments`
+    :meth:`.DubmTrainer.gmm_gselect_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`subsample-feats`
         Relevant Kaldi binary
@@ -119,15 +130,15 @@ def gmm_gselect_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    dubm_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    dubm_options: dict[str, Any]
         Options for DUBM training
     dubm_path: str
         Path to the DUBM file
-    gselect_paths: Dict[str, str]
+    gselect_paths: dict[str, str]
         Dictionary of gselect archives per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -174,9 +185,9 @@ def gauss_to_post_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.ivector.gauss_to_post`
+    :meth:`.IvectorTrainer.gauss_to_post`
         Main function that calls this function in parallel
-    :meth:`.Job.gauss_to_post_arguments`
+    :meth:`.IvectorTrainer.gauss_to_post_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`subsample-feats`
         Relevant Kaldi binary
@@ -189,13 +200,13 @@ def gauss_to_post_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    ivector_options: dict[str, Any]
         Options for ivector extractor training
-    post_paths: Dict[str, str]
+    post_paths: dict[str, str]
         Dictionary of posterior archives per dictionary name
     dubm_path: str
         Path to the DUBM file
@@ -258,9 +269,9 @@ def acc_global_stats_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_global_stats`
+    :meth:`.DubmTrainer.acc_global_stats`
         Main function that calls this function in parallel
-    :meth:`.Job.acc_global_stats_arguments`
+    :meth:`.DubmTrainer.acc_global_stats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`subsample-feats`
         Relevant Kaldi binary
@@ -271,15 +282,15 @@ def acc_global_stats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    dubm_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    dubm_options: dict[str, Any]
         Options for DUBM training
-    gselect_paths: Dict[str, str]
+    gselect_paths: dict[str, str]
         Dictionary of gselect archives per dictionary name
-    acc_paths: Dict[str, str]
+    acc_paths: dict[str, str]
         Dictionary of accumulated stats files per dictionary name
     dubm_path: str
         Path to the DUBM file
@@ -329,9 +340,9 @@ def acc_ivector_stats_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_ivector_stats`
+    :meth:`.IvectorTrainer.acc_ivector_stats`
         Main function that calls this function in parallel
-    :meth:`.Job.acc_ivector_stats_arguments`
+    :meth:`.IvectorTrainer.acc_ivector_stats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`subsample-feats`
         Relevant Kaldi binary
@@ -342,18 +353,18 @@ def acc_ivector_stats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    ivector_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
+    ivector_options: dict[str, Any]
         Options for ivector extractor training
     ie_path: str
         Path to the ivector extractor file
-    post_paths: Dict[str, str]
-        PronunciationDictionary of posterior archives per dictionary name
-    acc_init_paths: Dict[str, str]
-        PronunciationDictionary of accumulated stats files per dictionary name
+    post_paths: dict[str, str]
+        Dictionary of posterior archives per dictionary name
+    acc_init_paths: dict[str, str]
+        Dictionary of accumulated stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -411,6 +422,11 @@ class DubmTrainer(IvectorModelTrainingMixin):
         Defaults to 0.0001
     remove_low_count_gaussians: bool
         Flag for removing low count gaussians in the final round of training, defaults to True
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.ivector.trainer.IvectorModelTrainingMixin`
+        For base ivector training parameters
     """
 
     def __init__(
@@ -450,11 +466,11 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
     def gmm_gselect_arguments(self) -> list[GmmGselectArguments]:
         """
-        Generate Job arguments for :func:`gmm_gselect_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.GmmGselectArguments`
+        list[:class:`~montreal_forced_aligner.ivector.trainer.GmmGselectArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -474,12 +490,12 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self,
     ) -> list[AccGlobalStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_global_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`
 
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AccGlobalStatsArguments`
+        list[:class:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -507,9 +523,9 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.ivector.gmm_gselect_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.gmm_gselect_arguments`
+        :meth:`.DubmTrainer.gmm_gselect_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps:`train_diag_ubm`
             Reference Kaldi script
@@ -567,15 +583,15 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.gmm_gselect()
         parse_logs(log_directory)
 
-    def accumulate_global_stats(self) -> None:
+    def acc_global_stats(self) -> None:
         """
         Multiprocessing function that accumulates global GMM stats
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_global_stats_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.acc_global_stats_arguments`
+        :meth:`.DubmTrainer.acc_global_stats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`gmm-global-sum-accs`
             Relevant Kaldi binary
@@ -635,7 +651,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         Run an iteration of UBM training
         """
         # Accumulate stats
-        self.accumulate_global_stats()
+        self.acc_global_stats()
         self.iteration += 1
 
     def finalize_training(self) -> None:
@@ -663,7 +679,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         return os.path.join(self.working_directory, f"{self.iteration + 1}.dubm")
 
 
-class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
+class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
     """
     Trainer for a block of ivector extractor training
 
@@ -674,6 +690,14 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
     subsample: int
         Subsample factor for feature frames, defaults to 5
     gaussian_min_count: int
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.ivector.trainer.IvectorModelTrainingMixin`
+        For base parameters for ivector training
+    :class:`~montreal_forced_aligner.corpus.features.IvectorConfigMixin`
+        For parameters for ivector feature generation
+
     """
 
     def __init__(
@@ -691,11 +715,11 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
 
     def acc_ivector_stats_arguments(self) -> list[AccIvectorStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_ivector_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`
 
         Returns
         -------
-        List[:class:`~montreal_forced_aligner.multiprocessing.classes.AccIvectorStatsArguments`]
+        list[:class:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -746,11 +770,11 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
 
     def gauss_to_post_arguments(self) -> list[GaussToPostArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.gauss_to_post_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.GaussToPostArguments`
+        list[:class:`~montreal_forced_aligner.ivector.trainer.GaussToPostArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -772,9 +796,9 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.ivector.gauss_to_post_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.gauss_to_post_arguments`
+        :meth:`.IvectorTrainer.gauss_to_post_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps_sid:`train_ivector_extractor`
             Reference Kaldi script
@@ -836,9 +860,9 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.ivector.acc_ivector_stats_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.acc_ivector_stats_arguments`
+        :meth:`.IvectorTrainer.acc_ivector_stats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`ivector-extractor-sum-accs`
             Relevant Kaldi binary
@@ -913,7 +937,7 @@ class IvectorExtractionTraining(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.training_complete = True
 
 
-class IvectorExtractorTrainer(IvectorCorpus, TopLevelMfaWorker, ModelExporterMixin):
+class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExporterMixin):
     """
     Trainer for ivector extractor models
 
@@ -921,6 +945,15 @@ class IvectorExtractorTrainer(IvectorCorpus, TopLevelMfaWorker, ModelExporterMix
     ----------
     training_configuration: list[tuple[str, dict[str, Any]]]
         Training configurations to use, defaults to a round of dubm training followed by ivector training
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.ivector_corpus.IvectorCorpusMixin`
+        For parameters to parse corpora using ivector features
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+    :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+        For model export parameters
     """
 
     def __init__(self, training_configuration: list[tuple[str, dict[str, Any]]] = None, **kwargs):
@@ -963,7 +996,7 @@ class IvectorExtractorTrainer(IvectorCorpus, TopLevelMfaWorker, ModelExporterMix
         ----------
         train_type: str
             Type of trainer to add, one of "dubm" or "ivector"
-        params: MetaDict
+        params: dict[str, Any]
             Parameters to initialize trainer
 
         Raises
@@ -983,7 +1016,7 @@ class IvectorExtractorTrainer(IvectorCorpus, TopLevelMfaWorker, ModelExporterMix
         if train_type == "dubm":
             config = DubmTrainer(identifier=identifier, worker=self, **p)
         elif train_type == "ivector":
-            config = IvectorExtractionTraining(identifier=identifier, worker=self, **p)
+            config = IvectorTrainer(identifier=identifier, worker=self, **p)
         else:
             raise ConfigError(f"Invalid training type '{train_type}' in config file")
 
@@ -1042,14 +1075,14 @@ class IvectorExtractorTrainer(IvectorCorpus, TopLevelMfaWorker, ModelExporterMix
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: Namespace, optional
+        args: :class:`~argparse.Namespace`, optional
             Arguments parsed by argparse
         unknown_args: list[str], optional
             List of unknown arguments from argparse
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Dictionary of specified configuration parameters
         """
         global_params = {}

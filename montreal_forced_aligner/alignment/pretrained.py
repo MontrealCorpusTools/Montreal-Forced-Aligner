@@ -9,17 +9,17 @@ from typing import TYPE_CHECKING, NamedTuple, Optional
 
 import yaml
 
-from ..abc import TopLevelMfaWorker
-from ..exceptions import KaldiProcessingError
-from ..helper import parse_old_features
-from ..models import AcousticModel
-from ..utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
-from .base import CorpusAligner
+from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import parse_old_features
+from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    from ..abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["PretrainedAligner"]
 
@@ -38,9 +38,9 @@ def generate_pronunciations_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.pronunciations.generate_pronunciations`
+    :meth:`.DictionaryTrainer.export_lexicons`
         Main function that calls this function in parallel
-    :meth:`.Job.generate_pronunciations_arguments`
+    :meth:`.DictionaryTrainer.generate_pronunciations_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`linear-to-nbest`
         Kaldi binary this uses
@@ -49,17 +49,17 @@ def generate_pronunciations_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    text_int_paths: Dict[str, str]
+    text_int_paths: dict[str, str]
         Dictionary of text int files per dictionary name
-    word_boundary_paths: Dict[str, str]
+    word_boundary_paths: dict[str, str]
         Dictionary of word boundary files per dictionary name
-    ali_paths: Dict[str, str]
+    ali_paths: dict[str, str]
         Dictionary of alignment archives per dictionary name
     model_path: str
         Path to acoustic model file
-    pron_paths: Dict[str, str]
+    pron_paths: dict[str, str]
         Dictionary of pronunciation archives per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -106,7 +106,7 @@ def generate_pronunciations_func(
 
 
 class GeneratePronunciationsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.pronunciations.generate_pronunciations_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.alignment.pretrained.generate_pronunciations_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -125,6 +125,13 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
     ----------
     acoustic_model_path : str
         Path to acoustic model
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
+        For dictionary and corpus parsing parameters and alignment parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
     """
 
     def __init__(
@@ -181,14 +188,14 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         ----------
         config_path: str
             Config path
-        args: Namespace
+        args: :class:`~argparse.Namespace`
             Command-line arguments from argparse
         unknown_args: list[str], optional
             Extra command-line arguments
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Configuration parameters
         """
         global_params = {}
@@ -242,7 +249,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
             self.logger.info("Performing first-pass alignment...")
             self.speaker_independent = True
-            self._align()
+            self.align_utterances()
             self.compile_information()
             if self.uses_speaker_adaptation:
                 self.logger.info("Calculating fMLLR for speaker adaptation...")
@@ -250,7 +257,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
                 self.speaker_independent = False
                 self.logger.info("Performing second-pass alignment...")
-                self._align()
+                self.align_utterances()
 
                 self.compile_information()
 
@@ -276,6 +283,11 @@ class DictionaryTrainer(PretrainedAligner):
     min_count: int
         Specifies the minimum count of words to include in derived probabilities,
         affects probabilities of infrequent words more, default is 1
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`
+        For dictionary and corpus parsing parameters and alignment parameters
     """
 
     def __init__(
@@ -292,11 +304,11 @@ class DictionaryTrainer(PretrainedAligner):
         self,
     ) -> list[GeneratePronunciationsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.pronunciations.generate_pronunciations_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.pretrained.generate_pronunciations_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.GeneratePronunciationsArguments`
+        list[:class:`~montreal_forced_aligner.alignment.pretrained.GeneratePronunciationsArguments`]
             Arguments for processing
         """
         return [
@@ -323,9 +335,9 @@ class DictionaryTrainer(PretrainedAligner):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.pronunciations.generate_pronunciations_func`
+        :func:`~montreal_forced_aligner.alignment.pretrained.generate_pronunciations_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.generate_pronunciations_arguments`
+        :meth:`.DictionaryTrainer.generate_pronunciations_arguments`
             Job method for generating arguments for helper function
 
         """

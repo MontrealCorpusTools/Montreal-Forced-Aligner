@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Optional, Union
 
 from ..abc import TemporaryDirectoryMixin
 from ..models import DictionaryModel
-from .base_dictionary import PronunciationDictionary
+from .base import PronunciationDictionary
 from .mixins import DictionaryMixin
 
 if TYPE_CHECKING:
@@ -15,9 +15,7 @@ if TYPE_CHECKING:
     from ..corpus.classes import Speaker
 
 
-__all__ = [
-    "MultispeakerDictionaryMixin",
-]
+__all__ = ["MultispeakerDictionaryMixin", "MultispeakerDictionary"]
 
 
 topo_template = "<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>"
@@ -33,15 +31,25 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
     ----------
     dictionary_path : str
         Dictionary path
+    kwargs : kwargs
+        Extra parameters to passed to parent classes (see below)
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+        For dictionary parsing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
+
 
     Attributes
     ----------
-    dictionary_model: DictionaryModel
+    dictionary_model: :class:`~montreal_forced_aligner.models.DictionaryModel`
         Dictionary model
     speaker_mapping: dict[str, str]
         Mapping of speaker names to dictionary names
-    dictionary_mapping: dict[str, PronunciationDictionary]
-        Mapping of dictionary names to PronunciationDictionary
+    dictionary_mapping: dict[str, :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionary`]
+        Mapping of dictionary names to pronunciation dictionary
     """
 
     def __init__(self, dictionary_path: str = None, **kwargs):
@@ -98,7 +106,7 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
 
     @property
     def default_dictionary(self) -> PronunciationDictionary:
-        """Default PronunciationDictionary"""
+        """Default pronunciation dictionary"""
         return self.get_dictionary("default")
 
     def get_dictionary_name(self, speaker: Union[str, Speaker]) -> str:
@@ -113,7 +121,7 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
         Returns
         -------
         str
-            PronunciationDictionary name for the speaker
+            Dictionary name for the speaker
         """
         if not isinstance(speaker, str):
             speaker = speaker.name
@@ -133,7 +141,7 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
         Returns
         -------
         :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
-            PronunciationDictionary for the speaker
+            Pronunciation dictionary for the speaker
         """
         return self.dictionary_mapping[self.get_dictionary_name(speaker)]
 
@@ -378,7 +386,7 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
             d.set_lexicon_word_set(word_set)
 
     @property
-    def output_paths(self) -> Dict[str, str]:
+    def output_paths(self) -> dict[str, str]:
         """
         Mapping of output directory for child directories
         """
@@ -388,6 +396,11 @@ class MultispeakerDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
 class MultispeakerDictionary(MultispeakerDictionaryMixin):
     """
     Class for processing multi- and single-speaker pronunciation dictionaries
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
     """
 
     @property

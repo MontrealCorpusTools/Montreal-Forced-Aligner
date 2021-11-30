@@ -8,31 +8,29 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import subprocess
 import sys
 import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, Collection, Optional, Union
 
-from ..exceptions import TextGridParseError, TextParseError
-from ..helper import make_safe, output_mapping
-from ..utils import thirdparty_binary
+from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
+from montreal_forced_aligner.helper import output_mapping
 
 if TYPE_CHECKING:
 
-    from ..abc import MetaDict, OneToManyMappingType, OneToOneMappingType
-    from ..corpus.helper import SoundFileInfoDict
+    from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
+    from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
 
     FileInfoDict = dict[
         str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
     ]
-    from ..abc import MappingType, ReversedMappingType, WordsType
-    from ..corpus.classes import File, Speaker, Utterance
-    from ..dictionary import DictionaryData, PronunciationDictionaryMixin
-    from ..utils import Stopped
+    from montreal_forced_aligner.abc import MappingType, ReversedMappingType, WordsType
+    from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+    from montreal_forced_aligner.dictionary import DictionaryData, PronunciationDictionaryMixin
+    from montreal_forced_aligner.utils import Stopped
 
 
-__all__ = ["mfcc_func", "compute_vad_func", "CorpusProcessWorker", "Job"]
+__all__ = ["CorpusProcessWorker", "Job"]
 
 
 class CorpusProcessWorker(mp.Process):
@@ -43,13 +41,13 @@ class CorpusProcessWorker(mp.Process):
     ----------
     job_q: :class:`~multiprocessing.Queue`
         Job queue for files to process
-    return_dict: Dict
+    return_dict: dict
         Dictionary to catch errors
     return_q: :class:`~multiprocessing.Queue`
         Return queue for processed Files
-    stopped: :func:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :func:`~montreal_forced_aligner.utils.Stopped`
         Stop check for whether corpus loading should exit
-    finished_adding: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
         Signal that the main thread has stopped adding new files to be processed
     """
 
@@ -99,327 +97,6 @@ class CorpusProcessWorker(mp.Process):
         return
 
 
-def mfcc_func(
-    log_path: str,
-    dictionaries: list[str],
-    feats_scp_paths: dict[str, str],
-    lengths_paths: dict[str, str],
-    segment_paths: dict[str, str],
-    wav_paths: dict[str, str],
-    mfcc_options: MetaDict,
-) -> None:
-    """
-    Multiprocessing function for generating MFCC features
-
-    See Also
-    --------
-    :func:`~montreal_forced_aligner.multiprocessing.features.mfcc`
-        Main function that calls this function in parallel
-    :meth:`.Job.mfcc_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-mfcc-feats`
-        Relevant Kaldi binary
-    :kaldi_src:`extract-segments`
-        Relevant Kaldi binary
-    :kaldi_src:`copy-feats`
-        Relevant Kaldi binary
-    :kaldi_src:`feat-to-len`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: List[str]
-        List of dictionary names
-    feats_scp_paths: Dict[str, str]
-        Dictionary of feature scp files per dictionary name
-    lengths_paths: Dict[str, str]
-        Dictionary of feature lengths files per dictionary name
-    segment_paths: Dict[str, str]
-        Dictionary of segment scp files per dictionary name
-    wav_paths: Dict[str, str]
-        Dictionary of sound file scp files per dictionary name
-    mfcc_options: :class:`~montreal_forced_aligner.abc.MetaDict`
-        Options for MFCC generation
-    """
-    with open(log_path, "w") as log_file:
-        for dict_name in dictionaries:
-            mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
-            raw_ark_path = feats_scp_paths[dict_name].replace(".scp", ".ark")
-            for k, v in mfcc_options.items():
-                mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-            if os.path.exists(segment_paths[dict_name]):
-                mfcc_base_command += ["ark:-", "ark:-"]
-                seg_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("extract-segments"),
-                        f"scp,p:{wav_paths[dict_name]}",
-                        segment_paths[dict_name],
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    stdin=seg_proc.stdout,
-                    env=os.environ,
-                )
-            else:
-                mfcc_base_command += [f"scp,p:{wav_paths[dict_name]}", "ark:-"]
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
-                )
-            copy_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("copy-feats"),
-                    "--compress=true",
-                    "ark:-",
-                    f"ark,scp:{raw_ark_path},{feats_scp_paths[dict_name]}",
-                ],
-                stdin=comp_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            copy_proc.communicate()
-
-            utt_lengths_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("feat-to-len"),
-                    f"scp:{feats_scp_paths[dict_name]}",
-                    f"ark,t:{lengths_paths[dict_name]}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            utt_lengths_proc.communicate()
-
-
-def compute_vad_func(
-    log_path: str,
-    dictionaries: list[str],
-    feats_scp_paths: dict[str, str],
-    vad_scp_paths: dict[str, str],
-    vad_options: MetaDict,
-) -> None:
-    """
-    Multiprocessing function to compute voice activity detection
-
-    See Also
-    --------
-    :func:`~montreal_forced_aligner.multiprocessing.features.compute_vad`
-        Main function that calls this function in parallel
-    :meth:`.Job.compute_vad_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`compute-vad`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: List[str]
-        List of dictionary names
-    feats_scp_paths: Dict[str, str]
-        PronunciationDictionary of feature scp files per dictionary name
-    vad_scp_paths: Dict[str, str]
-        PronunciationDictionary of vad scp files per dictionary name
-    vad_options: :class:`~montreal_forced_aligner.abc.MetaDict`
-        Options for VAD
-    """
-    with open(log_path, "w") as log_file:
-        for dict_name in dictionaries:
-            feats_scp_path = feats_scp_paths[dict_name]
-            vad_scp_path = vad_scp_paths[dict_name]
-            vad_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("compute-vad"),
-                    f"--vad-energy-mean-scale={vad_options['energy_mean_scale']}",
-                    f"--vad-energy-threshold={vad_options['energy_threshold']}",
-                    f"scp:{feats_scp_path}",
-                    f"ark,t:{vad_scp_path}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            vad_proc.communicate()
-
-
-def calc_fmllr_func(
-    log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
-    ali_model_path: str,
-    model_path: str,
-    spk2utt_paths: dict[str, str],
-    trans_paths: dict[str, str],
-    fmllr_options: MetaDict,
-) -> None:
-    """
-    Multiprocessing function for calculating fMLLR transforms
-
-    See Also
-    --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_fmllr`
-        Main function that calls this function in parallel
-    :meth:`.Job.calc_fmllr_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`gmm-est-fmllr`
-        Relevant Kaldi binary
-    :kaldi_src:`gmm-est-fmllr-gpost`
-        Relevant Kaldi binary
-    :kaldi_src:`gmm-post-to-gpost`
-        Relevant Kaldi binary
-    :kaldi_src:`ali-to-post`
-        Relevant Kaldi binary
-    :kaldi_src:`weight-silence-post`
-        Relevant Kaldi binary
-    :kaldi_src:`compose-transforms`
-        Relevant Kaldi binary
-    :kaldi_src:`transform-feats`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: List[str]
-        List of dictionary names
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    ali_paths: Dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
-    ali_model_path: str
-        Path to the alignment acoustic model file
-    model_path: str
-        Path to the acoustic model file
-    spk2utt_paths: Dict[str, str]
-        PronunciationDictionary of spk2utt scps per dictionary name
-    trans_paths: Dict[str, str]
-        PronunciationDictionary of fMLLR transform archives per dictionary name
-    fmllr_options: :class:`~montreal_forced_aligner.abc.MetaDict`
-        Options for fMLLR estimation
-    """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        log_file.writelines(f"{k}: {v}\n" for k, v in os.environ.items())
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            ali_path = ali_paths[dict_name]
-            spk2utt_path = spk2utt_paths[dict_name]
-            trans_path = trans_paths[dict_name]
-            post_proc = subprocess.Popen(
-                [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-
-            weight_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("weight-silence-post"),
-                    "0.0",
-                    fmllr_options["silence_csl"],
-                    ali_model_path,
-                    "ark:-",
-                    "ark:-",
-                ],
-                stderr=log_file,
-                stdin=post_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-
-            if ali_model_path != model_path:
-                post_gpost_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-post-to-gpost"),
-                        ali_model_path,
-                        feature_string,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stderr=log_file,
-                    stdin=weight_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-                est_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-est-fmllr-gpost"),
-                        "--verbose=4",
-                        f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                        f"--spk2utt=ark:{spk2utt_path}",
-                        model_path,
-                        feature_string,
-                        "ark,s,cs:-",
-                        f"ark:{trans_path}",
-                    ],
-                    stderr=log_file,
-                    stdin=post_gpost_proc.stdout,
-                    env=os.environ,
-                )
-                est_proc.communicate()
-
-            else:
-
-                if os.path.exists(trans_path):
-                    cmp_trans_path = trans_paths[dict_name] + ".tmp"
-                    est_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-est-fmllr"),
-                            "--verbose=4",
-                            f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                            f"--spk2utt=ark:{spk2utt_path}",
-                            model_path,
-                            feature_string,
-                            "ark:-",
-                            "ark:-",
-                        ],
-                        stderr=log_file,
-                        stdin=weight_proc.stdout,
-                        stdout=subprocess.PIPE,
-                        env=os.environ,
-                    )
-                    comp_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("compose-transforms"),
-                            "--b-is-affine=true",
-                            "ark:-",
-                            f"ark:{trans_path}",
-                            f"ark:{cmp_trans_path}",
-                        ],
-                        stderr=log_file,
-                        stdin=est_proc.stdout,
-                        env=os.environ,
-                    )
-                    comp_proc.communicate()
-
-                    os.remove(trans_path)
-                    os.rename(cmp_trans_path, trans_path)
-                else:
-                    est_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-est-fmllr"),
-                            "--verbose=4",
-                            f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                            f"--spk2utt=ark:{spk2utt_path}",
-                            model_path,
-                            feature_string,
-                            "ark,s,cs:-",
-                            f"ark:{trans_path}",
-                        ],
-                        stderr=log_file,
-                        stdin=weight_proc.stdout,
-                        env=os.environ,
-                    )
-                    est_proc.communicate()
-
-
 class Job:
     """
     Class representing information about corpus jobs that will be run in parallel.
@@ -434,16 +111,16 @@ class Job:
 
     Attributes
     ----------
-    speakers: List[:class:`~montreal_forced_aligner.corpus.Speaker`]
+    speakers: list[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
         List of speakers associated with this job
-    dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
+    dictionaries: set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
         Set of dictionaries that the job's speakers use
-    subset_utts: Set[:class:`~montreal_forced_aligner.corpus.Utterance`]
+    subset_utts: set[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
         When trainers are just using a subset of the corpus, the subset of utterances on each job will be set and used to
         filter the job's utterances
-    subset_speakers: Set[:class:`~montreal_forced_aligner.corpus.Speaker`]
+    subset_speakers: set[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
         When subset_utts is set, this property will be calculated as the subset of speakers that the utterances correspond to
-    subset_dictionaries: Set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
+    subset_dictionaries: set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
         Subset of dictionaries that the subset of speakers use
 
     """
@@ -470,7 +147,7 @@ class Job:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Speaker to add
         """
         self.speakers.append(speaker)
@@ -482,7 +159,7 @@ class Job:
 
         Parameters
         ----------
-        subset_utts: Collection[:class:`~montreal_forced_aligner.corpus.Utterance`], optional
+        subset_utts: Collection[:class:`~montreal_forced_aligner.corpus.classes.Utterance`], optional
             Subset of utterances for this job to use
         """
         if subset_utts is None:
@@ -500,7 +177,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, List[str]]]
+        dict[str, dict[str, list[str]]]
             Text for each utterance, per dictionary name
         """
         data = {}
@@ -529,7 +206,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Text converted to integer IDs for each utterance, per dictionary name
         """
         data = {}
@@ -558,7 +235,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Wav scp strings for each file, per dictionary name
         """
         data = {}
@@ -591,7 +268,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Utterance to speaker mapping, per dictionary name
         """
         data = {}
@@ -618,7 +295,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Utterance to feature archive ID mapping, per dictionary name
         """
         data = {}
@@ -646,7 +323,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, List[str]]]
+        dict[str, dict[str, list[str]]]
             Speaker to utterance mapping, per dictionary name
         """
         data = {}
@@ -674,7 +351,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Speaker to CMVN mapping, per dictionary name
         """
         data = {}
@@ -697,7 +374,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, str]]
+        dict[str, dict[str, str]]
             Utterance to segment mapping, per dictionary name
         """
         data = {}
@@ -737,7 +414,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Path for each dictionary
         """
         output = {}
@@ -765,7 +442,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Path for each dictionary
         """
         output = {}
@@ -802,7 +479,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary word boundary int files
         """
         data = {}
@@ -816,7 +493,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, ReversedMappingType]
+        dict[str, ReversedMappingType]
             Per dictionary reversed phone mapping
         """
         data = {}
@@ -830,7 +507,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, ReversedMappingType]
+        dict[str, ReversedMappingType]
             Per dictionary reversed word mapping
         """
         data = {}
@@ -844,7 +521,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, MappingType]
+        dict[str, MappingType]
             Per dictionary word mapping
         """
         data = {}
@@ -858,7 +535,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, WordsType]
+        dict[str, WordsType]
             Per dictionary words
         """
         data = {}
@@ -872,7 +549,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary punctuation
         """
         data = {}
@@ -886,7 +563,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary clitic sets
         """
         data = {}
@@ -900,7 +577,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary clitic markers
         """
         data = {}
@@ -914,7 +591,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary compound markers
         """
         data = {}
@@ -928,7 +605,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, List[str]]
+        dict[str, list[str]]
             Per dictionary strip diacritics
         """
         data = {}
@@ -942,7 +619,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, str]
+        dict[str, str]
             Per dictionary oov symbols
         """
         data = {}
@@ -956,7 +633,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, int]
+        dict[str, int]
             Per dictionary oov ints
         """
         data = {}
@@ -970,7 +647,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, List[str]]
+        dict[str, list[str]]
             Per dictionary positions
         """
         data = {}
@@ -984,7 +661,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Set[str]]
+        dict[str, set[str]]
             Per dictionary silence symbols
         """
         data = {}
@@ -998,7 +675,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, bool]
+        dict[str, bool]
             Per dictionary multilingual IPA flags
         """
         data = {}
@@ -1012,7 +689,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, Dict[str, :class:`~montreal_forced_aligner.corpus.Utterance`]]
+        dict[str, dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]]
             Mapping of dictionary name to Utterance mappings
         """
         data = {}
@@ -1031,7 +708,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, :class:`~montreal_forced_aligner.corpus.File`]
+        dict[str, :class:`~montreal_forced_aligner.corpus.classes.File`]
             Mapping of file name to File objects
         """
         data = {}
@@ -1052,7 +729,7 @@ class Job:
 
         Returns
         -------
-        Dict[str, DictionaryData]
+        dict[str, DictionaryData]
             Mapping of dictionary name to dictionary data
         """
         data = {}

@@ -3,17 +3,20 @@ Aligners
 ========
 
 """
-from .adapting import AdaptingAligner
-from .base import AlignMixin, CorpusAligner
-from .pretrained import DictionaryTrainer, PretrainedAligner
+from montreal_forced_aligner.alignment.adapting import AdaptingAligner
+from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.alignment.mixins import AlignMixin
+from montreal_forced_aligner.alignment.pretrained import DictionaryTrainer, PretrainedAligner
 
 __all__ = [
     "AdaptingAligner",
     "PretrainedAligner",
-    "AlignMixin",
     "CorpusAligner",
     "DictionaryTrainer",
     "adapting",
     "base",
     "pretrained",
+    "mixins",
+    "AlignMixin",
+    "multiprocessing",
 ]

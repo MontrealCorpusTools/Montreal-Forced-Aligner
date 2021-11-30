@@ -5,6 +5,10 @@ Language modeling
 
 """
 
-from .trainer import LmCorpusTrainer
+from montreal_forced_aligner.language_modeling.trainer import (
+    LmArpaTrainer,
+    LmCorpusTrainer,
+    LmDictionaryCorpusTrainer,
+)
 
-__all__ = ["trainer", "LmCorpusTrainer"]
+__all__ = ["LmCorpusTrainer", "LmDictionaryCorpusTrainer", "LmArpaTrainer"]

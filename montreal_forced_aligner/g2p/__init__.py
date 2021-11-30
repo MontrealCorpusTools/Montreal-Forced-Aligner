@@ -5,13 +5,13 @@ Grapheme to phoneme (G2P)
 
 """
 
-from .generator import (
+from montreal_forced_aligner.g2p.generator import (
     OrthographicCorpusGenerator,
     OrthographicWordListGenerator,
     PyniniCorpusGenerator,
     PyniniWordListGenerator,
 )
-from .trainer import PyniniTrainer
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
 __all__ = [
     "generator",

@@ -2,60 +2,62 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
-from typing import TYPE_CHECKING, Dict, List, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from ..utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
-from .triphone import TriphoneTrainer
+from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
-    from ..abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict
 
 
 __all__ = ["LdaTrainer"]
 
 
 class LdaAccStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.lda_acc_stats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`"""
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    ali_paths: dict[str, str]
     model_path: str
     lda_options: MetaDict
-    acc_paths: Dict[str, str]
+    acc_paths: dict[str, str]
 
 
 class CalcLdaMlltArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_lda_mllt_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`"""
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
+    """Log file to save stderr"""
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    ali_paths: dict[str, str]
     model_path: str
     lda_options: MetaDict
-    macc_paths: Dict[str, str]
+    macc_paths: dict[str, str]
 
 
 def lda_acc_stats_func(
     log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
+    dictionaries: list[str],
+    feature_strings: dict[str, str],
+    ali_paths: dict[str, str],
     model_path: str,
     lda_options: MetaDict,
-    acc_paths: Dict[str, str],
+    acc_paths: dict[str, str],
 ) -> None:
     """
     Multiprocessing function to accumulate LDA stats
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.lda_acc_stats`
+    :meth:`.LdaTrainer.lda_acc_stats`
         Main function that calls this function in parallel
-    :meth:`.Job.lda_acc_stats_arguments`
+    :meth:`.LdaTrainer.lda_acc_stats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`ali-to-post`
         Relevant Kaldi binary
@@ -68,17 +70,17 @@ def lda_acc_stats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    ali_paths: Dict[str, str]
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
+    ali_paths: dict[str, str]
         Dictionary of alignment archives per dictionary name
     model_path: str
         Path to the acoustic model file
-    lda_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    lda_options: dict[str, Any]
         Options for LDA
-    acc_paths: Dict[str, str]
+    acc_paths: dict[str, str]
         Dictionary of accumulated stats files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -124,21 +126,21 @@ def lda_acc_stats_func(
 
 def calc_lda_mllt_func(
     log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
+    dictionaries: list[str],
+    feature_strings: dict[str, str],
+    ali_paths: dict[str, str],
     model_path: str,
     lda_options: MetaDict,
-    macc_paths: Dict[str, str],
+    macc_paths: dict[str, str],
 ) -> None:
     """
     Multiprocessing function for estimating LDA with MLLT.
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_lda_mllt`
+    :meth:`.LdaTrainer.calc_lda_mllt`
         Main function that calls this function in parallel
-    :meth:`.Job.calc_lda_mllt_arguments`
+    :meth:`.LdaTrainer.calc_lda_mllt_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`ali-to-post`
         Relevant Kaldi binary
@@ -151,17 +153,17 @@ def calc_lda_mllt_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
         Dictionary of feature strings per dictionary name
-    ali_paths: Dict[str, str]
+    ali_paths: dict[str, str]
         Dictionary of alignment archives per dictionary name
     model_path: str
         Path to the acoustic model file
-    lda_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    lda_options: dict[str, Any]
         Options for LDA
-    macc_paths: Dict[str, str]
+    macc_paths: dict[str, str]
         Dictionary of accumulated stats files per dictionary name
     """
     # Estimating MLLT
@@ -231,6 +233,11 @@ class LdaTrainer(TriphoneTrainer):
         This is approximately the ratio by which we will speed up the
         LDA and MLLT calculations via randomized pruning
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.acoustic_modeling.triphone.TriphoneTrainer`
+        For acoustic model training parsing parameters
+
     Attributes
     ----------
     mllt_iterations : list
@@ -259,13 +266,13 @@ class LdaTrainer(TriphoneTrainer):
         self.splice_left_context = splice_left_context
         self.splice_right_context = splice_right_context
 
-    def lda_acc_stats_arguments(self) -> List[LdaAccStatsArguments]:
+    def lda_acc_stats_arguments(self) -> list[LdaAccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.lda_acc_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.LdaAccStatsArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -282,19 +289,21 @@ class LdaTrainer(TriphoneTrainer):
             for j in self.jobs
         ]
 
-    def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
+    def calc_lda_mllt_arguments(self) -> list[CalcLdaMlltArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_lda_mllt_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CalcLdaMlltArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
         return [
             CalcLdaMlltArguments(
-                os.path.join(self.working_log_directory, f"lda_mllt.{j.name}.log"),
+                os.path.join(
+                    self.working_log_directory, f"lda_mllt.{self.iteration}.{j.name}.log"
+                ),
                 j.current_dictionary_names,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -336,13 +345,13 @@ class LdaTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.lda_acc_stats_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.lda_acc_stats_arguments`
+        :meth:`.LdaTrainer.lda_acc_stats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`est-lda`
             Relevant Kaldi binary
-        :kaldi_steps:'train_lda_mllt`
+        :kaldi_steps:`train_lda_mllt`
             Reference Kaldi script
 
         """
@@ -361,7 +370,6 @@ class LdaTrainer(TriphoneTrainer):
             est_lda_proc = subprocess.Popen(
                 [
                     thirdparty_binary("est-lda"),
-                    f"--write-full-matrix={os.path.join(self.working_directory, 'full.mat')}",
                     f"--dim={self.lda_dimension}",
                     os.path.join(self.working_directory, "lda.mat"),
                 ]
@@ -370,10 +378,15 @@ class LdaTrainer(TriphoneTrainer):
                 env=os.environ,
             )
             est_lda_proc.communicate()
+        shutil.copyfile(
+            os.path.join(self.working_directory, "lda.mat"),
+            os.path.join(self.worker.working_directory, "lda.mat"),
+        )
 
     def _trainer_initialization(self) -> None:
         """Initialize LDA training"""
         self.uses_splices = True
+        self.worker.uses_splices = True
         self.lda_acc_stats()
         super()._trainer_initialization()
 
@@ -383,9 +396,9 @@ class LdaTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_lda_mllt_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.calc_lda_mllt_arguments`
+        :meth:`.LdaTrainer.calc_lda_mllt_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`est-mllt`
             Relevant Kaldi binary
@@ -393,7 +406,7 @@ class LdaTrainer(TriphoneTrainer):
             Relevant Kaldi binary
         :kaldi_src:`compose-transforms`
             Relevant Kaldi binary
-        :kaldi_steps:'train_lda_mllt`
+        :kaldi_steps:`train_lda_mllt`
             Reference Kaldi script
 
         """
@@ -430,21 +443,21 @@ class LdaTrainer(TriphoneTrainer):
                 env=os.environ,
             )
 
-        if os.path.exists(previous_mat_path):
-            subprocess.call(
-                [
-                    thirdparty_binary("compose-transforms"),
-                    new_mat_path,
-                    previous_mat_path,
-                    composed_path,
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            os.remove(previous_mat_path)
-            os.rename(composed_path, previous_mat_path)
-        else:
-            os.rename(new_mat_path, previous_mat_path)
+            if os.path.exists(previous_mat_path):
+                subprocess.call(
+                    [
+                        thirdparty_binary("compose-transforms"),
+                        new_mat_path,
+                        previous_mat_path,
+                        composed_path,
+                    ],
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                os.remove(previous_mat_path)
+                os.rename(composed_path, previous_mat_path)
+            else:
+                os.rename(new_mat_path, previous_mat_path)
 
     def train_iteration(self):
         """
@@ -453,13 +466,13 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(self.next_model_path):
             return
         if self.iteration in self.realignment_iterations:
-            self._align()
+            self.align_utterances()
             if self.debug:
                 self.compute_alignment_improvement()
         if self.iteration in self.mllt_iterations:
             self.calc_lda_mllt()
 
-        self.accumulate_alignment_stats()
+        self.acc_stats()
         parse_logs(self.working_log_directory)
         if self.iteration < self.final_gaussian_iteration:
             self.increment_gaussians()

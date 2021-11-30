@@ -21,7 +21,7 @@ def train_g2p(args: Namespace, unknown_args: Optional[list] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
 
@@ -68,7 +68,7 @@ def run_train_g2p(args: Namespace, unknown: Optional[list] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

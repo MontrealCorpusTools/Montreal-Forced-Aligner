@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 from ..abc import MfaWorker
-from ..dictionary.base_dictionary import DictionaryMixin
+from ..dictionary.base import DictionaryMixin
 
 
 class G2PMixin(metaclass=ABCMeta):
@@ -43,6 +43,15 @@ class G2PMixin(metaclass=ABCMeta):
 class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
     """
     Abstract mixin class for top-level G2P functionality
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For base MFA parameters
+    :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+        For dictionary parsing parameters
+    :class:`~montreal_forced_aligner.g2p.mixins.G2PMixin`
+        For base G2P parameters
     """
 
     def __init__(self, **kwargs):

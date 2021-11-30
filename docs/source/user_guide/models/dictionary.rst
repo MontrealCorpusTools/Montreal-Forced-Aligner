@@ -13,7 +13,7 @@
 Available pronunciation dictionaries
 ************************************
 
-Any of the following pronunciation dictionaries can be downloaded with the command :code:`mfa model download dictionary <language_id>`.  You
+Any of the following :term:`pronunciation dictionaries` can be downloaded with the command :code:`mfa model download dictionary <language_id>`.  You
 can get a full list of the currently available dictionaries via :code:`mfa model download dictionary`.  New dictionaries contributed
 by users will be periodically added. If you would like to contribute your dictionaries, please contact Michael McAuliffe
 at michael.e.mcauliffe@gmail.com.

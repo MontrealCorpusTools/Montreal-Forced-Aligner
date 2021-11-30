@@ -7,63 +7,31 @@ import shutil
 import subprocess
 import sys
 import time
+from abc import ABCMeta
 from queue import Empty
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import Optional
 
-from ..abc import MfaWorker, TemporaryDirectoryMixin
-from ..dictionary.multispeaker import MultispeakerDictionaryMixin
-from ..exceptions import TextGridParseError, TextParseError
-from ..helper import load_scp
-from ..utils import Stopped, run_mp, run_non_mp, thirdparty_binary
-from .base import CorpusMixin
-from .classes import parse_file
-from .features import FeatureConfigMixin
-from .helper import find_exts
-from .multiprocessing import CorpusProcessWorker, calc_fmllr_func, compute_vad_func, mfcc_func
-
-if TYPE_CHECKING:
-    from ..abc import MetaDict
-
-
-class VadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.features.compute_vad_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feats_scp_paths: dict[str, str]
-    vad_scp_paths: dict[str, str]
-    vad_options: MetaDict
+from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
+from montreal_forced_aligner.corpus.base import CorpusMixin
+from montreal_forced_aligner.corpus.classes import parse_file
+from montreal_forced_aligner.corpus.features import (
+    CalcFmllrArguments,
+    FeatureConfigMixin,
+    MfccArguments,
+    VadArguments,
+    calc_fmllr_func,
+    compute_vad_func,
+    mfcc_func,
+)
+from montreal_forced_aligner.corpus.helper import find_exts
+from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
+from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.utils import Stopped, run_mp, run_non_mp, thirdparty_binary
 
 
-class MfccArguments(NamedTuple):
-    """
-    Arguments for :func:`~montreal_forced_aligner.multiprocessing.features.mfcc_func`
-    """
-
-    log_path: str
-    dictionaries: list[str]
-    feats_scp_paths: dict[str, str]
-    lengths_paths: dict[str, str]
-    segment_paths: dict[str, str]
-    wav_paths: dict[str, str]
-    mfcc_options: MetaDict
-
-
-class CalcFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_fmllr_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
-    ali_model_path: str
-    model_path: str
-    spk2utt_paths: dict[str, str]
-    trans_paths: dict[str, str]
-    fmllr_options: MetaDict
-
-
-class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
+class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     """
     Mixin class for acoustic corpora
 
@@ -71,6 +39,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
     ----------
     audio_directory: str
         Extra directory to look for audio files
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.base.CorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.corpus.features.FeatureConfigMixin`
+        For feature generation parameters
 
     Attributes
     ----------
@@ -248,11 +223,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
     def compute_vad_arguments(self) -> list[VadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.features.compute_vad_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.VadArguments`
+        list[:class:`~montreal_forced_aligner.corpus.features.VadArguments`]
             Arguments for processing
         """
         return [
@@ -268,11 +243,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
     def calc_fmllr_arguments(self) -> list[CalcFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.calc_fmllr_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CalcFmllrArguments`
+        list[:class:`~montreal_forced_aligner.corpus.features.CalcFmllrArguments`]
             Arguments for processing
         """
         feature_strings = self.construct_feature_proc_strings()
@@ -293,11 +268,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
     def mfcc_arguments(self) -> list[MfccArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.features.mfcc_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.MfccArguments`
+        list[:class:`~montreal_forced_aligner.corpus.features.MfccArguments`]
             Arguments for processing
         """
         return [
@@ -321,9 +296,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.features.mfcc_func`
+        :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.mfcc_arguments`
+        :meth:`.AcousticCorpusMixin.mfcc_arguments`
             Job method for generating arguments for helper function
         :kaldi_steps:`make_mfcc`
             Reference Kaldi script
@@ -376,13 +351,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.convert_alignments_func`
+        :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.convert_alignments_arguments`
+        :meth:`.AcousticCorpusMixin.calc_fmllr_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps:`align_fmllr`
             Reference Kaldi script
-        :kaldi_steps:'train_sat`
+        :kaldi_steps:`train_sat`
             Reference Kaldi script
         """
         begin = time.time()
@@ -402,9 +377,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.features.compute_vad_func`
+        :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.compute_vad_arguments`
+        :meth:`.AcousticCorpusMixin.compute_vad_arguments`
             Job method for generating arguments for helper function
         """
         if os.path.exists(os.path.join(self.split_directory, "vad.0.scp")):
@@ -767,9 +742,18 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin):
         self.log_debug(f"Parsed corpus directory in {time.time() - begin_time} seconds")
 
 
-class AcousticCorpusPronunciationMixin(AcousticCorpusMixin, MultispeakerDictionaryMixin):
+class AcousticCorpusPronunciationMixin(
+    AcousticCorpusMixin, MultispeakerDictionaryMixin, metaclass=ABCMeta
+):
     """
     Mixin for acoustic corpora with Pronunciation dictionaries
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
     """
 
     def __init__(self, **kwargs):
@@ -779,35 +763,56 @@ class AcousticCorpusPronunciationMixin(AcousticCorpusMixin, MultispeakerDictiona
         """
         Load the corpus
         """
+        begin = time.time()
         self.dictionary_setup()
+        self.log_debug("Loaded dictionary")
 
         self._load_corpus()
+        self.log_debug("Loaded corpus")
         self.set_lexicon_word_set(self.corpus_word_set)
+        self.log_debug("Set up lexicon word set")
         self.write_lexicon_information()
+        self.log_debug("Wrote lexicon information")
 
         for speaker in self.speakers.values():
             speaker.set_dictionary(self.get_dictionary(speaker.name))
+        self.log_debug("Set dictionaries for speakers")
         self.initialize_jobs()
+        self.log_debug("Initialized jobs")
         self.write_corpus_information()
+        self.log_debug("Wrote corpus information")
         self.create_corpus_split()
+        self.log_debug("Created corpus split directory")
         self.generate_features()
+        self.log_debug("Generated features")
         self.calculate_oovs_found()
+        self.log_debug("Calculated oovs found")
+        self.log_debug(f"Setting up corpus took {time.time() - begin} seconds")
 
 
-class AcousticCorpusPronunciationDictionary(
-    AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin
-):
+class AcousticCorpus(AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin):
     """
     Standalone class for working with acoustic corpora and pronunciation dictionaries
+
+    Most functionality in MFA will use the :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin` class instead of this class.
 
     Parameters
     ----------
     num_jobs: int
         Number of jobs to use in processing the corpus
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
+        For dictionary and corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For MFA processing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
     """
 
     def __init__(self, num_jobs=3, **kwargs):
-        super(AcousticCorpusPronunciationDictionary, self).__init__(**kwargs)
+        super(AcousticCorpus, self).__init__(**kwargs)
         self.num_jobs = num_jobs
 
     @property

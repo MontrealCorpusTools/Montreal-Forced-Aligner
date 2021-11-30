@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Optional
 
 import yaml
 
@@ -23,6 +23,15 @@ from ..helper import parse_old_features, score
 from ..models import AcousticModel, LanguageModel
 from ..utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 from .multiprocessing import (
+    CarpaLmRescoreArguments,
+    CreateHclgArguments,
+    DecodeArguments,
+    FinalFmllrArguments,
+    FmllrRescoreArguments,
+    InitialFmllrArguments,
+    LatGenFmllrArguments,
+    LmRescoreArguments,
+    ScoreArguments,
     carpa_lm_rescore_func,
     create_hclg_func,
     decode_func,
@@ -37,131 +46,9 @@ from .multiprocessing import (
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    from ..abc import MappingType, MetaDict
+    from ..abc import MetaDict
 
 __all__ = ["Transcriber", "TranscriberMixin"]
-
-
-class CreateHclgArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.create_hclg_func`"""
-
-    log_path: str
-    working_directory: str
-    path_template: str
-    words_path: str
-    carpa_path: str
-    small_arpa_path: str
-    medium_arpa_path: str
-    big_arpa_path: str
-    model_path: str
-    disambig_L_path: str
-    disambig_int_path: str
-    hclg_options: MetaDict
-    words_mapping: MappingType
-
-    @property
-    def hclg_path(self) -> str:
-        return self.path_template.format(file_name="HCLG")
-
-
-class DecodeArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.decode_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    decode_options: MetaDict
-    model_path: str
-    lat_paths: dict[str, str]
-    words_paths: dict[str, str]
-    hclg_paths: dict[str, str]
-
-
-class ScoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.score_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    score_options: MetaDict
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    carpa_rescored_lat_paths: dict[str, str]
-    words_paths: dict[str, str]
-    tra_paths: dict[str, str]
-
-
-class LmRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.lm_rescore_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    lm_rescore_options: MetaDict
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    old_g_paths: dict[str, str]
-    new_g_paths: dict[str, str]
-
-
-class CarpaLmRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.carpa_lm_rescore_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    old_g_paths: dict[str, str]
-    new_g_paths: dict[str, str]
-
-
-class InitialFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.initial_fmllr_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    model_path: str
-    fmllr_options: MetaDict
-    pre_trans_paths: dict[str, str]
-    lat_paths: dict[str, str]
-    spk2utt_paths: dict[str, str]
-
-
-class LatGenFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.lat_gen_fmllr_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    model_path: str
-    decode_options: MetaDict
-    words_paths: dict[str, str]
-    hclg_paths: dict[str, str]
-    tmp_lat_paths: dict[str, str]
-
-
-class FinalFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.final_fmllr_est_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    model_path: str
-    fmllr_options: MetaDict
-    trans_paths: dict[str, str]
-    spk2utt_paths: dict[str, str]
-    tmp_lat_paths: dict[str, str]
-
-
-class FmllrRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.fmllr_rescore_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    model_path: str
-    fmllr_options: MetaDict
-    tmp_lat_paths: dict[str, str]
-    final_lat_paths: dict[str, str]
 
 
 class TranscriberMixin:
@@ -297,6 +184,17 @@ class Transcriber(
     word_insertion_penalties: list[float]
         List of word insertion penalties to use in evaluation mode, defaults to [0, 0.5, 1.0]
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.transcription.transcriber.TranscriberMixin`
+        For transcription parameters
+    :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
+        For corpus and dictionary parsing parameters
+    :class:`~montreal_forced_aligner.abc.FileExporterMixin`
+        For file exporting parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+
     Attributes
     ----------
     acoustic_model: AcousticModel
@@ -340,14 +238,14 @@ class Transcriber(
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: Namespace, optional
+        args: :class:`~argparse.Namespace`, optional
             Arguments parsed by argparse
         unknown_args: list[str], optional
             List of unknown arguments from argparse
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Dictionary of specified configuration parameters
         """
         global_params = {}
@@ -386,11 +284,11 @@ class Transcriber(
 
     def create_hclgs_arguments(self) -> dict[str, CreateHclgArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.create_hclg_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`
 
         Returns
         -------
-        Dict[str, :class:`~montreal_forced_aligner.multiprocessing.classes.CreateHclgArguments`]
+        dict[str, :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgArguments`]
             Per dictionary arguments for HCLG
         """
         args = {}
@@ -414,11 +312,11 @@ class Transcriber(
 
     def decode_arguments(self) -> list[DecodeArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.decode_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.DecodeArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`]
             Arguments for processing
         """
         feat_string = self.construct_feature_proc_strings()
@@ -438,12 +336,11 @@ class Transcriber(
 
     def score_arguments(self) -> list[ScoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.score_func`
-
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.ScoreArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreArguments`]
             Arguments for processing
         """
         return [
@@ -462,11 +359,11 @@ class Transcriber(
 
     def lm_rescore_arguments(self) -> list[LmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.lm_rescore_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.LmRescoreArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreArguments`]
             Arguments for processing
         """
         return [
@@ -484,11 +381,11 @@ class Transcriber(
 
     def carpa_lm_rescore_arguments(self) -> list[CarpaLmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.carpa_lm_rescore_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CarpaLmRescoreArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreArguments`]
             Arguments for processing
         """
         return [
@@ -514,11 +411,11 @@ class Transcriber(
 
     def initial_fmllr_arguments(self) -> list[InitialFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.initial_fmllr_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.InitialFmllrArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -538,11 +435,11 @@ class Transcriber(
 
     def lat_gen_fmllr_arguments(self) -> list[LatGenFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.lat_gen_fmllr_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.LatGenFmllrArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -562,11 +459,11 @@ class Transcriber(
 
     def final_fmllr_arguments(self) -> list[FinalFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.final_fmllr_est_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.FinalFmllrArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -586,11 +483,11 @@ class Transcriber(
 
     def fmllr_rescore_arguments(self) -> list[FmllrRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.transcription.fmllr_rescore_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.FmllrRescoreArguments`
+        list[:class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -684,7 +581,7 @@ class Transcriber(
 
     def create_hclgs(self):
         """
-        Create HCLG.fst files for every dictionary being used by a :class:`~montreal_forced_aligner.transcriber.Transcriber`
+        Create HCLG.fst files for every dictionary being used by a :class:`~montreal_forced_aligner.transcription.transcriber.Transcriber`
         """
         dict_arguments = self.create_hclgs_arguments()
 
@@ -790,9 +687,9 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.score_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.score_arguments`
+        :meth:`.Transcriber.score_arguments`
             Job method for generating arguments for this function
 
         """
@@ -834,17 +731,17 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.initial_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.lat_gen_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.final_fmllr_est_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.fmllr_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
             Multiprocessing helper function for each job
 
         """
@@ -898,11 +795,11 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.decode_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.multiprocessing.transcription.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
             Multiprocessing helper function for each job
 
         Raises

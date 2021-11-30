@@ -42,7 +42,7 @@ BEGIN = time.time()
 BEGIN_DATE = datetime.now()
 
 
-__all__ = ["ExitHooks", "history_save_handler", "create_parser", "main"]
+__all__ = ["ExitHooks", "create_parser", "main"]
 
 
 class ExitHooks(object):
@@ -68,34 +68,34 @@ class ExitHooks(object):
     def exc_handler(self, exc_type, exc, *args):
         """Handle and save exceptions"""
         self.exception = exc
+        self.exit_code = 1
 
+    def history_save_handler(self) -> None:
+        """
+        Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
+        an exception was encountered, when the command was executed, and how long it took to run
+        """
+        from montreal_forced_aligner.utils import get_mfa_version
 
-def history_save_handler() -> None:
-    """
-    Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
-    an exception was encountered, when the command was executed, and how long it took to run
-    """
-    from montreal_forced_aligner.utils import get_mfa_version
+        history_data = {
+            "command": " ".join(sys.argv),
+            "execution_time": time.time() - BEGIN,
+            "date": BEGIN_DATE,
+            "version": get_mfa_version(),
+        }
 
-    history_data = {
-        "command": " ".join(sys.argv),
-        "execution_time": time.time() - BEGIN,
-        "date": BEGIN_DATE,
-        "version": get_mfa_version(),
-    }
-
-    if hooks.exit_code is not None:
-        history_data["exit_code"] = hooks.exit_code
-        history_data["exception"] = ""
-    elif hooks.exception is not None:
-        history_data["exit_code"] = 1
-        history_data["exception"] = str(hooks.exception)
-    else:
-        history_data["exception"] = ""
-        history_data["exit_code"] = 0
-    update_command_history(history_data)
-    if hooks.exception:
-        raise hooks.exception
+        if self.exit_code is not None:
+            history_data["exit_code"] = self.exit_code
+            history_data["exception"] = ""
+        elif self.exception is not None:
+            history_data["exit_code"] = 1
+            history_data["exception"] = str(self.exception)
+        else:
+            history_data["exception"] = ""
+            history_data["exit_code"] = 0
+        update_command_history(history_data)
+        if self.exception:
+            raise self.exception
 
 
 def create_parser() -> ArgumentParser:
@@ -749,7 +749,10 @@ def create_parser() -> ArgumentParser:
 
     history_parser.add_argument("depth", help="Number of commands to list", nargs="?", default=10)
     history_parser.add_argument(
-        "--verbose", help="Flag for whether to output additional information", action="store_true"
+        "-v",
+        "--verbose",
+        help=f"Output debug messages, default is {GLOBAL_CONFIG['verbose']}",
+        action="store_true",
     )
 
     _ = subparsers.add_parser(
@@ -766,6 +769,13 @@ def main() -> None:
     """
     Main function for the MFA command line interface
     """
+
+    hooks = ExitHooks()
+    hooks.hook()
+    atexit.register(hooks.history_save_handler)
+    from colorama import init
+
+    init()
     parser = create_parser()
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
@@ -773,7 +783,8 @@ def main() -> None:
         if short in unknown:
             print(
                 f"Due to the number of options that `{short}` could refer to, it is not accepted. "
-                "Please specify the full argument"
+                "Please specify the full argument",
+                file=sys.stderr,
             )
             sys.exit(1)
     try:
@@ -783,7 +794,8 @@ def main() -> None:
             except ImportError:
                 print(
                     "There was an issue importing Pynini, please ensure that it is installed. If you are on Windows, "
-                    "please use the Windows Subsystem for Linux to use g2p functionality."
+                    "please use the Windows Subsystem for Linux to use g2p functionality.",
+                    file=sys.stderr,
                 )
                 sys.exit(1)
         if args.subcommand == "align":
@@ -849,15 +861,15 @@ def main() -> None:
     except MFAError as e:
         if getattr(args, "debug", False):
             raise
-        print(e)
+        print(e, file=sys.stderr)
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    hooks = ExitHooks()
-    hooks.hook()
-    atexit.register(history_save_handler)
-    from colorama import init
+    import warnings
 
-    init()
+    warnings.warn(
+        "Use 'python -m montreal_forced_aligner', not 'python -m montreal_forced_aligner.command_line.mfa'",
+        DeprecationWarning,
+    )
     main()

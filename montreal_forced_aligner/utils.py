@@ -44,7 +44,7 @@ def get_mfa_version() -> str:
         MFA version
     """
     try:
-        from .version import version as __version__  # noqa
+        from ._version import version as __version__  # noqa
     except ImportError:
         __version__ = "2.0.0"
     return __version__
@@ -83,7 +83,7 @@ def log_kaldi_errors(error_logs: list[str], logger: logging.Logger) -> None:
 
     Parameters
     ----------
-    error_logs: List[str]
+    error_logs: list[str]
         Kaldi log files with errors
     logger: :class:`~logging.Logger`
         Logger to output to
@@ -108,7 +108,7 @@ def guess_model_type(path: str) -> list[str]:
 
     Returns
     -------
-    List[str]
+    list[str]
         Possible model types that use that extension
     """
     ext = os.path.splitext(path)[1]
@@ -292,11 +292,11 @@ class ProcessWorker(mp.Process):
         Job queue to pull arguments from
     function: Callable
         Multiprocessing function to call on arguments from job_q
-    return_dict: Dict
+    return_dict: dict
         Dictionary for collecting errors
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check
-    return_info: Dict[int, Any], optional
+    return_info: dict[int, Any], optional
         Optional dictionary to fill if the function should return information to main thread
     """
 
@@ -350,16 +350,16 @@ def run_non_mp(
     ----------
     function: Callable
         Multiprocessing function to evaluate
-    argument_list: List
+    argument_list: list
         List of arguments to process
     log_directory: str
         Directory that all log information from the processes goes to
-    return_info: Dict, optional
+    return_info: dict, optional
         If the function returns information, supply the return dict to populate
 
     Returns
     -------
-    Dict, optional
+    dict, optional
         If the function returns information, returns the dictionary it was supplied with
     """
     if return_info:
@@ -387,11 +387,11 @@ def run_mp(
     ----------
     function: Callable
         Multiprocessing function to apply
-    argument_list: List
+    argument_list: list
         List of arguments for each job
     log_directory: str
         Directory that all log information from the processes goes to
-    return_info: Dict, optional
+    return_info: dict, optional
         If the function returns information, supply the return dict to populate
     """
     from .config import BLAS_THREADS

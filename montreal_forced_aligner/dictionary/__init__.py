@@ -4,14 +4,26 @@ Pronunciation dictionaries
 
 """
 
-from .base_dictionary import DictionaryData, DictionaryMixin, PronunciationDictionaryMixin
-from .multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.dictionary.base import (
+    DictionaryData,
+    PronunciationDictionary,
+    PronunciationDictionaryMixin,
+)
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin, SanitizeFunction
+from montreal_forced_aligner.dictionary.multispeaker import (
+    MultispeakerDictionary,
+    MultispeakerDictionaryMixin,
+)
 
 __all__ = [
-    "base_dictionary",
+    "base",
     "multispeaker",
+    "mixins",
     "DictionaryData",
-    "PronunciationDictionaryMixin",
-    "MultispeakerDictionaryMixin",
     "DictionaryMixin",
+    "SanitizeFunction",
+    "MultispeakerDictionary",
+    "MultispeakerDictionaryMixin",
+    "PronunciationDictionary",
+    "PronunciationDictionaryMixin",
 ]

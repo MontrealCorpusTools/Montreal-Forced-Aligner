@@ -12,7 +12,7 @@
 Pretrained acoustic models
 **************************
 
-As part of using the Montreal Forced Aligner in our own research, we have trained acoustic models for a number of languages.
+As part of using the Montreal Forced Aligner in our own research, we have trained :term:`acoustic models` for a number of languages.
 If you would like to use them, please download them below.  Please note the dictionary that they were trained with to
 see more information about the phone set.  When using these with a pronunciation dictionary, the phone sets must be
 compatible.  If the orthography of the language is transparent, it is likely that we have a G2P model that can be used

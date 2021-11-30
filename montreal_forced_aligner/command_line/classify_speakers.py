@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 __all__ = ["classify_speakers", "validate_args", "run_classify_speakers"]
 
 
-def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def classify_speakers(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Run the speaker classification
 
@@ -22,7 +22,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[list] = None) -> N
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
     classifier = SpeakerClassifier(
@@ -74,7 +74,7 @@ def validate_args(args: Namespace) -> None:
     args.ivector_extractor_path = validate_model_arg(args.ivector_extractor_path, "ivector")
 
 
-def run_classify_speakers(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_classify_speakers(args: Namespace, unknown: Optional[list[str]] = None) -> None:
     """
     Wrapper function for running speaker classification
 
@@ -82,7 +82,7 @@ def run_classify_speakers(args: Namespace, unknown: Optional[list] = None) -> No
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..abc import MetaDict
@@ -17,6 +17,8 @@ DEFAULT_COMPOUND_MARKERS = list("-/")
 DEFAULT_STRIP_DIACRITICS = ["ː", "ˑ", "̩", "̆", "̑", "̯", "͡", "‿", "͜"]
 DEFAULT_DIGRAPHS = ["[dt][szʒʃʐʑʂɕç]", "[aoɔe][ʊɪ]"]
 DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")")]
+
+__all__ = ["SanitizeFunction", "DictionaryMixin"]
 
 
 class SanitizeFunction:
@@ -68,9 +70,124 @@ class SanitizeFunction:
         for b in self.brackets:
             if re.match(rf"^{re.escape(b[0])}.*{re.escape(b[1])}$", item):
                 return item
-        sanitized = re.sub(rf"^[{re.escape(''.join(self.punctuation))}]+", "", item)
-        sanitized = re.sub(rf"[{re.escape(''.join(self.punctuation))}]+$", "", sanitized)
-        return sanitized
+        if self.punctuation:
+            item = re.sub(rf"^[{re.escape(''.join(self.punctuation))}]+", "", item)
+            item = re.sub(rf"[{re.escape(''.join(self.punctuation))}]+$", "", item)
+        return item
+
+
+class SplitWordsFunction:
+    """
+    Class for functions that splits words that have compound and clitic markers
+
+    Parameters
+    ----------
+    clitic_markers: list[str]
+        Characters that mark clitics
+    compound_markers: list[str]
+        Characters that mark compound words
+    """
+
+    def __init__(
+        self,
+        punctuation: list[str],
+        clitic_markers: list[str],
+        compound_markers: list[str],
+        brackets: list[tuple[str, str]],
+        clitic_set: set[str],
+        word_set: Optional[set[str]] = None,
+    ):
+        self.punctuation = punctuation
+        self.clitic_markers = clitic_markers
+        self.compound_markers = compound_markers
+        self.brackets = brackets
+        self.sanitize_function = SanitizeFunction(
+            punctuation, clitic_markers, compound_markers, brackets
+        )
+        self.clitic_set = clitic_set
+        if not word_set:
+            word_set = None
+        self.word_set = word_set
+
+    def split_clitics(
+        self,
+        item: str,
+    ) -> list[str]:
+        """
+        Split a word into subwords based on dictionary information
+
+        Parameters
+        ----------
+        item: str
+            Word to split
+
+        Returns
+        -------
+        list[str]
+            List of subwords
+        """
+        if self.word_set is not None and item in self.word_set:
+            return [item]
+        if any(x in item for x in self.compound_markers):
+            s = re.split(rf"[{''.join(self.compound_markers)}]", item)
+            if any(x in item for x in self.clitic_markers):
+                new_s = []
+                for seg in s:
+                    if any(x in seg for x in self.clitic_markers):
+                        new_s.extend(self.split_clitics(seg))
+                    else:
+                        new_s.append(seg)
+                s = new_s
+            return s
+        if any(
+            x in item and not item.endswith(x) and not item.startswith(x)
+            for x in self.clitic_markers
+        ):
+            initial, final = re.split(rf"[{''.join(self.clitic_markers)}]", item, maxsplit=1)
+            if any(x in final for x in self.clitic_markers):
+                final = self.split_clitics(final)
+            else:
+                final = [final]
+            for clitic in self.clitic_markers:
+                if initial + clitic in self.clitic_set:
+                    return [initial + clitic] + final
+                elif clitic + final[0] in self.clitic_set:
+                    final[0] = clitic + final[0]
+                    return [initial] + final
+        return [item]
+
+    def __call__(
+        self,
+        item: str,
+    ) -> list[str]:
+        """
+        Return the list of sub words if necessary
+        taking into account clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[str]
+            List of subwords that are in the dictionary
+        """
+        if self.word_set is not None and item in self.word_set:
+            return [item]
+        sanitized = self.sanitize_function(item)
+        if self.word_set is not None and sanitized in self.word_set:
+            return [sanitized]
+        split = self.split_clitics(sanitized)
+        if self.word_set is None:
+            return split
+        oov_count = sum(1 for x in split if x not in self.word_set)
+        if oov_count < len(
+            split
+        ):  # Only returned split item if it gains us any transcribed speech
+            return split
+        return [sanitized]
 
 
 class DictionaryMixin:
@@ -353,11 +470,11 @@ class DictionaryMixin:
 
     def construct_sanitize_function(self) -> SanitizeFunction:
         """
-        Construct a SanitizeFunction to use in multiprocessing jobs
+        Construct a :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction` to use in multiprocessing jobs
 
         Returns
         -------
-        SanitizeFunction
+        :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
             Function for sanitizing text
         """
         f = SanitizeFunction(
@@ -380,16 +497,7 @@ class DictionaryMixin:
         str
             Sanitized form
         """
-        for c in self.clitic_markers:
-            item = item.replace(c, self.clitic_markers[0])
-        if not item:
-            return item
-        if self.check_bracketed(item):
-            return item
-        sanitized = re.sub(rf"^[{re.escape(''.join(self.punctuation))}]+", "", item)
-        sanitized = re.sub(rf"[{re.escape(''.join(self.punctuation))}]+$", "", sanitized)
-
-        return sanitized
+        return self.construct_sanitize_function()(item)
 
     def parse_ipa(self, transcription: list[str]) -> tuple[str, ...]:
         """

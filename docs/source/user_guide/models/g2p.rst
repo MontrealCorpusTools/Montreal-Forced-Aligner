@@ -16,7 +16,7 @@ Pretrained G2P models
 *********************
 
 
-Included with MFA is a separate tool to generate a dictionary from a preexisting model. This should be used if you're
+Included with MFA is a separate tool to generate a dictionary from a preexisting :term:`G2P model`. This should be used if you're
 aligning a dataset for which you have no pronunciation dictionary or the orthography is very transparent. We have pretrained
 models for several languages below.
 

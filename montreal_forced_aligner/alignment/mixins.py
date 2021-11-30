@@ -5,47 +5,23 @@ import logging
 import os
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
-from ..dictionary.base_dictionary import DictionaryMixin
-from ..exceptions import AlignmentError
-from ..utils import run_mp, run_non_mp
-from .multiprocessing import align_func, compile_information_func, compile_train_graphs_func
+from montreal_forced_aligner.alignment.multiprocessing import (
+    AlignArguments,
+    CompileInformationArguments,
+    CompileTrainGraphsArguments,
+    align_func,
+    compile_information_func,
+    compile_train_graphs_func,
+)
+from montreal_forced_aligner.dictionary.base import DictionaryMixin
+from montreal_forced_aligner.exceptions import AlignmentError
+from montreal_forced_aligner.utils import run_mp, run_non_mp
 
 if TYPE_CHECKING:
-    from ..abc import MetaDict
-    from ..corpus.multiprocessing import Job
-
-
-class CompileInformationArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information_func`"""
-
-    align_log_paths: str
-
-
-class CompileTrainGraphsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_train_graphs_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    tree_path: str
-    model_path: str
-    text_int_paths: dict[str, str]
-    disambig_paths: dict[str, str]
-    lexicon_fst_paths: dict[str, str]
-    fst_scp_paths: dict[str, str]
-
-
-class AlignArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.align_func`"""
-
-    log_path: str
-    dictionaries: list[str]
-    fst_scp_paths: dict[str, str]
-    feature_strings: dict[str, str]
-    model_path: str
-    ali_paths: dict[str, str]
-    align_options: MetaDict
+    from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.corpus.multiprocessing import Job
 
 
 class AlignMixin(DictionaryMixin):
@@ -66,6 +42,12 @@ class AlignMixin(DictionaryMixin):
         Size of the beam to use in decoding, defaults to 10
     retry_beam : int
         Size of the beam to use in decoding if it fails with the initial beam width, defaults to 40
+
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+        For dictionary parsing parameters
 
     Attributes
     ----------
@@ -119,11 +101,11 @@ class AlignMixin(DictionaryMixin):
 
     def compile_train_graphs_arguments(self) -> list[CompileTrainGraphsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_train_graphs_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CompileTrainGraphsArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsArguments`]
             Arguments for processing
         """
         args = []
@@ -151,11 +133,11 @@ class AlignMixin(DictionaryMixin):
 
     def align_arguments(self) -> list[AlignArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.align_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AlignArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AlignArguments`]
             Arguments for processing
         """
         args = []
@@ -183,11 +165,11 @@ class AlignMixin(DictionaryMixin):
 
     def compile_information_arguments(self) -> list[CompileInformationArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CompileInformationArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CompileInformationArguments`]
             Arguments for processing
         """
         args = []
@@ -232,9 +214,9 @@ class AlignMixin(DictionaryMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_train_graphs_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.compile_train_graphs_arguments`
+        :meth:`.AlignMixin.compile_train_graphs_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps:`align_si`
             Reference Kaldi script
@@ -246,24 +228,21 @@ class AlignMixin(DictionaryMixin):
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
         jobs = self.compile_train_graphs_arguments()
-        for j in jobs:
-            print(j.log_path)
-            print(j.dictionaries)
         if self.use_mp:
             run_mp(compile_train_graphs_func, jobs, log_directory)
         else:
             run_non_mp(compile_train_graphs_func, jobs, log_directory)
         self.logger.debug(f"Compiling training graphs took {time.time() - begin}")
 
-    def _align(self) -> None:
+    def align_utterances(self) -> None:
         """
         Multiprocessing function that aligns based on the current model.
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.align_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.align_arguments`
+        :meth:`.AlignMixin.align_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps:`align_si`
             Reference Kaldi script
@@ -299,9 +278,9 @@ class AlignMixin(DictionaryMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.compile_information_arguments`
+        :meth:`.AlignMixin.compile_information_arguments`
             Job method for generating arguments for the helper function
         """
         compile_info_begin = time.time()

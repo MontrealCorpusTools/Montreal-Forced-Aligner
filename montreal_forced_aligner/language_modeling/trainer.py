@@ -4,13 +4,16 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import Dict, Generator, Union
+from typing import TYPE_CHECKING, Generator
 
-from ..abc import TopLevelMfaWorker, TrainerMixin
-from ..corpus.text_corpus import MfaWorker, TextCorpusMixin
-from ..dictionary.base_dictionary import DictionaryMixin
-from ..dictionary.multispeaker import MultispeakerDictionaryMixin
-from ..models import LanguageModel
+from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.models import LanguageModel
+
+if TYPE_CHECKING:
+    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["LmCorpusTrainer", "LmTrainerMixin", "LmArpaTrainer", "LmDictionaryCorpusTrainer"]
 
@@ -27,6 +30,15 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
         Pruning threshold for the small language model, defaults to 0.0000003
     prune_thresh_medium: float
         Pruning threshold for the medium language model, defaults to 0.0000001
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+        For dictionary parsing parameters
+    :class:`~montreal_forced_aligner.abc.TrainerMixin`
+        For training parameters
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For worker parameters
     """
 
     def __init__(
@@ -143,6 +155,15 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         Smoothing method for the ngram model, defaults to "kneser_ney"
     count_threshold:int
         Minimum count needed to not be treated as an OOV item, defaults to 1
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.language_modeling.trainer.LmTrainerMixin`
+        For  language model training parsing parameters
+    :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
     """
 
     def __init__(
@@ -197,7 +218,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         return "train_lm_corpus"
 
     @property
-    def meta(self) -> Dict[str, Union[str, int, float]]:
+    def meta(self) -> MetaDict:
         """Metadata information for the language model"""
         from ..utils import get_mfa_version
 
@@ -358,6 +379,13 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
 class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmTrainerMixin):
     """
     Top-level worker to train a language model and incorporate a pronunciation dictionary for marking words as OOV
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.language_modeling.trainer.LmTrainerMixin`
+        For language model training parsing parameters
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
     """
 
     pass
@@ -366,6 +394,13 @@ class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmTrainerMixin):
 class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
     """
     Top-level worker to convert an existing ARPA-format language model to MFA format
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.language_modeling.trainer.LmTrainerMixin`
+        For language model training parsing parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parsing parameters
     """
 
     def __init__(self, arpa_path: str, **kwargs):

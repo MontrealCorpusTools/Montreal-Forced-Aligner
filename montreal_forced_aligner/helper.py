@@ -37,12 +37,12 @@ def parse_old_features(config: MetaDict) -> MetaDict:
 
     Parameters
     ----------
-    config: MetaDict
+    config: dict[str, Any]
         Configuration parameters
 
     Returns
     -------
-    MetaDict
+    dict[str, Any]
         Up to date versions of feature blocks
     """
     feature_key_remapping = {
@@ -71,7 +71,7 @@ class TerminalPrinter:
 
     Attributes
     ----------
-    colors: Dict[str, str]
+    colors: dict[str, str]
         Mapping of color names to terminal codes in colorama (or empty strings
         if the global terminal_colors flag is set to False)
     """
@@ -151,7 +151,7 @@ class TerminalPrinter:
 
         Parameters
         ----------
-        configuration: :class:`~montreal_forced_aligner.abc.MetaDict`
+        configuration: dict[str, Any]
             Configuration to print
         """
         for k, v in configuration.items():
@@ -219,7 +219,7 @@ def comma_join(sequence: list[Any]) -> str:
 
     Parameters
     ----------
-    sequence: List[Any]
+    sequence: list[Any]
         Items to join together into a list
 
     Returns
@@ -414,7 +414,7 @@ def edit_distance(x: Labels, y: Labels) -> int:
 
     See Also
     --------
-    `https://gist.github.com/kylebgorman/8034009`_
+    `https://gist.github.com/kylebgorman/8034009 <https://gist.github.com/kylebgorman/8034009>`_
          For a more expressive version of this function
 
     Parameters

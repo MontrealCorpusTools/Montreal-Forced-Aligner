@@ -5,35 +5,41 @@ import os
 import shutil
 import subprocess
 import time
-from typing import Dict, List, NamedTuple
+from typing import NamedTuple
 
-from ..exceptions import KaldiProcessingError
-from ..utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp, thirdparty_binary
-from .triphone import TriphoneTrainer
+from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.utils import (
+    log_kaldi_errors,
+    parse_logs,
+    run_mp,
+    run_non_mp,
+    thirdparty_binary,
+)
 
 __all__ = ["SatTrainer"]
 
 
 class AccStatsTwoFeatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_two_feats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`"""
 
     log_path: str
-    dictionaries: List[str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
+    dictionaries: list[str]
+    ali_paths: dict[str, str]
+    acc_paths: dict[str, str]
     model_path: str
-    feature_strings: Dict[str, str]
-    si_feature_strings: Dict[str, str]
+    feature_strings: dict[str, str]
+    si_feature_strings: dict[str, str]
 
 
 def acc_stats_two_feats_func(
     log_path: str,
-    dictionaries: List[str],
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
+    dictionaries: list[str],
+    ali_paths: dict[str, str],
+    acc_paths: dict[str, str],
     model_path: str,
-    feature_strings: Dict[str, str],
-    si_feature_strings: Dict[str, str],
+    feature_strings: dict[str, str],
+    si_feature_strings: dict[str, str],
 ) -> None:
     """
     Multiprocessing function for accumulating stats across speaker-independent and
@@ -41,9 +47,9 @@ def acc_stats_two_feats_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.create_align_model`
+    :meth:`.SatTrainer.create_align_model`
         Main function that calls this function in parallel
-    :meth:`.Job.acc_stats_two_feats_arguments`
+    :meth:`.SatTrainer.acc_stats_two_feats_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`ali-to-post`
         Relevant Kaldi binary
@@ -54,18 +60,18 @@ def acc_stats_two_feats_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    ali_paths: Dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
-    acc_paths: Dict[str, str]
-        PronunciationDictionary of accumulated stats files per dictionary name
+    ali_paths: dict[str, str]
+        Dictionary of alignment archives per dictionary name
+    acc_paths: dict[str, str]
+        Dictionary of accumulated stats files per dictionary name
     model_path: str
         Path to the acoustic model file
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    si_feature_strings: Dict[str, str]
-        PronunciationDictionary of speaker-independent feature strings per dictionary name
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
+    si_feature_strings: dict[str, str]
+        Dictionary of speaker-independent feature strings per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -110,6 +116,10 @@ class SatTrainer(TriphoneTrainer):
     power : float
         Exponent for number of gaussians according to occurrence counts, defaults to 0.2
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.acoustic_modeling.triphone.TriphoneTrainer`
+        For acoustic model training parsing parameters
 
     Attributes
     ----------
@@ -132,13 +142,13 @@ class SatTrainer(TriphoneTrainer):
         self.power = power
         self.fmllr_iterations = []
 
-    def acc_stats_two_feats_arguments(self) -> List[AccStatsTwoFeatsArguments]:
+    def acc_stats_two_feats_arguments(self) -> list[AccStatsTwoFeatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_two_feats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AccStatsTwoFeatsArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -232,13 +242,13 @@ class SatTrainer(TriphoneTrainer):
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
-            self._align()
+            self.align_utterances()
             if self.debug:
                 self.compute_alignment_improvement()
         if self.iteration in self.fmllr_iterations:
             self.calc_fmllr()
 
-        self.accumulate_alignment_stats()
+        self.acc_stats()
         parse_logs(self.working_log_directory)
         if self.iteration < self.final_gaussian_iteration:
             self.increment_gaussians()
@@ -259,15 +269,15 @@ class SatTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.acc_stats_two_feats_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.acc_stats_two_feats_arguments`
+        :meth:`.SatTrainer.acc_stats_two_feats_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`gmm-est`
             Relevant Kaldi binary
         :kaldi_src:`gmm-sum-accs`
             Relevant Kaldi binary
-        :kaldi_steps:'train_sat`
+        :kaldi_steps:`train_sat`
             Reference Kaldi script
         """
         self.logger.info("Creating alignment model for speaker-independent features...")

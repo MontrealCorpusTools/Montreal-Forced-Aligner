@@ -14,7 +14,7 @@ from colorama import Fore, Style
 from .helper import comma_join
 
 if TYPE_CHECKING:
-    from .dictionary.base_dictionary import PronunciationDictionaryMixin
+    from .dictionary.base import PronunciationDictionaryMixin
     from .models import G2PModel
     from .textgrid import CtmInterval
 
@@ -330,6 +330,7 @@ class TextGridParseError(CorpusReadError):
         MFAError.__init__(self)
         self.file_name = file_name
         self.error = error
+        self.message = f"Reading {self.emphasized_text(self.file_name)} has the following error:\n\n{self.error}"
 
 
 class SoxError(CorpusReadError):
@@ -357,7 +358,7 @@ class AlignmentError(MFAError):
 
     Parameters
     ----------
-    error_logs: List[str]
+    error_logs: list[str]
         List of Kaldi log files with errors
     """
 
@@ -376,7 +377,7 @@ class AlignmentExportError(AlignmentError):
 
     Parameters
     ----------
-    error_dict: Dict[Tuple[str, int], str]
+    error_dict: dict[tuple[str, int], str]
         Error dictionary mapping export stage and job to the error encountered
 
     """
@@ -442,7 +443,7 @@ class PronunciationOrthographyMismatchError(AlignerError):
     ----------
     g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
         Specified G2P model
-    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionaryMixin`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
         Specified dictionary
     """
 
@@ -492,7 +493,7 @@ class PretrainedModelNotFoundError(ArgumentError):
         Model name
     model_type: str, optional
         Model type searched
-    available: List[str], optional
+    available: list[str], optional
         List of models that were found
     """
 
@@ -518,7 +519,7 @@ class MultipleModelTypesFoundError(ArgumentError):
     ----------
     name: str
         Model name
-    possible_model_types: List[str]
+    possible_model_types: list[str]
         List of model types that have a model with the given name
     """
 
@@ -542,7 +543,7 @@ class ModelExtensionError(ArgumentError):
         Model name
     model_type: str
         Model type
-    extensions: List[str]
+    extensions: list[str]
         Extensions that the model supports
     """
 
@@ -568,7 +569,7 @@ class ModelTypeNotSupportedError(ArgumentError):
     ----------
     model_type: str
         Model type
-    model_types: List[str]
+    model_types: list[str]
         List of supported model types
     """
 
@@ -587,6 +588,19 @@ class ConfigError(MFAError):
     """
 
     pass
+
+
+class RootDirectoryError(ConfigError):
+    """
+    Exception class for errors using the MFA_ROOT_DIR
+    """
+
+    def __init__(self, temporary_directory, variable):
+        super().__init__()
+        self.message = (
+            f"Could not create a root MFA temporary directory (tried {self.error_text(temporary_directory)}), "
+            f"please specify a write-able directory via the {self.emphasized_text(variable)} environment variable."
+        )
 
 
 class TrainerError(MFAError):
@@ -629,7 +643,7 @@ class KaldiProcessingError(MFAError):
 
     Parameters
     ----------
-    error_logs: List[str]
+    error_logs: list[str]
         List of Kaldi logs that had errors
     log_file: str, optional
         Overall log file to find more information

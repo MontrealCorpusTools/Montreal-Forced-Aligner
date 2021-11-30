@@ -13,9 +13,9 @@ import sys
 import time
 import traceback
 from queue import Empty
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, NamedTuple, Union
 
-from ..textgrid import (
+from montreal_forced_aligner.textgrid import (
     export_textgrid,
     generate_tiers,
     parse_from_phone,
@@ -23,19 +23,13 @@ from ..textgrid import (
     parse_from_word_no_cleanup,
     process_ctm_line,
 )
-from ..utils import Stopped, thirdparty_binary
+from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
 if TYPE_CHECKING:
-    from ..abc import CtmErrorDict, MetaDict
-    from ..corpus.classes import File, Utterance
-    from ..data import CtmType
-    from .base import (
-        CleanupWordCtmArguments,
-        CombineCtmArguments,
-        ExportTextGridArguments,
-        NoCleanupWordCtmArguments,
-        PhoneCtmArguments,
-    )
+    from montreal_forced_aligner.abc import CtmErrorDict, MetaDict, ReversedMappingType
+    from montreal_forced_aligner.corpus.classes import File, Utterance
+    from montreal_forced_aligner.data import CtmType
+    from montreal_forced_aligner.dictionary import DictionaryData
 
 
 queue_polling_timeout = 1
@@ -54,6 +48,97 @@ __all__ = [
 ]
 
 
+class AliToCtmArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    ali_paths: dict[str, str]
+    text_int_paths: dict[str, str]
+    word_boundary_int_paths: dict[str, str]
+    frame_shift: float
+    model_path: str
+    ctm_paths: dict[str, str]
+    word_mode: bool
+
+
+class CleanupWordCtmArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`"""
+
+    ctm_paths: dict[str, str]
+    dictionaries: list[str]
+    utterances: dict[str, dict[str, Utterance]]
+    dictionary_data: dict[str, DictionaryData]
+
+
+class NoCleanupWordCtmArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`"""
+
+    ctm_paths: dict[str, str]
+    dictionaries: list[str]
+    utterances: dict[str, dict[str, Utterance]]
+    dictionary_data: dict[str, DictionaryData]
+
+
+class PhoneCtmArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`"""
+
+    ctm_paths: dict[str, str]
+    dictionaries: list[str]
+    utterances: dict[str, dict[str, Utterance]]
+    reversed_phone_mappings: dict[str, ReversedMappingType]
+    positions: dict[str, list[str]]
+
+
+class CombineCtmArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`"""
+
+    dictionaries: list[str]
+    files: dict[str, File]
+    dictionary_data: dict[str, DictionaryData]
+    cleanup_textgrids: bool
+
+
+class ExportTextGridArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`"""
+
+    files: dict[str, File]
+    frame_shift: int
+    output_directory: str
+    backup_output_directory: str
+
+
+class CompileInformationArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`"""
+
+    align_log_paths: str
+
+
+class CompileTrainGraphsArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    tree_path: str
+    model_path: str
+    text_int_paths: dict[str, str]
+    disambig_paths: dict[str, str]
+    lexicon_fst_paths: dict[str, str]
+    fst_scp_paths: dict[str, str]
+
+
+class AlignArguments(NamedTuple):
+    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`"""
+
+    log_path: str
+    dictionaries: list[str]
+    fst_scp_paths: dict[str, str]
+    feature_strings: dict[str, str]
+    model_path: str
+    ali_paths: dict[str, str]
+    align_options: MetaDict
+
+
 def compile_train_graphs_func(
     log_path: str,
     dictionaries: list[str],
@@ -69,9 +154,9 @@ def compile_train_graphs_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_train_graphs`
+    :meth:`.AlignMixin.compile_train_graphs`
         Main function that calls this function in parallel
-    :meth:`.Job.compile_train_graphs_arguments`
+    :meth:`.AlignMixin.compile_train_graphs_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`compile-train-graphs`
         Relevant Kaldi binary
@@ -80,20 +165,20 @@ def compile_train_graphs_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
     tree_path: str
         Path to the acoustic model tree file
     model_path: str
         Path to the acoustic model file
-    text_int_paths: Dict[str, str]
-        PronunciationDictionary of text int files per dictionary name
-    disambig_paths: Dict[str, str]
-        PronunciationDictionary of disambiguation symbol int files per dictionary name
-    lexicon_fst_paths: Dict[str, str]
-        PronunciationDictionary of L.fst files per dictionary name
-    fst_scp_paths: Dict[str, str]
-        PronunciationDictionary of utterance FST scp files per dictionary name
+    text_int_paths: dict[str, str]
+        Dictionary of text int files per dictionary name
+    disambig_path: str
+        Disambiguation symbol int file
+    lexicon_fst_paths: dict[str, str]
+        Dictionary of L.fst files per dictionary name
+    fst_scp_paths: dict[str, str]
+        Dictionary of utterance FST scp files per dictionary name
     """
     with open(log_path, "w", encoding="utf8") as log_file:
         for dict_name in dictionaries:
@@ -132,9 +217,9 @@ def align_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.align`
+    :meth:`.AlignMixin.align_utterances`
         Main function that calls this function in parallel
-    :meth:`.Job.align_arguments`
+    :meth:`.AlignMixin.align_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`align-equal-compiled`
         Relevant Kaldi binary
@@ -148,14 +233,14 @@ def align_func(
     dictionaries: list[str]
         List of dictionary names
     fst_scp_paths: dict[str, str]
-        PronunciationDictionary of FST scp file paths per dictionary name
+        Dictionary of FST scp file paths per dictionary name
     feature_strings: dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
+        Dictionary of feature strings per dictionary name
     model_path: str
         Path to the acoustic model file
     ali_paths: dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
-    align_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+        Dictionary of alignment archives per dictionary name
+    align_options: dict[str, Any]
         Options for alignment
     """
     with open(log_path, "w", encoding="utf8") as log_file:
@@ -201,7 +286,7 @@ def compile_information_func(align_log_path: str) -> dict[str, Union[list[str], 
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information`
+    :meth:`.AlignMixin.compile_information`
         Main function that calls this function in parallel
 
     Parameters
@@ -211,7 +296,7 @@ def compile_information_func(align_log_path: str) -> dict[str, Union[list[str], 
 
     Returns
     -------
-    Dict
+    dict[str, Union[list[str], float, int]]
         Information about log-likelihood and number of unaligned files
     """
     average_logdet_pattern = re.compile(
@@ -263,11 +348,11 @@ def ali_to_ctm_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that calls this function in parallel
-    :meth:`.Job.ali_to_word_ctm_arguments`
+    :meth:`.CorpusAligner.ali_to_word_ctm_arguments`
         Job method for generating arguments for this function
-    :meth:`.Job.ali_to_phone_ctm_arguments`
+    :meth:`.CorpusAligner.ali_to_phone_ctm_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`linear-to-nbest`
         Relevant Kaldi binary
@@ -287,17 +372,17 @@ def ali_to_ctm_func(
     dictionaries: list[str]
         List of dictionary names
     ali_paths: dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
+        Dictionary of alignment archives per dictionary name
     text_int_paths: dict[str, str]
-        PronunciationDictionary of text int files per dictionary name
+        Dictionary of text int files per dictionary name
     word_boundary_int_paths: dict[str, str]
-        PronunciationDictionary of word boundary int files per dictionary name
+        Dictionary of word boundary int files per dictionary name
     frame_shift: float
         Frame shift of feature generation in seconds
     model_path: str
         Path to the acoustic model file
     ctm_paths: dict[str, str]
-        PronunciationDictionary of CTM files per dictionary name
+        Dictionary of CTM files per dictionary name
     word_mode: bool
         Flag for whether to parse words or phones
     """
@@ -375,7 +460,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
@@ -384,11 +469,11 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    error_catching: CtmErrorDict
-        PronunciationDictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.NoCleanupWordCtmArguments`
+    error_catching: dict[tuple[str, int], str]
+        Dictionary for storing errors encountered
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -411,7 +496,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         # Corpus information
         self.utterances = arguments.utterances
 
-        # PronunciationDictionary information
+        # Dictionary information
         self.dictionary_data = arguments.dictionary_data
 
     def run(self) -> None:
@@ -478,7 +563,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
@@ -487,11 +572,11 @@ class CleanupWordCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    error_catching: CtmErrorDict
-        PronunciationDictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CleanupWordCtmArguments`
+    error_catching: dict[tuple[str, int], str]
+        Dictionary for storing errors encountered
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -514,7 +599,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
         # Corpus information
         self.utterances = arguments.utterances
 
-        # PronunciationDictionary information
+        # Dictionary information
         self.dictionary_data = arguments.dictionary_data
 
     def run(self) -> None:
@@ -583,7 +668,7 @@ class PhoneCtmProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
@@ -592,11 +677,11 @@ class PhoneCtmProcessWorker(mp.Process):
         Job name
     to_process_queue: :class:`~multiprocessing.Queue`
         Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    error_catching: CtmErrorDict
-        PronunciationDictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.PhoneCtmArguments`
+    error_catching: dict[tuple[str, int], str]
+        Dictionary for storing errors encountered
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -688,7 +773,7 @@ class CombineProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
@@ -699,13 +784,13 @@ class CombineProcessWorker(mp.Process):
         Input queue of phone and word ctms to combine
     to_export_queue: :class:`~multiprocessing.Queue`
         Export queue of combined CTMs
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    finished_combining: :class:`~montreal_forced_aligner.utils.Stopped`
         Signal that this worker has finished combining all CTMs
-    error_catching: CtmErrorDict
-        PronunciationDictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.CombineCtmArguments`
+    error_catching: dict[tuple[str, int], str]
+        Dictionary for storing errors encountered
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineCtmArguments`
         Arguments to pass to the CTM combining function
     """
 
@@ -788,20 +873,20 @@ class ExportTextGridProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
     ----------
     for_write_queue: :class:`~multiprocessing.Queue`
         Input queue of files to export
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    finished_processing: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    finished_processing: :class:`~montreal_forced_aligner.utils.Stopped`
         Input signal that all jobs have been added and no more new ones will come in
     textgrid_errors: dict[str, str]
-        PronunciationDictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.multiprocessing.classes.ExportTextGridArguments`
+        Dictionary for storing errors encountered
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridArguments`
         Arguments to pass to the TextGrid export function
     """
 
@@ -858,7 +943,7 @@ class ExportPreparationProcessWorker(mp.Process):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.ctms_to_textgrids_mp`
+    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
         Main function that runs this worker in parallel
 
     Parameters
@@ -867,11 +952,11 @@ class ExportPreparationProcessWorker(mp.Process):
         Input queue of combined CTMs
     for_write_queue: :class:`~multiprocessing.Queue`
         Export queue of files to export
-    stopped: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.multiprocessing.helper.Stopped`
+    finished_combining: :class:`~montreal_forced_aligner.utils.Stopped`
         Input signal that all CTMs have been combined
-    files: Dict[str, File]
+    files: dict[str, File]
         Files in corpus
     """
 

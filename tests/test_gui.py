@@ -1,6 +1,6 @@
 import os
 
-from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationDictionary
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpus
 
 
 def test_save_text_lab(
@@ -10,7 +10,7 @@ def test_save_text_lab(
     basic_dictionary_config,
 ):
     output_directory = os.path.join(generated_dir, "corpus_tests")
-    corpus = AcousticCorpusPronunciationDictionary(
+    corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
         dictionary_path=basic_dict_path,
         use_mp=True,
@@ -22,7 +22,7 @@ def test_save_text_lab(
 
 def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, "corpus_tests")
-    corpus = AcousticCorpusPronunciationDictionary(
+    corpus = AcousticCorpus(
         corpus_directory=flac_tg_corpus_dir,
         dictionary_path=basic_dict_path,
         use_mp=True,

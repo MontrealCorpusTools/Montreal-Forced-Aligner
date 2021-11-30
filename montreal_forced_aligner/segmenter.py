@@ -31,7 +31,7 @@ __all__ = ["Segmenter"]
 
 
 class SegmentVadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.segment_vad_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`"""
 
     dictionaries: list[str]
     vad_paths: dict[str, str]
@@ -133,20 +133,20 @@ def segment_vad_func(
 
     See Also
     --------
-    :func:`montreal_forced_aligner.multiprocessing.ivector.segment_vad`
+    :meth:`montreal_forced_aligner.segmenter.Segmenter.segment_vad`
         Main function that calls this function in parallel
-    :meth:`.Job.segment_vad_arguments`
+    :meth:`montreal_forced_aligner.segmenter.Segmenter.segment_vad_arguments`
         Job method for generating arguments for this function
     :kaldi_utils:`segmentation.pl`
         Kaldi utility
 
     Parameters
     ----------
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    vad_paths: Dict[str, str]
+    vad_paths: dict[str, str]
         Dictionary of VAD archives per dictionary name
-    segmentation_options: :class:`~montreal_forced_aligner.abc.MetaDict`
+    segmentation_options: dict[str, Any]
         Options for segmentation
     """
 
@@ -215,14 +215,14 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         ----------
         config_path: str
             Config path
-        args: Namespace
+        args: :class:`~argparse.Namespace`
             Command-line arguments from argparse
         unknown_args: list[str], optional
             Extra command-line arguments
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Configuration parameters
         """
         global_params = {}
@@ -242,7 +242,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
     def segment_vad_arguments(self) -> list[SegmentVadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.ivector.segment_vad_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`
 
         Returns
         -------

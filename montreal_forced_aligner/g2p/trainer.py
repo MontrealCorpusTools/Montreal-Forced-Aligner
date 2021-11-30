@@ -19,7 +19,7 @@ from typing import Any, Callable, NamedTuple, Optional
 import tqdm
 
 from ..abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from ..dictionary.base_dictionary import PronunciationDictionaryMixin
+from ..dictionary.base import PronunciationDictionaryMixin
 from ..helper import score
 from ..models import G2PModel
 from ..utils import Counter, Stopped
@@ -52,7 +52,7 @@ TOKEN_TYPES = ["byte", "utf8"]
 INF = float("inf")
 RAND_MAX = 32767
 
-__all__ = ["RandomStartWorker", "PairNGramAligner", "PyniniTrainer"]
+__all__ = ["RandomStartWorker", "PairNGramAligner", "PyniniTrainer", "G2PTrainer"]
 
 
 class RandomStart(NamedTuple):
@@ -432,6 +432,11 @@ class PyniniValidator(PyniniGenerator):
     ----------
     word_list: list[str]
         List of words to generate pronunciations
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.PyniniGenerator`
+        For parameters to generate pronunciations
     """
 
     def __init__(self, word_list: list[str], **kwargs):
@@ -456,6 +461,15 @@ class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
         Number of pronunciations to generate
     evaluate: bool
         Flag for whether to evaluate the model performance on an validation set
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For base MFA parameters
+    :class:`~montreal_forced_aligner.abc.TrainerMixin`
+        For base trainer parameters
+    :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
+        For pronunciation dictionary parameters
 
     Attributes
     ----------
@@ -491,12 +505,12 @@ class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
     ----------
     order: int
         Order of the ngram model, defaults to 7
-    random_starts: int, defaults to 25
-        Number of random starts to use in initialization
+    random_starts: int
+        Number of random starts to use in initialization, defaults to 25
     seed: int
         Seed for randomization, defaults to 1917
     delta: float
-        Comparison/quatization delta for Baum-Welch training, defaults to 1/1024
+        Comparison/quantization delta for Baum-Welch training, defaults to 1/1024
     lr: float
         Learning rate for Baum-Welch training, defaults to 1.0
     batch_size:int
@@ -517,6 +531,13 @@ class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
         String to pass to OpenFst binaries for GC behavior
     fst_default_cache_gc_limit: str
         String to pass to OpenFst binaries for GC behavior
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.trainer.G2PTrainer`
+        For base G2P training parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
     """
 
     def __init__(

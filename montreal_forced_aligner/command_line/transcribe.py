@@ -90,7 +90,7 @@ def run_transcribe_corpus(args: Namespace, unknown: Optional[list] = None) -> No
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

@@ -7,19 +7,24 @@ import sys
 import time
 from queue import Empty
 
-from ..abc import MfaWorker, TemporaryDirectoryMixin
-from ..dictionary.multispeaker import MultispeakerDictionaryMixin
-from ..exceptions import TextGridParseError, TextParseError
-from ..utils import Stopped
-from .base import CorpusMixin
-from .classes import parse_file
-from .helper import find_exts
-from .multiprocessing import CorpusProcessWorker
+from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
+from montreal_forced_aligner.corpus.base import CorpusMixin
+from montreal_forced_aligner.corpus.classes import parse_file
+from montreal_forced_aligner.corpus.helper import find_exts
+from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
+from montreal_forced_aligner.utils import Stopped
 
 
 class TextCorpusMixin(CorpusMixin):
     """
     Abstract mixin class for processing text corpora
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.base.CorpusMixin`
+        For corpus parsing parameters
     """
 
     def _load_corpus_from_source_mp(self) -> None:
@@ -199,6 +204,13 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
 
     This is primarily useful for training language models, as you can treat words in the language model as OOV if they
     aren't in your pronunciation dictionary
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
     """
 
     def __init__(self, **kwargs):
@@ -220,14 +232,25 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         self.create_corpus_split()
 
 
-class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
+class TextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     """
-    Class for working with text corpora and pronunciation dictionaries
+    Standalone class for working with text corpora and pronunciation dictionaries
+
+    Most MFA functionality will use the :class:`~montreal_forced_aligner.corpus.text_corpus.DictionaryTextCorpusMixin` class rather than this class.
 
     Parameters
     ----------
     num_jobs: int
         Number of jobs to use when loading the corpus
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.text_corpus.DictionaryTextCorpusMixin`
+        For dictionary and corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For MFA processing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
     """
 
     def __init__(self, num_jobs=3, **kwargs):

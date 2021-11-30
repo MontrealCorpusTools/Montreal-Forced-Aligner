@@ -4,8 +4,7 @@
 Corpus creation utilities
 *************************
 
-MFA now contains several command line utilities for helping to create corpora from scratch.  The main workflow is as
-follows:
+MFA now contains several command line utilities for helping to create corpora from scratch.  The main workflow is as follows:
 
 1. If the corpus made up of long sound file that need segmenting, :ref:`create_segments`
 2. If the corpus does not contain transcriptions, transcribe utterances using existing acoustic models,

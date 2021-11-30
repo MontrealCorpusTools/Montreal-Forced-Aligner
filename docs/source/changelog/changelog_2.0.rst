@@ -10,6 +10,18 @@
 Beta releases
 =============
 
+2.0.0b8
+-------
+
+- Refactored internal organization to rely on mixins more than monolithic classes, and moved internal functions to be organized by what they're used for instead of the general type.
+
+  - For instance, there used to be a ``montreal_forced_aligner.multiprocessing`` module with ``alignment.py``, ``transcription.py``, etc that all did multiprocessing for various workers.  Now that functionality is located closer to where it's used, i.e. ``montreal_forced_aligner.transcription.multiprocessing``.
+  - Mixins should allow for more easy extension to new use cases and allow for better configuration
+
+- Updated documentation to reflect the refactoring and did a pass over the User Guide
+- Added the ability to change the location of root MFA directory based on the ``MFA_ROOT_DIR`` environment variable
+- Fixed an issue where the version was incorrectly reported as "2.0.0"
+
 2.0.0b5
 -------
 
@@ -23,8 +35,8 @@ Beta releases
 - Massive refactor to a proper class-based API for interacting with MFA corpora
 
   - Sorry, I really do hope this is the last big refactor of 2.0
-  - :class:`~montreal_forced_aligner.corpus.Speaker`, :class:`~montreal_forced_aligner.corpus.File`, and :class:`~montreal_forced_aligner.corpus.Utterance` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
-  - Added :class:`~montreal_forced_aligner.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
+  - :class:`~montreal_forced_aligner.corpus.classes.Speaker`, :class:`~montreal_forced_aligner.corpus.classes.File`, and :class:`~montreal_forced_aligner.corpus.classes.Utterance` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
+  - Added :class:`~montreal_forced_aligner.corpus.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
 - Updated installation style to be more dependent on conda-forge packages
 
   - Kaldi and MFA are now on conda-forge! |:tada:|

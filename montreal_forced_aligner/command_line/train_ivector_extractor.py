@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
-from montreal_forced_aligner.ivector.trainer import IvectorExtractorTrainer
+from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -22,14 +22,14 @@ def train_ivector(args: Namespace, unknown_args: Optional[list] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
 
-    trainer = IvectorExtractorTrainer(
+    trainer = TrainableIvectorExtractor(
         corpus_directory=args.corpus_directory,
         temporary_directory=args.temporary_directory,
-        **IvectorExtractorTrainer.parse_parameters(args.config_path, args, unknown_args),
+        **TrainableIvectorExtractor.parse_parameters(args.config_path, args, unknown_args),
     )
 
     try:
@@ -87,7 +87,7 @@ def run_train_ivector_extractor(args: Namespace, unknown: Optional[list] = None)
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

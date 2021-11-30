@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 __all__ = ["generate_dictionary", "validate_args", "run_g2p"]
 
 
-def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def generate_dictionary(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Run the G2P command
 
@@ -27,7 +27,7 @@ def generate_dictionary(args: Namespace, unknown_args: Optional[list] = None) ->
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
 
@@ -95,7 +95,7 @@ def validate_args(args: Namespace) -> None:
         args.g2p_model_path = validate_model_arg(args.g2p_model_path, "g2p")
 
 
-def run_g2p(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_g2p(args: Namespace, unknown: Optional[list[str]] = None) -> None:
     """
     Wrapper function for running G2P
 
@@ -103,7 +103,7 @@ def run_g2p(args: Namespace, unknown: Optional[list] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

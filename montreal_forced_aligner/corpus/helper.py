@@ -4,12 +4,12 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import soundfile
 
-from ..dictionary.mixins import SanitizeFunction
-from ..exceptions import SoxError
+from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
+from montreal_forced_aligner.exceptions import SoxError
 
 SoundFileInfoDict = dict[str, Union[int, float, str]]
 
@@ -45,7 +45,7 @@ def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction])
     ----------
     text: str
         Orthographic text to parse
-    sanitize_function: SanitizeFunction, optional
+    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`, optional
         Function to sanitize words and strip punctuation
 
     Returns
@@ -77,15 +77,15 @@ def find_exts(
 
     Returns
     -------
-    List[str]
+    list[str]
         File name identifiers
-    Dict[str, str]
+    dict[str, str]
         Wav files
-    Dict[str, str]
+    dict[str, str]
         Lab and text files
-    Dict[str, str]
+    dict[str, str]
         TextGrid files
-    Dict[str, str]
+    dict[str, str]
         Other audio files (flac, mp3, etc)
     """
     wav_files = {}
@@ -113,7 +113,7 @@ def find_exts(
     return identifiers, wav_files, lab_files, textgrid_files, other_audio_files
 
 
-def get_wav_info(file_path: str) -> dict:
+def get_wav_info(file_path: str) -> dict[str, Any]:
     """
     Get sound file information
 
@@ -124,7 +124,7 @@ def get_wav_info(file_path: str) -> dict:
 
     Returns
     -------
-    Dict
+    dict[str, Any]
         Sound information for format, duration, number of channels, bit depth, and
         sox_string for use in Kaldi feature extraction if necessary
     """

@@ -5,7 +5,7 @@ import pytest
 from montreal_forced_aligner.command_line.g2p import run_g2p
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
-from montreal_forced_aligner.dictionary.base_dictionary import PronunciationDictionary
+from montreal_forced_aligner.dictionary.base import PronunciationDictionary
 from montreal_forced_aligner.g2p.generator import G2P_DISABLED
 
 

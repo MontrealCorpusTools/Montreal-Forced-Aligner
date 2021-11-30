@@ -7,22 +7,22 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import yaml
 
-from ..abc import ModelExporterMixin, TopLevelMfaWorker
-from ..alignment.base import CorpusAligner
-from ..exceptions import ConfigError, KaldiProcessingError
-from ..helper import parse_old_features
-from ..models import AcousticModel
-from ..utils import log_kaldi_errors
-from .base import AcousticModelTrainingMixin
-from .lda import LdaTrainer
-from .monophone import MonophoneTrainer
-from .sat import SatTrainer
-from .triphone import TriphoneTrainer
+from montreal_forced_aligner.abc import ModelExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.acoustic_modeling.lda import LdaTrainer
+from montreal_forced_aligner.acoustic_modeling.monophone import MonophoneTrainer
+from montreal_forced_aligner.acoustic_modeling.sat import SatTrainer
+from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
+from montreal_forced_aligner.helper import parse_old_features
+from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    from ..abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["TrainableAligner"]
 
@@ -36,17 +36,26 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     training_configuration : list[tuple[str, dict[str, Any]]]
         Training identifiers and parameters for training blocks
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
+        For dictionary and corpus parsing parameters and alignment parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+    :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
+        For model export parameters
+
     Attributes
     ----------
-    param_dict: MetaDict
+    param_dict: dict[str, Any]
         Parameters to pass to training blocks
     final_identifier: str
         Identifier of the final training block
     current_subset: int
         Current training block's subset
-    current_acoustic_model: Optional[AcousticModel]
+    current_acoustic_model: :class:`~montreal_forced_aligner.models.AcousticModel`
         Acoustic model to use in aligning, based on previous training block
-    training_configs: dict[str, AcousticModelTrainingMixin]
+    training_configs: dict[str, :class:`~montreal_forced_aligner.acoustic_modeling.base.AcousticModelTrainingMixin`]
         Training blocks
     """
 
@@ -61,6 +70,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.final_identifier = None
         self.current_subset: int = 0
         self.current_aligner = None
+        self.current_trainer = None
         self.current_acoustic_model: Optional[AcousticModel] = None
         super().__init__(**kwargs)
         os.makedirs(self.output_directory, exist_ok=True)
@@ -90,14 +100,14 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: Namespace, optional
+        args: :class:`~argparse.Namespace`, optional
             Arguments parsed by argparse
         unknown_args: list[str], optional
             List of unknown arguments from argparse
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Dictionary of specified configuration parameters
         """
         global_params = {}
@@ -180,13 +190,13 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         Parameters
         ----------
         train_type: str
-            Type of trainer to add, one of "monophone", "triphone", "lda" or "sat"
-        params: MetaDict
+            Type of trainer to add, one of ``monophone``, ``triphone``, ``lda`` or ``sat``
+        params: dict[str, Any]
             Parameters to initialize trainer
 
         Raises
         ------
-        ConfigError
+        :class:`~montreal_forced_aligner.exceptions.ConfigError`
             If an invalid train_type is specified
         """
         p = {}
@@ -279,9 +289,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.align_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.align_arguments`
+        :meth:`.AlignMixin.align_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps:`align_si`
             Reference Kaldi script
@@ -290,7 +300,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         self.current_acoustic_model.export_model(self.working_directory)
         self.compile_train_graphs()
-        self._align()
+        self.align_utterances()
         if self.current_subset:
             self.logger.debug(
                 f"Analyzing alignment diagnostics for {self.current_aligner} on {self.current_subset} utterances"
@@ -324,6 +334,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     @property
     def working_directory(self) -> Optional[str]:
         """Working directory"""
+        if self.current_trainer is not None:
+            return self.current_trainer.working_directory
         if self.current_aligner is None:
             return None
         return os.path.join(self.output_directory, f"{self.current_aligner}_ali")

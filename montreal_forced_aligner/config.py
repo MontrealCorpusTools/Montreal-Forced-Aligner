@@ -5,7 +5,10 @@ MFA configuration
 """
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
+
+from montreal_forced_aligner.exceptions import RootDirectoryError
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -15,7 +18,6 @@ import os
 import yaml
 
 __all__ = [
-    "TEMP_DIR",
     "generate_config_path",
     "generate_command_history_path",
     "load_command_history",
@@ -26,7 +28,28 @@ __all__ = [
     "BLAS_THREADS",
 ]
 
-TEMP_DIR = os.path.expanduser("~/Documents/MFA")
+MFA_ROOT_ENVIRONMENT_VARIABLE = "MFA_ROOT_DIR"
+
+
+def get_temporary_directory():
+    """
+    Get the root temporary directory for MFA
+
+    Returns
+    -------
+    str
+        Root temporary directory
+
+    Raises
+    ------
+    :class:`~montreal_forced_aligner.exceptions.RootDirectoryError`
+    """
+    TEMP_DIR = os.environ.get(MFA_ROOT_ENVIRONMENT_VARIABLE, os.path.expanduser("~/Documents/MFA"))
+    try:
+        os.makedirs(TEMP_DIR, exist_ok=True)
+    except OSError:
+        raise RootDirectoryError(TEMP_DIR, MFA_ROOT_ENVIRONMENT_VARIABLE)
+    return TEMP_DIR
 
 
 def generate_config_path() -> str:
@@ -38,7 +61,7 @@ def generate_config_path() -> str:
     str
         Full path to configuration yaml
     """
-    return os.path.join(TEMP_DIR, "global_config.yaml")
+    return os.path.join(get_temporary_directory(), "global_config.yaml")
 
 
 def generate_command_history_path() -> str:
@@ -50,16 +73,16 @@ def generate_command_history_path() -> str:
     str
         Full path to history file
     """
-    return os.path.join(TEMP_DIR, "command_history.yaml")
+    return os.path.join(get_temporary_directory(), "command_history.yaml")
 
 
-def load_command_history() -> list[str]:
+def load_command_history() -> list[dict[str, Any]]:
     """
     Load command history for MFA
 
     Returns
     -------
-    List
+    list[dict[str, Any]]
         List of commands previously run
     """
     path = generate_command_history_path()
@@ -67,16 +90,18 @@ def load_command_history() -> list[str]:
     if os.path.exists(path):
         with open(path, "r", encoding="utf8") as f:
             history = yaml.safe_load(f)
+    for h in history:
+        h["command"] = re.sub(r"^\S+.py ", "mfa ", h["command"])
     return history
 
 
-def update_command_history(command_data: dict) -> None:
+def update_command_history(command_data: dict[str, Any]) -> None:
     """
     Update command history with most recent command
 
     Parameters
     ----------
-    command_data: dict
+    command_data: dict[str, Any]
         Current command metadata
     """
     try:
@@ -113,7 +138,7 @@ def update_global_config(args: Namespace) -> None:
         "num_jobs": 3,
         "blas_num_threads": 1,
         "use_mp": True,
-        "temporary_directory": TEMP_DIR,
+        "temporary_directory": get_temporary_directory(),
     }
     if os.path.exists(global_configuration_file):
         with open(global_configuration_file, "r", encoding="utf8") as f:
@@ -165,7 +190,7 @@ def load_global_config() -> dict[str, Any]:
 
     Returns
     -------
-    Dict
+    dict[str, Any]
         Global configuration
     """
     global_configuration_file = generate_config_path()
@@ -180,7 +205,7 @@ def load_global_config() -> dict[str, Any]:
         "num_jobs": 3,
         "blas_num_threads": 1,
         "use_mp": True,
-        "temporary_directory": TEMP_DIR,
+        "temporary_directory": get_temporary_directory(),
     }
     if os.path.exists(global_configuration_file):
         with open(global_configuration_file, "r", encoding="utf8") as f:

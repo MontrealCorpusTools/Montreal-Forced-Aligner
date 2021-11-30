@@ -1,3 +1,3 @@
-from .transcriber import Transcriber
+from montreal_forced_aligner.transcription.transcriber import Transcriber
 
-__all__ = ["Transcriber"]
+__all__ = ["Transcriber", "transcriber"]

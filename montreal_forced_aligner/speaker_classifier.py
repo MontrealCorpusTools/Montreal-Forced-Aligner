@@ -15,7 +15,7 @@ from sklearn.cluster import KMeans
 
 from .abc import FileExporterMixin, TopLevelMfaWorker
 from .corpus.classes import Speaker
-from .corpus.ivector_corpus import IvectorCorpus
+from .corpus.ivector_corpus import IvectorCorpusMixin
 from .exceptions import KaldiProcessingError
 from .helper import load_scp
 from .models import IvectorExtractorModel
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 __all__ = ["SpeakerClassifier"]
 
 
-class SpeakerClassifier(IvectorCorpus, TopLevelMfaWorker, FileExporterMixin):
+class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     """
     Class for performing speaker classification, not currently very functional, but
     is planned to be expanded in the future
@@ -69,14 +69,14 @@ class SpeakerClassifier(IvectorCorpus, TopLevelMfaWorker, FileExporterMixin):
         ----------
         config_path: str
             Config path
-        args: Namespace
+        args: :class:`~argparse.Namespace`
             Command-line arguments from argparse
         unknown_args: list[str], optional
             Extra command-line arguments
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Configuration parameters
         """
         global_params = {}

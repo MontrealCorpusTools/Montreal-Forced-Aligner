@@ -17,7 +17,7 @@ for downloading these is :code:`mfa model download <model_type>` where ``model_t
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
+.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
    :prog: mfa
    :start_command: model
 

@@ -1,6 +1,6 @@
 import os
 
-from montreal_forced_aligner.dictionary.base_dictionary import PronunciationDictionary
+from montreal_forced_aligner.dictionary.base import PronunciationDictionary
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
 
@@ -83,10 +83,10 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.split_clitics("m'm'appelle") == ["m'", "m'", "appelle"]
     assert d.split_clitics("c'est") == ["c'est"]
     assert d.split_clitics("m'c'est") == ["m'", "c'est"]
-    assert d.split_clitics("purple-people-eater") == ["purple", "people", "eater"]
+    assert d.split_clitics("purple-people-eater") == ["purple-people-eater"]
     assert d.split_clitics("m'appele") == ["m'", "appele"]
     assert d.split_clitics("m'ving-sic") == ["m'", "ving", "sic"]
-    assert d.split_clitics("flying'purple-people-eater") == ["flying'purple", "people", "eater"]
+    assert d.split_clitics("flying'purple-people-eater") == ["flying'purple-people-eater"]
 
     assert d.to_int("aujourd") == [d.oov_int]
     assert d.to_int("aujourd'hui") == [d.words_mapping["aujourd'hui"]]

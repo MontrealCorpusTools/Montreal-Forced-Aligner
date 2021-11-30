@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["align_corpus", "validate_args", "run_align_corpus"]
 
 
-def align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def align_corpus(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Run the alignment
 
@@ -23,7 +23,7 @@ def align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
     aligner = PretrainedAligner(
@@ -78,7 +78,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def run_align_corpus(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
     """
     Wrapper function for running alignment
 
@@ -86,7 +86,7 @@ def run_align_corpus(args: Namespace, unknown_args: Optional[list] = None) -> No
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

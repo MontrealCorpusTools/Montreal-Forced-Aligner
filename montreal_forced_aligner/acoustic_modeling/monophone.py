@@ -4,31 +4,31 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import Dict, List, NamedTuple
+from typing import NamedTuple
 
-from ..utils import run_mp, run_non_mp, thirdparty_binary
-from .base import AcousticModelTrainingMixin
+from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.utils import run_mp, run_non_mp, thirdparty_binary
 
 
 class MonoAlignEqualArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.mono_align_equal_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`"""
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    fst_scp_paths: Dict[str, str]
-    ali_ark_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
+    dictionaries: list[str]
+    feature_strings: dict[str, str]
+    fst_scp_paths: dict[str, str]
+    ali_ark_paths: dict[str, str]
+    acc_paths: dict[str, str]
     model_path: str
 
 
 def mono_align_equal_func(
     log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    fst_scp_paths: Dict[str, str],
-    ali_ark_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
+    dictionaries: list[str],
+    feature_strings: dict[str, str],
+    fst_scp_paths: dict[str, str],
+    ali_ark_paths: dict[str, str],
+    acc_paths: dict[str, str],
     model_path: str,
 ):
     """
@@ -36,9 +36,9 @@ def mono_align_equal_func(
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.multiprocessing.alignment.mono_align_equal`
+    :meth:`.MonophoneTrainer.mono_align_equal`
         Main function that calls this function in parallel
-    :meth:`.Job.mono_align_equal_arguments`
+    :meth:`.MonophoneTrainer.mono_align_equal_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`align-equal-compiled`
         Relevant Kaldi binary
@@ -49,16 +49,16 @@ def mono_align_equal_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionary names
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    fst_scp_paths: Dict[str, str]
-        PronunciationDictionary of utterance FST scp files per dictionary name
-    ali_ark_paths: Dict[str, str]
-        PronunciationDictionary of alignment archives per dictionary name
-    acc_paths: Dict[str, str]
-        PronunciationDictionary of accumulated stats files per dictionary name
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
+    fst_scp_paths: dict[str, str]
+        Dictionary of utterance FST scp files per dictionary name
+    ali_ark_paths: dict[str, str]
+        Dictionary of alignment archives per dictionary name
+    acc_paths: dict[str, str]
+        Dictionary of accumulated stats files per dictionary name
     model_path: str
         Path to the acoustic model file
     """
@@ -111,6 +111,11 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         Total number of gaussians, defaults to 1000
     power : float
         Exponent for number of gaussians according to occurrence counts, defaults to 0.25
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.acoustic_modeling.base.AcousticModelTrainingMixin`
+        For acoustic model training parsing parameters
     """
 
     def __init__(
@@ -127,13 +132,13 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         self.max_gaussians = max_gaussians
         self.power = power
 
-    def mono_align_equal_arguments(self) -> List[MonoAlignEqualArguments]:
+    def mono_align_equal_arguments(self) -> list[MonoAlignEqualArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.mono_align_equal_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.MonoAlignEqualArguments`
+        list[:class:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -179,9 +184,9 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.mono_align_equal_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.mono_align_equal_arguments`
+        :meth:`.MonophoneTrainer.mono_align_equal_arguments`
             Job method for generating arguments for the helper function
         :kaldi_src:`gmm-sum-accs`
             Relevant Kaldi binary

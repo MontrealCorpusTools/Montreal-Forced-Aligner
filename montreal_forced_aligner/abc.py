@@ -26,6 +26,8 @@ __all__ = [
     "MappingType",
     "CtmErrorDict",
     "FileExporterMixin",
+    "ModelExporterMixin",
+    "TemporaryDirectoryMixin",
     "AdapterMixin",
     "TrainerMixin",
     "DictionaryEntryType",
@@ -64,7 +66,7 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
     Parameters
     ----------
     temporary_directory: str, optional
-        Corpus of the worker
+        Path to store temporary files
     """
 
     def __init__(
@@ -74,9 +76,9 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
     ):
         super().__init__(**kwargs)
         if not temporary_directory:
-            from .config import TEMP_DIR
+            from .config import get_temporary_directory
 
-            temporary_directory = TEMP_DIR
+            temporary_directory = get_temporary_directory()
         self.temporary_directory = temporary_directory
 
     @property
@@ -167,12 +169,12 @@ class MfaWorker(metaclass=ABCMeta):
 
         Parameters
         ----------
-        config: MetaDict
+        config: dict[str, Any]
             Configuration dictionary
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Filtered configuration dictionary
         """
         return {k: v for k, v in config.items() if k in cls.get_configuration_parameters()}
@@ -283,14 +285,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        args: Namespace
+        args: :class:`~argparse.Namespace`
             Arguments parsed by argparse
         unknown_args: list[str]
             Optional list of arguments that were not parsed by argparse
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Dictionary of specified configuration parameters
         """
         param_types = cls.get_configuration_parameters()
@@ -334,14 +336,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: Namespace, optional
+        args: :class:`~argparse.Namespace`, optional
             Arguments parsed by argparse
         unknown_args: list[str], optional
             List of unknown arguments from argparse
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Dictionary of specified configuration parameters
         """
         global_params = {}
@@ -392,7 +394,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        conf: MetaDict
+        conf: dict[str, Any]
             Previous run's configuration
 
         Returns
@@ -511,7 +513,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def log_debug(self, message: str) -> None:
         """
-        Log a debug message. This function is a wrapper around the :meth:`Logging.logger.debug`
+        Log a debug message. This function is a wrapper around the :meth:`logging.Logger.debug`
 
         Parameters
         ----------
@@ -522,7 +524,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def log_info(self, message: str) -> None:
         """
-        Log an info message. This function is a wrapper around the :meth:`Logging.logger.info`
+        Log an info message. This function is a wrapper around the :meth:`logging.Logger.info`
 
         Parameters
         ----------
@@ -533,7 +535,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def log_warning(self, message: str) -> None:
         """
-        Log a warning message. This function is a wrapper around the :meth:`Logging.logger.warning`
+        Log a warning message. This function is a wrapper around the :meth:`logging.Logger.warning`
 
         Parameters
         ----------
@@ -544,7 +546,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def log_error(self, message: str) -> None:
         """
-        Log an error message. This function is a wrapper around the :meth:`Logging.logger.error`
+        Log an error message. This function is a wrapper around the :meth:`logging.Logger.error`
 
         Parameters
         ----------
@@ -683,9 +685,9 @@ class MfaModel(ABC):
 
     @classmethod
     def pretrained_directory(cls) -> str:
-        from .config import TEMP_DIR
+        from .config import get_temporary_directory
 
-        return os.path.join(TEMP_DIR, "pretrained_models", cls.model_type)
+        return os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
 
     @classmethod
     def get_available_models(cls) -> list[str]:
@@ -697,7 +699,8 @@ class MfaModel(ABC):
         list[str]
             List of model names
         """
-        os.makedirs(cls.pretrained_directory(), exist_ok=True)
+        if not os.path.exists(cls.pretrained_directory()):
+            return []
         available = []
         for f in os.listdir(cls.pretrained_directory()):
             if cls.valid_extension(f):

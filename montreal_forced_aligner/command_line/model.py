@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import requests
 
-from montreal_forced_aligner.config import TEMP_DIR
+from montreal_forced_aligner.config import get_temporary_directory
 from montreal_forced_aligner.exceptions import (
     FileArgumentNotFoundError,
     ModelLoadError,
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def list_downloadable_models(model_type: str) -> List[str]:
+def list_downloadable_models(model_type: str) -> list[str]:
     """
     Generate a list of models available for download
 
@@ -45,7 +45,7 @@ def list_downloadable_models(model_type: str) -> List[str]:
 
     Returns
     -------
-    List[str]
+    list[str]
         Names of models
     """
     url = f"https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/{model_type}/index.txt"
@@ -124,7 +124,7 @@ def inspect_model(path: str) -> None:
     path: str
         Path to model
     """
-    working_dir = os.path.join(TEMP_DIR, "models", "inspect")
+    working_dir = os.path.join(get_temporary_directory(), "models", "inspect")
     ext = os.path.splitext(path)[1]
     model = None
     if ext == Archive.extensions[0]:  # Figure out what kind of model it is
@@ -240,8 +240,6 @@ def run_model(args: Namespace) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
-        Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
     if args.action == "download":

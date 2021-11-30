@@ -10,12 +10,12 @@ from typing import Optional, Union
 
 import yaml
 
-from ..abc import MfaWorker, TemporaryDirectoryMixin
-from ..exceptions import CorpusError
-from ..helper import output_mapping
-from ..utils import Stopped
-from .classes import File, Speaker, Utterance
-from .multiprocessing import Job
+from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
+from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.multiprocessing import Job
+from montreal_forced_aligner.exceptions import CorpusError
+from montreal_forced_aligner.helper import output_mapping
+from montreal_forced_aligner.utils import Stopped
 
 __all__ = ["CorpusMixin"]
 
@@ -37,6 +37,13 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         Number of characters in the file name to specify the speaker
     ignore_speakers: bool
         Flag for whether to discard any parsed speaker information during top-level worker's processing
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For MFA processing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
 
     Attributes
     ----------
@@ -169,7 +176,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Returns
         -------
-        Dict[str, float]
+        dict[str, float]
             Dictionary of words and their relative frequencies
         """
         word_counts = Counter()
@@ -199,7 +206,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
         self.utterances[utterance.name] = utterance
@@ -214,7 +221,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to delete
         """
         if isinstance(utterance, str):
@@ -244,7 +251,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
         Parameters
         ----------
-        file: :class:`~montreal_forced_aligner.corpus.File`
+        file: :class:`~montreal_forced_aligner.corpus.classes.File`
             File to be added
         """
         self.files[file.name] = file

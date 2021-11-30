@@ -17,7 +17,7 @@ There are several broad use cases that you might want to use MFA for.  Take a lo
 
 #. **Use case 1:** You have a speech corpus, the language involved is in the list of :ref:`pretrained_acoustic_models` and the list of :ref:`pretrained_dictionaries`.
 
-   #. Follow :ref:`first_steps_align_pretrained` to generate aligned TextGrids
+    #. Follow :ref:`first_steps_align_pretrained` to generate aligned TextGrids
 
 #. **Use case 2:** You have a speech corpus, the language involved is in the list of :ref:`pretrained_acoustic_models` and the list of :ref:`pretrained_g2p`, but not on the list of :ref:`pretrained_dictionaries`.
 

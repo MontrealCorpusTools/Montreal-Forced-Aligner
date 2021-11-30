@@ -36,7 +36,13 @@ if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
 
 
-__all__ = ["Rewriter", "RewriterWorker", "PyniniCorpusGenerator", "PyniniWordListGenerator"]
+__all__ = [
+    "Rewriter",
+    "RewriterWorker",
+    "PyniniGenerator",
+    "PyniniCorpusGenerator",
+    "PyniniWordListGenerator",
+]
 
 
 class Rewriter:
@@ -114,7 +120,7 @@ def clean_up_word(word: str, graphemes: set[str]) -> tuple[str, list[str]]:
     ----------
     word : str
         Input string
-    graphemes: Set[str]
+    graphemes: set[str]
         Set of allowable graphemes
 
     Returns
@@ -137,6 +143,11 @@ def clean_up_word(word: str, graphemes: set[str]) -> tuple[str, list[str]]:
 class OrthographyGenerator(G2PTopLevelMixin):
     """
     Abstract mixin class for generating "pronunciations" based off the orthographic word
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.mixins.G2PTopLevelMixin`
+        For top level G2P generation parameters
     """
 
     def generate_pronunciations(self) -> dict[str, list[str]]:
@@ -162,7 +173,12 @@ class PyniniGenerator(G2PTopLevelMixin):
     Parameters
     ----------
     g2p_model_path: str
-        Path to G2PModel
+        Path to G2P model
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.mixins.G2PTopLevelMixin`
+        For top level G2P generation parameters
 
     Attributes
     ----------
@@ -277,6 +293,13 @@ class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
     word_list_path: str
         Path to word list file
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.PyniniGenerator`
+        For Pynini G2P generation parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
+
     Attributes
     ----------
     word_list: list[str]
@@ -319,6 +342,15 @@ class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
 class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker):
     """
     Top-level worker for generating pronunciations from a corpus and a Pynini G2P model
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.PyniniGenerator`
+        For Pynini G2P generation parameters
+    :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
     """
 
     def __init__(self, **kwargs):
@@ -344,6 +376,15 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
 class OrthographicCorpusGenerator(OrthographyGenerator, TextCorpusMixin, TopLevelMfaWorker):
     """
     Top-level class for generating "pronunciations" from the orthography of a corpus
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.OrthographyGenerator`
+        For orthography-based G2P generation parameters
+    :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin`
+        For corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
     """
 
     def __init__(self, **kwargs):
@@ -365,7 +406,7 @@ class OrthographicCorpusGenerator(OrthographyGenerator, TextCorpusMixin, TopLeve
         return word_list
 
 
-class OrthographicWordListGenerator(OrthographyGenerator, G2PTopLevelMixin, TopLevelMfaWorker):
+class OrthographicWordListGenerator(OrthographyGenerator, TopLevelMfaWorker):
     """
     Top-level class for generating "pronunciations" from the orthography of a corpus
 
@@ -373,6 +414,12 @@ class OrthographicWordListGenerator(OrthographyGenerator, G2PTopLevelMixin, TopL
     ----------
     word_list_path: str
         Path to word list file
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.OrthographyGenerator`
+        For orthography-based G2P generation parameters
+    :class:`~montreal_forced_aligner.abc.TopLevelMfaWorker`
+        For top-level parameters
 
     Attributes
     ----------

@@ -34,6 +34,26 @@ In general, it's recommend to create a new environment.  If you want to update,
 
    Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting only Linux and MacOS. To use G2P functionality on Windows, please set up the :xref:`wsl` and use the Bash console to continue the instructions.
 
+Installing from source
+======================
+
+If the Conda installation above does not work or the binaries don't work on your system, you can try building Kaldi and OpenFst from source, along with MFA.
+
+1. Download/clone the :xref:`kaldi_github` and follow the installation instructions
+2. If you're on Mac or Linux and want G2P functionality, install :xref:`openfst`, :xref:`opengrm_ngram`, :xref:`baumwelch`, and :xref:`pynini`
+3. Make sure all Kaldi and other third party executables are on the system path
+4. Download/clone the :xref:`mfa_github` and install MFA via :code:`python setup install` or :code:`pip install -e .`
+5. Double check everything's working on the console with :code:`mfa -h`
+
+.. note::
+
+   You can also clone the conda forge feedstocks for `OpenFst <https://github.com/conda-forge/openfst-feedstock>`_, `SoX <https://github.com/conda-forge/sox-feedstock>`_, `Kaldi <https://github.com/conda-forge/kaldi-feedstock>`_, and `MFA <https://github.com/conda-forge/montreal-forced-aligner-feedstock>`_ and run them with `conda build <https://docs.conda.io/projects/conda-build/en/latest/>`_ to build for your specific system.
+
+MFA temporary files
+===================
+
+MFA uses a temporary directory for commands that can be specified in running commands with ``--temp_directory`` (or see :ref:`configuration`), and it also uses a directory to store global configuration settings and saved models.  By default this root directory is ``~/Documents/MFA``, but if you would like to put this somewhere else, you can set the environment variable ``MFA_ROOT_DIR`` to use that.  MFA will raise an error on load if it's unable to write the specified root directory.
+
 Supported functionality
 =======================
 

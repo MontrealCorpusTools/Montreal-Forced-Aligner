@@ -23,7 +23,7 @@ def train_dictionary(args: Namespace, unknown_args: Optional[list] = None) -> No
     ----------
     args: :class:`~argparse.Namespace`
         Command line arguments
-    unknown_args: List[str]
+    unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
     aligner = DictionaryTrainer(
@@ -83,7 +83,7 @@ def run_train_dictionary(args: Namespace, unknown: Optional[list] = None) -> Non
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: List[str]
+    unknown: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

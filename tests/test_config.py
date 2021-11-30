@@ -12,7 +12,7 @@ from montreal_forced_aligner.acoustic_modeling import (
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.dictionary.mixins import DEFAULT_STRIP_DIACRITICS
 from montreal_forced_aligner.exceptions import ConfigError
-from montreal_forced_aligner.ivector.trainer import IvectorExtractorTrainer
+from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
 
 def test_monophone_config(sick_corpus, sick_dict, temp_dir):
@@ -152,8 +152,8 @@ def test_load_mono_train(sick_corpus, sick_dict, temp_dir, mono_train_config_pat
 
 
 def test_load_ivector_train(sick_corpus, sick_dict, temp_dir, train_ivector_config_path):
-    params = IvectorExtractorTrainer.parse_parameters(train_ivector_config_path)
-    trainer = IvectorExtractorTrainer(
+    params = TrainableIvectorExtractor.parse_parameters(train_ivector_config_path)
+    trainer = TrainableIvectorExtractor(
         corpus_directory=sick_corpus, temporary_directory=temp_dir, **params
     )
 

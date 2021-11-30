@@ -7,12 +7,28 @@ import shutil
 import sys
 import time
 import traceback
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
+from typing import Optional
 
-from ..abc import FileExporterMixin
-from ..corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from ..exceptions import AlignmentExportError
-from ..textgrid import (
+from montreal_forced_aligner.abc import FileExporterMixin
+from montreal_forced_aligner.alignment.mixins import AlignMixin
+from montreal_forced_aligner.alignment.multiprocessing import (
+    AliToCtmArguments,
+    CleanupWordCtmArguments,
+    CleanupWordCtmProcessWorker,
+    CombineCtmArguments,
+    CombineProcessWorker,
+    ExportPreparationProcessWorker,
+    ExportTextGridArguments,
+    ExportTextGridProcessWorker,
+    NoCleanupWordCtmArguments,
+    NoCleanupWordCtmProcessWorker,
+    PhoneCtmArguments,
+    PhoneCtmProcessWorker,
+    ali_to_ctm_func,
+)
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
+from montreal_forced_aligner.exceptions import AlignmentExportError
+from montreal_forced_aligner.textgrid import (
     ctm_to_textgrid,
     output_textgrid_writing_errors,
     parse_from_phone,
@@ -20,102 +36,35 @@ from ..textgrid import (
     parse_from_word_no_cleanup,
     process_ctm_line,
 )
-from ..utils import Stopped, run_mp, run_non_mp
-from .mixins import AlignMixin
-from .multiprocessing import (
-    CleanupWordCtmProcessWorker,
-    CombineProcessWorker,
-    ExportPreparationProcessWorker,
-    ExportTextGridProcessWorker,
-    NoCleanupWordCtmProcessWorker,
-    PhoneCtmProcessWorker,
-    ali_to_ctm_func,
-)
-
-if TYPE_CHECKING:
-    from ..abc import ReversedMappingType
-    from ..corpus.classes import File, Utterance
-    from ..dictionary import DictionaryData
-
+from montreal_forced_aligner.utils import Stopped, run_mp, run_non_mp
 
 __all__ = ["CorpusAligner"]
-
-
-class AliToCtmArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`"""
-
-    log_path: str
-    dictionaries: List[str]
-    ali_paths: Dict[str, str]
-    text_int_paths: Dict[str, str]
-    word_boundary_int_paths: Dict[str, str]
-    frame_shift: float
-    model_path: str
-    ctm_paths: Dict[str, str]
-    word_mode: bool
-
-
-class CleanupWordCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.CleanupWordCtmProcessWorker`"""
-
-    ctm_paths: Dict[str, str]
-    dictionaries: List[str]
-    utterances: Dict[str, Dict[str, Utterance]]
-    dictionary_data: Dict[str, DictionaryData]
-
-
-class NoCleanupWordCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.NoCleanupWordCtmProcessWorker`"""
-
-    ctm_paths: Dict[str, str]
-    dictionaries: List[str]
-    utterances: Dict[str, Dict[str, Utterance]]
-    dictionary_data: Dict[str, DictionaryData]
-
-
-class PhoneCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.PhoneCtmProcessWorker`"""
-
-    ctm_paths: Dict[str, str]
-    dictionaries: List[str]
-    utterances: Dict[str, Dict[str, Utterance]]
-    reversed_phone_mappings: Dict[str, ReversedMappingType]
-    positions: Dict[str, List[str]]
-
-
-class CombineCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.CombineProcessWorker`"""
-
-    dictionaries: List[str]
-    files: Dict[str, File]
-    dictionary_data: Dict[str, DictionaryData]
-    cleanup_textgrids: bool
-
-
-class ExportTextGridArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.multiprocessing.alignment.ExportTextGridProcessWorker`"""
-
-    files: Dict[str, File]
-    frame_shift: int
-    output_directory: str
-    backup_output_directory: str
 
 
 class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMixin):
     """
     Mixin class that aligns corpora with pronunciation dictionaries
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
+        For dictionary and corpus parsing parameters
+    :class:`~montreal_forced_aligner.alignment.mixins.AlignMixin`
+        For alignment parameters
+    :class:`~montreal_forced_aligner.abc.FileExporterMixin`
+        For file exporting parameters
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def cleanup_word_ctm_arguments(self) -> List[CleanupWordCtmArguments]:
+    def cleanup_word_ctm_arguments(self) -> list[CleanupWordCtmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.CleanupWordCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CleanupWordCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmArguments`]
             Arguments for processing
         """
         return [
@@ -128,13 +77,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def no_cleanup_word_ctm_arguments(self) -> List[NoCleanupWordCtmArguments]:
+    def no_cleanup_word_ctm_arguments(self) -> list[NoCleanupWordCtmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.NoCleanupWordCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.NoCleanupWordCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmArguments`]
             Arguments for processing
         """
         return [
@@ -147,13 +96,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def phone_ctm_arguments(self) -> List[PhoneCtmArguments]:
+    def phone_ctm_arguments(self) -> list[PhoneCtmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.PhoneCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.PhoneCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmArguments`]
             Arguments for processing
         """
         return [
@@ -167,13 +116,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def combine_ctm_arguments(self) -> List[CombineCtmArguments]:
+    def combine_ctm_arguments(self) -> list[CombineCtmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.CombineProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.CombineCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CombineCtmArguments`]
             Arguments for processing
         """
         return [
@@ -186,13 +135,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def export_textgrid_arguments(self) -> List[ExportTextGridArguments]:
+    def export_textgrid_arguments(self) -> list[ExportTextGridArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.multiprocessing.ExportTextGridProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.ExportTextGridArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridArguments`]
             Arguments for processing
         """
         return [
@@ -202,7 +151,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 self.textgrid_output,
                 self.backup_output_directory,
             )
-            for j in self.jobs
+            for _ in self.jobs
         ]
 
     @property
@@ -216,29 +165,29 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
             Multiprocessing helper function for converting ali archives to CTM format
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.PhoneCtmProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`
             Multiprocessing helper class for processing CTM files
-        :meth:`.Job.phone_ctm_arguments`
+        :meth:`.CorpusAligner.phone_ctm_arguments`
             Job method for generating arguments for PhoneCtmProcessWorker
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.CleanupWordCtmProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`
             Multiprocessing helper class for processing CTM files
-        :meth:`.Job.cleanup_word_ctm_arguments`
+        :meth:`.CorpusAligner.cleanup_word_ctm_arguments`
             Job method for generating arguments for CleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.NoCleanupWordCtmProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`
             Multiprocessing helper class for processing CTM files
-        :meth:`.Job.no_cleanup_word_ctm_arguments`
+        :meth:`.CorpusAligner.no_cleanup_word_ctm_arguments`
             Job method for generating arguments for NoCleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.CombineProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`
             Multiprocessing helper class for combining word and phone alignments
-        :meth:`.Job.combine_ctm_arguments`
+        :meth:`.CorpusAligner.combine_ctm_arguments`
             Job method for generating arguments for NoCleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.ExportPreparationProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportPreparationProcessWorker`
             Multiprocessing helper class for generating TextGrid tiers
-        :class:`~montreal_forced_aligner.multiprocessing.alignment.ExportTextGridProcessWorker`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
             Multiprocessing helper class for exporting TextGrid files
-        :meth:`.Job.export_textgrid_arguments`
+        :meth:`.CorpusAligner.export_textgrid_arguments`
             Job method for generating arguments for ExportTextGridProcessWorker
         :kaldi_steps:`get_train_ctm`
             Reference Kaldi script
@@ -380,11 +329,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.ali_to_word_ctm_arguments`
+        :meth:`.CorpusAligner.ali_to_word_ctm_arguments`
             Job method for generating arguments for this function
-        :meth:`.Job.ali_to_phone_ctm_arguments`
+        :meth:`.CorpusAligner.ali_to_phone_ctm_arguments`
             Job method for generating arguments for this function
         :kaldi_steps:`get_train_ctm`
             Reference Kaldi script
@@ -539,13 +488,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         self.convert_ali_to_textgrids()
         self.logger.debug(f"Exported TextGrids in a total of {time.time() - begin} seconds")
 
-    def ali_to_word_ctm_arguments(self) -> List[AliToCtmArguments]:
+    def ali_to_word_ctm_arguments(self) -> list[AliToCtmArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AliToCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmArguments`]
             Arguments for processing
         """
         return [
@@ -563,13 +512,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             for j in self.jobs
         ]
 
-    def ali_to_phone_ctm_arguments(self) -> List[AliToCtmArguments]:
+    def ali_to_phone_ctm_arguments(self) -> list[AliToCtmArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.ali_to_ctm_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
 
         Returns
         -------
-        :class:`~montreal_forced_aligner.multiprocessing.classes.AliToCtmArguments`
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmArguments`]
             Arguments for processing
         """
         return [

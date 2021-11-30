@@ -62,16 +62,16 @@ def parse_from_word(
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         CTM intervals
-    text: List[str]
+    text: list[str]
         The original text that was to be aligned
-    dictionary_data: DictionaryData
+    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`
         Dictionary data necessary for splitting subwords
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Correct intervals with subwords merged back into their original text
     """
     cur_ind = 0
@@ -105,14 +105,14 @@ def parse_from_word_no_cleanup(
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_word_mapping: Dict[int, str]
+    reversed_word_mapping: dict[int, str]
         Look up for Kaldi word IDs to convert them back to text
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with text rather than integer IDs
     """
     for ctm_interval in ctm_labels:
@@ -131,16 +131,16 @@ def parse_from_phone(
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_phone_mapping: Dict[int, str]
+    reversed_phone_mapping: dict[int, str]
         Mapping to convert phone IDs to phone labels
-    positions: List[str]
+    positions: list[str]
         List of word positions to account for
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with phone labels rather than IDs
     """
     for ctm_interval in ctm_labels:
@@ -192,7 +192,7 @@ def generate_tiers(
 
     Returns
     -------
-    Dict[Speaker, Dict[str, CtmType]]
+    dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Tier information per speaker, with :class:`~montreal_forced_aligner.data.CtmInterval` split by "phones" and "words"
     """
     output = {}
@@ -264,7 +264,7 @@ def export_textgrid(
         File object to export
     output_path: str
         Output path of the file
-    speaker_data: Dict[Speaker, Dict[str, List[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+    speaker_data: dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
     frame_shift: int
         Frame shift of features, in ms
@@ -342,7 +342,7 @@ def ctm_to_textgrid(file: File, aligner: CorpusAligner, first_file_write=True) -
     ----------
     file: File
         File to export
-    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner` or :class:`~montreal_forced_aligner.trainers.BaseTrainer`
+    aligner: CorpusAligner
         Aligner used to generate the alignments
     first_file_write: bool, optional
         Flag for whether this is the first time touching this file

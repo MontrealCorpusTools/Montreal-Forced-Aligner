@@ -30,7 +30,7 @@ __all__ = ["TrainingValidator", "PretrainedValidator"]
 
 
 class CompileUtteranceTrainGraphsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_utterance_train_graphs_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.validator.compile_utterance_train_graphs_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -43,7 +43,7 @@ class CompileUtteranceTrainGraphsArguments(NamedTuple):
 
 
 class TestUtterancesArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.multiprocessing.alignment.test_utterances_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.validator.test_utterances_func`"""
 
     log_path: str
     dictionaries: list[str]
@@ -81,20 +81,20 @@ def test_utterances_func(
     ----------
     log_path: str
         Log path
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionaries
-    feature_strings: Dict[str, str]
-        PronunciationDictionary of feature strings per dictionary name
-    words_paths: Dict[str, str]
-        PronunciationDictionary of word mapping files per dictionary name
-    graphs_paths: Dict[str, str]
-        PronunciationDictionary of utterance FST graph archives per dictionary name
-    text_int_paths: Dict[str, str]
-        PronunciationDictionary of text.int files per dictionary name
-    edits_paths: Dict[str, str]
-        PronunciationDictionary of paths to save transcription differences per dictionary name
-    out_int_paths: Dict[str, str]
-        PronunciationDictionary of output .int files per dictionary name
+    feature_strings: dict[str, str]
+        Dictionary of feature strings per dictionary name
+    words_paths: dict[str, str]
+        Dictionary of word mapping files per dictionary name
+    graphs_paths: dict[str, str]
+        Dictionary of utterance FST graph archives per dictionary name
+    text_int_paths: dict[str, str]
+        Dictionary of text.int files per dictionary name
+    edits_paths: dict[str, str]
+        Dictionary of paths to save transcription differences per dictionary name
+    out_int_paths: dict[str, str]
+        Dictionary of output .int files per dictionary name
     model_path: str
         Acoustic model path
     """
@@ -163,16 +163,16 @@ def compile_utterance_train_graphs_func(
     ----------
     log_path: str
         Log path
-    dictionaries: List[str]
+    dictionaries: list[str]
         List of dictionaries
-    disambig_int_paths: Dict[str, str]
-        PronunciationDictionary of disambiguation symbol int files per dictionary name
-    disambig_L_fst_paths: Dict[str, str]
-        PronunciationDictionary of disambiguation lexicon FSTs per dictionary name
-    fst_paths: Dict[str, str]
-        PronunciationDictionary of pregenerated utterance FST scp files per dictionary name
-    graphs_paths: Dict[str, str]
-        PronunciationDictionary of utterance FST graph archives per dictionary name
+    disambig_int_paths: dict[str, str]
+        Dictionary of disambiguation symbol int files per dictionary name
+    disambig_L_fst_paths: dict[str, str]
+        Dictionary of disambiguation lexicon FSTs per dictionary name
+    fst_paths: dict[str, str]
+        Dictionary of pregenerated utterance FST scp files per dictionary name
+    graphs_paths: dict[str, str]
+        Dictionary of utterance FST graph archives per dictionary name
     model_path: str
         Acoustic model path
     tree_path: str
@@ -213,6 +213,11 @@ class ValidationMixin(CorpusAligner):
     test_transcriptions: bool
         Flag for whether utterance transcriptions should be tested with a unigram language model
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.base.CorpusAligner`
+        For corpus, dictionary, and alignment parameters
+
     Attributes
     ----------
     printer: TerminalPrinter
@@ -222,6 +227,7 @@ class ValidationMixin(CorpusAligner):
     def __init__(
         self, ignore_acoustics: bool = False, test_transcriptions: bool = False, **kwargs
     ):
+        kwargs["clean"] = True
         super().__init__(**kwargs)
         self.ignore_acoustics = ignore_acoustics
         self.test_transcriptions = test_transcriptions
@@ -304,7 +310,7 @@ class ValidationMixin(CorpusAligner):
 
         Returns
         -------
-        list[CompileUtteranceTrainGraphsArguments]
+        list[:class:`~montreal_forced_aligner.validator.CompileUtteranceTrainGraphsArguments`]
             Arguments for processing
         """
         disambig_paths = {
@@ -333,7 +339,7 @@ class ValidationMixin(CorpusAligner):
 
         Returns
         -------
-        list[TestUtterancesArguments]
+        list[:class:`~montreal_forced_aligner.validator.TestUtterancesArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -399,9 +405,11 @@ class ValidationMixin(CorpusAligner):
         header: str
             Section header string
         """
-        side_string_width = (self.printer.width - len(header)) / 2
-        side_string = "=" * int(side_string_width)
-        print(self.printer.colorize(side_string + header + side_string, "bright"))
+        print()
+        underline = "*" * len(header)
+        print(self.printer.colorize(underline, "bright"))
+        print(self.printer.colorize(header, "bright"))
+        print(self.printer.colorize(underline, "bright"))
 
     def _print_sub_header(self, header: str) -> None:
         """
@@ -412,9 +420,9 @@ class ValidationMixin(CorpusAligner):
         header: str
             Subsection header string
         """
-        underline = "-" * len(header)
-        print(self.printer.colorize(self.indent_string + header, "bright"))
-        print(self.printer.colorize(self.indent_string + underline, "bright"))
+        underline = "=" * len(header)
+        print(self.printer.colorize(header, "bright"))
+        print(self.printer.colorize(underline, "bright"))
 
     def _print_green_stat(self, stat: Any, text: str) -> None:
         """
@@ -468,6 +476,7 @@ class ValidationMixin(CorpusAligner):
         num_sound_files = sum(1 for x in self.files.values() if x.wav_path is not None)
         num_lab_files = sum(1 for x in self.files.values() if x.text_type == "lab")
         num_textgrid_files = sum(1 for x in self.files.values() if x.text_type == "textgrid")
+        self._print_header("Corpus")
         self._print_green_stat(num_sound_files, "sound files")
         self._print_green_stat(num_lab_files, "lab files")
         self._print_green_stat(num_textgrid_files, "textgrid files")
@@ -484,6 +493,7 @@ class ValidationMixin(CorpusAligner):
         self._print_green_stat(len(self.speakers), "speakers")
         self._print_green_stat(self.num_utterances, "utterances")
         self._print_green_stat(total_duration, "seconds total duration")
+        print()
 
         self.analyze_oovs()
         self.analyze_wav_errors()
@@ -537,6 +547,7 @@ class ValidationMixin(CorpusAligner):
                 "on this dataset to align other datasets in the future, it is recommended that there be at "
                 "least some missing words."
             )
+        print()
 
     def analyze_wav_errors(self) -> None:
         """
@@ -557,6 +568,7 @@ class ValidationMixin(CorpusAligner):
             )
         else:
             print(f"There were {self.printer.colorize('no', 'green')} issues reading sound files.")
+        print()
 
     def analyze_missing_features(self) -> None:
         """
@@ -585,6 +597,7 @@ class ValidationMixin(CorpusAligner):
             print(
                 f"There were {self.printer.colorize('no', 'green')} utterances missing features."
             )
+        print()
 
     def analyze_files_with_no_transcription(self) -> None:
         """
@@ -606,6 +619,7 @@ class ValidationMixin(CorpusAligner):
             print(
                 f"There were {self.printer.colorize('no', 'green')} sound files missing transcriptions."
             )
+        print()
 
     def analyze_transcriptions_with_no_wavs(self) -> None:
         """
@@ -627,6 +641,7 @@ class ValidationMixin(CorpusAligner):
             print(
                 f"There were {self.printer.colorize('no', 'green')} transcription files missing sound files."
             )
+        print()
 
     def analyze_textgrid_read_errors(self) -> None:
         """
@@ -648,6 +663,7 @@ class ValidationMixin(CorpusAligner):
             )
         else:
             print(f"There were {self.printer.colorize('no', 'green')} issues reading TextGrids.")
+        print()
 
     def analyze_unreadable_text_files(self) -> None:
         """
@@ -667,6 +683,7 @@ class ValidationMixin(CorpusAligner):
             )
         else:
             print(f"There were {self.printer.colorize('no', 'green')} issues reading text files.")
+        print()
 
     def compile_information(self) -> None:
         """
@@ -675,12 +692,12 @@ class ValidationMixin(CorpusAligner):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.multiprocessing.alignment.compile_information_func`
+        :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
             Multiprocessing helper function for each job
-        :meth:`.Job.compile_information_arguments`
+        :meth:`.AlignMixin.compile_information_arguments`
             Job method for generating arguments for the helper function
         """
-        self.logger.info("Analyzing alignment information:")
+        self.logger.debug("Analyzing alignment information")
         compile_info_begin = time.time()
 
         jobs = self.compile_information_arguments()
@@ -712,23 +729,25 @@ class ValidationMixin(CorpusAligner):
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
         if not avg_like_frames:
-            self.logger.warning(
-                "No files were aligned, this likely indicates serious problems with the aligner."
+            self.logger.debug(
+                "No utterances were aligned, this likely indicates serious problems with the aligner."
             )
+            self._print_red_stat(0, f"of {len(self.utterances)} utterances were aligned")
         else:
             if too_short_count:
-                print(
-                    f"There were {self.printer.colorize(too_short_count, 'red')} utterances that were too short to be aligned."
-                )
+                self._print_red_stat(too_short_count, "utterances were too short to be aligned")
+            else:
+                self._print_green_stat(0, "utterances were too short to be aligned")
             if beam_too_narrow_count:
                 self.logger.debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
-                print(
-                    f"There were {self.printer.colorize(beam_too_narrow_count, 'yellow')} utterances that could not be aligned with "
-                    f"the current beam settings."
+                self._print_yellow_stat(
+                    beam_too_narrow_count, "utterances that need a larger beam to align"
                 )
+            else:
+                self._print_green_stat(0, "utterances that need a larger beam to align")
 
             num_utterances = self.num_utterances
             if unaligned_utts:
@@ -751,10 +770,11 @@ class ValidationMixin(CorpusAligner):
                     f"There were {self.printer.colorize(len(unaligned_utts), 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
                     f"Please see {self.printer.colorize(path, 'bright')} for a list."
                 )
-            else:
-                print(
-                    f"All {self.printer.colorize(num_utterances, 'green')} utterances were successfully aligned!"
-                )
+
+            self._print_green_stat(
+                num_utterances - beam_too_narrow_count - too_short_count,
+                "utterances were successfully aligned",
+            )
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
@@ -840,9 +860,16 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
     Validator class for checking whether a corpus and a dictionary will work together
     for training
 
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TrainableAligner`
+        For training configuration
+    :class:`~montreal_forced_aligner.validator.ValidationMixin`
+        For validation parameters
+
     Attributes
     ----------
-    training_configs: dict[str, MonophoneTrainer]
+    training_configs: dict[str, :class:`~montreal_forced_aligner.acoustic_modeling.monophone.MonophoneTrainer`]
     """
 
     def __init__(self, **kwargs):
@@ -865,14 +892,14 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         ----------
         config_path: str
             Config path
-        args: Namespace
+        args: :class:`~argparse.Namespace`
             Command-line arguments from argparse
         unknown_args: list[str], optional
             Extra command-line arguments
 
         Returns
         -------
-        MetaDict
+        dict[str, Any]
             Configuration parameters
         """
         global_params = {}
@@ -920,7 +947,6 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             return
         try:
             self.dictionary_setup()
-            # print(repr(self.phones_dir), repr(self.output_directory),repr(self.dictionary_output_directory))
             self._load_corpus()
             self.set_lexicon_word_set(self.corpus_word_set)
             self.write_lexicon_information()
@@ -966,6 +992,13 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     """
     Validator class for checking whether a corpus, a dictionary, and
     an acoustic model will work together for alignment
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`
+        For alignment configuration
+    :class:`~montreal_forced_aligner.validator.ValidationMixin`
+        For validation parameters
     """
 
     def __init__(self, **kwargs):
@@ -1026,23 +1059,23 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")
         if os.path.exists(done_path):
-            self.logger.info("Alignment already done, skipping.")
+            self.logger.debug("Alignment already done, skipping.")
             return
         try:
             log_dir = os.path.join(self.working_directory, "log")
             os.makedirs(log_dir, exist_ok=True)
             self.compile_train_graphs()
 
-            self.logger.info("Performing first-pass alignment...")
+            self.logger.debug("Performing first-pass alignment...")
             self.speaker_independent = True
-            self._align()
+            self.align_utterances()
             if self.uses_speaker_adaptation:
-                self.logger.info("Calculating fMLLR for speaker adaptation...")
+                self.logger.debug("Calculating fMLLR for speaker adaptation...")
                 self.calc_fmllr()
 
                 self.speaker_independent = False
-                self.logger.info("Performing second-pass alignment...")
-                self._align()
+                self.logger.debug("Performing second-pass alignment...")
+                self.align_utterances()
 
         except Exception as e:
             with open(dirty_path, "w"):
