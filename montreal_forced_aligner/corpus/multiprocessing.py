@@ -683,13 +683,13 @@ class Job:
             data[dictionary.name] = dictionary.multilingual_ipa
         return data
 
-    def job_utts(self) -> dict[str, dict[str, Utterance]]:
+    def job_utts(self) -> dict[str, Utterance]:
         """
         Generate utterances by dictionary name for the Job
 
         Returns
         -------
-        dict[str, dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]]
+        dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
             Mapping of dictionary name to Utterance mappings
         """
         data = {}
@@ -697,9 +697,7 @@ class Job:
         if not speakers:
             speakers = self.speakers
         for s in speakers:
-            if s.dictionary.name not in data:
-                data[s.dictionary.name] = {}
-            data[s.dictionary.name].update(s.utterances)
+            data.update(s.utterances)
         return data
 
     def job_files(self) -> dict[str, File]:

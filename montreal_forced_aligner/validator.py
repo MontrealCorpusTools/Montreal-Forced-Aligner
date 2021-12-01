@@ -258,30 +258,29 @@ class ValidationMixin(CorpusAligner):
         most_frequent = {}
         for j in self.jobs:
             data = {}
-            for dict_name, utterances in j.job_utts().items():
-                data[dict_name] = []
-                for u_name, utterance in utterances.items():
-                    new_text = []
-                    dictionary = utterance.speaker.dictionary
-                    if dictionary.name not in most_frequent:
-                        word_frequencies = self.get_word_frequency()
-                        most_frequent[dictionary.name] = sorted(
-                            word_frequencies.items(), key=lambda x: -x[1]
-                        )[:num_frequent_words]
+            for u_name, utterance in j.job_utts().items():
+                dict_name = utterance.speaker.dictionary.name
+                if dict_name not in data:
+                    data[dict_name] = []
+                new_text = []
+                dictionary = utterance.speaker.dictionary
+                if dictionary.name not in most_frequent:
+                    word_frequencies = self.get_word_frequency()
+                    most_frequent[dictionary.name] = sorted(
+                        word_frequencies.items(), key=lambda x: -x[1]
+                    )[:num_frequent_words]
 
-                    for t in utterance.text:
-                        lookup = utterance.speaker.dictionary.split_clitics(t)
-                        if lookup is None:
-                            continue
-                        new_text.extend(x for x in lookup if x != "")
-                    data[dict_name].append(
-                        (
-                            u_name,
-                            dictionary.create_utterance_fst(
-                                new_text, most_frequent[dictionary.name]
-                            ),
-                        )
+                for t in utterance.text:
+                    lookup = utterance.speaker.dictionary.split_clitics(t)
+                    if lookup is None:
+                        continue
+                    new_text.extend(x for x in lookup if x != "")
+                data[dict_name].append(
+                    (
+                        u_name,
+                        dictionary.create_utterance_fst(new_text, most_frequent[dictionary.name]),
                     )
+                )
             job_data.append(data)
         return job_data
 

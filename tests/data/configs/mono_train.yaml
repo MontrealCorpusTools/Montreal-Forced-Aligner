@@ -10,6 +10,6 @@ features:
 
 training:
   - monophone:
-      num_iterations: 3
+      num_iterations: 10
       max_gaussians: 500
       subset: 1000

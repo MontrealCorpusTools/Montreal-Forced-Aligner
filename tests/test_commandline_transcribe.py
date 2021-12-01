@@ -52,7 +52,9 @@ def test_transcribe_arpa(
 ):
     if sys.platform == "win32":
         pytest.skip("No LM generation on Windows")
+    temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = os.path.join(generated_dir, "transcribe_test_arpa")
+    print(transcription_language_model_arpa)
     command = [
         "transcribe",
         basic_corpus_dir,
@@ -71,7 +73,6 @@ def test_transcribe_arpa(
     ]
     args, unknown = parser.parse_known_args(command)
     run_transcribe_corpus(args)
-
     assert os.path.exists(os.path.join(output_path, "michael", "acoustic_corpus.lab"))
 
 

@@ -214,9 +214,9 @@ class Transcriber(
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
-        self.language_model = LanguageModel(language_model_path)
         kwargs.update(self.acoustic_model.parameters)
         super(Transcriber, self).__init__(**kwargs)
+        self.language_model = LanguageModel(language_model_path, self.model_directory)
         if word_insertion_penalties is None:
             word_insertion_penalties = [0, 0.5, 1.0]
         self.min_language_model_weight = min_language_model_weight
@@ -280,7 +280,7 @@ class Transcriber(
         self.acoustic_model.log_details(self.logger)
         self.create_decoding_graph()
         self.initialized = True
-        self.logger.debug(f"Setup for alignment in {time.time() - begin} seconds")
+        self.logger.debug(f"Setup for transcription in {time.time() - begin} seconds")
 
     def create_hclgs_arguments(self) -> dict[str, CreateHclgArguments]:
         """

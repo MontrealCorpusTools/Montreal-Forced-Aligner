@@ -44,12 +44,16 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
     def __init__(
         self,
         prune_method="relative_entropy",
+        order: int = 3,
+        method: str = "kneser_ney",
         prune_thresh_small=0.0000003,
         prune_thresh_medium=0.0000001,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.prune_method = prune_method
+        self.order = order
+        self.method = method
         self.prune_thresh_small = prune_thresh_small
         self.prune_thresh_medium = prune_thresh_medium
 
@@ -166,12 +170,8 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         For top-level parameters
     """
 
-    def __init__(
-        self, order: int = 3, method: str = "kneser_ney", count_threshold: int = 1, **kwargs
-    ):
+    def __init__(self, count_threshold: int = 1, **kwargs):
         super().__init__(**kwargs)
-        self.order = order
-        self.method = method
         self.count_threshold = count_threshold
 
     def setup(self) -> None:
@@ -376,7 +376,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         self.evaluate()
 
 
-class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmTrainerMixin):
+class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmCorpusTrainer):
     """
     Top-level worker to train a language model and incorporate a pronunciation dictionary for marking words as OOV
 
@@ -404,24 +404,39 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
     """
 
     def __init__(self, arpa_path: str, **kwargs):
-        super().__init__(**kwargs)
         self.arpa_path = arpa_path
+        super().__init__(**kwargs)
 
     def setup(self) -> None:
         """Set up language model training"""
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        with open(self.arpa_path, "r", encoding="utf8") as inf, open(
+            self.large_arpa_path, "w", encoding="utf8"
+        ) as outf:
+            for line in inf:
+                outf.write(line.lower())
         self.initialized = True
+
+    @property
+    def data_directory(self) -> str:
+        return ""
+
+    @property
+    def workflow_identifier(self) -> str:
+        return "train_lm_from_arpa"
+
+    @property
+    def data_source_identifier(self) -> str:
+        return os.path.splitext(os.path.basename(self.arpa_path))[0]
+
+    @property
+    def meta(self) -> MetaDict:
+        return {}
 
     def train(self) -> None:
         """Convert the arpa model to MFA format"""
         self.log_info("Parsing large ngram model...")
-        temp_text_path = os.path.join(self.working_directory, "input.arpa")
-        with open(self.arpa_path, "r", encoding="utf8") as inf, open(
-            temp_text_path, "w", encoding="utf8"
-        ) as outf:
-            for line in inf:
-                outf.write(line.lower())
-        subprocess.call(["ngramread", "--ARPA", temp_text_path, self.mod_path])
-        os.remove(temp_text_path)
+        subprocess.call(["ngramread", "--ARPA", self.large_arpa_path, self.mod_path])
 
         self.log_info("Large ngam model parsed!")
 

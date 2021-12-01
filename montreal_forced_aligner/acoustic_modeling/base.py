@@ -18,7 +18,9 @@ from montreal_forced_aligner.alignment.base import AlignMixin
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import align_phones
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.textgrid import process_ctm_line
 from montreal_forced_aligner.utils import (
     log_kaldi_errors,
     parse_logs,
@@ -30,6 +32,7 @@ from montreal_forced_aligner.utils import (
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.corpus.multiprocessing import Job
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = ["AcousticModelTrainingMixin"]
@@ -263,10 +266,10 @@ def compute_alignment_improvement_func(
 
 
 def compare_alignments(
-    alignments_one: dict[str, list[tuple[float, float, str]]],
-    alignments_two: dict[str, list[tuple[float, float, str]]],
-    frame_shift: int,
-) -> tuple[int, Optional[float]]:
+    alignments_one: dict[str, list[CtmInterval]],
+    alignments_two: dict[str, list[CtmInterval]],
+    silence_phones: set[str],
+) -> tuple[Optional[int], Optional[float]]:
     """
     Compares two sets of alignments for difference
 
@@ -286,9 +289,9 @@ def compare_alignments(
 
     Returns
     -------
-    int
+    Optional[int]
         Difference in number of aligned files
-    float
+    Optional[float]
         Mean boundary difference between the two alignments
     """
     utterances_aligned_diff = len(alignments_two) - len(alignments_one)
@@ -297,31 +300,14 @@ def compare_alignments(
     common_utts = utts_one.intersection(utts_two)
     differences = []
     for u in common_utts:
-        end = alignments_one[u][-1][1]
-        t = 0
         one_alignment = alignments_one[u]
         two_alignment = alignments_two[u]
-        difference = 0
-        while t < end:
-            one_label = None
-            two_label = None
-            for b, e, l in one_alignment:
-                if t < b:
-                    continue
-                if t >= e:
-                    break
-                one_label = l
-            for b, e, l in two_alignment:
-                if t < b:
-                    continue
-                if t >= e:
-                    break
-                two_label = l
-            if one_label != two_label:
-                difference += frame_shift
-            t += frame_shift
-        difference /= end
-        differences.append(difference)
+        avg_overlap_diff, num_insertions, num_deletions = align_phones(
+            one_alignment, two_alignment, silence_phones
+        )
+        if avg_overlap_diff is None:
+            return None, None
+        differences.append(avg_overlap_diff)
     if differences:
         mean_difference = statistics.mean(differences)
     else:
@@ -720,8 +706,8 @@ class AcousticModelTrainingMixin(
                 os.remove(f)
 
     def parse_iteration_alignments(
-        self, iteration=Optional[int]
-    ) -> dict[str, list[tuple[float, float, str]]]:
+        self, iteration: Optional[int] = None
+    ) -> dict[str, list[CtmInterval]]:
         """
         Function to parse phone CTMs in a given iteration
 
@@ -732,29 +718,25 @@ class AcousticModelTrainingMixin(
 
         Returns
         -------
-        dict[str, list[tuple[float, float, str]]]
+        dict[str, list[CtmInterval]]
             Per utterance CtmIntervals
         """
-        if iteration is None:
-            iteration = self.iteration
         data = {}
-        for j in self.jobs:
-            phone_ctm_path = os.path.join(
-                self.working_directory, f"phone.{iteration}.{j.name}.ctm"
-            )
-            with open(phone_ctm_path, "r", encoding="utf8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line == "":
-                        continue
-                    line = line.split(" ")
-                    utt = line[0]
-                    begin = float(line[1])
-                    end = float(line[2])
-                    label = line[3]
-                    if utt not in data:
-                        data[utt] = []
-                    data[utt].append((begin, end, label))
+        for j in self.alignment_improvement_arguments():
+            for phone_ctm_path in j.phone_ctm_paths.values():
+                if iteration is not None:
+                    phone_ctm_path = phone_ctm_path.replace(
+                        f"phone.{self.iteration}", f"phone.{iteration}"
+                    )
+                with open(phone_ctm_path, "r", encoding="utf8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line == "":
+                            continue
+                        interval = process_ctm_line(line)
+                        if interval.utterance not in data:
+                            data[interval.utterance] = []
+                        data[interval.utterance].append(interval)
         return data
 
     def compute_alignment_improvement(self) -> None:
@@ -782,8 +764,13 @@ class AcousticModelTrainingMixin(
             return
         current_alignments = self.parse_iteration_alignments()
         utterance_aligned_diff, mean_difference = compare_alignments(
-            previous_alignments, current_alignments, self.frame_shift
+            previous_alignments, current_alignments, self.silence_phones
         )
+        if utterance_aligned_diff:
+            self.log_warning(
+                "Cannot compare alignments, install the biopython package to use this functionality."
+            )
+            return
         if not os.path.exists(alignment_diff_path):
             with open(alignment_diff_path, "w", encoding="utf8") as f:
                 f.write(
@@ -796,10 +783,6 @@ class AcousticModelTrainingMixin(
                     f"{self.iteration},{len(current_alignments)},{len(previous_alignments)},"
                     f"{utterance_aligned_diff},{mean_difference}\n"
                 )
-        if not self.debug:
-            for j in jobs:
-                for p in j.phone_ctm_paths:
-                    os.remove(p)
 
     def train_iteration(self):
         """Perform an iteration of training"""

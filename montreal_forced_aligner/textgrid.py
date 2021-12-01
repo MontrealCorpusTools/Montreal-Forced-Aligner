@@ -47,10 +47,16 @@ def process_ctm_line(line: str) -> CtmInterval:
     """
     line = line.split(" ")
     utt = line[0]
-    begin = round(float(line[2]), 4)
-    duration = float(line[3])
-    end = round(begin + duration, 4)
-    label = line[4]
+    if len(line) == 5:
+        begin = round(float(line[2]), 4)
+        duration = float(line[3])
+        end = round(begin + duration, 4)
+        label = line[4]
+    else:
+        begin = round(float(line[1]), 4)
+        duration = float(line[2])
+        end = round(begin + duration, 4)
+        label = line[3]
     return CtmInterval(begin, end, label, utt)
 
 

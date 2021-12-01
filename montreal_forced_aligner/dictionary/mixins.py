@@ -108,6 +108,25 @@ class SplitWordsFunction:
         if not word_set:
             word_set = None
         self.word_set = word_set
+        self.compound_pattern = re.compile(rf"[{re.escape(''.join(self.compound_markers))}]")
+        initial_clitics = sorted(
+            x for x in self.clitic_set if any(x.endswith(y) for y in self.clitic_markers)
+        )
+        final_clitics = sorted(
+            x for x in self.clitic_set if any(x.startswith(y) for y in self.clitic_markers)
+        )
+        optional_initial_groups = f"({'|'.join(initial_clitics)})?" * 4
+        optional_final_groups = f"({'|'.join(final_clitics)})?" * 4
+        if initial_clitics and final_clitics:
+            self.clitic_pattern = re.compile(
+                rf"^(?:(?:{optional_initial_groups}(.+?))|(?:(.+?){optional_final_groups}))$"
+            )
+        elif initial_clitics:
+            self.clitic_pattern = re.compile(rf"^(?:(?:{optional_initial_groups}(.+?))|(.+))$")
+        elif final_clitics:
+            self.clitic_pattern = re.compile(rf"^(?:(.+)|(?:(.+?){optional_final_groups}))$")
+        else:
+            self.clitic_pattern = None
 
     def split_clitics(
         self,
@@ -128,33 +147,22 @@ class SplitWordsFunction:
         """
         if self.word_set is not None and item in self.word_set:
             return [item]
-        if any(x in item for x in self.compound_markers):
-            s = re.split(rf"[{''.join(self.compound_markers)}]", item)
-            if any(x in item for x in self.clitic_markers):
-                new_s = []
-                for seg in s:
-                    if any(x in seg for x in self.clitic_markers):
-                        new_s.extend(self.split_clitics(seg))
-                    else:
-                        new_s.append(seg)
-                s = new_s
-            return s
-        if any(
-            x in item and not item.endswith(x) and not item.startswith(x)
-            for x in self.clitic_markers
-        ):
-            initial, final = re.split(rf"[{''.join(self.clitic_markers)}]", item, maxsplit=1)
-            if any(x in final for x in self.clitic_markers):
-                final = self.split_clitics(final)
-            else:
-                final = [final]
-            for clitic in self.clitic_markers:
-                if initial + clitic in self.clitic_set:
-                    return [initial + clitic] + final
-                elif clitic + final[0] in self.clitic_set:
-                    final[0] = clitic + final[0]
-                    return [initial] + final
-        return [item]
+        split = []
+        s = re.split(self.compound_pattern, item)
+        for seg in s:
+            if self.clitic_pattern is None:
+                split.append(seg)
+                continue
+
+            m = re.match(self.clitic_pattern, seg)
+            if not m:
+                split.append(seg)
+                continue
+            for g in m.groups():
+                if g is None:
+                    continue
+                split.append(g)
+        return split
 
     def __call__(
         self,

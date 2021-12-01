@@ -74,6 +74,7 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
         temporary_directory: str = None,
         **kwargs,
     ):
+        print(kwargs)
         super().__init__(**kwargs)
         if not temporary_directory:
             from .config import get_temporary_directory
@@ -266,7 +267,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def __del__(self):
         """Ensure that loggers are cleaned up on delete"""
-        self.cleanup()
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
 
     @abstractmethod
     def setup(self) -> None:
@@ -380,7 +384,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 handler.close()
                 self.logger.removeHandler(handler)
             self.save_worker_config()
-        except NameError:  # already cleaned up
+        except (NameError, ValueError):  # already cleaned up
             pass
 
     def save_worker_config(self):

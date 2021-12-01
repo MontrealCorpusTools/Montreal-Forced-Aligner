@@ -19,6 +19,8 @@ def test_sick_mono(
         corpus_directory=sick_corpus,
         dictionary_path=sick_dict,
         temporary_directory=data_directory,
+        debug=True,
+        verbose=True,
         **TrainableAligner.parse_parameters(mono_train_config_path)
     )
     a.train()
@@ -44,6 +46,8 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config_path):
         corpus_directory=sick_corpus,
         dictionary_path=sick_dict,
         temporary_directory=data_directory,
+        debug=True,
+        verbose=True,
         **TrainableAligner.parse_parameters(tri_train_config_path)
     )
     a.train()
@@ -57,6 +61,8 @@ def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config_path):
         corpus_directory=sick_corpus,
         dictionary_path=sick_dict,
         temporary_directory=data_directory,
+        debug=True,
+        verbose=True,
         **TrainableAligner.parse_parameters(lda_train_config_path)
     )
     a.train()
@@ -70,6 +76,8 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config_path):
         **TrainableAligner.parse_parameters(sat_train_config_path),
         corpus_directory=sick_corpus,
         dictionary_path=sick_dict,
+        debug=True,
+        verbose=True,
         temporary_directory=data_directory
     )
     a.train()

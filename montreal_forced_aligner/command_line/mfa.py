@@ -176,6 +176,48 @@ def create_parser() -> ArgumentParser:
                 default=not GLOBAL_CONFIG["cleanup_textgrids"],
             )
 
+    pretrained_acoustic = ", ".join(MODEL_TYPES["acoustic"].get_available_models())
+    if not pretrained_acoustic:
+        pretrained_acoustic = (
+            "you can use ``mfa model download acoustic`` to get pretrained MFA models"
+        )
+
+    pretrained_ivector = ", ".join(MODEL_TYPES["ivector"].get_available_models())
+    if not pretrained_ivector:
+        pretrained_ivector = (
+            "you can use ``mfa model download ivector`` to get pretrained MFA models"
+        )
+
+    pretrained_g2p = ", ".join(MODEL_TYPES["g2p"].get_available_models())
+    if not pretrained_g2p:
+        pretrained_g2p = "you can use ``mfa model download g2p`` to get pretrained MFA models"
+
+    pretrained_lm = ", ".join(MODEL_TYPES["language_model"].get_available_models())
+    if not pretrained_lm:
+        pretrained_lm = (
+            "you can use ``mfa model download language_model`` to get pretrained MFA models"
+        )
+
+    pretrained_dictionary = ", ".join(MODEL_TYPES["dictionary"].get_available_models())
+    if not pretrained_dictionary:
+        pretrained_dictionary = (
+            "you can use ``mfa model download dictionary`` to get MFA dictionaries"
+        )
+
+    dictionary_path_help = f"Full path to pronunciation dictionary, or saved dictionary name ({pretrained_dictionary})"
+
+    acoustic_model_path_help = (
+        f"Full path to pre-trained acoustic model, or saved model name ({pretrained_acoustic})"
+    )
+    language_model_path_help = (
+        f"Full path to pre-trained language model, or saved model name ({pretrained_lm})"
+    )
+    ivector_model_path_help = f"Full path to pre-trained ivector extractor model, or saved model name ({pretrained_ivector})"
+    g2p_model_path_help = (
+        f"Full path to pre-trained G2P model, or saved model name ({pretrained_g2p}). "
+        "If not specified, then orthographic transcription is split into pronunciations."
+    )
+
     parser = argparse.ArgumentParser()
 
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -188,14 +230,18 @@ def create_parser() -> ArgumentParser:
     )
     align_parser.add_argument("corpus_directory", help="Full path to the directory to align")
     align_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
+        "dictionary_path",
+        help=dictionary_path_help,
+        type=str,
     )
     align_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     align_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     align_parser.add_argument(
@@ -220,15 +266,15 @@ def create_parser() -> ArgumentParser:
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
     adapt_parser.add_argument("corpus_directory", help="Full path to the directory to align")
-    adapt_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    adapt_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     adapt_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     adapt_parser.add_argument(
         "output_paths",
+        type=str,
         nargs="+",
         help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
@@ -263,13 +309,12 @@ def create_parser() -> ArgumentParser:
         "train", help="Train a new acoustic model on a corpus and optionally export alignments"
     )
     train_parser.add_argument(
-        "corpus_directory", help="Full path to the source directory to align"
+        "corpus_directory", type=str, help="Full path to the source directory to align"
     )
-    train_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
-    )
+    train_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help, default="")
     train_parser.add_argument(
         "output_paths",
+        type=str,
         nargs="+",
         help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
@@ -305,16 +350,17 @@ def create_parser() -> ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
     validate_parser.add_argument(
-        "corpus_directory", help="Full path to the source directory to align"
+        "corpus_directory", type=str, help="Full path to the source directory to align"
     )
     validate_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
+        "dictionary_path", type=str, help=dictionary_path_help, default=""
     )
     validate_parser.add_argument(
         "acoustic_model_path",
+        type=str,
         nargs="?",
         default="",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
+        help=acoustic_model_path_help,
     )
     validate_parser.add_argument(
         "-s",
@@ -352,15 +398,17 @@ def create_parser() -> ArgumentParser:
     )
     g2p_parser.add_argument(
         "g2p_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['g2p'].get_available_models())}). If not specified, then orthographic transcription is split into pronunciations.",
+        help=g2p_model_path_help,
+        type=str,
         nargs="?",
     )
 
     g2p_parser.add_argument(
         "input_path",
+        type=str,
         help="Corpus to base word list on or a text file of words to generate pronunciations",
     )
-    g2p_parser.add_argument("output_path", help="Path to save output dictionary")
+    g2p_parser.add_argument("output_path", type=str, help="Path to save output dictionary")
     g2p_parser.add_argument(
         "--include_bracketed",
         help="Included words enclosed by brackets, job_name.e. [...], (...), <...>",
@@ -374,9 +422,11 @@ def create_parser() -> ArgumentParser:
     train_g2p_parser = subparsers.add_parser(
         "train_g2p", help="Train a G2P model from a pronunciation dictionary"
     )
-    train_g2p_parser.add_argument("dictionary_path", help="Location of existing dictionary")
+    train_g2p_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
 
-    train_g2p_parser.add_argument("output_model_path", help="Desired location of generated model")
+    train_g2p_parser.add_argument(
+        "output_model_path", type=str, help="Desired location of generated model"
+    )
     train_g2p_parser.add_argument(
         "--config_path", type=str, default="", help="Path to config file to use for G2P"
     )
@@ -405,6 +455,7 @@ def create_parser() -> ArgumentParser:
         "name",
         help="Name of language code to download, if not specified, "
         "will list all available languages",
+        type=str,
         nargs="?",
     )
     help_message = "List of saved models"
@@ -412,7 +463,11 @@ def create_parser() -> ArgumentParser:
         "list", description=help_message, help=help_message
     )
     model_list_parser.add_argument(
-        "model_type", choices=sorted(MODEL_TYPES), nargs="?", help="Type of model to list"
+        "model_type",
+        choices=sorted(MODEL_TYPES),
+        type=str,
+        nargs="?",
+        help="Type of model to list",
     )
 
     help_message = "Inspect a model and output its metadata"
@@ -422,11 +477,12 @@ def create_parser() -> ArgumentParser:
     model_inspect_parser.add_argument(
         "model_type",
         choices=sorted(MODEL_TYPES),
+        type=str,
         nargs="?",
         help="Type of model to download",
     )
     model_inspect_parser.add_argument(
-        "name", help="Name of pretrained model or path to MFA model to inspect"
+        "name", type=str, help="Name of pretrained model or path to MFA model to inspect"
     )
 
     help_message = "Save a MFA model to the pretrained directory for name-based referencing"
@@ -434,7 +490,7 @@ def create_parser() -> ArgumentParser:
         "save", description=help_message, help=help_message
     )
     model_save_parser.add_argument(
-        "model_type", choices=sorted(MODEL_TYPES), help="Type of MFA model"
+        "model_type", type=str, choices=sorted(MODEL_TYPES), help="Type of MFA model"
     )
     model_save_parser.add_argument(
         "path", help="Path to MFA model to save for invoking with just its name"
@@ -456,6 +512,7 @@ def create_parser() -> ArgumentParser:
     )
     train_lm_parser.add_argument(
         "source_path",
+        type=str,
         help="Full path to the source directory to train from, alternatively "
         "an ARPA format language model to convert for MFA use",
     )
@@ -476,7 +533,7 @@ def create_parser() -> ArgumentParser:
         help="Weight factor for supplemental language model, defaults to 1.0",
     )
     train_lm_parser.add_argument(
-        "--dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
+        "--dictionary_path", type=str, help=dictionary_path_help, default=""
     )
     train_lm_parser.add_argument(
         "--config_path",
@@ -493,15 +550,15 @@ def create_parser() -> ArgumentParser:
     train_dictionary_parser.add_argument(
         "corpus_directory", help="Full path to the directory to align"
     )
-    train_dictionary_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    train_dictionary_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     train_dictionary_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     train_dictionary_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     train_dictionary_parser.add_argument(
@@ -523,17 +580,10 @@ def create_parser() -> ArgumentParser:
     )
     train_ivector_parser.add_argument(
         "corpus_directory",
+        type=str,
         help="Full path to the source directory to train the ivector extractor",
     )
-    train_ivector_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
-    train_ivector_parser.add_argument(
-        "acoustic_model_path",
-        type=str,
-        default="",
-        help="Full path to acoustic model for alignment",
-    )
+    train_ivector_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     train_ivector_parser.add_argument(
         "output_model_path",
         type=str,
@@ -558,13 +608,15 @@ def create_parser() -> ArgumentParser:
     )
     classify_speakers_parser.add_argument(
         "corpus_directory",
+        type=str,
         help="Full path to the source directory to run speaker classification",
     )
     classify_speakers_parser.add_argument(
-        "ivector_extractor_path", type=str, default="", help="Full path to ivector extractor model"
+        "ivector_extractor_path", type=str, default="", help=ivector_model_path_help
     )
     classify_speakers_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
 
@@ -590,6 +642,7 @@ def create_parser() -> ArgumentParser:
     )
     create_segments_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     create_segments_parser.add_argument(
@@ -602,21 +655,22 @@ def create_parser() -> ArgumentParser:
         help="Transcribe utterances using an acoustic model, language model, and pronunciation dictionary",
     )
     transcribe_parser.add_argument(
-        "corpus_directory", help="Full path to the directory to transcribe"
+        "corpus_directory", type=str, help="Full path to the directory to transcribe"
     )
-    transcribe_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    transcribe_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     transcribe_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['acoustic'].get_available_models())})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     transcribe_parser.add_argument(
         "language_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(MODEL_TYPES['language_model'].get_available_models())})",
+        type=str,
+        help=language_model_path_help,
     )
     transcribe_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     transcribe_parser.add_argument(
@@ -747,7 +801,9 @@ def create_parser() -> ArgumentParser:
         "download", help="DEPRECATED: Please use mfa model download instead."
     )
 
-    history_parser.add_argument("depth", help="Number of commands to list", nargs="?", default=10)
+    history_parser.add_argument(
+        "depth", type=int, help="Number of commands to list", nargs="?", default=10
+    )
     history_parser.add_argument(
         "-v",
         "--verbose",
@@ -763,6 +819,23 @@ def create_parser() -> ArgumentParser:
 
 
 parser = create_parser()
+
+
+def print_history(args):
+    depth = args.depth
+    history = load_command_history()[-depth:]
+    if args.verbose:
+        print("command\tDate\tExecution time\tVersion\tExit code\tException")
+        for h in history:
+            execution_time = time.strftime("%H:%M:%S", time.gmtime(h["execution_time"]))
+            d = h["date"].isoformat()
+            print(
+                f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}"
+            )
+        pass
+    else:
+        for h in history:
+            print(h["command"])
 
 
 def main() -> None:
@@ -831,21 +904,7 @@ def main() -> None:
             global GLOBAL_CONFIG
             GLOBAL_CONFIG = load_global_config()
         elif args.subcommand == "history":
-            depth = args.depth
-            history = load_command_history()[-depth:]
-            if args.verbose:
-                print("command\tDate\tExecution time\tVersion\tExit code\tException")
-                for h in history:
-                    execution_time = time.strftime("%H:%M:%S", time.gmtime(h["execution_time"]))
-                    d = h["date"].isoformat()
-                    print(
-                        f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}"
-                    )
-                pass
-            else:
-                for h in history:
-                    print(h["command"])
-
+            print_history(args)
         elif args.subcommand == "version":
             from montreal_forced_aligner.utils import get_mfa_version
 

@@ -67,7 +67,7 @@ class CleanupWordCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
+    utterances: dict[str, Utterance]
     dictionary_data: dict[str, DictionaryData]
 
 
@@ -76,7 +76,7 @@ class NoCleanupWordCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
+    utterances: dict[str, Utterance]
     dictionary_data: dict[str, DictionaryData]
 
 
@@ -85,7 +85,7 @@ class PhoneCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
+    utterances: dict[str, Utterance]
     reversed_phone_mappings: dict[str, ReversedMappingType]
     positions: dict[str, list[str]]
 
@@ -530,13 +530,13 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             utt_begin = cur_utt.begin
                             cur_file = cur_utt.file_name
 
                         if utt != cur_utt:
                             process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             file_name = cur_utt.file_name
                             if file_name != cur_file:
                                 process_current_file(cur_file)
@@ -634,13 +634,13 @@ class CleanupWordCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             utt_begin = cur_utt.begin
                             cur_file = cur_utt.file_name
 
                         if utt != cur_utt:
                             process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             utt_begin = cur_utt.begin
                             file_name = cur_utt.file_name
                             if file_name != cur_file:
@@ -736,7 +736,7 @@ class PhoneCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             cur_file = cur_utt.file_name
                             utt_begin = cur_utt.begin
 
@@ -744,7 +744,7 @@ class PhoneCtmProcessWorker(mp.Process):
 
                             process_current_utt(cur_utt, current_labels)
 
-                            cur_utt = self.utterances[dict_name][utt]
+                            cur_utt = self.utterances[utt]
                             file_name = cur_utt.file_name
                             utt_begin = cur_utt.begin
 

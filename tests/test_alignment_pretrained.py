@@ -12,6 +12,8 @@ def test_align_sick(
         dictionary_path=english_dictionary,
         acoustic_model_path=english_acoustic_model,
         temporary_directory=temp_dir,
+        debug=True,
+        verbose=True,
         **test_align_config
     )
     a.align()

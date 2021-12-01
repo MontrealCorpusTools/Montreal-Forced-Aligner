@@ -252,13 +252,6 @@ class PronunciationDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
         self._dictionary_data = self.data(self.lexicon_word_set)
         self.generate_mappings()
 
-    @property
-    def actual_words(self) -> dict[str, "DictionaryEntryType"]:
-        """
-        Mapping of words to integer IDs without Kaldi-internal words
-        """
-        return {k: v for k, v in self.words.items() if k not in self.specials_set and len(v)}
-
     def split_clitics(self, item: str) -> list[str]:
         """
         Split a word into subwords based on clitic and compound markers
@@ -379,9 +372,6 @@ class PronunciationDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin):
         fst_text = ""
         for k, v in word_probs.items():
             cost = -1 * math.log(v)
-            print(k)
-            print(self._dictionary_data.words_mapping)
-            print(self.words_mapping)
             w = self.to_int(k)[0]
             fst_text += f"0 0 {w} {w} {cost}\n"
         fst_text += f"0 {-1 * math.log(1 / num_words)}\n"

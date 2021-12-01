@@ -5,6 +5,7 @@ Helper functions
 """
 from __future__ import annotations
 
+import functools
 import sys
 import textwrap
 from typing import TYPE_CHECKING, Any, Optional, Type
@@ -13,7 +14,8 @@ import numpy
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from .abc import CorpusMappingType, Labels, MetaDict, ScpType
+    from montreal_forced_aligner.abc import CorpusMappingType, Labels, MetaDict, ScpType
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = [
@@ -477,3 +479,104 @@ def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> tuple[int, i
     else:
         edits = edit_distance(gold, hypo)
     return edits, len(gold)
+
+
+def compare_labels(ref: str, test: str, mapping: Optional[dict[str, str]] = None) -> int:
+    """
+
+    Parameters
+    ----------
+    ref: str
+    test: str
+    mapping: Optional[dict[str, str]]
+
+    Returns
+    -------
+    int
+        0 if labels match or they're in mapping, 2 otherwise
+    """
+    if ref == test:
+        return 0
+    if mapping is not None and test in mapping and mapping[test] == ref:
+        return 0
+    ref = ref.lower()
+    test = test.lower()
+    if ref == test:
+        return 0
+    return 2
+
+
+def overlap_scoring(
+    firstElement: CtmInterval, secondElement: CtmInterval, mapping: Optional[dict[str, str]] = None
+) -> float:
+    """
+
+    Parameters
+    ----------
+    firstElement: CtmInterval
+    secondElement: CtmInterval
+    mapping: Optional[dict[str, str]]
+
+    Returns
+    -------
+    float
+        Score
+    """
+    begin_diff = abs(firstElement.begin - secondElement.begin)
+    end_diff = abs(firstElement.end - secondElement.end)
+    label_diff = compare_labels(firstElement.label, secondElement.label, mapping)
+    return -1 * (begin_diff + end_diff + label_diff)
+
+
+def align_phones(
+    ref: list[CtmInterval],
+    test: list[CtmInterval],
+    silence_phones: set[str],
+    custom_mapping: Optional[dict[str, str]] = None,
+) -> tuple[Optional[float], Optional[int], Optional[int]]:
+    """
+    Align phones based on how much they overlap and their phone label
+
+    Parameters
+    ----------
+    ref
+    test
+    silence_phones
+    custom_mapping
+
+    Returns
+    -------
+
+    """
+    try:
+        from Bio import pairwise2
+    except ImportError:
+        return None, None, None
+    if custom_mapping is None:
+        score_func = overlap_scoring
+    else:
+        score_func = functools.partial(overlap_scoring, mapping=custom_mapping)
+    alignments = pairwise2.align.globalcs(
+        ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
+    )
+    overlap_count = 0
+    overlap_sum = 0
+    num_insertions = 0
+    num_deletions = 0
+    for a in alignments:
+        for i, sa in enumerate(a.seqA):
+            sb = a.seqB[i]
+            if sa == "-":
+                if sb.label not in silence_phones:
+                    num_insertions += 1
+                else:
+                    continue
+            elif sb == "-":
+                if sa.label not in silence_phones:
+                    num_deletions += 1
+                else:
+                    continue
+            else:
+                overlap_sum += abs(sa.begin - sb.begin) + abs(sa.end - sb.end)
+                overlap_count += 1
+    return overlap_sum / overlap_count, num_insertions, num_deletions

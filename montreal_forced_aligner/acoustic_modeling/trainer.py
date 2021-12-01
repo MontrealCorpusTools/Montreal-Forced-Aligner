@@ -298,18 +298,30 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         :kaldi_steps:`align_fmllr`
             Reference Kaldi script
         """
-        self.current_acoustic_model.export_model(self.working_directory)
-        self.compile_train_graphs()
-        self.align_utterances()
-        if self.current_subset:
-            self.logger.debug(
-                f"Analyzing alignment diagnostics for {self.current_aligner} on {self.current_subset} utterances"
-            )
-        else:
-            self.logger.debug(
-                f"Analyzing alignment diagnostics for {self.current_aligner} on the full corpus"
-            )
-        self.compile_information()
+        done_path = os.path.join(self.working_directory, "done")
+        if os.path.exists(done_path):
+            self.logger.debug(f"Skipping {self.current_aligner} alignments")
+            return
+        try:
+            self.current_acoustic_model.export_model(self.working_directory)
+            self.compile_train_graphs()
+            self.align_utterances()
+            if self.current_subset:
+                self.logger.debug(
+                    f"Analyzing alignment diagnostics for {self.current_aligner} on {self.current_subset} utterances"
+                )
+            else:
+                self.logger.debug(
+                    f"Analyzing alignment diagnostics for {self.current_aligner} on the full corpus"
+                )
+            self.compile_information()
+            with open(done_path, "w"):
+                pass
+        except Exception as e:
+            if isinstance(e, KaldiProcessingError):
+                log_kaldi_errors(e.error_logs, self.logger)
+                e.update_log_file(self.logger)
+            raise
 
     @property
     def alignment_model_path(self) -> str:

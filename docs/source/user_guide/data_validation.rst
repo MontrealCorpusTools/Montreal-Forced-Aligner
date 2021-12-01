@@ -33,6 +33,7 @@ Running the validation utility
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
+.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
    :prog: mfa
    :start_command: validate
+   :groups:

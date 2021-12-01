@@ -82,7 +82,7 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.split_clitics("m'appelle") == ["m'", "appelle"]
     assert d.split_clitics("m'm'appelle") == ["m'", "m'", "appelle"]
     assert d.split_clitics("c'est") == ["c'est"]
-    assert d.split_clitics("m'c'est") == ["m'", "c'est"]
+    assert d.split_clitics("m'c'est") == ["m'", "c'", "est"]
     assert d.split_clitics("purple-people-eater") == ["purple-people-eater"]
     assert d.split_clitics("m'appele") == ["m'", "appele"]
     assert d.split_clitics("m'ving-sic") == ["m'", "ving", "sic"]
@@ -98,7 +98,11 @@ def test_frclitics(frclitics_dict_path, generated_dir):
         d.words_mapping["appelle"],
     ]
     assert d.to_int("c'est") == [d.words_mapping["c'est"]]
-    assert d.to_int("m'c'est") == [d.words_mapping["m'"], d.words_mapping["c'est"]]
+    assert d.to_int("m'c'est") == [
+        d.words_mapping["m'"],
+        d.words_mapping["c'"],
+        d.words_mapping["est"],
+    ]
     assert d.to_int("purple-people-eater") == [d.oov_int]
     assert d.to_int("m'appele") == [d.words_mapping["m'"], d.oov_int]
     assert d.to_int("m'ving-sic") == [d.words_mapping["m'"], d.oov_int, d.oov_int]
