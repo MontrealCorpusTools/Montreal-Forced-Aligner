@@ -9,17 +9,13 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import (
 def test_basic_ivector(
     basic_corpus_dir,
     generated_dir,
-    english_dictionary,
     temp_dir,
     train_ivector_config_path,
-    english_acoustic_model,
     ivector_output_model_path,
 ):
     command = [
         "train_ivector",
         basic_corpus_dir,
-        english_dictionary,
-        "english",
         ivector_output_model_path,
         "-t",
         temp_dir,

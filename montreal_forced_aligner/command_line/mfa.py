@@ -583,11 +583,9 @@ def create_parser() -> ArgumentParser:
         type=str,
         help="Full path to the source directory to train the ivector extractor",
     )
-    train_ivector_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     train_ivector_parser.add_argument(
         "output_model_path",
         type=str,
-        default="",
         help="Full path to save resulting ivector extractor",
     )
     train_ivector_parser.add_argument(

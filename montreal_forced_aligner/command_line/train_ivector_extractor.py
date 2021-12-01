@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Optional
 
-from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
@@ -74,9 +73,6 @@ def validate_args(args: Namespace) -> None:
                 f"The specified corpus directory ({args.corpus_directory}) is not a directory."
             )
         )
-
-    args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
-    args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
 def run_train_ivector_extractor(args: Namespace, unknown: Optional[list] = None) -> None:

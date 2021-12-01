@@ -53,7 +53,8 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         ivector_extractor = IvectorExtractorModel.empty(basename, self.working_log_directory)
         ivector_extractor.add_meta_file(self)
         ivector_extractor.add_model(self.working_directory)
-        os.makedirs(directory, exist_ok=True)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(output_model_path)
         ivector_extractor.dump(basename)
 
