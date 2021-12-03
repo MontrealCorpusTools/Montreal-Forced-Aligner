@@ -13,3 +13,6 @@
        score
        edit_distance
        output_mapping
+       compare_labels
+       overlap_scoring
+       align_phones

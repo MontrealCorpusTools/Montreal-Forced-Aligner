@@ -167,7 +167,7 @@ class Job:
             self.subset_speakers = set()
             self.subset_dictionaries = set()
         else:
-            self.subset_utts = set(subset_utts)
+            self.subset_utts = set(u for u in subset_utts if u.speaker in self.speakers)
             self.subset_speakers = {u.speaker for u in subset_utts if u.speaker in self.speakers}
             self.subset_dictionaries = {s.dictionary for s in self.subset_speakers}
 
@@ -181,23 +181,13 @@ class Job:
             Text for each utterance, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if u.ignored:
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                if not utt.text:
                     continue
-                if self.subset_utts and u not in self.subset_utts:
-                    continue
-                if not u.text:
-                    continue
-                data[key][u.name] = u.text_for_scp()
+                data[dict_name][utt.name] = " ".join(map(str, utt.text_for_scp()))
         return data
 
     def text_int_scp_data(self) -> dict[str, dict[str, str]]:
@@ -210,23 +200,15 @@ class Job:
             Text converted to integer IDs for each utterance, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                continue
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if self.subset_utts and u not in self.subset_utts:
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                if utt.speaker.dictionary is None:
                     continue
-                if u.ignored:
+                if not utt.text:
                     continue
-                if not u.text:
-                    continue
-                data[key][u.name] = " ".join(map(str, u.text_int_for_scp()))
+                data[dict_name][utt.name] = " ".join(map(str, utt.text_int_for_scp()))
         return data
 
     def wav_scp_data(self) -> dict[str, dict[str, str]]:
@@ -240,26 +222,16 @@ class Job:
         """
         data = {}
         done = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-                done[key] = set()
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if u.ignored:
-                    continue
-                if self.subset_utts and u not in self.subset_utts:
-                    continue
-                if not u.is_segment:
-                    data[key][u.name] = u.file.for_wav_scp()
-                elif u.file.name not in done:
-                    data[key][u.file.name] = u.file.for_wav_scp()
-                    done[key].add(u.file.name)
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            done[dict_name] = set()
+            for utt in utt_data.values():
+                if not utt.is_segment:
+                    data[dict_name][utt.name] = utt.file.for_wav_scp()
+                elif utt.file.name not in done:
+                    data[dict_name][utt.file.name] = utt.file.for_wav_scp()
+                    done[dict_name].add(utt.file.name)
         return data
 
     def utt2spk_scp_data(self) -> dict[str, dict[str, str]]:
@@ -272,21 +244,11 @@ class Job:
             Utterance to speaker mapping, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if u.ignored:
-                    continue
-                if self.subset_utts and u not in self.subset_utts:
-                    continue
-                data[key][u.name] = s.name
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                data[dict_name][utt.name] = utt.speaker_name
         return data
 
     def feat_scp_data(self) -> dict[str, dict[str, str]]:
@@ -299,22 +261,13 @@ class Job:
             Utterance to feature archive ID mapping, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if u.ignored:
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                if not utt.features:
                     continue
-                if self.subset_utts and u not in self.subset_utts:
-                    continue
-                if u.features:
-                    data[key][u.name] = u.features
+                data[dict_name][utt.name] = utt.features
         return data
 
     def spk2utt_scp_data(self) -> dict[str, dict[str, list[str]]]:
@@ -327,22 +280,16 @@ class Job:
             Speaker to utterance mapping, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            data[key][s.name] = sorted(
-                [
-                    u.name
-                    for u in s.utterances.values()
-                    if not u.ignored and not (self.subset_utts and u not in self.subset_utts)
-                ]
-            )
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                if utt.speaker.name not in data[dict_name]:
+                    data[dict_name][utt.speaker.name] = []
+                data[dict_name][utt.speaker.name].append(str(utt))
+        for k, v in data.items():
+            for s, utts in v.items():
+                data[k][s] = sorted(utts)
         return data
 
     def cmvn_scp_data(self) -> dict[str, dict[str, str]]:
@@ -378,23 +325,13 @@ class Job:
             Utterance to segment mapping, per dictionary name
         """
         data = {}
-        for s in self.speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
-            for u in s.utterances.values():
-                if u.ignored:
+        utts = self.job_utts()
+        for dict_name, utt_data in utts.items():
+            data[dict_name] = {}
+            for utt in utt_data.values():
+                if not utt.is_segment:
                     continue
-                if self.subset_utts and u not in self.subset_utts:
-                    continue
-                if not u.is_segment:
-                    continue
-                data[key][u.name] = u.segment_for_scp()
+                data[dict_name][utt.name] = utt.segment_for_scp()
         return data
 
     def construct_path_dictionary(
@@ -683,21 +620,33 @@ class Job:
             data[dictionary.name] = dictionary.multilingual_ipa
         return data
 
-    def job_utts(self) -> dict[str, Utterance]:
+    def job_utts(self) -> dict[str, dict[str, Utterance]]:
         """
         Generate utterances by dictionary name for the Job
 
         Returns
         -------
-        dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
+        dict[str, dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]]
             Mapping of dictionary name to Utterance mappings
         """
         data = {}
-        speakers = self.subset_speakers
-        if not speakers:
-            speakers = self.speakers
-        for s in speakers:
-            data.update(s.utterances)
+        if self.subset_utts:
+            utterances = self.subset_utts
+        else:
+            utterances = set()
+            for s in self.speakers:
+                utterances.update(s.utterances.values())
+        for u in utterances:
+            if u.ignored:
+                continue
+            if u.speaker.dictionary is None:
+                dict_name = None
+            else:
+                dict_name = u.speaker.dictionary.name
+            if dict_name not in data:
+                data[dict_name] = {}
+            data[dict_name][u.name] = u
+
         return data
 
     def job_files(self) -> dict[str, File]:
@@ -710,15 +659,34 @@ class Job:
             Mapping of file name to File objects
         """
         data = {}
-        speakers = self.subset_speakers
-        if not speakers:
+        if self.subset_utts:
+            utterances = self.subset_utts
+        else:
+            utterances = set()
+            for s in self.speakers:
+                utterances.update(s.utterances.values())
+        for u in utterances:
+            if u.ignored:
+                continue
+            data[u.file_name] = u.file
+        return data
+
+    def job_speakers(self) -> dict[str, Speaker]:
+        """
+        Generate files for the Job
+
+        Returns
+        -------
+        dict[str, :class:`~montreal_forced_aligner.corpus.classes.Speaker`]
+            Mapping of file name to File objects
+        """
+        data = {}
+        if self.subset_speakers:
+            speakers = self.subset_speakers
+        else:
             speakers = self.speakers
         for s in speakers:
-            for f in s.files:
-                for sf in f.speaker_ordering:
-                    if sf.name == s.name:
-                        sf.dictionary_data = s.dictionary_data
-                data[f.name] = f
+            data[s.name] = s
         return data
 
     def dictionary_data(self) -> dict[str, DictionaryData]:

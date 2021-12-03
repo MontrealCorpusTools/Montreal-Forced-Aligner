@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from montreal_forced_aligner.dictionary.base import PronunciationDictionary
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
 from montreal_forced_aligner.g2p.generator import (
     PyniniCorpusGenerator,
     PyniniWordListGenerator,

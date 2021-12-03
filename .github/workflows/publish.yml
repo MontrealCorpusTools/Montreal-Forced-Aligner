@@ -1,10 +1,8 @@
 name: Publish Python distributions to PyPI and TestPyPI
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  - push
+  - release
 
 jobs:
   build-n-publish:
@@ -49,17 +47,24 @@ jobs:
         run: echo $SETUPTOOLS_SCM_PRETEND_VERSION
 
       - name: Build a binary wheel and a source tarball
-        run: |
-          python -m pep517.build --source --wheel --out-dir dist/ .
+        run: >-
+          python -m
+          build
+          --sdist
+          --wheel
+          --outdir dist/
+          .
       - name: Publish to Test PyPI
         if: startsWith(github.event.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@master
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          user: __token__
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository_url: https://test.pypi.org/legacy/
 
       - name: Publish to PyPI
         if: startsWith(github.event.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@master
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}

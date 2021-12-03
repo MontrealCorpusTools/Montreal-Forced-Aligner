@@ -15,7 +15,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     compile_information_func,
     compile_train_graphs_func,
 )
-from montreal_forced_aligner.dictionary.base import DictionaryMixin
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import AlignmentError
 from montreal_forced_aligner.utils import run_mp, run_non_mp
 

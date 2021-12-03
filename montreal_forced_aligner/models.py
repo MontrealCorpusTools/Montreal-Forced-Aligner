@@ -12,19 +12,22 @@ from typing import TYPE_CHECKING, Collection, Optional, Union
 
 import yaml
 
-from .abc import MfaModel, ModelExporterMixin
-from .exceptions import (
+from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
+from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
     PronunciationAcousticMismatchError,
 )
-from .helper import TerminalPrinter
+from montreal_forced_aligner.helper import TerminalPrinter
 
 if TYPE_CHECKING:
     from logging import Logger
 
-    from .abc import MetaDict
-    from .dictionary.base import DictionaryMixin, PronunciationDictionaryMixin
+    from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.dictionary.pronunciation import (
+        DictionaryMixin,
+        PronunciationDictionaryMixin,
+    )
 
 
 # default format for output
@@ -461,7 +464,7 @@ class AcousticModel(Archive):
 
         Parameters
         ----------
-        dictionary: Union[:class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`, :class:`~montreal_forced_aligner.models.G2PModel`]
+        dictionary: Union[:class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`, :class:`~montreal_forced_aligner.models.G2PModel`]
             PronunciationDictionaryMixin or G2P model to compare phone sets with
 
         Raises
@@ -555,7 +558,7 @@ class G2PModel(Archive):
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
+        dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
             Pronunciation dictionary that was the training data for the G2P model
         architecture: str, optional
             Architecture of the G2P model, defaults to "pynini"

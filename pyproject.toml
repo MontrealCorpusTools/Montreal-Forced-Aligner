@@ -78,5 +78,8 @@ exclude_lines = [
     "def history_save_handler() -> None:",
     "class ExitHooks(object):",
     "def main() -> None:",
+    "if os.path.exists",
+    "@abstractmethod",
+    'if "MFA_ERROR"',
 ]
 fail_under = 50

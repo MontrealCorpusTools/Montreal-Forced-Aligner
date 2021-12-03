@@ -431,7 +431,9 @@ def create_parser() -> ArgumentParser:
         "--config_path", type=str, default="", help="Path to config file to use for G2P"
     )
     train_g2p_parser.add_argument(
+        "--evaluate",
         "--validate",
+        dest="evaluate",
         action="store_true",
         help="Perform an analysis of accuracy training on "
         "most of the data and validating on an unseen subset",

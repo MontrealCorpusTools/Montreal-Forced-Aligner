@@ -5,7 +5,7 @@ import pytest
 from montreal_forced_aligner.command_line.g2p import run_g2p
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
-from montreal_forced_aligner.dictionary.base import PronunciationDictionary
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
 from montreal_forced_aligner.g2p.generator import G2P_DISABLED
 
 
@@ -43,7 +43,7 @@ def test_train_g2p(sick_dict_path, sick_g2p_model_path, temp_dir, train_g2p_conf
         sick_dict_path,
         sick_g2p_model_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "test_train_g2p"),
         "-q",
         "--clean",
         "--debug",
@@ -62,7 +62,6 @@ def test_generate_dict(
     g2p_sick_output,
     temp_dir,
     g2p_config_path,
-    basic_dictionary_config,
 ):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")
@@ -92,7 +91,6 @@ def test_generate_dict_text_only(
     g2p_sick_output,
     temp_dir,
     g2p_config_path,
-    basic_dictionary_config,
 ):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")

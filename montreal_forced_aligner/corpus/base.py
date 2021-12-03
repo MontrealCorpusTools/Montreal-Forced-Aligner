@@ -239,7 +239,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.num_jobs = len(self.speakers)
         self.jobs = [Job(i) for i in range(self.num_jobs)]
         job_ind = 0
-        for s in self.speakers.values():
+        for s in sorted(self.speakers.values()):
             self.jobs[job_ind].add_speaker(s)
             job_ind += 1
             if job_ind == self.num_jobs:
@@ -369,9 +369,9 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             Whether loading from temporary files was successful
         """
         begin_time = time.time()
-        if not os.path.exists(self.output_directory):
+        if not os.path.exists(self.corpus_output_directory):
             return False
-        for f in os.listdir(self.output_directory):
+        for f in os.listdir(self.corpus_output_directory):
             if f.startswith("split"):
                 old_num_jobs = int(f.replace("split", ""))
                 if old_num_jobs != self.num_jobs:
@@ -381,9 +381,9 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                         f"with --clean."
                     )
                     self.num_jobs = old_num_jobs
-        speakers_path = os.path.join(self.output_directory, "speakers.yaml")
-        files_path = os.path.join(self.output_directory, "files.yaml")
-        utterances_path = os.path.join(self.output_directory, "utterances.yaml")
+        speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
+        files_path = os.path.join(self.corpus_output_directory, "files.yaml")
+        utterances_path = os.path.join(self.corpus_output_directory, "utterances.yaml")
 
         if not os.path.exists(speakers_path):
             self.log_debug(f"Could not find {speakers_path}, cannot load from temp")

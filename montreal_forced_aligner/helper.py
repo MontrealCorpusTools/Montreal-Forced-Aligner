@@ -30,6 +30,9 @@ __all__ = [
     "edit_distance",
     "output_mapping",
     "parse_old_features",
+    "compare_labels",
+    "overlap_scoring",
+    "align_phones",
 ]
 
 
@@ -507,24 +510,43 @@ def compare_labels(ref: str, test: str, mapping: Optional[dict[str, str]] = None
 
 
 def overlap_scoring(
-    firstElement: CtmInterval, secondElement: CtmInterval, mapping: Optional[dict[str, str]] = None
+    first_element: CtmInterval,
+    second_element: CtmInterval,
+    mapping: Optional[dict[str, str]] = None,
 ) -> float:
-    """
+    r"""
+    Method to calculate overlap scoring
+
+    .. math::
+
+       Score = -(\lvert begin_{1} - begin_{2} \rvert + \lvert end_{1} - end_{2} \rvert + \begin{cases}
+                0, & if label_{1} = label_{2} \\
+                2, & otherwise
+                \end{cases})
+
+    See Also
+    --------
+    `Blog post <https://memcauliffe.com/update-on-montreal-forced-aligner-performance.html>`_
+        For a detailed example that using this metric
 
     Parameters
     ----------
-    firstElement: CtmInterval
-    secondElement: CtmInterval
+    first_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+        First CTM interval to compare
+    second_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+        Second CTM interval
     mapping: Optional[dict[str, str]]
+        Optional mapping of phones to treat as matches even if they have different symbols
 
     Returns
     -------
     float
-        Score
+        Score calculated as the negative sum of the absolute different in begin timestamps, absolute difference in end
+        timestamps and the label score
     """
-    begin_diff = abs(firstElement.begin - secondElement.begin)
-    end_diff = abs(firstElement.end - secondElement.end)
-    label_diff = compare_labels(firstElement.label, secondElement.label, mapping)
+    begin_diff = abs(first_element.begin - second_element.begin)
+    end_diff = abs(first_element.end - second_element.end)
+    label_diff = compare_labels(first_element.label, second_element.label, mapping)
     return -1 * (begin_diff + end_diff + label_diff)
 
 
@@ -535,18 +557,28 @@ def align_phones(
     custom_mapping: Optional[dict[str, str]] = None,
 ) -> tuple[Optional[float], Optional[int], Optional[int]]:
     """
-    Align phones based on how much they overlap and their phone label
+    Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
+    different phone labels to be scored as if they're the same phone
 
     Parameters
     ----------
-    ref
-    test
-    silence_phones
-    custom_mapping
+    ref: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+        List of CTM intervals as reference
+    test: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+        List of CTM intervals to compare to reference
+    silence_phones: set[str]
+        Set of silence phones (these are ignored in the final calculation)
+    custom_mapping: dict[str, str], optional
+        Optional mapping of phones to treat as matches even if they have different symbols
 
     Returns
     -------
-
+    float
+        Score based on the average amount of overlap in phone intervals
+    int
+        Number of insertions
+    int
+        Number of deletions
     """
     try:
         from Bio import pairwise2

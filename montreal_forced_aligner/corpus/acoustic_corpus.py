@@ -89,7 +89,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         compute_cmvn: bool
             Flag for whether to compute CMVN, defaults to True
         """
-        if not overwrite and os.path.exists(os.path.join(self.output_directory, "feats.scp")):
+        if not overwrite and os.path.exists(
+            os.path.join(self.corpus_output_directory, "feats.scp")
+        ):
             return
         self.log_info(f"Generating base features ({self.feature_type})...")
         if self.feature_type == "mfcc":
@@ -763,31 +765,47 @@ class AcousticCorpusPronunciationMixin(
         """
         Load the corpus
         """
-        begin = time.time()
+        all_begin = time.time()
         self.dictionary_setup()
-        self.log_debug("Loaded dictionary")
+        self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
+        begin = time.time()
         self._load_corpus()
-        self.log_debug("Loaded corpus")
-        self.set_lexicon_word_set(self.corpus_word_set)
-        self.log_debug("Set up lexicon word set")
-        self.write_lexicon_information()
-        self.log_debug("Wrote lexicon information")
+        self.log_debug(f"Loaded corpus in {time.time() - begin}")
 
+        begin = time.time()
+        self.set_lexicon_word_set(self.corpus_word_set)
+        self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
+
+        begin = time.time()
+        self.write_lexicon_information()
+        self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+
+        begin = time.time()
         for speaker in self.speakers.values():
             speaker.set_dictionary(self.get_dictionary(speaker.name))
-        self.log_debug("Set dictionaries for speakers")
+        self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
+
+        begin = time.time()
         self.initialize_jobs()
-        self.log_debug("Initialized jobs")
+        self.log_debug(f"Initialized jobs in {time.time() - begin}")
+
+        begin = time.time()
         self.write_corpus_information()
-        self.log_debug("Wrote corpus information")
+        self.log_debug(f"Wrote corpus information in {time.time() - begin}")
+
+        begin = time.time()
         self.create_corpus_split()
-        self.log_debug("Created corpus split directory")
+        self.log_debug(f"Created corpus split directory in {time.time() - begin}")
+
+        begin = time.time()
         self.generate_features()
-        self.log_debug("Generated features")
+        self.log_debug(f"Generated features in {time.time() - begin}")
+
+        begin = time.time()
         self.calculate_oovs_found()
-        self.log_debug("Calculated oovs found")
-        self.log_debug(f"Setting up corpus took {time.time() - begin} seconds")
+        self.log_debug(f"Calculated oovs found in {time.time() - begin}")
+        self.log_debug(f"Setting up corpus took {time.time() - all_begin} seconds")
 
 
 class AcousticCorpus(AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin):

@@ -75,11 +75,6 @@ def english_dictionary():
 
 
 @pytest.fixture(scope="session")
-def basic_dictionary_config():
-    return {}
-
-
-@pytest.fixture(scope="session")
 def english_ipa_acoustic_model():
     from montreal_forced_aligner.command_line.model import download_model
 
@@ -402,31 +397,10 @@ def flac_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
 
 
 @pytest.fixture(scope="session")
-def flac_transcribe_corpus_dir(corpus_root_dir, wav_dir):
-    path = os.path.join(corpus_root_dir, "flac_transcribe_corpus")
-    os.makedirs(path, exist_ok=True)
-    name = "61-70968-0000"
-    shutil.copyfile(os.path.join(wav_dir, name + ".flac"), os.path.join(path, name + ".flac"))
-    return path
-
-
-@pytest.fixture(scope="session")
 def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "short_segments")
     os.makedirs(path, exist_ok=True)
     name = "short_segments"
-    shutil.copyfile(os.path.join(wav_dir, "dummy.wav"), os.path.join(path, name + ".wav"))
-    shutil.copyfile(
-        os.path.join(textgrid_dir, name + ".TextGrid"), os.path.join(path, name + ".TextGrid")
-    )
-    return path
-
-
-@pytest.fixture(scope="session")
-def vietnamese_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
-    path = os.path.join(corpus_root_dir, "vietnamese")
-    os.makedirs(path, exist_ok=True)
-    name = "vietnamese"
     shutil.copyfile(os.path.join(wav_dir, "dummy.wav"), os.path.join(path, name + ".wav"))
     shutil.copyfile(
         os.path.join(textgrid_dir, name + ".TextGrid"), os.path.join(path, name + ".TextGrid")
@@ -460,66 +434,6 @@ def xsampa_dict_path(dict_dir):
 
 
 @pytest.fixture(scope="session")
-def expected_dict_path(dict_dir):
-    return os.path.join(dict_dir, "expected")
-
-
-@pytest.fixture(scope="session")
-def basic_topo_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "topo")
-
-
-@pytest.fixture(scope="session")
-def basic_graphemes_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "graphemes.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_phone_map_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "phone_map.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_phones_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "phones.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_words_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "words.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_rootsint_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "roots.int")
-
-
-@pytest.fixture(scope="session")
-def basic_rootstxt_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "roots.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_setsint_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "sets.int")
-
-
-@pytest.fixture(scope="session")
-def basic_setstxt_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "sets.txt")
-
-
-@pytest.fixture(scope="session")
-def basic_word_boundaryint_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "word_boundary.int")
-
-
-@pytest.fixture(scope="session")
-def basic_word_boundarytxt_path(expected_dict_path):
-    return os.path.join(expected_dict_path, "word_boundary.txt")
-
-
-@pytest.fixture(scope="session")
 def sick_dict_path(dict_dir):
     return os.path.join(dict_dir, "sick.txt")
 
@@ -539,43 +453,13 @@ def speaker_dictionary_path(sick_dict_path, acoustic_dict_path, generated_dir):
 
 
 @pytest.fixture(scope="session")
-def acoustic_corpus_wav_path(basic_dir):
-    return os.path.join(basic_dir, "acoustic_corpus.wav")
-
-
-@pytest.fixture(scope="session")
-def acoustic_corpus_lab_path(basic_dir):
-    return os.path.join(basic_dir, "acoustic_corpus.lab")
-
-
-@pytest.fixture(scope="session")
-def michael_corpus_lab_path(basic_dir):
-    return os.path.join(basic_dir, "michael_corpus.lab")
-
-
-@pytest.fixture(scope="session")
-def output_directory(basic_dir):
-    return os.path.join(basic_dir, "output")
-
-
-@pytest.fixture(scope="session")
-def acoustic_corpus_textgrid_path(basic_dir):
-    return os.path.join(basic_dir, "acoustic_corpus.TextGrid")
-
-
-@pytest.fixture(scope="session")
 def sick_dict(sick_dict_path, generated_dir):
     return sick_dict_path
 
 
 @pytest.fixture(scope="session")
-def sick_corpus(basic_corpus_dir, generated_dir, basic_dictionary_config):
+def sick_corpus(basic_corpus_dir):
     return basic_corpus_dir
-
-
-@pytest.fixture(scope="session")
-def textgrid_directory(test_dir):
-    return os.path.join(test_dir, "textgrid")
 
 
 @pytest.fixture(scope="session")
@@ -594,20 +478,6 @@ def ivector_output_model_path(generated_dir):
 
 
 @pytest.fixture(scope="session")
-def training_dict_path(test_dir):
-    return os.path.join(
-        test_dir,
-        "dictionaries",
-        "chinese_dict.txt",
-    )
-
-
-@pytest.fixture(scope="session")
-def g2p_model_path(generated_dir):
-    return os.path.join(generated_dir, "pinyin_g2p.zip")
-
-
-@pytest.fixture(scope="session")
 def sick_g2p_model_path(generated_dir):
     return os.path.join(generated_dir, "sick_g2p.zip")
 
@@ -620,16 +490,6 @@ def g2p_sick_output(generated_dir):
 @pytest.fixture(scope="session")
 def orth_sick_output(generated_dir):
     return os.path.join(generated_dir, "orth_sick.txt")
-
-
-@pytest.fixture(scope="session")
-def example_output_model_path(generated_dir):
-    return os.path.join(generated_dir, "example_output_model.zip")
-
-
-@pytest.fixture(scope="session")
-def KO_dict(test_dir):
-    return os.path.join(test_dir, "dictionaries", "KO_dict.txt")
 
 
 @pytest.fixture(scope="session")
@@ -705,11 +565,6 @@ def lda_train_config_path(config_directory):
 @pytest.fixture(scope="session")
 def sat_train_config_path(config_directory):
     return os.path.join(config_directory, "sat_train.yaml")
-
-
-@pytest.fixture(scope="session")
-def lda_sat_train_config_path(config_directory):
-    return os.path.join(config_directory, "lda_sat_train.yaml")
 
 
 @pytest.fixture(scope="session")

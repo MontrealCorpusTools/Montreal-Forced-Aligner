@@ -4,7 +4,7 @@ from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictiona
 from montreal_forced_aligner.textgrid import CtmInterval
 
 
-def test_mapping(english_us_ipa_dictionary, generated_dir, basic_dictionary_config):
+def test_mapping(english_us_ipa_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "textgrid_tests")
     dictionary = MultispeakerDictionary(
         dictionary_path=english_us_ipa_dictionary,

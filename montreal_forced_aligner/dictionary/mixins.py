@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import abc
 import os
 import re
 from collections import Counter
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+from montreal_forced_aligner.abc import TemporaryDirectoryMixin
+from montreal_forced_aligner.data import CtmInterval, CtmType
+
 if TYPE_CHECKING:
-    from ..abc import MetaDict
+    from montreal_forced_aligner.abc import (
+        DictionaryEntryType,
+        MappingType,
+        MetaDict,
+        ReversedMappingType,
+        WordsType,
+    )
 
 DEFAULT_PUNCTUATION = list(r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
@@ -538,3 +549,491 @@ class DictionaryMixin:
                 continue
             new_transcription.append(new_t)
         return tuple(new_transcription)
+
+
+class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
+    def _write_word_boundaries(self) -> None:
+        """
+        Write the word boundaries file to the temporary directory
+        """
+        boundary_path = os.path.join(
+            self.dictionary_output_directory, "phones", "word_boundary.txt"
+        )
+        boundary_int_path = os.path.join(
+            self.dictionary_output_directory, "phones", "word_boundary.int"
+        )
+        with open(boundary_path, "w", encoding="utf8") as f, open(
+            boundary_int_path, "w", encoding="utf8"
+        ) as intf:
+            if self.position_dependent_phones:
+                for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
+                    if p == "<eps>" or p.startswith("#"):
+                        continue
+                    cat = "nonword"
+                    if p.endswith("_B"):
+                        cat = "begin"
+                    elif p.endswith("_S"):
+                        cat = "singleton"
+                    elif p.endswith("_I"):
+                        cat = "internal"
+                    elif p.endswith("_E"):
+                        cat = "end"
+                    f.write(" ".join([p, cat]) + "\n")
+                    intf.write(" ".join([str(self.phone_mapping[p]), cat]) + "\n")
+
+    def _write_topo(self) -> None:
+        """
+        Write the topo file to the temporary directory
+        """
+        topo_template = "<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>"
+        topo_sil_template = "<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>"
+        topo_transition_template = "<Transition> {} {}"
+
+        sil_transp = 1 / (self.num_silence_states - 1)
+        initial_transition = [
+            topo_transition_template.format(x, sil_transp)
+            for x in range(self.num_silence_states - 1)
+        ]
+        middle_transition = [
+            topo_transition_template.format(x, sil_transp)
+            for x in range(1, self.num_silence_states)
+        ]
+        final_transition = [
+            topo_transition_template.format(self.num_silence_states - 1, 0.75),
+            topo_transition_template.format(self.num_silence_states, 0.25),
+        ]
+        with open(self.topo_path, "w") as f:
+            f.write("<Topology>\n")
+            f.write("<TopologyEntry>\n")
+            f.write("<ForPhones>\n")
+            phones = self.kaldi_non_silence_phones
+            f.write(f"{' '.join(str(self.phone_mapping[x]) for x in phones)}\n")
+            f.write("</ForPhones>\n")
+            states = [
+                topo_template.format(cur_state=x, next_state=x + 1)
+                for x in range(self.num_non_silence_states)
+            ]
+            f.write("\n".join(states))
+            f.write(f"\n<State> {self.num_non_silence_states} </State>\n")
+            f.write("</TopologyEntry>\n")
+
+            f.write("<TopologyEntry>\n")
+            f.write("<ForPhones>\n")
+
+            phones = self.kaldi_silence_phones
+            f.write(f"{' '.join(str(self.phone_mapping[x]) for x in phones)}\n")
+            f.write("</ForPhones>\n")
+            states = []
+            for i in range(self.num_silence_states):
+                if i == 0:
+                    transition = " ".join(initial_transition)
+                elif i == self.num_silence_states - 1:
+                    transition = " ".join(final_transition)
+                else:
+                    transition = " ".join(middle_transition)
+                states.append(topo_sil_template.format(cur_state=i, transitions=transition))
+            f.write("\n".join(states))
+            f.write(f"\n<State> {self.num_silence_states} </State>\n")
+            f.write("</TopologyEntry>\n")
+            f.write("</Topology>\n")
+
+    def _write_phone_sets(self) -> None:
+        """
+        Write phone symbol sets to the temporary directory
+        """
+        sharesplit = ["shared", "split"]
+        if not self.shared_silence_phones:
+            sil_sharesplit = ["not-shared", "not-split"]
+        else:
+            sil_sharesplit = sharesplit
+
+        sets_file = os.path.join(self.dictionary_output_directory, "phones", "sets.txt")
+        roots_file = os.path.join(self.dictionary_output_directory, "phones", "roots.txt")
+
+        sets_int_file = os.path.join(self.dictionary_output_directory, "phones", "sets.int")
+        roots_int_file = os.path.join(self.dictionary_output_directory, "phones", "roots.int")
+
+        with open(sets_file, "w", encoding="utf8") as setf, open(
+            roots_file, "w", encoding="utf8"
+        ) as rootf, open(sets_int_file, "w", encoding="utf8") as setintf, open(
+            roots_int_file, "w", encoding="utf8"
+        ) as rootintf:
+
+            # process silence phones
+            for i, sp in enumerate(self.silence_phones):
+                if self.position_dependent_phones:
+                    mapped = [sp + x for x in [""] + self.positions]
+                else:
+                    mapped = [sp]
+                setf.write(" ".join(mapped) + "\n")
+                setintf.write(" ".join(map(str, (self.phone_mapping[x] for x in mapped))) + "\n")
+                if i == 0:
+                    line = sil_sharesplit + mapped
+                    lineint = sil_sharesplit + [str(self.phone_mapping[x]) for x in mapped]
+                else:
+                    line = sharesplit + mapped
+                    lineint = sharesplit + [str(self.phone_mapping[x]) for x in mapped]
+                rootf.write(" ".join(line) + "\n")
+                rootintf.write(" ".join(lineint) + "\n")
+
+            # process nonsilence phones
+            for nsp in sorted(self.non_silence_phones):
+                if self.position_dependent_phones:
+                    mapped = [nsp + x for x in self.positions]
+                else:
+                    mapped = [nsp]
+                setf.write(" ".join(mapped) + "\n")
+                setintf.write(" ".join(map(str, (self.phone_mapping[x] for x in mapped))) + "\n")
+                line = sharesplit + mapped
+                lineint = sharesplit + [str(self.phone_mapping[x]) for x in mapped]
+                rootf.write(" ".join(line) + "\n")
+                rootintf.write(" ".join(lineint) + "\n")
+
+    @property
+    def phone_symbol_table_path(self):
+        """Path to file containing phone symbols and their integer IDs"""
+        return os.path.join(self.phones_dir, "phones.txt")
+
+    def _write_phone_symbol_table(self) -> None:
+        """
+        Write the phone mapping to the temporary directory
+        """
+        with open(self.phone_symbol_table_path, "w", encoding="utf8") as f:
+            for p, i in sorted(self.phone_mapping.items(), key=lambda x: x[1]):
+                f.write(f"{p} {i}\n")
+
+    @property
+    def disambiguation_symbols_txt_path(self):
+        """Path to the file containing phone disambiguation symbols"""
+        return os.path.join(self.phones_dir, "disambiguation_symbols.txt")
+
+    @property
+    def disambiguation_symbols_int_path(self):
+        """Path to the file containing integer IDs for phone disambiguation symbols"""
+        return os.path.join(self.phones_dir, "disambiguation_symbols.int")
+
+    @property
+    def phones_dir(self) -> str:
+        """Directory for storing phone information"""
+        return os.path.join(self.dictionary_output_directory, "phones")
+
+    @property
+    def topo_path(self) -> str:
+        """Path to the dictionary's topology file"""
+        return os.path.join(self.phones_dir, "topo")
+
+    def _write_extra_questions(self) -> None:
+        """
+        Write extra questions symbols to the temporary directory
+        """
+        phone_extra = os.path.join(self.phones_dir, "extra_questions.txt")
+        phone_extra_int = os.path.join(self.phones_dir, "extra_questions.int")
+        with open(phone_extra, "w", encoding="utf8") as outf, open(
+            phone_extra_int, "w", encoding="utf8"
+        ) as intf:
+            silences = self.kaldi_silence_phones
+            outf.write(" ".join(silences) + "\n")
+            intf.write(" ".join(str(self.phone_mapping[x]) for x in silences) + "\n")
+
+            non_silences = self.kaldi_non_silence_phones
+            outf.write(" ".join(non_silences) + "\n")
+            intf.write(" ".join(str(self.phone_mapping[x]) for x in non_silences) + "\n")
+            if self.position_dependent_phones:
+                for p in self.positions:
+                    line = [x + p for x in sorted(self.non_silence_phones)]
+                    outf.write(" ".join(line) + "\n")
+                    intf.write(" ".join(str(self.phone_mapping[x]) for x in line) + "\n")
+                for p in [""] + self.positions:
+                    line = [x + p for x in sorted(self.silence_phones)]
+                    outf.write(" ".join(line) + "\n")
+                    intf.write(" ".join(str(self.phone_mapping[x]) for x in line) + "\n")
+
+    def _write_disambig(self) -> None:
+        """
+        Write disambiguation symbols to the temporary directory
+        """
+        disambig = self.disambiguation_symbols_txt_path
+        disambig_int = self.disambiguation_symbols_int_path
+        with open(disambig, "w", encoding="utf8") as outf, open(
+            disambig_int, "w", encoding="utf8"
+        ) as intf:
+            for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
+                outf.write(f"{d}\n")
+                intf.write(f"{self.phone_mapping[d]}\n")
+
+    def _write_phone_map_file(self) -> None:
+        """
+        Write the phone map to the temporary directory
+        """
+        outfile = os.path.join(self.phones_dir, "phone_map.txt")
+        with open(outfile, "w", encoding="utf8") as f:
+            for sp in self.silence_phones:
+                if self.position_dependent_phones:
+                    new_phones = [sp + x for x in ["", ""] + self.positions]
+                else:
+                    new_phones = [sp]
+                f.write(" ".join(new_phones) + "\n")
+            for nsp in self.non_silence_phones:
+                if self.position_dependent_phones:
+                    new_phones = [nsp + x for x in [""] + self.positions]
+                else:
+                    new_phones = [nsp]
+                f.write(" ".join(new_phones) + "\n")
+
+
+@dataclass
+class DictionaryData:
+    """
+    Information required for parsing Kaldi-internal ids to text
+
+    Attributes
+    ----------
+    dictionary_options: dict[str, Any]
+        Options for the dictionary
+    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
+        Function to sanitize text
+    split_function: :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
+        Function to split words into subwords
+    words_mapping: MappingType
+        Mapping from words to their integer IDs
+    reversed_words_mapping: ReversedMappingType
+        Mapping from integer IDs to words
+    words: WordsType
+        Words and their associated pronunciations
+    """
+
+    dictionary_options: MetaDict
+    sanitize_function: SanitizeFunction
+    split_function: SplitWordsFunction
+    words_mapping: MappingType
+    reversed_words_mapping: ReversedMappingType
+    words: WordsType
+    lookup_cache: dict[str, list[str]]
+
+    @property
+    def oov_word(self) -> str:
+        """Out of vocabulary code"""
+        return self.dictionary_options["oov_word"]
+
+    @property
+    def oov_int(self) -> int:
+        """Out of vocabulary integer ID"""
+        return self.words_mapping[self.oov_word]
+
+    @property
+    def compound_markers(self) -> list[str]:
+        """Characters that separate compound words"""
+        return self.dictionary_options["compound_markers"]
+
+    @property
+    def clitic_markers(self) -> list[str]:
+        """Characters that mark clitics"""
+        return self.dictionary_options["clitic_markers"]
+
+    @property
+    def clitic_set(self) -> set[str]:
+        """Set of clitics"""
+        return self.dictionary_options["clitic_set"]
+
+    @property
+    def punctuation(self) -> list[str]:
+        """Characters to treat as punctuation"""
+        return self.dictionary_options["punctuation"]
+
+    @property
+    def strip_diacritics(self) -> list[str]:
+        """IPA diacritics to strip in multilingual IPA mode"""
+        return self.dictionary_options["strip_diacritics"]
+
+    @property
+    def multilingual_ipa(self) -> bool:
+        """Flag for multilingual IPA mode"""
+        return self.dictionary_options["multilingual_ipa"]
+
+    @property
+    def silence_phones(self) -> set[str]:
+        """Silence phones"""
+        return {
+            self.dictionary_options["oov_phone"],
+            self.dictionary_options["optional_silence_phone"],
+            self.dictionary_options["nonoptional_silence_phone"],
+            self.dictionary_options["other_noise_phone"],
+        }
+
+    def lookup(
+        self,
+        item: str,
+    ) -> list[str]:
+        """
+        Look up a word and return the list of sub words if necessary
+        taking into account clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[str]
+            List of subwords that are in the dictionary
+        """
+        if item in self.lookup_cache:
+            return self.lookup_cache[item]
+        if item in self.words:
+            return [item]
+        sanitized = self.sanitize_function(item)
+        if sanitized in self.words:
+            self.lookup_cache[item] = [sanitized]
+            return [sanitized]
+        split = self.split_function(sanitized)
+        oov_count = sum(1 for x in split if x not in self.words)
+        if oov_count < len(
+            split
+        ):  # Only returned split item if it gains us any transcribed speech
+            self.lookup_cache[item] = split
+            return split
+        self.lookup_cache[item] = [sanitized]
+        return [sanitized]
+
+    def to_int(
+        self,
+        item: str,
+    ) -> list[int]:
+        """
+        Convert a given word into integer IDs
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[int]
+            List of integer IDs corresponding to each subword
+        """
+        if item == "":
+            return []
+        sanitized = self.lookup(item)
+        text_int = []
+        for item in sanitized:
+            if not item:
+                continue
+            if item not in self.words_mapping:
+                text_int.append(self.oov_int)
+            else:
+                text_int.append(self.words_mapping[item])
+        return text_int
+
+    def check_word(self, item: str) -> bool:
+        """
+        Check whether a word is in the dictionary, takes into account sanitization and
+        clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to check
+
+        Returns
+        -------
+        bool
+            True if the look up would not result in an OOV item
+        """
+        if item == "":
+            return False
+        if item in self.words:
+            return True
+        sanitized = self.sanitize_function(item)
+        if sanitized in self.words:
+            return True
+
+        sanitized = self.split_function(sanitized)
+        if all(s in self.words for s in sanitized):
+            return True
+        return False
+
+    def map_to_original_pronunciation(
+        self, phones: CtmType, subpronunciations: list[DictionaryEntryType]
+    ) -> CtmType:
+        """
+        Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
+
+        Parameters
+        ----------
+        phones: list[CtmInterval]
+            List of aligned phones
+        subpronunciations: list[DictionaryEntryType]
+            Pronunciations of each sub word to reconstruct the transcriptions
+
+        Returns
+        -------
+        list[CtmInterval]
+            Intervals with their original IPA pronunciation rather than the internal simplified form
+        """
+        transcription = tuple(x.label for x in phones)
+        new_phones = []
+        mapping_ind = 0
+        transcription_ind = 0
+        for pronunciations in subpronunciations:
+            pron = None
+            if mapping_ind >= len(phones):
+                break
+            for p in pronunciations:
+                if (
+                    "original_pronunciation" in p
+                    and transcription == p["pronunciation"] == p["original_pronunciation"]
+                ) or (transcription == p["pronunciation"] and "original_pronunciation" not in p):
+                    new_phones.extend(phones)
+                    mapping_ind += len(phones)
+                    break
+                if (
+                    p["pronunciation"]
+                    == transcription[
+                        transcription_ind : transcription_ind + len(p["pronunciation"])
+                    ]
+                    and pron is None
+                ):
+                    pron = p
+            if mapping_ind >= len(phones):
+                break
+            if not pron:
+                new_phones.extend(phones)
+                mapping_ind += len(phones)
+                break
+            to_extend = phones[transcription_ind : transcription_ind + len(pron["pronunciation"])]
+            transcription_ind += len(pron["pronunciation"])
+            p = pron
+            if (
+                "original_pronunciation" not in p
+                or p["pronunciation"] == p["original_pronunciation"]
+            ):
+                new_phones.extend(to_extend)
+                mapping_ind += len(to_extend)
+                break
+            for pi in p["original_pronunciation"]:
+                if pi == phones[mapping_ind].label:
+                    new_phones.append(phones[mapping_ind])
+                else:
+                    modded_phone = pi
+                    new_p = phones[mapping_ind].label
+                    for diacritic in self.strip_diacritics:
+                        modded_phone = modded_phone.replace(diacritic, "")
+                    if modded_phone == new_p:
+                        phones[mapping_ind].label = pi
+                        new_phones.append(phones[mapping_ind])
+                    elif mapping_ind != len(phones) - 1:
+                        new_p = phones[mapping_ind].label + phones[mapping_ind + 1].label
+                        if modded_phone == new_p:
+                            new_phones.append(
+                                CtmInterval(
+                                    phones[mapping_ind].begin,
+                                    phones[mapping_ind + 1].end,
+                                    new_p,
+                                    phones[mapping_ind].utterance,
+                                )
+                            )
+                            mapping_ind += 1
+                mapping_ind += 1
+        return new_phones

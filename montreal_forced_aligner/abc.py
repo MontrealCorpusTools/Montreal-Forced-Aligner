@@ -74,7 +74,6 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
         temporary_directory: str = None,
         **kwargs,
     ):
-        print(kwargs)
         super().__init__(**kwargs)
         if not temporary_directory:
             from .config import get_temporary_directory

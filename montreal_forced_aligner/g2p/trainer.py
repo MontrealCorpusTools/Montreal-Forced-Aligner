@@ -18,12 +18,12 @@ from typing import Any, Callable, NamedTuple, Optional
 
 import tqdm
 
-from ..abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from ..dictionary.base import PronunciationDictionaryMixin
-from ..helper import score
-from ..models import G2PModel
-from ..utils import Counter, Stopped
-from .generator import PyniniGenerator
+from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+from montreal_forced_aligner.g2p.generator import PyniniGenerator
+from montreal_forced_aligner.helper import score
+from montreal_forced_aligner.models import G2PModel
+from montreal_forced_aligner.utils import Counter, Stopped
 
 try:
     import pynini
@@ -468,7 +468,7 @@ class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
         For base MFA parameters
     :class:`~montreal_forced_aligner.abc.TrainerMixin`
         For base trainer parameters
-    :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
+    :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
         For pronunciation dictionary parameters
 
     Attributes

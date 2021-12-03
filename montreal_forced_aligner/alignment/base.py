@@ -129,6 +129,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             CombineCtmArguments(
                 j.current_dictionary_names,
                 j.job_files(),
+                j.job_speakers(),
                 j.dictionary_data(),
                 self.cleanup_textgrids,
             )
@@ -293,16 +294,15 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             combine_procs[i].join()
         finished_combining.stop()
 
-        to_export_queue.join()
-        preparation_proc.join()
-
         self.logger.debug(f"Combiners took {time.time() - ctm_begin_time} seconds")
         self.logger.debug("Beginning export...")
+
+        to_export_queue.join()
+        preparation_proc.join()
 
         self.logger.debug(f"Adding jobs for export took {time.time() - export_begin}")
         self.logger.debug("Waiting for export processes to join...")
 
-        for_write_queue.join()
         finished_processing.stop()
         for i in range(self.num_jobs):
             export_procs[i].join()

@@ -7,7 +7,6 @@ def test_save_text_lab(
     basic_dict_path,
     basic_corpus_dir,
     generated_dir,
-    basic_dictionary_config,
 ):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     corpus = AcousticCorpus(

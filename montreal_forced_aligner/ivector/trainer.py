@@ -455,6 +455,9 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.min_gaussian_weight = min_gaussian_weight
         self.remove_low_count_gaussians = remove_low_count_gaussians
 
+    def compute_calculated_properties(self) -> None:
+        pass
+
     @property
     def train_type(self) -> str:
         """Training identifier"""
@@ -708,6 +711,9 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.subsample = subsample
         self.num_iterations = num_iterations
         self.gaussian_min_count = gaussian_min_count
+
+    def compute_calculated_properties(self) -> None:
+        pass
 
     @property
     def exported_model_path(self) -> str:

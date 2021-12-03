@@ -260,9 +260,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         generate_final_alignments: bool
             Flag for whether final alignments should be generated at the end of training, defaults to True
         """
-        begin = time.time()
         self.setup()
         previous = None
+        begin = time.time()
         for trainer in self.training_configs.values():
             self.current_subset = trainer.subset
             if previous is not None:
@@ -274,14 +274,16 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 self.align()
             trainer.train()
             previous = trainer
+        self.logger.info(f"Completed training in {time.time()-begin} seconds!")
+
         if generate_final_alignments:
+            self.current_subset = None
             self.current_aligner = previous.identifier
             os.makedirs(self.working_log_directory, exist_ok=True)
             self.current_acoustic_model = AcousticModel(
                 previous.exported_model_path, self.working_directory
             )
             self.align()
-        self.logger.info(f"Completed training in {time.time()-begin} seconds!")
 
     def align(self) -> None:
         """
@@ -339,9 +341,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     @property
     def data_directory(self) -> str:
         """Current data directory based on the trainer's subset"""
-        if self.current_subset:
-            return self.subset_directory(self.current_subset)
-        return self.split_directory
+        return self.subset_directory(self.current_subset)
 
     @property
     def working_directory(self) -> Optional[str]:

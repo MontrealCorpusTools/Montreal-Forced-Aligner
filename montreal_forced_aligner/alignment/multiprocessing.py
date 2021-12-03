@@ -10,7 +10,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, NamedTuple, Union
@@ -27,7 +26,7 @@ from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CtmErrorDict, MetaDict, ReversedMappingType
-    from montreal_forced_aligner.corpus.classes import File, Utterance
+    from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
     from montreal_forced_aligner.data import CtmType
     from montreal_forced_aligner.dictionary import DictionaryData
 
@@ -67,7 +66,7 @@ class CleanupWordCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, Utterance]
+    utterances: dict[str, dict[str, Utterance]]
     dictionary_data: dict[str, DictionaryData]
 
 
@@ -76,7 +75,7 @@ class NoCleanupWordCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, Utterance]
+    utterances: dict[str, dict[str, Utterance]]
     dictionary_data: dict[str, DictionaryData]
 
 
@@ -85,7 +84,7 @@ class PhoneCtmArguments(NamedTuple):
 
     ctm_paths: dict[str, str]
     dictionaries: list[str]
-    utterances: dict[str, Utterance]
+    utterances: dict[str, dict[str, Utterance]]
     reversed_phone_mappings: dict[str, ReversedMappingType]
     positions: dict[str, list[str]]
 
@@ -95,6 +94,7 @@ class CombineCtmArguments(NamedTuple):
 
     dictionaries: list[str]
     files: dict[str, File]
+    speakers: dict[str, Speaker]
     dictionary_data: dict[str, DictionaryData]
     cleanup_textgrids: bool
 
@@ -530,13 +530,13 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             utt_begin = cur_utt.begin
                             cur_file = cur_utt.file_name
 
                         if utt != cur_utt:
                             process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             file_name = cur_utt.file_name
                             if file_name != cur_file:
                                 process_current_file(cur_file)
@@ -634,13 +634,13 @@ class CleanupWordCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             utt_begin = cur_utt.begin
                             cur_file = cur_utt.file_name
 
                         if utt != cur_utt:
                             process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             utt_begin = cur_utt.begin
                             file_name = cur_utt.file_name
                             if file_name != cur_file:
@@ -736,7 +736,7 @@ class PhoneCtmProcessWorker(mp.Process):
                         interval = process_ctm_line(line)
                         utt = interval.utterance
                         if cur_utt is None:
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             cur_file = cur_utt.file_name
                             utt_begin = cur_utt.begin
 
@@ -744,7 +744,7 @@ class PhoneCtmProcessWorker(mp.Process):
 
                             process_current_utt(cur_utt, current_labels)
 
-                            cur_utt = self.utterances[utt]
+                            cur_utt = self.utterances[dict_name][utt]
                             file_name = cur_utt.file_name
                             utt_begin = cur_utt.begin
 
@@ -762,8 +762,10 @@ class PhoneCtmProcessWorker(mp.Process):
         except Exception:
             self.stopped.stop()
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.error_catching[("phone", self.job_name)] = "\n".join(
-                traceback.format_exception(exc_type, exc_value, exc_traceback)
+            self.error_catching[("phone", self.job_name)] = (
+                "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                + f"\n\n{len(self.utterances['english'].keys())}\nCould not find: {utt}\n"
+                + "\n".join(self.utterances["english"].keys())
             )
 
 
@@ -813,19 +815,24 @@ class CombineProcessWorker(mp.Process):
         self.error_catching = error_catching
 
         self.files = arguments.files
+        self.speakers = arguments.speakers
         self.dictionary_data = arguments.dictionary_data
         self.cleanup_textgrids = arguments.cleanup_textgrids
 
+        for file in self.files.values():
+            for s in file.speaker_ordering:
+                if s.name not in self.speakers:
+                    continue
+                s.dictionary_data = self.dictionary_data[self.speakers[s.name].dictionary_name]
+
     def run(self) -> None:
         """Run the combination function"""
-        sum_time = 0
-        count_time = 0
+
         phone_data = {}
         word_data = {}
         while True:
             try:
                 w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
-                begin_time = time.time()
             except Empty:
                 if self.finished_combining.stop_check():
                     break
@@ -852,8 +859,20 @@ class CombineProcessWorker(mp.Process):
                 for u_name, u in file.utterances.items():
                     if u_name not in word_ctm:
                         continue
+                    u.speaker.dictionary_data = self.dictionary_data[
+                        self.speakers[u.speaker_name].dictionary_name
+                    ]
                     u.word_labels = word_ctm[u_name]
                     u.phone_labels = phone_ctm[u_name]
+                processed_check = True
+                for s in file.speaker_ordering:
+                    if s.name not in self.speakers:
+                        continue
+                    if not file.has_fully_aligned_speaker(s):
+                        processed_check = False
+                        break
+                if not processed_check:
+                    continue
                 data = generate_tiers(file, cleanup_textgrids=self.cleanup_textgrids)
                 self.to_export_queue.put((file_name, data))
             except Exception:
@@ -862,9 +881,6 @@ class CombineProcessWorker(mp.Process):
                 self.error_catching[("combining", self.job_name)] = "\n".join(
                     traceback.format_exception(exc_type, exc_value, exc_traceback)
                 )
-
-            sum_time += time.time() - begin_time
-            count_time += 1
 
 
 class ExportTextGridProcessWorker(mp.Process):

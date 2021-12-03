@@ -16,8 +16,8 @@ from montreal_forced_aligner.exceptions import CorpusError, TextGridParseError, 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary import DictionaryData
-    from montreal_forced_aligner.dictionary.base import PronunciationDictionaryMixin
     from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
+    from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
     from montreal_forced_aligner.textgrid import CtmType
 
 
@@ -110,21 +110,19 @@ class Speaker:
         self.cmvn = None
         self.dictionary: Optional[PronunciationDictionaryMixin] = None
         self.dictionary_data: Optional[DictionaryData] = None
+        self.dictionary_name: Optional[str] = None
         self.word_counts = Counter()
 
     def __getstate__(self):
         """Get dictionary for pickling"""
-        data = {"name": self.name, "cmvn": self.cmvn}
-        if self.dictionary_data is not None:
-            data["dictionary_data"] = self.dictionary_data
+        data = {"name": self.name, "cmvn": self.cmvn, "dictionary_name": self.dictionary_name}
         return data
 
     def __setstate__(self, state):
         """Recreate object following pickling"""
         self.name = state["name"]
         self.cmvn = state["cmvn"]
-        if "dictionary_data" in state:
-            self.dictionary_data = state["dictionary_data"]
+        self.dictionary_name = state["dictionary_name"]
 
     def __str__(self):
         """Return Speaker's name"""
@@ -242,6 +240,7 @@ class Speaker:
             Pronunciation dictionary to associate with the speaker
         """
         self.dictionary = dictionary
+        self.dictionary_name = dictionary.name
         self.dictionary_data = dictionary.data(self.word_set())
 
     @property
@@ -302,6 +301,16 @@ class File:
         self.speaker_ordering: list[Speaker] = []
         self.utterances: dict[str, Utterance] = {}
         self.aligned = False
+
+    def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
+        for u in self.utterances.values():
+            if u.speaker != speaker:
+                continue
+            if u.word_labels is None:
+                return False
+            if u.phone_labels is None:
+                return False
+        return True
 
     def __repr__(self):
         """Representation of File objects"""
@@ -969,7 +978,9 @@ class Utterance:
     @property
     def name(self):
         """The name of the utterance"""
-        base = f"{self.file_name}-{self.speaker_name}"
+        base = f"{self.file_name}"
+        if not base.startswith(f"{self.speaker_name}-"):
+            base = f"{self.speaker_name}-" + base
         if self.is_segment:
-            base = f"{self.file_name}-{self.speaker_name}-{self.begin}-{self.end}"
+            base = f"{self.file_name}-{self.begin}-{self.end}"
         return base.replace(" ", "-space-").replace(".", "-").replace("_", "-")

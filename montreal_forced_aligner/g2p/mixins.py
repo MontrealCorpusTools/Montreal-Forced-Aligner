@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
-from ..abc import MfaWorker
-from ..dictionary.base import DictionaryMixin
+from montreal_forced_aligner.abc import MfaWorker
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 
 
 class G2PMixin(metaclass=ABCMeta):

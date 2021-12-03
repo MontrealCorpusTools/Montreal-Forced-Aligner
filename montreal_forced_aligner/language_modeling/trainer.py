@@ -339,7 +339,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
                 for item in lookup:
                     if item in unk_words:
                         new_text.append(self.oov_word)
-                        self.oovs_found[self.oov_word] += 1
+                        self.oovs_found[item] += 1
                     elif (
                         u.speaker.dictionary is not None and item not in u.speaker.dictionary.words
                     ):

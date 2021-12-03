@@ -1,20 +1,21 @@
 import os
 
-from montreal_forced_aligner.dictionary.base import PronunciationDictionary
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
 
 
 def test_basic(basic_dict_path, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
-    dictionary = MultispeakerDictionary(
+    dictionary = PronunciationDictionary(
         dictionary_path=basic_dict_path, temporary_directory=output_directory
     )
-    dictionary.dictionary_setup()
-    dictionary.write_lexicon_information()
-    print(dictionary.dictionary_mapping)
-    d = dictionary.default_dictionary
-    assert set(d.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
-    assert set(d.kaldi_non_silence_phones) == {
+    dictionary.write()
+    dictionary.write(write_disambiguation=True)
+
+    assert dictionary
+    assert len(dictionary) > 0
+    assert set(dictionary.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
+    assert set(dictionary.kaldi_non_silence_phones) == {
         "phonea_B",
         "phonea_I",
         "phonea_E",
@@ -109,7 +110,7 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert d.to_int("flying'purple-people-eater") == [d.oov_int]
 
 
-def test_english_clitics(english_dictionary, generated_dir, basic_dictionary_config):
+def test_english_clitics(english_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
     dictionary = MultispeakerDictionary(
         dictionary_path=english_dictionary,

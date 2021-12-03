@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING, Collection, Optional
 
 from colorama import Fore, Style
 
-from .helper import comma_join
+from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
-    from .dictionary.base import PronunciationDictionaryMixin
-    from .models import G2PModel
-    from .textgrid import CtmInterval
+    from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+    from montreal_forced_aligner.models import G2PModel
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = [
@@ -443,7 +443,7 @@ class PronunciationOrthographyMismatchError(AlignerError):
     ----------
     g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
         Specified G2P model
-    dictionary: :class:`~montreal_forced_aligner.dictionary.base.PronunciationDictionaryMixin`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
         Specified dictionary
     """
 

@@ -482,6 +482,6 @@ def test_xsampa_corpus(
     )
     corpus.load_corpus()
     assert (
-        corpus.utterances["xsampa-michael"].text
+        corpus.utterances["michael-xsampa"].text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
     )

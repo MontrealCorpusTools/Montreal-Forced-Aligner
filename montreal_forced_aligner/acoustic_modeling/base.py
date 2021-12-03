@@ -512,9 +512,7 @@ class AcousticModelTrainingMixin(
     @property
     def data_directory(self) -> str:
         """Get the current data directory based on subset"""
-        if self.subset:
-            return self.worker.subset_directory(self.subset)
-        return self.worker.split_directory
+        return self.worker.data_directory
 
     @property
     def corpus_output_directory(self) -> str:
@@ -610,9 +608,10 @@ class AcousticModelTrainingMixin(
             return os.path.join(self.working_directory, "final.occs")
         return os.path.join(self.working_directory, f"{self.iteration + 1}.occs")
 
+    @abstractmethod
     def compute_calculated_properties(self) -> None:
         """Compute any calculated properties such as alignment iterations"""
-        pass
+        ...
 
     def increment_gaussians(self):
         """Increment the current number of gaussians"""
