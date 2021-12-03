@@ -11,7 +11,7 @@
 Pretrained language models
 **************************
 
-There are several places that contain pretrained language models that can be imported to MFA.
+There are several places that contain pretrained :term:`language models` that can be imported to MFA.
 
 .. csv-table::
    :header: "Source", "Language", "Link"

@@ -2,25 +2,32 @@
 Command line functionality
 ==========================
 
-
 """
 
-from .adapt import run_adapt_model  # noqa
-from .align import run_align_corpus  # noqa
-from .anchor import run_anchor  # noqa
-from .classify_speakers import run_classify_speakers  # noqa
-from .create_segments import run_create_segments  # noqa
-from .g2p import run_g2p  # noqa
-from .mfa import create_parser, main  # noqa
-from .model import download_model, inspect_model, list_model, run_model, save_model  # noqa
-from .train_acoustic_model import run_train_acoustic_model  # noqa
-from .train_dictionary import run_train_dictionary  # noqa
-from .train_g2p import run_train_g2p  # noqa
-from .train_ivector_extractor import run_train_ivector_extractor  # noqa
-from .train_lm import run_train_lm  # noqa
-from .transcribe import run_transcribe_corpus  # noqa
-from .utils import validate_model_arg  # noqa
-from .validate import run_validate_corpus  # noqa
+from montreal_forced_aligner.command_line.adapt import run_adapt_model
+from montreal_forced_aligner.command_line.align import run_align_corpus
+from montreal_forced_aligner.command_line.anchor import run_anchor
+from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
+from montreal_forced_aligner.command_line.create_segments import run_create_segments
+from montreal_forced_aligner.command_line.g2p import run_g2p
+from montreal_forced_aligner.command_line.mfa import create_parser, main
+from montreal_forced_aligner.command_line.model import (
+    download_model,
+    inspect_model,
+    list_model,
+    run_model,
+    save_model,
+)
+from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
+from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
+from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
+from montreal_forced_aligner.command_line.train_ivector_extractor import (
+    run_train_ivector_extractor,
+)
+from montreal_forced_aligner.command_line.train_lm import run_train_lm
+from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
+from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
 __all__ = [
     "adapt",

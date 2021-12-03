@@ -5,15 +5,18 @@ Exception classes
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
+import logging
+import sys
+from typing import TYPE_CHECKING, Collection, Optional
 
 from colorama import Fore, Style
 
-from .helper import comma_join
+from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
-    from .dictionary import PronunciationDictionary
-    from .models import G2PModel
+    from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+    from montreal_forced_aligner.models import G2PModel
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = [
@@ -123,6 +126,26 @@ class MFAError(Exception):
     def __str__(self) -> str:
         """Output the error"""
         return f"{self.error_text(type(self).__name__)}: {self.message}"
+
+
+class PlatformError(MFAError):
+    """
+    Exception class for platform compatibility issues
+
+    Parameters
+    ----------
+    functionality_name: str
+        Functionality not available on the current platform
+    """
+
+    def __init__(self, functionality_name):
+        super().__init__()
+        self.message = f"Functionality for {self.emphasized_text(functionality_name)} is not available on {self.error_text(sys.platform)}."
+        if sys.platform == "win32":
+            self.message += (
+                f" If you'd like to use {self.emphasized_text(functionality_name)} on Windows, please follow the MFA installation "
+                f"instructions for the Windows Subsystem for Linux (WSL)."
+            )
 
 
 class ThirdpartyError(MFAError):
@@ -307,6 +330,7 @@ class TextGridParseError(CorpusReadError):
         MFAError.__init__(self)
         self.file_name = file_name
         self.error = error
+        self.message = f"Reading {self.emphasized_text(self.file_name)} has the following error:\n\n{self.error}"
 
 
 class SoxError(CorpusReadError):
@@ -334,11 +358,11 @@ class AlignmentError(MFAError):
 
     Parameters
     ----------
-    error_logs: List[str]
+    error_logs: list[str]
         List of Kaldi log files with errors
     """
 
-    def __init__(self, error_logs: List[str]):
+    def __init__(self, error_logs: list[str]):
         super().__init__()
         output = "\n".join(error_logs)
         self.message = (
@@ -353,18 +377,35 @@ class AlignmentExportError(AlignmentError):
 
     Parameters
     ----------
-    error_dict: Dict[Tuple[str, int], str]
+    error_dict: dict[tuple[str, int], str]
         Error dictionary mapping export stage and job to the error encountered
 
     """
 
-    def __init__(self, error_dict: Dict[Tuple[str, int], str]):
+    def __init__(self, error_dict: dict[tuple[str, int], str]):
         MFAError.__init__(self)
 
         message = "Error was encountered in processing CTMs:\n\n"
         for key, error in error_dict.items():
             message += f"{key}:\n{error}"
         self.message = message
+
+
+class CtmError(AlignmentError):
+    """
+    Class for errors in creating CTM intervals
+
+    Parameters
+    ----------
+    ctm: CtmInterval
+        CTM interval that was not parsed correctly
+
+    """
+
+    def __init__(self, ctm: CtmInterval):
+        MFAError.__init__(self)
+
+        self.message = f"Error was encountered in processing CTM interval: {ctm}"
 
 
 class NoSuccessfulAlignments(AlignerError):
@@ -402,11 +443,11 @@ class PronunciationOrthographyMismatchError(AlignerError):
     ----------
     g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
         Specified G2P model
-    dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
         Specified dictionary
     """
 
-    def __init__(self, g2p_model: G2PModel, dictionary: PronunciationDictionary):
+    def __init__(self, g2p_model: G2PModel, dictionary: PronunciationDictionaryMixin):
         super().__init__()
         missing_graphs = dictionary.graphemes - set(g2p_model.meta["graphemes"])
         missing_graphs = [f"{self.error_text(x)}" for x in sorted(missing_graphs)]
@@ -452,12 +493,12 @@ class PretrainedModelNotFoundError(ArgumentError):
         Model name
     model_type: str, optional
         Model type searched
-    available: List[str], optional
+    available: list[str], optional
         List of models that were found
     """
 
     def __init__(
-        self, name: str, model_type: Optional[str] = None, available: Optional[List[str]] = None
+        self, name: str, model_type: Optional[str] = None, available: Optional[list[str]] = None
     ):
         super().__init__()
         extra = ""
@@ -478,11 +519,11 @@ class MultipleModelTypesFoundError(ArgumentError):
     ----------
     name: str
         Model name
-    possible_model_types: List[str]
+    possible_model_types: list[str]
         List of model types that have a model with the given name
     """
 
-    def __init__(self, name: str, possible_model_types: List[str]):
+    def __init__(self, name: str, possible_model_types: list[str]):
         super().__init__()
 
         possible_model_types = [f"{self.error_text(x)}" for x in possible_model_types]
@@ -502,11 +543,11 @@ class ModelExtensionError(ArgumentError):
         Model name
     model_type: str
         Model type
-    extensions: List[str]
+    extensions: list[str]
         Extensions that the model supports
     """
 
-    def __init__(self, name: str, model_type: str, extensions: List[str]):
+    def __init__(self, name: str, model_type: str, extensions: list[str]):
         super().__init__()
         extra = ""
         if model_type:
@@ -528,7 +569,7 @@ class ModelTypeNotSupportedError(ArgumentError):
     ----------
     model_type: str
         Model type
-    model_types: List[str]
+    model_types: list[str]
         List of supported model types
     """
 
@@ -547,6 +588,19 @@ class ConfigError(MFAError):
     """
 
     pass
+
+
+class RootDirectoryError(ConfigError):
+    """
+    Exception class for errors using the MFA_ROOT_DIR
+    """
+
+    def __init__(self, temporary_directory, variable):
+        super().__init__()
+        self.message = (
+            f"Could not create a root MFA temporary directory (tried {self.error_text(temporary_directory)}), "
+            f"please specify a write-able directory via the {self.emphasized_text(variable)} environment variable."
+        )
 
 
 class TrainerError(MFAError):
@@ -589,13 +643,13 @@ class KaldiProcessingError(MFAError):
 
     Parameters
     ----------
-    error_logs: List[str]
+    error_logs: list[str]
         List of Kaldi logs that had errors
     log_file: str, optional
         Overall log file to find more information
     """
 
-    def __init__(self, error_logs: List[str], log_file: Optional[str] = None):
+    def __init__(self, error_logs: list[str], log_file: Optional[str] = None):
         super().__init__()
         self.message = (
             f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."
@@ -605,18 +659,19 @@ class KaldiProcessingError(MFAError):
         self.error_logs = error_logs
         self.log_file = log_file
 
-    def update_log_file(self, log_file: str) -> None:
+    def update_log_file(self, logger: logging.Logger) -> None:
         """
         Update the log file output
 
         Parameters
         ----------
-        log_file: str
-            Path to log file
+        logger: logging.Logger
+            Logger
         """
-        self.log_file = log_file
+        if logger.handlers:
+            self.log_file = logger.handlers[0].baseFilename
         self.message = (
             f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries."
         )
         if self.log_file is not None:
-            self.message += f" For more details, please check {self.error_text(log_file)}"
+            self.message += f" For more details, please check {self.error_text(self.log_file)}"

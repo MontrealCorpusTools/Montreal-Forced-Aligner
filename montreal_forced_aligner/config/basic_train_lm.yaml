@@ -1,6 +1,0 @@
-order: 3
-method: kneser_ney
-prune: true
-count_threshold: 2
-prune_thresh_small: 0.0000003
-prune_thresh_medium: 0.0000001

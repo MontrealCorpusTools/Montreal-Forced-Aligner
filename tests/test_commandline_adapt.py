@@ -10,7 +10,7 @@ def test_adapt_basic(
     generated_dir,
     english_dictionary,
     temp_dir,
-    basic_align_config,
+    test_align_config,
     english_acoustic_model,
 ):
     adapted_model_path = os.path.join(generated_dir, "basic_adapted.zip")
@@ -22,7 +22,6 @@ def test_adapt_basic(
         adapted_model_path,
         "-t",
         temp_dir,
-        "-q",
         "--clean",
         "--debug",
     ]
@@ -37,7 +36,7 @@ def test_adapt_multilingual(
     ipa_speaker_dict_path,
     generated_dir,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
     english_ipa_acoustic_model,
 ):
@@ -53,7 +52,7 @@ def test_adapt_multilingual(
         "-t",
         temp_dir,
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
         "-q",
         "--clean",
         "--debug",

@@ -1,15 +1,20 @@
 import os
 
-from montreal_forced_aligner.dictionary import PronunciationDictionary
-from montreal_forced_aligner.models import DictionaryModel
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.textgrid import CtmInterval
 
 
-def test_mapping(english_us_ipa_dictionary, generated_dir, basic_dictionary_config):
-    output_directory = os.path.join(generated_dir, "ipa_temp")
-    d = PronunciationDictionary(
-        DictionaryModel(english_us_ipa_dictionary), output_directory, basic_dictionary_config
+def test_mapping(english_us_ipa_dictionary, generated_dir):
+    output_directory = os.path.join(generated_dir, "textgrid_tests")
+    dictionary = MultispeakerDictionary(
+        dictionary_path=english_us_ipa_dictionary,
+        position_dependent_phones=False,
+        multilingual_ipa=True,
+        temporary_directory=output_directory,
     )
+    dictionary.dictionary_setup()
+    dictionary.write_lexicon_information()
+    d = dictionary.default_dictionary
     u = "utt"
     cur_phones = [
         CtmInterval(2.25, 2.33, "t", u),

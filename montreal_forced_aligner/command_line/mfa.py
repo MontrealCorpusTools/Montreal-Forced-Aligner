@@ -33,13 +33,6 @@ from montreal_forced_aligner.config import (
 )
 from montreal_forced_aligner.exceptions import MFAError
 from montreal_forced_aligner.models import MODEL_TYPES
-from montreal_forced_aligner.utils import (
-    get_available_acoustic_models,
-    get_available_dictionaries,
-    get_available_g2p_models,
-    get_available_ivector_extractors,
-    get_available_language_models,
-)
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -49,7 +42,7 @@ BEGIN = time.time()
 BEGIN_DATE = datetime.now()
 
 
-__all__ = ["ExitHooks", "history_save_handler", "create_parser", "main"]
+__all__ = ["ExitHooks", "create_parser", "main"]
 
 
 class ExitHooks(object):
@@ -75,41 +68,34 @@ class ExitHooks(object):
     def exc_handler(self, exc_type, exc, *args):
         """Handle and save exceptions"""
         self.exception = exc
+        self.exit_code = 1
 
+    def history_save_handler(self) -> None:
+        """
+        Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
+        an exception was encountered, when the command was executed, and how long it took to run
+        """
+        from montreal_forced_aligner.utils import get_mfa_version
 
-def history_save_handler() -> None:
-    """
-    Handler for saving history on exit.  In addition to the command run, also saves exit code, whether
-    an exception was encountered, when the command was executed, and how long it took to run
-    """
-    from montreal_forced_aligner.utils import get_mfa_version
+        history_data = {
+            "command": " ".join(sys.argv),
+            "execution_time": time.time() - BEGIN,
+            "date": BEGIN_DATE,
+            "version": get_mfa_version(),
+        }
 
-    history_data = {
-        "command": " ".join(sys.argv),
-        "execution_time": time.time() - BEGIN,
-        "date": BEGIN_DATE,
-        "version": get_mfa_version(),
-    }
-
-    if hooks.exit_code is not None:
-        history_data["exit_code"] = hooks.exit_code
-        history_data["exception"] = ""
-    elif hooks.exception is not None:
-        history_data["exit_code"] = 1
-        history_data["exception"] = str(hooks.exception)
-    else:
-        history_data["exception"] = ""
-        history_data["exit_code"] = 0
-    update_command_history(history_data)
-    if hooks.exception:
-        raise hooks.exception
-
-
-acoustic_models = get_available_acoustic_models()
-ivector_extractors = get_available_ivector_extractors()
-language_models = get_available_language_models()
-g2p_models = get_available_g2p_models()
-dictionaries = get_available_dictionaries()
+        if self.exit_code is not None:
+            history_data["exit_code"] = self.exit_code
+            history_data["exception"] = ""
+        elif self.exception is not None:
+            history_data["exit_code"] = 1
+            history_data["exception"] = str(self.exception)
+        else:
+            history_data["exception"] = ""
+            history_data["exit_code"] = 0
+        update_command_history(history_data)
+        if self.exception:
+            raise self.exception
 
 
 def create_parser() -> ArgumentParser:
@@ -137,9 +123,11 @@ def create_parser() -> ArgumentParser:
         subparser.add_argument(
             "-t",
             "--temp_directory",
+            "--temporary_directory",
+            dest="temporary_directory",
             type=str,
-            default=GLOBAL_CONFIG["temp_directory"],
-            help=f"Temporary directory root to store MFA created files, default is {GLOBAL_CONFIG['temp_directory']}",
+            default=GLOBAL_CONFIG["temporary_directory"],
+            help=f"Temporary directory root to store MFA created files, default is {GLOBAL_CONFIG['temporary_directory']}",
         )
         subparser.add_argument(
             "--disable_mp",
@@ -188,6 +176,48 @@ def create_parser() -> ArgumentParser:
                 default=not GLOBAL_CONFIG["cleanup_textgrids"],
             )
 
+    pretrained_acoustic = ", ".join(MODEL_TYPES["acoustic"].get_available_models())
+    if not pretrained_acoustic:
+        pretrained_acoustic = (
+            "you can use ``mfa model download acoustic`` to get pretrained MFA models"
+        )
+
+    pretrained_ivector = ", ".join(MODEL_TYPES["ivector"].get_available_models())
+    if not pretrained_ivector:
+        pretrained_ivector = (
+            "you can use ``mfa model download ivector`` to get pretrained MFA models"
+        )
+
+    pretrained_g2p = ", ".join(MODEL_TYPES["g2p"].get_available_models())
+    if not pretrained_g2p:
+        pretrained_g2p = "you can use ``mfa model download g2p`` to get pretrained MFA models"
+
+    pretrained_lm = ", ".join(MODEL_TYPES["language_model"].get_available_models())
+    if not pretrained_lm:
+        pretrained_lm = (
+            "you can use ``mfa model download language_model`` to get pretrained MFA models"
+        )
+
+    pretrained_dictionary = ", ".join(MODEL_TYPES["dictionary"].get_available_models())
+    if not pretrained_dictionary:
+        pretrained_dictionary = (
+            "you can use ``mfa model download dictionary`` to get MFA dictionaries"
+        )
+
+    dictionary_path_help = f"Full path to pronunciation dictionary, or saved dictionary name ({pretrained_dictionary})"
+
+    acoustic_model_path_help = (
+        f"Full path to pre-trained acoustic model, or saved model name ({pretrained_acoustic})"
+    )
+    language_model_path_help = (
+        f"Full path to pre-trained language model, or saved model name ({pretrained_lm})"
+    )
+    ivector_model_path_help = f"Full path to pre-trained ivector extractor model, or saved model name ({pretrained_ivector})"
+    g2p_model_path_help = (
+        f"Full path to pre-trained G2P model, or saved model name ({pretrained_g2p}). "
+        "If not specified, then orthographic transcription is split into pronunciations."
+    )
+
     parser = argparse.ArgumentParser()
 
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -200,14 +230,18 @@ def create_parser() -> ArgumentParser:
     )
     align_parser.add_argument("corpus_directory", help="Full path to the directory to align")
     align_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
+        "dictionary_path",
+        help=dictionary_path_help,
+        type=str,
     )
     align_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     align_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     align_parser.add_argument(
@@ -232,15 +266,15 @@ def create_parser() -> ArgumentParser:
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
     adapt_parser.add_argument("corpus_directory", help="Full path to the directory to align")
-    adapt_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    adapt_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     adapt_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     adapt_parser.add_argument(
         "output_paths",
+        type=str,
         nargs="+",
         help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
@@ -250,12 +284,6 @@ def create_parser() -> ArgumentParser:
         type=str,
         default="",
         help="Full path to save adapted acoustic model",
-    )
-    adapt_parser.add_argument(
-        "--full_train",
-        action="store_true",
-        help="Specify whether to do a round of speaker-adapted training rather than the default "
-        "remapping approach to adaptation",
     )
     adapt_parser.add_argument(
         "--config_path", type=str, default="", help="Path to config file to use for alignment"
@@ -281,13 +309,12 @@ def create_parser() -> ArgumentParser:
         "train", help="Train a new acoustic model on a corpus and optionally export alignments"
     )
     train_parser.add_argument(
-        "corpus_directory", help="Full path to the source directory to align"
+        "corpus_directory", type=str, help="Full path to the source directory to align"
     )
-    train_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
-    )
+    train_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help, default="")
     train_parser.add_argument(
         "output_paths",
+        type=str,
         nargs="+",
         help="Path to save the new acoustic model, path to export aligned TextGrids, or both",
     )
@@ -323,16 +350,17 @@ def create_parser() -> ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
     validate_parser.add_argument(
-        "corpus_directory", help="Full path to the source directory to align"
+        "corpus_directory", type=str, help="Full path to the source directory to align"
     )
     validate_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
+        "dictionary_path", type=str, help=dictionary_path_help, default=""
     )
     validate_parser.add_argument(
         "acoustic_model_path",
+        type=str,
         nargs="?",
         default="",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        help=acoustic_model_path_help,
     )
     validate_parser.add_argument(
         "-s",
@@ -343,12 +371,25 @@ def create_parser() -> ArgumentParser:
         "default is to use directory names",
     )
     validate_parser.add_argument(
+        "--config_path",
+        type=str,
+        default="",
+        help="Path to config file to use for training and alignment",
+    )
+    validate_parser.add_argument(
         "--test_transcriptions", help="Test accuracy of transcriptions", action="store_true"
     )
     validate_parser.add_argument(
         "--ignore_acoustics",
         help="Skip acoustic feature generation and associated validation",
         action="store_true",
+    )
+    validate_parser.add_argument(
+        "-a",
+        "--audio_directory",
+        type=str,
+        default="",
+        help="Audio directory root to use for finding audio files",
     )
     add_global_options(validate_parser)
 
@@ -357,15 +398,17 @@ def create_parser() -> ArgumentParser:
     )
     g2p_parser.add_argument(
         "g2p_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(g2p_models)}). If not specified, then orthographic transcription is split into pronunciations.",
+        help=g2p_model_path_help,
+        type=str,
         nargs="?",
     )
 
     g2p_parser.add_argument(
         "input_path",
+        type=str,
         help="Corpus to base word list on or a text file of words to generate pronunciations",
     )
-    g2p_parser.add_argument("output_path", help="Path to save output dictionary")
+    g2p_parser.add_argument("output_path", type=str, help="Path to save output dictionary")
     g2p_parser.add_argument(
         "--include_bracketed",
         help="Included words enclosed by brackets, job_name.e. [...], (...), <...>",
@@ -379,14 +422,18 @@ def create_parser() -> ArgumentParser:
     train_g2p_parser = subparsers.add_parser(
         "train_g2p", help="Train a G2P model from a pronunciation dictionary"
     )
-    train_g2p_parser.add_argument("dictionary_path", help="Location of existing dictionary")
+    train_g2p_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
 
-    train_g2p_parser.add_argument("output_model_path", help="Desired location of generated model")
+    train_g2p_parser.add_argument(
+        "output_model_path", type=str, help="Desired location of generated model"
+    )
     train_g2p_parser.add_argument(
         "--config_path", type=str, default="", help="Path to config file to use for G2P"
     )
     train_g2p_parser.add_argument(
+        "--evaluate",
         "--validate",
+        dest="evaluate",
         action="store_true",
         help="Perform an analysis of accuracy training on "
         "most of the data and validating on an unseen subset",
@@ -410,6 +457,7 @@ def create_parser() -> ArgumentParser:
         "name",
         help="Name of language code to download, if not specified, "
         "will list all available languages",
+        type=str,
         nargs="?",
     )
     help_message = "List of saved models"
@@ -417,7 +465,11 @@ def create_parser() -> ArgumentParser:
         "list", description=help_message, help=help_message
     )
     model_list_parser.add_argument(
-        "model_type", choices=sorted(MODEL_TYPES), nargs="?", help="Type of model to list"
+        "model_type",
+        choices=sorted(MODEL_TYPES),
+        type=str,
+        nargs="?",
+        help="Type of model to list",
     )
 
     help_message = "Inspect a model and output its metadata"
@@ -427,11 +479,12 @@ def create_parser() -> ArgumentParser:
     model_inspect_parser.add_argument(
         "model_type",
         choices=sorted(MODEL_TYPES),
+        type=str,
         nargs="?",
         help="Type of model to download",
     )
     model_inspect_parser.add_argument(
-        "name", help="Name of pretrained model or path to MFA model to inspect"
+        "name", type=str, help="Name of pretrained model or path to MFA model to inspect"
     )
 
     help_message = "Save a MFA model to the pretrained directory for name-based referencing"
@@ -439,7 +492,7 @@ def create_parser() -> ArgumentParser:
         "save", description=help_message, help=help_message
     )
     model_save_parser.add_argument(
-        "model_type", choices=sorted(MODEL_TYPES), help="Type of MFA model"
+        "model_type", type=str, choices=sorted(MODEL_TYPES), help="Type of MFA model"
     )
     model_save_parser.add_argument(
         "path", help="Path to MFA model to save for invoking with just its name"
@@ -461,6 +514,7 @@ def create_parser() -> ArgumentParser:
     )
     train_lm_parser.add_argument(
         "source_path",
+        type=str,
         help="Full path to the source directory to train from, alternatively "
         "an ARPA format language model to convert for MFA use",
     )
@@ -481,7 +535,7 @@ def create_parser() -> ArgumentParser:
         help="Weight factor for supplemental language model, defaults to 1.0",
     )
     train_lm_parser.add_argument(
-        "--dictionary_path", help="Full path to the pronunciation dictionary to use", default=""
+        "--dictionary_path", type=str, help=dictionary_path_help, default=""
     )
     train_lm_parser.add_argument(
         "--config_path",
@@ -498,15 +552,15 @@ def create_parser() -> ArgumentParser:
     train_dictionary_parser.add_argument(
         "corpus_directory", help="Full path to the directory to align"
     )
-    train_dictionary_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    train_dictionary_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     train_dictionary_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     train_dictionary_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     train_dictionary_parser.add_argument(
@@ -528,21 +582,12 @@ def create_parser() -> ArgumentParser:
     )
     train_ivector_parser.add_argument(
         "corpus_directory",
-        help="Full path to the source directory to train the ivector extractor",
-    )
-    train_ivector_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
-    train_ivector_parser.add_argument(
-        "acoustic_model_path",
         type=str,
-        default="",
-        help="Full path to acoustic model for alignment",
+        help="Full path to the source directory to train the ivector extractor",
     )
     train_ivector_parser.add_argument(
         "output_model_path",
         type=str,
-        default="",
         help="Full path to save resulting ivector extractor",
     )
     train_ivector_parser.add_argument(
@@ -563,13 +608,15 @@ def create_parser() -> ArgumentParser:
     )
     classify_speakers_parser.add_argument(
         "corpus_directory",
+        type=str,
         help="Full path to the source directory to run speaker classification",
     )
     classify_speakers_parser.add_argument(
-        "ivector_extractor_path", type=str, default="", help="Full path to ivector extractor model"
+        "ivector_extractor_path", type=str, default="", help=ivector_model_path_help
     )
     classify_speakers_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
 
@@ -595,6 +642,7 @@ def create_parser() -> ArgumentParser:
     )
     create_segments_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     create_segments_parser.add_argument(
@@ -607,21 +655,22 @@ def create_parser() -> ArgumentParser:
         help="Transcribe utterances using an acoustic model, language model, and pronunciation dictionary",
     )
     transcribe_parser.add_argument(
-        "corpus_directory", help="Full path to the directory to transcribe"
+        "corpus_directory", type=str, help="Full path to the directory to transcribe"
     )
-    transcribe_parser.add_argument(
-        "dictionary_path", help="Full path to the pronunciation dictionary to use"
-    )
+    transcribe_parser.add_argument("dictionary_path", type=str, help=dictionary_path_help)
     transcribe_parser.add_argument(
         "acoustic_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(acoustic_models)})",
+        type=str,
+        help=acoustic_model_path_help,
     )
     transcribe_parser.add_argument(
         "language_model_path",
-        help=f"Full path to the archive containing pre-trained model or language ({', '.join(language_models)})",
+        type=str,
+        help=language_model_path_help,
     )
     transcribe_parser.add_argument(
         "output_directory",
+        type=str,
         help="Full path to output directory, will be created if it doesn't exist",
     )
     transcribe_parser.add_argument(
@@ -658,9 +707,11 @@ def create_parser() -> ArgumentParser:
     config_parser.add_argument(
         "-t",
         "--temp_directory",
+        "--temporary_directory",
+        dest="temporary_directory",
         type=str,
         default="",
-        help=f"Set the default temporary directory, default is {GLOBAL_CONFIG['temp_directory']}",
+        help=f"Set the default temporary directory, default is {GLOBAL_CONFIG['temporary_directory']}",
     )
     config_parser.add_argument(
         "-j",
@@ -750,9 +801,14 @@ def create_parser() -> ArgumentParser:
         "download", help="DEPRECATED: Please use mfa model download instead."
     )
 
-    history_parser.add_argument("depth", help="Number of commands to list", nargs="?", default=10)
     history_parser.add_argument(
-        "--verbose", help="Flag for whether to output additional information", action="store_true"
+        "depth", type=int, help="Number of commands to list", nargs="?", default=10
+    )
+    history_parser.add_argument(
+        "-v",
+        "--verbose",
+        help=f"Output debug messages, default is {GLOBAL_CONFIG['verbose']}",
+        action="store_true",
     )
 
     _ = subparsers.add_parser(
@@ -765,10 +821,34 @@ def create_parser() -> ArgumentParser:
 parser = create_parser()
 
 
+def print_history(args):
+    depth = args.depth
+    history = load_command_history()[-depth:]
+    if args.verbose:
+        print("command\tDate\tExecution time\tVersion\tExit code\tException")
+        for h in history:
+            execution_time = time.strftime("%H:%M:%S", time.gmtime(h["execution_time"]))
+            d = h["date"].isoformat()
+            print(
+                f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}"
+            )
+        pass
+    else:
+        for h in history:
+            print(h["command"])
+
+
 def main() -> None:
     """
     Main function for the MFA command line interface
     """
+
+    hooks = ExitHooks()
+    hooks.hook()
+    atexit.register(hooks.history_save_handler)
+    from colorama import init
+
+    init()
     parser = create_parser()
     mp.freeze_support()
     args, unknown = parser.parse_known_args()
@@ -776,7 +856,8 @@ def main() -> None:
         if short in unknown:
             print(
                 f"Due to the number of options that `{short}` could refer to, it is not accepted. "
-                "Please specify the full argument"
+                "Please specify the full argument",
+                file=sys.stderr,
             )
             sys.exit(1)
     try:
@@ -786,7 +867,8 @@ def main() -> None:
             except ImportError:
                 print(
                     "There was an issue importing Pynini, please ensure that it is installed. If you are on Windows, "
-                    "please use the Windows Subsystem for Linux to use g2p functionality."
+                    "please use the Windows Subsystem for Linux to use g2p functionality.",
+                    file=sys.stderr,
                 )
                 sys.exit(1)
         if args.subcommand == "align":
@@ -822,21 +904,7 @@ def main() -> None:
             global GLOBAL_CONFIG
             GLOBAL_CONFIG = load_global_config()
         elif args.subcommand == "history":
-            depth = args.depth
-            history = load_command_history()[-depth:]
-            if args.verbose:
-                print("command\tDate\tExecution time\tVersion\tExit code\tException")
-                for h in history:
-                    execution_time = time.strftime("%H:%M:%S", time.gmtime(h["execution_time"]))
-                    d = h["date"].isoformat()
-                    print(
-                        f"{h['command']}\t{d}\t{execution_time}\t{h['version']}\t{h['exit_code']}\t{h['exception']}"
-                    )
-                pass
-            else:
-                for h in history:
-                    print(h["command"])
-
+            print_history(args)
         elif args.subcommand == "version":
             from montreal_forced_aligner.utils import get_mfa_version
 
@@ -852,15 +920,15 @@ def main() -> None:
     except MFAError as e:
         if getattr(args, "debug", False):
             raise
-        print(e)
+        print(e, file=sys.stderr)
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    hooks = ExitHooks()
-    hooks.hook()
-    atexit.register(history_save_handler)
-    from colorama import init
+    import warnings
 
-    init()
+    warnings.warn(
+        "Use 'python -m montreal_forced_aligner', not 'python -m montreal_forced_aligner.command_line.mfa'",
+        DeprecationWarning,
+    )
     main()

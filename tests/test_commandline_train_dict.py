@@ -12,9 +12,9 @@ def test_train_dict(
     transcription_acoustic_model,
     transcription_language_model,
     temp_dir,
-    basic_align_config,
+    basic_align_config_path,
 ):
-    output_path = os.path.join(generated_dir, "trained_dict.txt")
+    output_path = os.path.join(generated_dir, "trained_dict")
     command = [
         "train_dictionary",
         basic_corpus_dir,
@@ -27,7 +27,7 @@ def test_train_dict(
         "--clean",
         "--debug",
         "--config_path",
-        basic_align_config,
+        basic_align_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_train_dictionary(args)

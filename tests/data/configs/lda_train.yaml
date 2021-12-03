@@ -15,7 +15,7 @@ training:
       subset: 1000
 
   - lda:
-      num_iterations: 2
+      num_iterations: 15
       num_leaves: 500
       max_gaussians: 4000
       subset: 1000

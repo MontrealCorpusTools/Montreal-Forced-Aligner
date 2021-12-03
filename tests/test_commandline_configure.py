@@ -2,8 +2,8 @@ import os
 
 from montreal_forced_aligner.command_line.mfa import create_parser
 from montreal_forced_aligner.config import (
-    TEMP_DIR,
     generate_config_path,
+    get_temporary_directory,
     load_global_config,
     update_global_config,
 )
@@ -15,7 +15,7 @@ def test_configure(
     sick_dict_path,
     generated_dir,
     english_dictionary,
-    basic_align_config,
+    basic_align_config_path,
     english_acoustic_model,
 ):
     path = generate_config_path()
@@ -33,7 +33,7 @@ def test_configure(
         "num_jobs": 3,
         "blas_num_threads": 1,
         "use_mp": True,
-        "temp_directory": TEMP_DIR,
+        "temporary_directory": get_temporary_directory(),
     }
     parser = create_parser()
     command = [
@@ -63,7 +63,7 @@ def test_configure(
         "num_jobs": 10,
         "blas_num_threads": 1,
         "use_mp": False,
-        "temp_directory": temp_dir,
+        "temporary_directory": temp_dir,
     }
     command = ["configure", "--never_clean", "--enable_mp", "--never_verbose"]
     parser = create_parser()
@@ -82,7 +82,7 @@ def test_configure(
         "num_jobs": 10,
         "blas_num_threads": 1,
         "use_mp": True,
-        "temp_directory": temp_dir,
+        "temporary_directory": temp_dir,
     }
     parser = create_parser()
 
@@ -93,16 +93,16 @@ def test_configure(
         "english",
         os.path.join(generated_dir, "basic_output"),
         "-t",
-        TEMP_DIR,
-        "-c",
-        basic_align_config,
+        get_temporary_directory(),
+        "--config_path",
+        basic_align_config_path,
         "-q",
         "--clean",
         "-d",
     ]
     args, unknown = parser.parse_known_args(command)
     assert args.num_jobs == 10
-    assert args.temp_directory == TEMP_DIR
+    assert args.temporary_directory == get_temporary_directory()
     assert args.clean
     assert not args.disable_mp
     if os.path.exists(path):

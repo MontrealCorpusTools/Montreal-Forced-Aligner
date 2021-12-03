@@ -2,124 +2,86 @@
 
 from __future__ import annotations
 
-import logging
+import abc
 import os
-from collections import Counter
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Optional, Union
 
-from ..abc import Dictionary
-from ..config.dictionary_config import DictionaryConfig
-from ..models import DictionaryModel
-from .base_dictionary import PronunciationDictionary
+from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+from montreal_forced_aligner.models import DictionaryModel
 
 if TYPE_CHECKING:
-
-    from ..corpus.classes import Speaker
-
-
-__all__ = [
-    "MultispeakerDictionary",
-]
+    from montreal_forced_aligner.corpus.classes import Speaker
 
 
-class MultispeakerDictionary(Dictionary):
+__all__ = ["MultispeakerDictionaryMixin", "MultispeakerDictionary"]
+
+
+class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMeta):
     """
-    Class containing information about a pronunciation dictionary with different dictionaries per speaker
+    Mixin class containing information about a pronunciation dictionary with different dictionaries per speaker
 
     Parameters
     ----------
-    dictionary_model : DictionaryModel
-        Multispeaker dictionary
-    output_directory : str
-        Path to a directory to store files for Kaldi
-    config: DictionaryConfig, optional
-        Configuration for generating lexicons
-    word_set : Collection[str], optional
-        Word set to limit output files
-    logger: :class:`~logging.Logger`, optional
-        Logger to output information to
+    dictionary_path : str
+        Dictionary path
+    kwargs : kwargs
+        Extra parameters to passed to parent classes (see below)
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+        For dictionary parsing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
+
+
+    Attributes
+    ----------
+    dictionary_model: :class:`~montreal_forced_aligner.models.DictionaryModel`
+        Dictionary model
+    speaker_mapping: dict[str, str]
+        Mapping of speaker names to dictionary names
+    dictionary_mapping: dict[str, :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionary`]
+        Mapping of dictionary names to pronunciation dictionary
     """
 
-    def __init__(
-        self,
-        dictionary_model: Union[DictionaryModel, str],
-        output_directory: str,
-        config: Optional[DictionaryConfig] = None,
-        word_set: Optional[Collection[str]] = None,
-        logger: Optional[logging.Logger] = None,
-    ):
-        if isinstance(dictionary_model, str):
-            dictionary_model = DictionaryModel(dictionary_model)
-        if config is None:
-            config = DictionaryConfig()
-        super().__init__(dictionary_model, config)
-        self.output_directory = os.path.join(output_directory, "dictionary")
-        os.makedirs(self.output_directory, exist_ok=True)
-        self.log_file = os.path.join(self.output_directory, "dictionary.log")
-        if logger is None:
-            self.logger = logging.getLogger("dictionary_setup")
-            self.logger.setLevel(logging.INFO)
-            handler = logging.FileHandler(self.log_file, "w", "utf-8")
-            handler.setFormatter = logging.Formatter("%(name)s %(message)s")
-            self.logger.addHandler(handler)
-        else:
-            self.logger = logger
-
+    def __init__(self, dictionary_path: str = None, **kwargs):
+        super().__init__(**kwargs)
+        self.dictionary_model = DictionaryModel(dictionary_path)
         self.speaker_mapping = {}
-        self.dictionary_mapping = {}
+        self.dictionary_mapping: dict[str, PronunciationDictionary] = {}
 
+    def dictionary_setup(self):
+        """Setup the dictionary for processing"""
         for speaker, dictionary in self.dictionary_model.load_dictionary_paths().items():
             self.speaker_mapping[speaker] = dictionary.name
             if dictionary.name not in self.dictionary_mapping:
                 self.dictionary_mapping[dictionary.name] = PronunciationDictionary(
-                    dictionary,
-                    self.output_directory,
-                    config,
-                    word_set=word_set,
-                    logger=self.logger,
+                    dictionary_path=dictionary.path,
+                    temporary_directory=self.dictionary_output_directory,
+                    root_dictionary=self,
+                    **self.dictionary_options,
                 )
-
-    @property
-    def phones_dir(self):
-        return self.get_dictionary("default").phones_dir
-
-    @property
-    def topo_path(self):
-        return os.path.join(self.get_dictionary("default").output_directory, "topo")
-
-    @property
-    def oovs_found(self) -> Counter[str, int]:
-        oovs = Counter()
+                self.non_silence_phones.update(
+                    self.dictionary_mapping[dictionary.name].non_silence_phones
+                )
         for dictionary in self.dictionary_mapping.values():
-            oovs.update(dictionary.oovs_found)
-        return oovs
-
-    def save_oovs_found(self, directory: str) -> None:
-        """
-        Save all out of vocabulary items to a file in the specified directory
-
-        Parameters
-        ----------
-        directory : str
-            Path to directory to save ``oovs_found.txt``
-        """
-        with open(os.path.join(directory, "oovs_found.txt"), "w", encoding="utf8") as f, open(
-            os.path.join(directory, "oov_counts.txt"), "w", encoding="utf8"
-        ) as cf:
-            for oov in sorted(self.oovs_found.keys(), key=lambda x: (-self.oovs_found[x], x)):
-                f.write(oov + "\n")
-                cf.write(f"{oov}\t{self.oovs_found[oov]}\n")
+            dictionary.non_silence_phones = self.non_silence_phones
 
     @property
-    def silences(self) -> set:
-        """
-        Set of silence phones
-        """
-        return self.config.silence_phones
+    def name(self) -> str:
+        """Name of the dictionary"""
+        return self.dictionary_model.name
+
+    def calculate_oovs_found(self) -> None:
+        """Sum the counts of oovs found in pronunciation dictionaries"""
+        for dictionary in self.dictionary_mapping.values():
+            self.oovs_found.update(dictionary.oovs_found)
 
     @property
     def default_dictionary(self) -> PronunciationDictionary:
-        """Default PronunciationDictionary"""
+        """Default pronunciation dictionary"""
         return self.get_dictionary("default")
 
     def get_dictionary_name(self, speaker: Union[str, Speaker]) -> str:
@@ -134,7 +96,7 @@ class MultispeakerDictionary(Dictionary):
         Returns
         -------
         str
-            PronunciationDictionary name for the speaker
+            Dictionary name for the speaker
         """
         if not isinstance(speaker, str):
             speaker = speaker.name
@@ -154,11 +116,11 @@ class MultispeakerDictionary(Dictionary):
         Returns
         -------
         :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`
-            PronunciationDictionary for the speaker
+            Pronunciation dictionary for the speaker
         """
         return self.dictionary_mapping[self.get_dictionary_name(speaker)]
 
-    def write(self, write_disambiguation: Optional[bool] = False) -> None:
+    def write_lexicon_information(self, write_disambiguation: Optional[bool] = False) -> None:
         """
         Write all child dictionaries to the temporary directory
 
@@ -167,10 +129,22 @@ class MultispeakerDictionary(Dictionary):
         write_disambiguation: bool, optional
             Flag to use disambiguation symbols in the output
         """
+        os.makedirs(self.phones_dir, exist_ok=True)
+        for d in self.dictionary_mapping.values():
+            d.generate_mappings()
+            if d.max_disambiguation_symbol > self.max_disambiguation_symbol:
+                self.max_disambiguation_symbol = d.max_disambiguation_symbol
+        self._write_word_boundaries()
+        self._write_phone_map_file()
+        self._write_phone_sets()
+        self._write_phone_symbol_table()
+        self._write_disambig()
+        self._write_topo()
+        self._write_extra_questions()
         for d in self.dictionary_mapping.values():
             d.write(write_disambiguation)
 
-    def set_word_set(self, word_set: Collection[str]) -> None:
+    def set_lexicon_word_set(self, word_set: Collection[str]) -> None:
         """
         Limit output to a subset of overall words
 
@@ -180,11 +154,37 @@ class MultispeakerDictionary(Dictionary):
             Word set to limit generated files to
         """
         for d in self.dictionary_mapping.values():
-            d.set_word_set(word_set)
+            d.set_lexicon_word_set(word_set)
 
     @property
-    def output_paths(self) -> Dict[str, str]:
+    def output_paths(self) -> dict[str, str]:
         """
-        Mapping of output directory for child dictionaries
+        Mapping of output directory for child directories
         """
-        return {d.name: d.output_directory for d in self.dictionary_mapping.values()}
+        return {d.name: d.dictionary_output_directory for d in self.dictionary_mapping.values()}
+
+
+class MultispeakerDictionary(MultispeakerDictionaryMixin):
+    """
+    Class for processing multi- and single-speaker pronunciation dictionaries
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
+    """
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Name of the dictionary"""
+        return f"{self.name}"
+
+    @property
+    def identifier(self) -> str:
+        """Name of the dictionary"""
+        return f"{self.data_source_identifier}"
+
+    @property
+    def output_directory(self) -> str:
+        """Root temporary directory to store all dictionary information"""
+        return os.path.join(self.temporary_directory, self.identifier)

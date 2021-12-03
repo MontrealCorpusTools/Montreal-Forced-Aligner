@@ -5,10 +5,20 @@ Grapheme to phoneme (G2P)
 
 """
 
-from .generator import PyniniDictionaryGenerator
-from .trainer import PyniniTrainer
+from montreal_forced_aligner.g2p.generator import (
+    OrthographicCorpusGenerator,
+    OrthographicWordListGenerator,
+    PyniniCorpusGenerator,
+    PyniniWordListGenerator,
+)
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
-__all__ = ["generator", "trainer", "PyniniTrainer", "PyniniDictionaryGenerator"]
-
-PyniniTrainer.__module__ = "montreal_forced_aligner.g2p"
-PyniniDictionaryGenerator.__module__ = "montreal_forced_aligner.g2p"
+__all__ = [
+    "generator",
+    "trainer",
+    "PyniniTrainer",
+    "PyniniCorpusGenerator",
+    "PyniniWordListGenerator",
+    "OrthographicCorpusGenerator",
+    "OrthographicWordListGenerator",
+]

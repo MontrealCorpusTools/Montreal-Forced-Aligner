@@ -6,12 +6,36 @@ Corpora
 """
 from __future__ import annotations
 
-from .base import Corpus  # noqa
-from .classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.acoustic_corpus import (
+    AcousticCorpus,
+    AcousticCorpusMixin,
+    AcousticCorpusPronunciationMixin,
+)
+from montreal_forced_aligner.corpus.base import CorpusMixin
+from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.text_corpus import (
+    DictionaryTextCorpusMixin,
+    TextCorpus,
+    TextCorpusMixin,
+)
 
-__all__ = ["Corpus", "Speaker", "Utterance", "File", "base", "helper", "classes"]
-
-Corpus.__module__ = "montreal_forced_aligner.corpus"
-Speaker.__module__ = "montreal_forced_aligner.corpus"
-Utterance.__module__ = "montreal_forced_aligner.corpus"
-File.__module__ = "montreal_forced_aligner.corpus"
+__all__ = [
+    "base",
+    "helper",
+    "classes",
+    "File",
+    "Speaker",
+    "Utterance",
+    "features",
+    "multiprocessing",
+    "CorpusMixin",
+    "ivector_corpus",
+    "acoustic_corpus",
+    "AcousticCorpus",
+    "AcousticCorpusMixin",
+    "AcousticCorpusPronunciationMixin",
+    "text_corpus",
+    "TextCorpus",
+    "TextCorpusMixin",
+    "DictionaryTextCorpusMixin",
+]

@@ -13,7 +13,6 @@ from ..exceptions import (
     PretrainedModelNotFoundError,
 )
 from ..models import MODEL_TYPES
-from ..utils import get_available_models, get_pretrained_path
 
 __all__ = ["validate_model_arg"]
 
@@ -49,10 +48,11 @@ def validate_model_arg(name: str, model_type: str) -> str:
     """
     if model_type not in MODEL_TYPES:
         raise ModelTypeNotSupportedError(model_type, MODEL_TYPES)
-    available_models = get_available_models(model_type)
+    model_class = MODEL_TYPES[model_type]
+    available_models = model_class.get_available_models()
     model_class = MODEL_TYPES[model_type]
     if name in available_models:
-        name = get_pretrained_path(model_type, name)
+        name = model_class.get_pretrained_path(name)
     elif model_class.valid_extension(name):
         if not os.path.exists(name):
             raise FileArgumentNotFoundError(name)

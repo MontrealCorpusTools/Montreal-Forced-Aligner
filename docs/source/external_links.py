@@ -17,7 +17,7 @@
     :license: BSD, see LICENSE for details.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import sphinx
 from docutils import nodes, utils
@@ -41,9 +41,9 @@ def model_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     model_type, model_name = text.split("/")
     full_url = f"https://github.com/MontrealCorpusTools/mfa-models/raw/main/{model_type}/{model_name.lower()}.zip"
@@ -58,9 +58,9 @@ def kaldi_steps_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     full_url = f"https://github.com/kaldi-asr/kaldi/tree/master/egs/wsj/s5/steps/{text}.sh"
     title = f"{text}.sh"
@@ -74,9 +74,9 @@ def kaldi_utils_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     filename = utils.unescape(text)
     full_url = f"https://github.com/kaldi-asr/kaldi/tree/master/egs/wsj/s5/utils/{filename}"
     title = f"{text}"
@@ -90,9 +90,9 @@ def kaldi_steps_sid_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     full_url = f"https://github.com/kaldi-asr/kaldi/tree/cbed4ff688a172a7f765493d24771c1bd57dcd20/egs/sre08/v1/sid/{text}.sh"
     title = f"sid/{text}.sh"
@@ -106,9 +106,9 @@ def kaldi_docs_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     t = text.split("#")
     text = t[0]
@@ -129,9 +129,9 @@ def openfst_src_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     full_url = f"https://www.openfst.org/doxygen/fst/html/{text}-main_8cc_source.html"
     title = f"OpenFst {text} source"
@@ -145,9 +145,9 @@ def kaldi_src_role(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
     text = utils.unescape(text)
     mapping = {
         "bin": set(
@@ -378,9 +378,9 @@ def xref(
     text: str,
     lineno: int,
     inliner: Inliner,
-    options: Dict = None,
-    content: List[str] = None,
-) -> Tuple[List[Node], List[system_message]]:
+    options: dict = None,
+    content: list[str] = None,
+) -> tuple[list[Node], list[system_message]]:
 
     title = target = text
     # look if explicit title and target are given with `foo <bar>` syntax
@@ -409,7 +409,7 @@ def get_refs(app):
     xref.links = app.config.xref_links
 
 
-def setup(app: Sphinx) -> Dict[str, Any]:
+def setup(app: Sphinx) -> dict[str, Any]:
     app.add_config_value("xref_links", {}, "env")
     app.add_role("mfa_model", model_role)
     app.add_role("kaldi_steps", kaldi_steps_role)

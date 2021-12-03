@@ -1,9 +1,9 @@
 
-.. _configuration_segments:
+.. _configuration_segmentation:
 
-*****************************
-Create segments configuration
-*****************************
+********************
+Segmentation options
+********************
 
 
 .. csv-table::
@@ -16,8 +16,8 @@ Create segments configuration
 
 .. _default_segment_config:
 
-Default training config file
-----------------------------
+Default segmentation config file
+--------------------------------
 
 .. code-block:: yaml
 

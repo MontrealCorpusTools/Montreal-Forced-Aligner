@@ -6,10 +6,10 @@ import pytest
 from montreal_forced_aligner.command_line.model import (
     ModelTypeNotSupportedError,
     PretrainedModelNotFoundError,
-    get_pretrained_path,
     list_downloadable_models,
     run_model,
 )
+from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel
 
 
 class DummyArgs(Namespace):
@@ -44,7 +44,7 @@ def test_download():
 
     run_model(args)
 
-    assert os.path.exists(get_pretrained_path("acoustic", args.name))
+    assert os.path.exists(AcousticModel.get_pretrained_path(args.name))
 
     args = DummyArgs()
     args.action = "download"
@@ -53,7 +53,7 @@ def test_download():
 
     run_model(args)
 
-    assert os.path.exists(get_pretrained_path("g2p", args.name))
+    assert os.path.exists(G2PModel.get_pretrained_path(args.name))
 
     args = DummyArgs()
     args.action = "download"
@@ -62,7 +62,7 @@ def test_download():
 
     run_model(args)
 
-    assert os.path.exists(get_pretrained_path("dictionary", args.name))
+    assert os.path.exists(DictionaryModel.get_pretrained_path(args.name))
 
     args = DummyArgs()
     args.action = "download"

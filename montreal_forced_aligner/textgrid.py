@@ -6,19 +6,17 @@ Textgrid utilities
 from __future__ import annotations
 
 import os
-import sys
-import traceback
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 from praatio import textgrid as tgio
 
-from .abc import Aligner
 from .data import CtmInterval
 
 if TYPE_CHECKING:
-    from .corpus.classes import DictionaryData, File, Speaker
-    from .dictionary import ReversedMappingType
-    from .multiprocessing.alignment import CtmType
+    from .abc import ReversedMappingType
+    from .alignment.base import CorpusAligner
+    from .corpus.classes import File, Speaker
+    from .dictionary import DictionaryData
 
 __all__ = [
     "process_ctm_line",
@@ -29,7 +27,6 @@ __all__ = [
     "export_textgrid",
     "ctm_to_textgrid",
     "output_textgrid_writing_errors",
-    "ctms_to_textgrids_non_mp",
 ]
 
 
@@ -49,31 +46,37 @@ def process_ctm_line(line: str) -> CtmInterval:
     """
     line = line.split(" ")
     utt = line[0]
-    begin = round(float(line[2]), 4)
-    duration = float(line[3])
-    end = round(begin + duration, 4)
-    label = line[4]
+    if len(line) == 5:
+        begin = round(float(line[2]), 4)
+        duration = float(line[3])
+        end = round(begin + duration, 4)
+        label = line[4]
+    else:
+        begin = round(float(line[1]), 4)
+        duration = float(line[2])
+        end = round(begin + duration, 4)
+        label = line[3]
     return CtmInterval(begin, end, label, utt)
 
 
 def parse_from_word(
-    ctm_labels: List[CtmInterval], text: List[str], dictionary_data: DictionaryData
-) -> List[CtmInterval]:
+    ctm_labels: list[CtmInterval], text: list[str], dictionary_data: DictionaryData
+) -> list[CtmInterval]:
     """
     Parse CTM intervals into the corresponding text for an utterance
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         CTM intervals
-    text: List[str]
+    text: list[str]
         The original text that was to be aligned
-    dictionary_data: DictionaryData
+    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`
         Dictionary data necessary for splitting subwords
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Correct intervals with subwords merged back into their original text
     """
     cur_ind = 0
@@ -99,22 +102,22 @@ def parse_from_word(
 
 
 def parse_from_word_no_cleanup(
-    ctm_labels: List[CtmInterval], reversed_word_mapping: ReversedMappingType
-) -> List[CtmInterval]:
+    ctm_labels: list[CtmInterval], reversed_word_mapping: ReversedMappingType
+) -> list[CtmInterval]:
     """
     Assume that subwords in the CTM files are desired, so just does a reverse look up to get the sub word
     text
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_word_mapping: Dict[int, str]
+    reversed_word_mapping: dict[int, str]
         Look up for Kaldi word IDs to convert them back to text
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with text rather than integer IDs
     """
     for ctm_interval in ctm_labels:
@@ -124,25 +127,25 @@ def parse_from_word_no_cleanup(
 
 
 def parse_from_phone(
-    ctm_labels: List[CtmInterval],
+    ctm_labels: list[CtmInterval],
     reversed_phone_mapping: ReversedMappingType,
-    positions: List[str],
-) -> List[CtmInterval]:
+    positions: list[str],
+) -> list[CtmInterval]:
     """
     Parse CtmIntervals to original phone transcriptions
 
     Parameters
     ----------
-    ctm_labels: List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_phone_mapping: Dict[int, str]
+    reversed_phone_mapping: dict[int, str]
         Mapping to convert phone IDs to phone labels
-    positions: List[str]
+    positions: list[str]
         List of word positions to account for
 
     Returns
     -------
-    List[:class:`~montreal_forced_aligner.data.CtmInterval`]
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         Parsed intervals with phone labels rather than IDs
     """
     for ctm_interval in ctm_labels:
@@ -154,120 +157,7 @@ def parse_from_phone(
     return ctm_labels
 
 
-def ctms_to_textgrids_non_mp(aligner: Aligner) -> None:
-    """
-    Parse CTM files to TextGrids without using multiprocessing
-
-    Parameters
-    ----------
-    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner`
-        Aligner that generated the CTM files
-    """
-
-    def process_current_word_labels():
-        """Process the current stack of word labels"""
-        speaker = cur_utt.speaker
-
-        text = cur_utt.text.split()
-        if aligner.align_config.cleanup_textgrids:
-            actual_labels = parse_from_word(current_labels, text, speaker.dictionary_data)
-        else:
-            actual_labels = parse_from_word_no_cleanup(
-                current_labels, speaker.dictionary_data.reversed_words_mapping
-            )
-        cur_utt.word_labels = actual_labels
-
-    def process_current_phone_labels():
-        """Process the current stack of phone labels"""
-        speaker = cur_utt.speaker
-
-        cur_utt.phone_labels = parse_from_phone(
-            current_labels, speaker.dictionary.reversed_phone_mapping, speaker.dictionary.positions
-        )
-
-    export_errors = {}
-    for j in aligner.corpus.jobs:
-
-        word_arguments = j.cleanup_word_ctm_arguments(aligner)
-        phone_arguments = j.phone_ctm_arguments(aligner)
-        aligner.logger.debug(f"Parsing ctms for job {j.name}...")
-        cur_utt = None
-        current_labels = []
-        for dict_name in word_arguments.dictionaries:
-            with open(word_arguments.ctm_paths[dict_name], "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line == "":
-                        continue
-                    ctm_interval = process_ctm_line(line)
-                    utt = aligner.corpus.utterances[ctm_interval.utterance]
-                    if cur_utt is None:
-                        cur_utt = utt
-                    if utt.is_segment:
-                        utt_begin = utt.begin
-                    else:
-                        utt_begin = 0
-                    if utt != cur_utt:
-                        process_current_word_labels()
-                        cur_utt = utt
-                        current_labels = []
-
-                    ctm_interval.shift_times(utt_begin)
-                    current_labels.append(ctm_interval)
-            if current_labels:
-                process_current_word_labels()
-        cur_utt = None
-        current_labels = []
-        for dict_name in phone_arguments.dictionaries:
-            with open(phone_arguments.ctm_paths[dict_name], "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line == "":
-                        continue
-                    ctm_interval = process_ctm_line(line)
-                    utt = aligner.corpus.utterances[ctm_interval.utterance]
-                    if cur_utt is None:
-                        cur_utt = utt
-                    if utt.is_segment:
-                        utt_begin = utt.begin
-                    else:
-                        utt_begin = 0
-                    if utt != cur_utt and cur_utt is not None:
-                        process_current_phone_labels()
-                        cur_utt = utt
-                        current_labels = []
-
-                    ctm_interval.shift_times(utt_begin)
-                    current_labels.append(ctm_interval)
-            if current_labels:
-                process_current_phone_labels()
-
-        aligner.logger.debug(f"Generating TextGrids for job {j.name}...")
-        processed_files = set()
-        for file in j.job_files().values():
-            first_file_write = True
-            if file.name in processed_files:
-                first_file_write = False
-            try:
-                ctm_to_textgrid(file, aligner, first_file_write)
-                processed_files.add(file.name)
-            except Exception:
-                if aligner.align_config.debug:
-                    raise
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                export_errors[file.name] = "\n".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                )
-    if export_errors:
-        aligner.logger.warning(
-            f"There were {len(export_errors)} errors encountered in generating TextGrids. "
-            f"Check the output_errors.txt file in {os.path.join(aligner.textgrid_output)} "
-            f"for more details"
-        )
-    output_textgrid_writing_errors(aligner.textgrid_output, export_errors)
-
-
-def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[str, str]) -> None:
+def output_textgrid_writing_errors(output_directory: str, export_errors: dict[str, str]) -> None:
     """
     Output any errors that were encountered in writing TextGrids
 
@@ -275,7 +165,7 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[st
     ----------
     output_directory: str
         Directory to save TextGrids files
-    export_errors: Dict[str, str]
+    export_errors: dict[str, str]
         Dictionary of errors encountered
     """
     error_log = os.path.join(output_directory, "output_errors.txt")
@@ -294,7 +184,7 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[st
 
 def generate_tiers(
     file: File, cleanup_textgrids: Optional[bool] = True
-) -> Dict[Speaker, Dict[str, CtmType]]:
+) -> dict[Speaker, dict[str, list[CtmInterval]]]:
     """
     Generate TextGrid tiers for a given File
 
@@ -307,7 +197,7 @@ def generate_tiers(
 
     Returns
     -------
-    Dict[Speaker, Dict[str, CtmType]]
+    dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Tier information per speaker, with :class:`~montreal_forced_aligner.data.CtmInterval` split by "phones" and "words"
     """
     output = {}
@@ -320,7 +210,7 @@ def generate_tiers(
 
         words = []
         phones = []
-        if dictionary_data.dictionary_config.multilingual_ipa and cleanup_textgrids:
+        if dictionary_data.multilingual_ipa and cleanup_textgrids:
             phone_ind = 0
             for interval in u.word_labels:
                 end = interval.end
@@ -329,16 +219,14 @@ def generate_tiers(
                     word,
                 )
                 subwords = [
-                    x
-                    if x in dictionary_data.words_mapping
-                    else dictionary_data.dictionary_config.oov_word
+                    x if x in dictionary_data.words_mapping else dictionary_data.oov_word
                     for x in subwords
                 ]
                 subprons = [dictionary_data.words[x] for x in subwords]
                 cur_phones = []
                 while u.phone_labels[phone_ind].end <= end:
                     p = u.phone_labels[phone_ind]
-                    if p.label in dictionary_data.dictionary_config.silence_phones:
+                    if p.label in dictionary_data.silence_phones:
                         phone_ind += 1
                         continue
                     cur_phones.append(p)
@@ -354,10 +242,7 @@ def generate_tiers(
             for interval in u.word_labels:
                 words.append(interval)
             for interval in u.phone_labels:
-                if (
-                    interval.label in dictionary_data.dictionary_config.silence_phones
-                    and cleanup_textgrids
-                ):
+                if interval.label in dictionary_data.silence_phones and cleanup_textgrids:
                     continue
                 phones.append(interval)
         if speaker not in output:
@@ -371,7 +256,7 @@ def generate_tiers(
 def export_textgrid(
     file: File,
     output_path: str,
-    speaker_data: Dict[Speaker, Dict[str, CtmType]],
+    speaker_data: dict[Speaker, dict[str, list[CtmInterval]]],
     frame_shift: int,
     first_file_write: Optional[bool] = True,
 ) -> None:
@@ -384,7 +269,7 @@ def export_textgrid(
         File object to export
     output_path: str
         Output path of the file
-    speaker_data: Dict[Speaker, Dict[str, List[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+    speaker_data: dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
     frame_shift: int
         Frame shift of features, in ms
@@ -454,7 +339,7 @@ def export_textgrid(
     tg.save(output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error")
 
 
-def ctm_to_textgrid(file: File, aligner: Aligner, first_file_write=True) -> None:
+def ctm_to_textgrid(file: File, aligner: CorpusAligner, first_file_write=True) -> None:
     """
     Export a File to TextGrid
 
@@ -462,18 +347,16 @@ def ctm_to_textgrid(file: File, aligner: Aligner, first_file_write=True) -> None
     ----------
     file: File
         File to export
-    aligner: :class:`~montreal_forced_aligner.aligner.base.BaseAligner` or :class:`~montreal_forced_aligner.trainers.BaseTrainer`
+    aligner: CorpusAligner
         Aligner used to generate the alignments
     first_file_write: bool, optional
         Flag for whether this is the first time touching this file
     """
-    data = generate_tiers(file, cleanup_textgrids=aligner.align_config.cleanup_textgrids)
+    data = generate_tiers(file, cleanup_textgrids=aligner.cleanup_textgrids)
 
     backup_output_directory = None
-    if not aligner.align_config.overwrite:
+    if not aligner.overwrite:
         backup_output_directory = aligner.backup_output_directory
         os.makedirs(backup_output_directory, exist_ok=True)
     output_path = file.construct_output_path(aligner.textgrid_output, backup_output_directory)
-    export_textgrid(
-        file, output_path, data, aligner.align_config.feature_config.frame_shift, first_file_write
-    )
+    export_textgrid(file, output_path, data, aligner.frame_shift, first_file_write)

@@ -2,7 +2,7 @@ name: montreal-forced-aligner
 channels:
   - conda-forge
 dependencies:
-  - python>=3.8
+  - python>=3.9
   - numpy
   - librosa
   - tqdm
@@ -11,6 +11,4 @@ dependencies:
   - pyyaml
   - kaldi
   - sox
-  - pip
-  - pip:
-    - praatio>=5.0
+  - praatio

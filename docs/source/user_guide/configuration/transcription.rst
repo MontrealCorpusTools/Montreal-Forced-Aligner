@@ -1,9 +1,9 @@
 
 .. _transcribe_config:
 
-*************************
-Transcriber configuration
-*************************
+*********************
+Transcription options
+*********************
 
 .. csv-table::
    :header: "Parameter", "Default value", "Notes"
@@ -13,9 +13,9 @@ Transcriber configuration
    "lattice_beam", 6, "Beam width for decoding lattices"
    "acoustic_scale", 0.083333, "Multiplier to scale acoustic costs"
    "silence_weight", 0.01, "Weight on silence in fMLLR estimation"
-   "fmllr", true, "Flag for whether to perform speaker adaptation"
-   "first_beam", 10.0, "Beam for decoding in initial speaker-independent pass, only used if ``fmllr`` is true"
-   "first_max_active", 2000, "Max active for decoding in initial speaker-independent pass, only used if ``fmllr`` is true"
+   "uses_speaker_adaptation", true, "Flag for whether to perform speaker adaptation"
+   "first_beam", 10.0, "Beam for decoding in initial speaker-independent pass, only used if ``uses_speaker_adaptation`` is true"
+   "first_max_active", 2000, "Max active for decoding in initial speaker-independent pass, only used if ``uses_speaker_adaptation`` is true"
    "fmllr_update_type", "full", "Type of fMLLR estimation"
 
 Default transcriber config

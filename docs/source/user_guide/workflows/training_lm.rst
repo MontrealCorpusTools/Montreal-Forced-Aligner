@@ -1,10 +1,9 @@
 .. _training_lm:
 
-************************
-Training language models
-************************
+Train a new language model  ``(mfa train_lm)``
+==============================================
 
-MFA has a utility function for training ARPA-format ngram language models, as well as merging with a pre-existing model.
+MFA has a utility function for training ARPA-format ngram :term:`language models`, as well as merging with a pre-existing model.
 
 
 .. warning::
@@ -14,6 +13,16 @@ MFA has a utility function for training ARPA-format ngram language models, as we
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
+.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
    :prog: mfa
    :start_command: train_lm
+
+Configuration reference
+-----------------------
+
+- :ref:`configuration_language_modeling`
+
+API reference
+-------------
+
+- :ref:`language_modeling_api`

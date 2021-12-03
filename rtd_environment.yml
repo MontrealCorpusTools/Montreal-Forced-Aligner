@@ -2,16 +2,16 @@ name: mfa
 channels:
   - conda-forge
 dependencies:
-  - python>=3.8   # or 2.7 if you are feeling nostalgic
+  - python>=3.9
   - numpy
   - librosa
   - tqdm
   - requests
   - colorama
   - pyyaml
+  - praatio
   - pip
   - pip:
-      - praatio >= 5.0
       - sphinxemoji
       - sphinxcontrib-autoprogram
       - git+https://github.com/pydata/pydata-sphinx-theme.git

@@ -8,7 +8,7 @@ def test_create_segments(
     basic_corpus_dir,
     generated_dir,
     temp_dir,
-    basic_segment_config,
+    basic_segment_config_path,
 ):
     output_path = os.path.join(generated_dir, "segment_output")
     command = [
@@ -22,7 +22,7 @@ def test_create_segments(
         "--debug",
         "-v",
         "--config_path",
-        basic_segment_config,
+        basic_segment_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_create_segments(args)

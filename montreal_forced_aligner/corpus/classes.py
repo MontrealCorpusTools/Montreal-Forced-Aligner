@@ -4,24 +4,21 @@ from __future__ import annotations
 import os
 import sys
 import traceback
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
+from collections import Counter
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from praatio import textgrid
 from praatio.utilities.constants import Interval
 
-from ..exceptions import CorpusError, TextGridParseError, TextParseError
-from .helper import get_wav_info, load_text, parse_transcription
+from montreal_forced_aligner.corpus.helper import get_wav_info, load_text, parse_transcription
+from montreal_forced_aligner.exceptions import CorpusError, TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
-    from ..config.align_config import AlignConfig
-    from ..config.dictionary_config import DictionaryConfig
-    from ..dictionary import Dictionary, DictionaryData
-    from ..textgrid import CtmType
-    from ..trainers import BaseTrainer, LdaTrainer, SatTrainer
-
-    ConfigType = Union[BaseTrainer, AlignConfig]
-    FmllrConfigType = Union[SatTrainer, AlignConfig]
-    LdaConfigType = Union[LdaTrainer, AlignConfig]
+    from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.dictionary import DictionaryData
+    from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
+    from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = ["parse_file", "File", "Speaker", "Utterance"]
@@ -29,12 +26,11 @@ __all__ = ["parse_file", "File", "Speaker", "Utterance"]
 
 def parse_file(
     file_name: str,
-    wav_path: str,
-    text_path: str,
+    wav_path: Optional[str],
+    text_path: Optional[str],
     relative_path: str,
     speaker_characters: Union[int, str],
-    sample_rate: int = 16000,
-    dictionary_config: Optional[DictionaryConfig] = None,
+    sanitize_function: Optional[Callable] = None,
     stop_check: Optional[Callable] = None,
 ) -> File:
     """
@@ -52,24 +48,20 @@ def parse_file(
         Relative path from the corpus directory root
     speaker_characters: int, optional
         Number of characters in the file name to specify the speaker
-    sample_rate: int
-        Default sample rate for the corpus
-    punctuation: str
-        Orthographic characters to be treated as punctuation
-    clitic_markers: str
-        Orthographic characters to be treated as clitic markers
+    sanitize_function: Callable, optional
+        Function to sanitize words and strip punctuation
     stop_check: Callable
         Check whether to stop parsing early
 
     Returns
     -------
-    :class:`~montreal_forced_aligner.corpus.File`
+    :class:`~montreal_forced_aligner.corpus.classes.File`
         Parsed file
     """
     file = File(wav_path, text_path, relative_path=relative_path)
     if file.has_sound_file:
         root = os.path.dirname(wav_path)
-        file.wav_info = get_wav_info(wav_path, sample_rate=sample_rate)
+        file.wav_info = get_wav_info(wav_path)
     else:
         root = os.path.dirname(text_path)
     if not speaker_characters:
@@ -85,7 +77,7 @@ def parse_file(
         root_speaker = Speaker(speaker_name)
     file.load_text(
         root_speaker=root_speaker,
-        dictionary_config=dictionary_config,
+        sanitize_function=sanitize_function,
         stop_check=stop_check,
     )
     return file
@@ -102,13 +94,13 @@ class Speaker:
 
     Attributes
     ----------
-    utterances: Dict[str, :class:`~montreal_forced_aligner.corpus.Utterance`]
+    utterances: dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
         Utterances that the speaker is associated with
     cmvn: str, optional
         String pointing to any CMVN that has been calculated for this speaker
     dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`, optional
         Pronunciation dictionary that the speaker is associated with
-    dictionary_data: DictionaryData, optional
+    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`, optional
         Dictionary data from the speaker's dictionary
     """
 
@@ -116,22 +108,21 @@ class Speaker:
         self.name = name
         self.utterances = {}
         self.cmvn = None
-        self.dictionary: Optional[Dictionary] = None
+        self.dictionary: Optional[PronunciationDictionaryMixin] = None
         self.dictionary_data: Optional[DictionaryData] = None
+        self.dictionary_name: Optional[str] = None
+        self.word_counts = Counter()
 
     def __getstate__(self):
         """Get dictionary for pickling"""
-        data = {"name": self.name, "cmvn": self.cmvn}
-        if self.dictionary_data is not None:
-            data["dictionary_data"] = self.dictionary_data
+        data = {"name": self.name, "cmvn": self.cmvn, "dictionary_name": self.dictionary_name}
         return data
 
     def __setstate__(self, state):
         """Recreate object following pickling"""
         self.name = state["name"]
         self.cmvn = state["cmvn"]
-        if "dictionary_data" in state:
-            self.dictionary_data = state["dictionary_data"]
+        self.dictionary_name = state["dictionary_name"]
 
     def __str__(self):
         """Return Speaker's name"""
@@ -187,11 +178,13 @@ class Speaker:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
-            Utterance
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+            Utterance to be added
         """
         utterance.speaker = self
         self.utterances[utterance.name] = utterance
+        if utterance.text:
+            self.word_counts.update(utterance.text.split())
 
     def delete_utterance(self, utterance: Utterance):
         """
@@ -199,7 +192,7 @@ class Speaker:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to be deleted
         """
         identifier = utterance.name
@@ -212,29 +205,32 @@ class Speaker:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Other speaker to take utterances from
         """
         for u in speaker.utterances.values():
             self.add_utterance(u)
         speaker.utterances = []
 
-    def word_set(self) -> Set[str]:
+    def word_set(self) -> set[str]:
         """
         Generate the word set of all the words in a speaker's utterances
 
         Returns
         -------
-        Set[str]
+        set[str]
             Speaker's word set
         """
         words = set()
-        for u in self.utterances.values():
-            if u.text:
-                words.update(u.text.split())
+        for word in self.word_counts:
+            if self.dictionary is not None:
+                word = self.dictionary._lookup(word)
+                words.update(word)
+            else:
+                words.add(word)
         return words
 
-    def set_dictionary(self, dictionary: Dictionary) -> None:
+    def set_dictionary(self, dictionary: PronunciationDictionaryMixin) -> None:
         """
         Set the dictionary for the speaker
 
@@ -244,10 +240,11 @@ class Speaker:
             Pronunciation dictionary to associate with the speaker
         """
         self.dictionary = dictionary
+        self.dictionary_name = dictionary.name
         self.dictionary_data = dictionary.data(self.word_set())
 
     @property
-    def files(self) -> Set["File"]:
+    def files(self) -> set["File"]:
         """Files that the speaker is associated with"""
         files = set()
         for u in self.utterances.values():
@@ -301,9 +298,19 @@ class File:
             raise CorpusError("File objects must have either a wav_path or text_path")
         self.relative_path = relative_path
         self.wav_info = None
-        self.speaker_ordering: List[Speaker] = []
-        self.utterances: Dict[str, Utterance] = {}
+        self.speaker_ordering: list[Speaker] = []
+        self.utterances: dict[str, Utterance] = {}
         self.aligned = False
+
+    def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
+        for u in self.utterances.values():
+            if u.speaker != speaker:
+                continue
+            if u.word_labels is None:
+                return False
+            if u.phone_labels is None:
+                return False
+        return True
 
     def __repr__(self):
         """Representation of File objects"""
@@ -484,7 +491,7 @@ class File:
     def load_text(
         self,
         root_speaker: Optional[Speaker] = None,
-        dictionary_config: Optional[DictionaryConfig] = None,
+        sanitize_function: Optional[SanitizeFunction] = None,
         stop_check: Optional[Callable] = None,
     ) -> None:
         """
@@ -492,12 +499,10 @@ class File:
 
         Parameters
         ----------
-        root_speaker: :class:`~montreal_forced_aligner.corpus.Speaker`, optional
+        root_speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`, optional
             Speaker derived from the root directory, ignored for TextGrids
-        punctuation: str
-            Orthographic characters to treat as punctuation
-        clitic_markers: str
-            Orthographic characters to treat as clitic markers
+        sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`, optional
+            Function to sanitize words and strip punctuation
         stop_check: Callable
             Function to check whether this should break early
         """
@@ -506,7 +511,7 @@ class File:
                 text = load_text(self.text_path)
             except UnicodeDecodeError:
                 raise TextParseError(self.text_path)
-            words = parse_transcription(text, dictionary_config)
+            words = parse_transcription(text, sanitize_function)
             utterance = Utterance(speaker=root_speaker, file=self, text=" ".join(words))
             self.add_utterance(utterance)
         elif self.text_type == "textgrid":
@@ -540,7 +545,7 @@ class File:
                     if stop_check is not None and stop_check():
                         return
                     text = text.lower().strip()
-                    words = parse_transcription(text, dictionary_config)
+                    words = parse_transcription(text, sanitize_function)
                     if not words:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
@@ -559,7 +564,7 @@ class File:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Speaker to add
         """
         if speaker not in self.speaker_ordering:
@@ -571,7 +576,7 @@ class File:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
         utterance.file = self
@@ -584,7 +589,7 @@ class File:
 
         Parameters
         ----------
-        utterance: :class:`~montreal_forced_aligner.corpus.Utterance`
+        utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to remove
         """
         identifier = utterance.name
@@ -650,9 +655,9 @@ class Utterance:
 
     Parameters
     ----------
-    speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
+    speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
         Speaker of the utterance
-    file: File
+    file: :class:`~montreal_forced_aligner.corpus.classes.File`
         File that the utterance belongs to
     begin: float, optional
         Start time of the utterance,
@@ -680,11 +685,11 @@ class Utterance:
         Feature string reference to the computed features archive
     feature_length: int, optional
         Number of feature frames
-    phone_labels: CtmType, optional
+    phone_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
         Saved aligned phone labels
-    word_labels: CtmType, optional
+    word_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
         Saved aligned word labels
-    oovs: List[str]
+    oovs: list[str]
         Words not found in the dictionary for this utterance
     """
 
@@ -709,9 +714,9 @@ class Utterance:
         self.ignored = False
         self.features = None
         self.feature_length = None
-        self.phone_labels: Optional[CtmType] = None
-        self.word_labels: Optional[CtmType] = None
-        self.oovs = []
+        self.phone_labels: Optional[list[CtmInterval]] = None
+        self.word_labels: Optional[list[CtmInterval]] = None
+        self.oovs = set()
         self.speaker.add_utterance(self)
         self.file.add_utterance(self)
 
@@ -767,7 +772,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -792,7 +797,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -816,7 +821,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -840,7 +845,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -865,7 +870,7 @@ class Utterance:
 
         Parameters
         ----------
-        other: :class:`~montreal_forced_aligner.corpus.Utterance` or str
+        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
             Utterance to compare against
 
         Returns
@@ -895,7 +900,7 @@ class Utterance:
         return self.file.duration
 
     @property
-    def meta(self) -> Dict[str, Any]:
+    def meta(self) -> MetaDict:
         """Metadata dictionary for the utterance"""
         return {
             "speaker": self.speaker.name,
@@ -915,7 +920,7 @@ class Utterance:
 
         Parameters
         ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.Speaker`
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             New speaker
         """
         self.speaker = speaker
@@ -927,45 +932,45 @@ class Utterance:
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
 
-    def text_for_scp(self) -> List[str]:
+    def text_for_scp(self) -> list[str]:
         """
         Generate the text for exporting to Kaldi's text scp
 
         Returns
         -------
-        List[str]
+        list[str]
             List of words
         """
         return self.text.split()
 
-    def text_int_for_scp(self) -> Optional[List[int]]:
+    def text_int_for_scp(self) -> Optional[list[int]]:
         """
         Generate the text for exporting to Kaldi's text int scp
 
         Returns
         -------
-        List[int]
+        list[int]
             List of word IDs, or None if the utterance's speaker doesn't have an associated dictionary
         """
-        if self.speaker.dictionary is None:
+        if self.speaker.dictionary_data is None:
             return
         text = self.text_for_scp()
         new_text = []
         for i, t in enumerate(text):
-            lookup = self.speaker.dictionary.to_int(t)
+            lookup = self.speaker.dictionary_data.to_int(t)
             for w in lookup:
-                if w == self.speaker.dictionary.oov_int:
-                    self.oovs.append(text[i])
+                if w == self.speaker.dictionary_data.oov_int:
+                    self.oovs.add(text[i])
                 new_text.append(w)
         return new_text
 
-    def segment_for_scp(self) -> List[Any]:
+    def segment_for_scp(self) -> list[Any]:
         """
         Generate data for Kaldi's segments scp file
 
         Returns
         -------
-        List[Any]
+        list[Any]
             Segment data
         """
         return [self.file.name, self.begin, self.end, self.channel]
@@ -973,7 +978,9 @@ class Utterance:
     @property
     def name(self):
         """The name of the utterance"""
-        base = f"{self.file_name}-{self.speaker_name}"
+        base = f"{self.file_name}"
+        if not base.startswith(f"{self.speaker_name}-"):
+            base = f"{self.speaker_name}-" + base
         if self.is_segment:
-            base = f"{self.file_name}-{self.speaker_name}-{self.begin}-{self.end}"
+            base = f"{self.file_name}-{self.begin}-{self.end}"
         return base.replace(" ", "-space-").replace(".", "-").replace("_", "-")

@@ -76,7 +76,7 @@ With a pronunciation of:
    S E T E A N S E
 
 The key point to note is that the pronunciation of the clitic ``c'`` is ``S``
-and the pronunciation of the letter ``c`` in French is ``S A``.
+and the pronunciation of the letter ``c`` in French is ``S E``.
 
 The algorithm will try to associate the clitic marker with either the element
 before (as for French clitics) or the element after (as for English clitics

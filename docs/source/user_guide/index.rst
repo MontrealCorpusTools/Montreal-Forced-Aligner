@@ -127,3 +127,4 @@ We acknowledge funding from Social Sciences and Humanities Research Council (SSH
    workflows/index
    configuration/index
    models/index
+   glossary

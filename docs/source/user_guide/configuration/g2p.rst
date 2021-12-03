@@ -22,8 +22,8 @@ Global options
 
 .. _train_g2p_config:
 
-Train G2P Configuration
-=======================
+G2P training options
+====================
 
 In addition to the parameters above, the following parameters are used as part of training a G2P model.
 
@@ -41,11 +41,13 @@ In addition to the parameters above, the following parameters are used as part o
    "pruning_method", "relative_entropy", "Pruning method for pruning the ngram model"
    "model_size", 1000000, "Target number of ngrams for pruning"
 
+Example G2P configuration files
+===============================
 
 .. _default_train_g2p_config:
 
 Default G2P training config file
-================================
+--------------------------------
 
 .. code-block:: yaml
 
@@ -66,11 +68,10 @@ Default G2P training config file
    model_size: 1000000
 
 
-
 .. _default_g2p_config:
 
-G2P generation configuration file
-=================================
+Default dictionary generation config file
+-----------------------------------------
 
 .. code-block:: yaml
 

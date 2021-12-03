@@ -61,7 +61,10 @@ extlinks = {
 
 xref_links = {
     "mfa_mailing_list": ("MFA mailing list", "https://groups.google.com/g/mfa-users"),
-    "mfa_github": ("MFA GitHub Repo", "https://groups.google.com/g/mfa-users"),
+    "mfa_github": (
+        "MFA GitHub Repo",
+        "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner",
+    ),
     "mfa_github_issues": (
         "MFA GitHub Issues",
         "https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/issues",
@@ -79,6 +82,9 @@ xref_links = {
     "kaldi_github": ("Kaldi GitHub", "https://github.com/kaldi-asr/kaldi"),
     "htk": ("HTK", "http://htk.eng.cam.ac.uk/"),
     "phonetisaurus": ("Phonetisaurus", "https://github.com/AdolfVonKleist/Phonetisaurus"),
+    "opengrm_ngram": ("OpenGrm-NGram", "https://www.openfst.org/twiki/bin/view/GRM/NGramLibrary"),
+    "openfst": ("OpenFst", "https://www.openfst.org/twiki/bin/view/FST"),
+    "baumwelch": ("Baum-Welch", "https://www.opengrm.org/twiki/bin/view/GRM/BaumWelch"),
     "pynini": ("Pynini", "https://www.openfst.org/twiki/bin/view/GRM/Pynini"),
     "prosodylab_aligner": ("Prosodylab-aligner", "http://prosodylab.org/tools/aligner/"),
     "p2fa": (
@@ -126,19 +132,22 @@ autodoc_type_aliases = {
     "Trainer": "montreal_forced_aligner.abc.Trainer",
     "Aligner": "montreal_forced_aligner.abc.Aligner",
     "DictionaryData": "montreal_forced_aligner.dictionary.DictionaryData",
-    "Utterance": "montreal_forced_aligner.corpus.Utterance",
-    "File": "montreal_forced_aligner.corpus.File",
+    "Utterance": "montreal_forced_aligner.corpus.classes.Utterance",
+    "File": "montreal_forced_aligner.corpus.classes.File",
     "FeatureConfig": "montreal_forced_aligner.config.FeatureConfig",
     "multiprocessing.context.Process": "multiprocessing.Process",
     "mp.Process": "multiprocessing.Process",
-    "Speaker": "montreal_forced_aligner.corpus.Speaker",
+    "Speaker": "montreal_forced_aligner.corpus.classes.Speaker",
+    "Namespace": "argparse.Namespace",
+    "MetaDict": "dict[str, Any]",
 }
 
 napoleon_preprocess_types = False
 napoleon_attr_annotations = False
 napoleon_use_param = True
+napoleon_use_ivar = True
 napoleon_type_aliases = {
-    "Labels": "List[str]",
+    "Labels": "list[str]",
 }
 typehints_fully_qualified = False
 # numpydoc_xref_param_type = True
@@ -222,13 +231,13 @@ add_function_parentheses = False
 nitpick_ignore = [
     ("py:class", "optional"),
     ("py:class", "callable"),
-    ("py:class", "CtmType"),
     ("py:class", "ReversedMappingType"),
     ("py:class", "WordsType"),
     ("py:class", "MappingType"),
     ("py:class", "TextIO"),
     ("py:class", "SegmentationType"),
     ("py:class", "CtmErrorDict"),
+    ("py:class", "kwargs"),
     ("py:class", "Labels"),
     ("py:class", "ScpType"),
     ("py:class", "multiprocessing.Value"),
