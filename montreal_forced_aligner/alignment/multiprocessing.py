@@ -15,6 +15,7 @@ from queue import Empty
 from typing import TYPE_CHECKING, NamedTuple, Union
 
 from montreal_forced_aligner.textgrid import (
+    CtmInterval,
     export_textgrid,
     generate_tiers,
     parse_from_phone,
@@ -27,7 +28,6 @@ from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CtmErrorDict, MetaDict, ReversedMappingType
     from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
-    from montreal_forced_aligner.data import CtmType
     from montreal_forced_aligner.dictionary import DictionaryData
 
 
@@ -505,7 +505,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         """
         current_file_data = {}
 
-        def process_current(cur_utt: Utterance, current_labels: CtmType):
+        def process_current(cur_utt: Utterance, current_labels: list[CtmInterval]):
             """Process current stack of intervals"""
             actual_labels = parse_from_word_no_cleanup(
                 current_labels, self.dictionary_data[dict_name].reversed_words_mapping
@@ -608,7 +608,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
         """
         current_file_data = {}
 
-        def process_current(cur_utt: Utterance, current_labels: CtmType) -> None:
+        def process_current(cur_utt: Utterance, current_labels: list[CtmInterval]) -> None:
             """Process current stack of intervals"""
             text = cur_utt.text.split()
             actual_labels = parse_from_word(current_labels, text, self.dictionary_data[dict_name])
@@ -715,7 +715,7 @@ class PhoneCtmProcessWorker(mp.Process):
 
         current_file_data = {}
 
-        def process_current_utt(cur_utt: Utterance, current_labels: CtmType) -> None:
+        def process_current_utt(cur_utt: Utterance, current_labels: list[CtmInterval]) -> None:
             """Process current stack of intervals"""
             actual_labels = parse_from_phone(
                 current_labels, self.reversed_phone_mappings[dict_name], self.positions[dict_name]

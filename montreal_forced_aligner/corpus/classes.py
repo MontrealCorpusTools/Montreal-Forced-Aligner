@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.dictionary import DictionaryData
     from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
     from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
-    from montreal_forced_aligner.textgrid import CtmType
+    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = ["parse_file", "File", "Speaker", "Utterance"]
@@ -714,8 +714,8 @@ class Utterance:
         self.ignored = False
         self.features = None
         self.feature_length = None
-        self.phone_labels: Optional[CtmType] = None
-        self.word_labels: Optional[CtmType] = None
+        self.phone_labels: Optional[list[CtmInterval]] = None
+        self.word_labels: Optional[list[CtmInterval]] = None
         self.oovs = set()
         self.speaker.add_utterance(self)
         self.file.add_utterance(self)

@@ -9,7 +9,7 @@ from praatio.utilities.constants import Interval
 
 from .exceptions import CtmError
 
-__all__ = ["CtmInterval", "CtmType"]
+__all__ = ["CtmInterval"]
 
 
 @dataclass
@@ -62,6 +62,3 @@ class CtmInterval:
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
         return Interval(self.begin, self.end, self.label)
-
-
-CtmType: list[CtmInterval]

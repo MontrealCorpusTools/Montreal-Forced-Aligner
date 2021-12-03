@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.abc import TemporaryDirectoryMixin
-from montreal_forced_aligner.data import CtmInterval, CtmType
+from montreal_forced_aligner.data import CtmInterval
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import (
@@ -955,8 +955,8 @@ class DictionaryData:
         return False
 
     def map_to_original_pronunciation(
-        self, phones: CtmType, subpronunciations: list[DictionaryEntryType]
-    ) -> CtmType:
+        self, phones: list[CtmInterval], subpronunciations: list[DictionaryEntryType]
+    ) -> list[CtmInterval]:
         """
         Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
 

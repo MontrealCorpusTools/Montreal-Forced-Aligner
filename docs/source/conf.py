@@ -231,7 +231,6 @@ add_function_parentheses = False
 nitpick_ignore = [
     ("py:class", "optional"),
     ("py:class", "callable"),
-    ("py:class", "CtmType"),
     ("py:class", "ReversedMappingType"),
     ("py:class", "WordsType"),
     ("py:class", "MappingType"),

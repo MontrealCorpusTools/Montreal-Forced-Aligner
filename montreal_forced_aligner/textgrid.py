@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from .abc import ReversedMappingType
     from .alignment.base import CorpusAligner
     from .corpus.classes import File, Speaker
-    from .data import CtmType
     from .dictionary import DictionaryData
 
 __all__ = [
@@ -103,8 +102,8 @@ def parse_from_word(
 
 
 def parse_from_word_no_cleanup(
-    ctm_labels: CtmType, reversed_word_mapping: ReversedMappingType
-) -> CtmType:
+    ctm_labels: list[CtmInterval], reversed_word_mapping: ReversedMappingType
+) -> list[CtmInterval]:
     """
     Assume that subwords in the CTM files are desired, so just does a reverse look up to get the sub word
     text
@@ -128,10 +127,10 @@ def parse_from_word_no_cleanup(
 
 
 def parse_from_phone(
-    ctm_labels: CtmType,
+    ctm_labels: list[CtmInterval],
     reversed_phone_mapping: ReversedMappingType,
     positions: list[str],
-) -> CtmType:
+) -> list[CtmInterval]:
     """
     Parse CtmIntervals to original phone transcriptions
 
@@ -185,7 +184,7 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: dict[st
 
 def generate_tiers(
     file: File, cleanup_textgrids: Optional[bool] = True
-) -> dict[Speaker, dict[str, CtmType]]:
+) -> dict[Speaker, dict[str, list[CtmInterval]]]:
     """
     Generate TextGrid tiers for a given File
 
@@ -257,7 +256,7 @@ def generate_tiers(
 def export_textgrid(
     file: File,
     output_path: str,
-    speaker_data: dict[Speaker, dict[str, CtmType]],
+    speaker_data: dict[Speaker, dict[str, list[CtmInterval]]],
     frame_shift: int,
     first_file_write: Optional[bool] = True,
 ) -> None:
