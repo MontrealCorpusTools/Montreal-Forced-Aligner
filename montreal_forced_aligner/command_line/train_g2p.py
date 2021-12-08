@@ -1,7 +1,7 @@
 """Command line functions for training G2P models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 __all__ = ["train_g2p", "validate_args", "run_train_g2p"]
 
 
-def train_g2p(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def train_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the G2P model training
 
@@ -60,7 +60,7 @@ def validate_args(args: Namespace) -> None:
     args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
 
 
-def run_train_g2p(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_train_g2p(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running G2P model training
 

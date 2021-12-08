@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import TYPE_CHECKING, NamedTuple, TextIO
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, TextIO
 
 from ..abc import MetaDict
 from ..utils import thirdparty_binary
@@ -62,100 +62,100 @@ class DecodeArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     decode_options: MetaDict
     model_path: str
-    lat_paths: dict[str, str]
-    words_paths: dict[str, str]
-    hclg_paths: dict[str, str]
+    lat_paths: Dict[str, str]
+    words_paths: Dict[str, str]
+    hclg_paths: Dict[str, str]
 
 
 class ScoreArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     score_options: MetaDict
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    carpa_rescored_lat_paths: dict[str, str]
-    words_paths: dict[str, str]
-    tra_paths: dict[str, str]
+    lat_paths: Dict[str, str]
+    rescored_lat_paths: Dict[str, str]
+    carpa_rescored_lat_paths: Dict[str, str]
+    words_paths: Dict[str, str]
+    tra_paths: Dict[str, str]
 
 
 class LmRescoreArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     lm_rescore_options: MetaDict
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    old_g_paths: dict[str, str]
-    new_g_paths: dict[str, str]
+    lat_paths: Dict[str, str]
+    rescored_lat_paths: Dict[str, str]
+    old_g_paths: Dict[str, str]
+    new_g_paths: Dict[str, str]
 
 
 class CarpaLmRescoreArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    lat_paths: dict[str, str]
-    rescored_lat_paths: dict[str, str]
-    old_g_paths: dict[str, str]
-    new_g_paths: dict[str, str]
+    dictionaries: List[str]
+    lat_paths: Dict[str, str]
+    rescored_lat_paths: Dict[str, str]
+    old_g_paths: Dict[str, str]
+    new_g_paths: Dict[str, str]
 
 
 class InitialFmllrArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     model_path: str
     fmllr_options: MetaDict
-    pre_trans_paths: dict[str, str]
-    lat_paths: dict[str, str]
-    spk2utt_paths: dict[str, str]
+    pre_trans_paths: Dict[str, str]
+    lat_paths: Dict[str, str]
+    spk2utt_paths: Dict[str, str]
 
 
 class LatGenFmllrArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     model_path: str
     decode_options: MetaDict
-    words_paths: dict[str, str]
-    hclg_paths: dict[str, str]
-    tmp_lat_paths: dict[str, str]
+    words_paths: Dict[str, str]
+    hclg_paths: Dict[str, str]
+    tmp_lat_paths: Dict[str, str]
 
 
 class FinalFmllrArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     model_path: str
     fmllr_options: MetaDict
-    trans_paths: dict[str, str]
-    spk2utt_paths: dict[str, str]
-    tmp_lat_paths: dict[str, str]
+    trans_paths: Dict[str, str]
+    spk2utt_paths: Dict[str, str]
+    tmp_lat_paths: Dict[str, str]
 
 
 class FmllrRescoreArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     model_path: str
     fmllr_options: MetaDict
-    tmp_lat_paths: dict[str, str]
-    final_lat_paths: dict[str, str]
+    tmp_lat_paths: Dict[str, str]
+    final_lat_paths: Dict[str, str]
 
 
 def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: TextIO) -> None:
@@ -659,13 +659,13 @@ def create_hclg_func(
 
 def decode_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     decode_options: MetaDict,
     model_path: str,
-    lat_paths: dict[str, str],
-    word_symbol_paths: dict[str, str],
-    hclg_paths: dict[str, str],
+    lat_paths: Dict[str, str],
+    word_symbol_paths: Dict[str, str],
+    hclg_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for performing decoding
@@ -742,13 +742,13 @@ def decode_func(
 
 def score_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     score_options: MetaDict,
-    lat_paths: dict[str, str],
-    rescored_lat_paths: dict[str, str],
-    carpa_rescored_lat_paths: dict[str, str],
-    words_paths: dict[str, str],
-    tra_paths: dict[str, str],
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    carpa_rescored_lat_paths: Dict[str, str],
+    words_paths: Dict[str, str],
+    tra_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for scoring lattices
@@ -837,12 +837,12 @@ def score_func(
 
 def lm_rescore_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     lm_rescore_options: MetaDict,
-    lat_paths: dict[str, str],
-    rescored_lat_paths: dict[str, str],
-    old_g_paths: dict[str, str],
-    new_g_paths: dict[str, str],
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    old_g_paths: Dict[str, str],
+    new_g_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function rescore lattices by replacing the small G.fst with the medium G.fst
@@ -912,11 +912,11 @@ def lm_rescore_func(
 
 def carpa_lm_rescore_func(
     log_path: str,
-    dictionaries: list[str],
-    lat_paths: dict[str, str],
-    rescored_lat_paths: dict[str, str],
-    old_g_paths: dict[str, str],
-    new_g_paths: dict[str, str],
+    dictionaries: List[str],
+    lat_paths: Dict[str, str],
+    rescored_lat_paths: Dict[str, str],
+    old_g_paths: Dict[str, str],
+    new_g_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function to rescore lattices by replacing medium G.fst with large G.carpa
@@ -997,13 +997,13 @@ def carpa_lm_rescore_func(
 
 def initial_fmllr_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     model_path: str,
     fmllr_options: MetaDict,
-    trans_paths: dict[str, str],
-    lat_paths: dict[str, str],
-    spk2utt_paths: dict[str, str],
+    trans_paths: Dict[str, str],
+    lat_paths: Dict[str, str],
+    spk2utt_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for running initial fMLLR calculation
@@ -1107,13 +1107,13 @@ def initial_fmllr_func(
 
 def lat_gen_fmllr_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     model_path: str,
     decode_options: MetaDict,
-    word_symbol_paths: dict[str, str],
-    hclg_paths: dict[str, str],
-    tmp_lat_paths: dict[str, str],
+    word_symbol_paths: Dict[str, str],
+    hclg_paths: Dict[str, str],
+    tmp_lat_paths: Dict[str, str],
 ) -> None:
     """
     Regenerate lattices using initial fMLLR transforms
@@ -1176,13 +1176,13 @@ def lat_gen_fmllr_func(
 
 def final_fmllr_est_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     model_path: str,
     fmllr_options: MetaDict,
-    trans_paths: dict[str, str],
-    spk2utt_paths: dict[str, str],
-    tmp_lat_paths: dict[str, str],
+    trans_paths: Dict[str, str],
+    spk2utt_paths: Dict[str, str],
+    tmp_lat_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for running final fMLLR estimation
@@ -1304,12 +1304,12 @@ def final_fmllr_est_func(
 
 def fmllr_rescore_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     model_path: str,
     fmllr_options: MetaDict,
-    tmp_lat_paths: dict[str, str],
-    final_lat_paths: dict[str, str],
+    tmp_lat_paths: Dict[str, str],
+    final_lat_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function to rescore lattices following fMLLR estimation

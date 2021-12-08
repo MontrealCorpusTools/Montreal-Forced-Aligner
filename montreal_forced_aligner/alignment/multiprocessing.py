@@ -12,7 +12,7 @@ import subprocess
 import sys
 import traceback
 from queue import Empty
-from typing import TYPE_CHECKING, NamedTuple, Union
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Union
 
 from montreal_forced_aligner.textgrid import (
     CtmInterval,
@@ -27,7 +27,13 @@ from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CtmErrorDict, MetaDict, ReversedMappingType
-    from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+    from montreal_forced_aligner.corpus.classes import (
+        File,
+        FileCollection,
+        SpeakerCollection,
+        Utterance,
+        UtteranceCollection,
+    )
     from montreal_forced_aligner.dictionary import DictionaryData
 
 
@@ -51,58 +57,63 @@ class AliToCtmArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    ali_paths: dict[str, str]
-    text_int_paths: dict[str, str]
-    word_boundary_int_paths: dict[str, str]
+    dictionaries: List[str]
+    ali_paths: Dict[str, str]
+    text_int_paths: Dict[str, str]
+    word_boundary_int_paths: Dict[str, str]
     frame_shift: float
     model_path: str
-    ctm_paths: dict[str, str]
+    ctm_paths: Dict[str, str]
     word_mode: bool
 
 
 class CleanupWordCtmArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`"""
 
-    ctm_paths: dict[str, str]
-    dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
-    dictionary_data: dict[str, DictionaryData]
+    log_path: str
+    ctm_paths: Dict[str, str]
+    dictionaries: List[str]
+    utterances: Dict[str, UtteranceCollection]
+    dictionary_data: Dict[str, DictionaryData]
 
 
 class NoCleanupWordCtmArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`"""
 
-    ctm_paths: dict[str, str]
-    dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
-    dictionary_data: dict[str, DictionaryData]
+    log_path: str
+    ctm_paths: Dict[str, str]
+    dictionaries: List[str]
+    utterances: Dict[str, UtteranceCollection]
+    dictionary_data: Dict[str, DictionaryData]
 
 
 class PhoneCtmArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`"""
 
-    ctm_paths: dict[str, str]
-    dictionaries: list[str]
-    utterances: dict[str, dict[str, Utterance]]
-    reversed_phone_mappings: dict[str, ReversedMappingType]
-    positions: dict[str, list[str]]
+    log_path: str
+    ctm_paths: Dict[str, str]
+    dictionaries: List[str]
+    utterances: Dict[str, UtteranceCollection]
+    reversed_phone_mappings: Dict[str, ReversedMappingType]
+    positions: Dict[str, List[str]]
 
 
 class CombineCtmArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`"""
 
-    dictionaries: list[str]
-    files: dict[str, File]
-    speakers: dict[str, Speaker]
-    dictionary_data: dict[str, DictionaryData]
+    log_path: str
+    dictionaries: List[str]
+    files: FileCollection
+    speakers: SpeakerCollection
+    dictionary_data: Dict[str, DictionaryData]
     cleanup_textgrids: bool
 
 
 class ExportTextGridArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`"""
 
-    files: dict[str, File]
+    log_path: str
+    files: Dict[str, File]
     frame_shift: int
     output_directory: str
     backup_output_directory: str
@@ -118,36 +129,36 @@ class CompileTrainGraphsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     tree_path: str
     model_path: str
-    text_int_paths: dict[str, str]
-    disambig_paths: dict[str, str]
-    lexicon_fst_paths: dict[str, str]
-    fst_scp_paths: dict[str, str]
+    text_int_paths: Dict[str, str]
+    disambig_paths: Dict[str, str]
+    lexicon_fst_paths: Dict[str, str]
+    fst_scp_paths: Dict[str, str]
 
 
 class AlignArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    fst_scp_paths: dict[str, str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    fst_scp_paths: Dict[str, str]
+    feature_strings: Dict[str, str]
     model_path: str
-    ali_paths: dict[str, str]
+    ali_paths: Dict[str, str]
     align_options: MetaDict
 
 
 def compile_train_graphs_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     tree_path: str,
     model_path: str,
-    text_int_paths: dict[str, str],
+    text_int_paths: Dict[str, str],
     disambig_path: str,
-    lexicon_fst_paths: dict[str, str],
-    fst_scp_paths: dict[str, str],
+    lexicon_fst_paths: Dict[str, str],
+    fst_scp_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function to compile training graphs
@@ -205,11 +216,11 @@ def compile_train_graphs_func(
 
 def align_func(
     log_path: str,
-    dictionaries: list[str],
-    fst_scp_paths: dict[str, str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    fst_scp_paths: Dict[str, str],
+    feature_strings: Dict[str, str],
     model_path: str,
-    ali_paths: dict[str, str],
+    ali_paths: Dict[str, str],
     align_options: MetaDict,
 ):
     """
@@ -280,7 +291,7 @@ def align_func(
             align_proc.communicate()
 
 
-def compile_information_func(align_log_path: str) -> dict[str, Union[list[str], float, int]]:
+def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
     """
     Multiprocessing function for compiling information about alignment
 
@@ -334,13 +345,13 @@ def compile_information_func(align_log_path: str) -> dict[str, Union[list[str], 
 
 def ali_to_ctm_func(
     log_path: str,
-    dictionaries: list[str],
-    ali_paths: dict[str, str],
-    text_int_paths: dict[str, str],
-    word_boundary_int_paths: dict[str, str],
+    dictionaries: List[str],
+    ali_paths: Dict[str, str],
+    text_int_paths: Dict[str, str],
+    word_boundary_int_paths: Dict[str, str],
     frame_shift: float,
     model_path: str,
-    ctm_paths: dict[str, str],
+    ctm_paths: Dict[str, str],
     word_mode: bool,
 ) -> None:
     """
@@ -493,6 +504,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         self.stopped = stopped
         self.error_catching = error_catching
 
+        self.log_path = arguments.log_path
         # Corpus information
         self.utterances = arguments.utterances
 
@@ -503,58 +515,70 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         """
         Run the word processing with no clean up
         """
-        current_file_data = {}
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            current_file_data = {}
 
-        def process_current(cur_utt: Utterance, current_labels: list[CtmInterval]):
-            """Process current stack of intervals"""
-            actual_labels = parse_from_word_no_cleanup(
-                current_labels, self.dictionary_data[dict_name].reversed_words_mapping
-            )
-            current_file_data[cur_utt.name] = actual_labels
+            def process_current(cur_utt: Utterance, current_labels: List[CtmInterval]):
+                """Process current stack of intervals"""
+                actual_labels = parse_from_word_no_cleanup(
+                    current_labels, self.dictionary_data[dict_name].reversed_words_mapping
+                )
+                current_file_data[cur_utt.name] = actual_labels
+                log_file.write(
+                    f"Parsed actual word labels ({len(actual_labels)}) for {cur_utt} (was {len(current_labels)})\n"
+                )
 
-        def process_current_file(cur_file: str):
-            """Process current file and add to return queue"""
-            self.to_process_queue.put(("word", cur_file, current_file_data))
+            def process_current_file(cur_file: str):
+                """Process current file and add to return queue"""
+                self.to_process_queue.put(("word", cur_file, current_file_data))
+                log_file.write(f"Added word records for {cur_file} to queue\n")
 
-        cur_utt = None
-        cur_file = None
-        utt_begin = 0
-        current_labels = []
-        try:
-            for dict_name in self.dictionaries:
-                with open(self.ctm_paths[dict_name], "r") as word_file:
-                    for line in word_file:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        interval = process_ctm_line(line)
-                        utt = interval.utterance
-                        if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
-                            utt_begin = cur_utt.begin
-                            cur_file = cur_utt.file_name
+            cur_utt = None
+            cur_file = ""
+            utt_begin = 0
+            current_labels = []
+            try:
+                for dict_name in self.dictionaries:
+                    ctm_path = self.ctm_paths[dict_name]
+                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
+                    with open(ctm_path, "r") as word_file:
+                        for line in word_file:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            interval = process_ctm_line(line)
+                            utt = interval.utterance
+                            if cur_utt is None:
+                                cur_utt = self.utterances[dict_name][utt]
+                                utt_begin = cur_utt.begin
+                                cur_file = cur_utt.file_name
+                                log_file.write(
+                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
+                                )
 
-                        if utt != cur_utt:
-                            process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[dict_name][utt]
-                            file_name = cur_utt.file_name
-                            if file_name != cur_file:
-                                process_current_file(cur_file)
-                                current_file_data = {}
-                                cur_file = file_name
-                            current_labels = []
-                        if utt_begin:
-                            interval.shift_times(utt_begin)
-                        current_labels.append(interval)
-                if current_labels:
-                    process_current(cur_utt, current_labels)
-                    process_current_file(cur_file)
-        except Exception:
-            self.stopped.stop()
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.error_catching[("word", self.job_name)] = "\n".join(
-                traceback.format_exception(exc_type, exc_value, exc_traceback)
-            )
+                            if utt != cur_utt:
+                                process_current(cur_utt, current_labels)
+                                cur_utt = self.utterances[dict_name][utt]
+                                file_name = cur_utt.file_name
+                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
+                                if file_name != cur_file:
+                                    log_file.write(f"Processing file: {cur_file}\n")
+                                    process_current_file(cur_file)
+                                    current_file_data = {}
+                                    cur_file = file_name
+                                current_labels = []
+                            if utt_begin:
+                                interval.shift_times(utt_begin)
+                            current_labels.append(interval)
+                    if current_labels:
+                        process_current(cur_utt, current_labels)
+                        process_current_file(cur_file)
+            except Exception:
+                self.stopped.stop()
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.error_catching[("word", self.job_name)] = "\n".join(
+                    traceback.format_exception(exc_type, exc_value, exc_traceback)
+                )
 
 
 class CleanupWordCtmProcessWorker(mp.Process):
@@ -596,6 +620,7 @@ class CleanupWordCtmProcessWorker(mp.Process):
         self.stopped = stopped
         self.error_catching = error_catching
 
+        self.log_path = arguments.log_path
         # Corpus information
         self.utterances = arguments.utterances
 
@@ -606,60 +631,73 @@ class CleanupWordCtmProcessWorker(mp.Process):
         """
         Run the word processing with clean up
         """
-        current_file_data = {}
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            current_file_data = {}
 
-        def process_current(cur_utt: Utterance, current_labels: list[CtmInterval]) -> None:
-            """Process current stack of intervals"""
-            text = cur_utt.text.split()
-            actual_labels = parse_from_word(current_labels, text, self.dictionary_data[dict_name])
+            def process_current(cur_utt: Utterance, current_labels: List[CtmInterval]) -> None:
+                """Process current stack of intervals"""
+                text = cur_utt.text.split()
+                actual_labels = parse_from_word(
+                    current_labels, text, self.dictionary_data[dict_name]
+                )
 
-            current_file_data[cur_utt.name] = actual_labels
+                current_file_data[cur_utt.name] = actual_labels
+                log_file.write(
+                    f"Parsed actual word labels ({len(actual_labels)} for {cur_utt} (was {len(current_labels)})\n"
+                )
 
-        def process_current_file(cur_file: str) -> None:
-            """Process current file and add to return queue"""
-            self.to_process_queue.put(("word", cur_file, current_file_data))
+            def process_current_file(cur_file: str) -> None:
+                """Process current file and add to return queue"""
+                self.to_process_queue.put(("word", cur_file, current_file_data))
+                log_file.write(f"Added word records for {cur_file} to queue\n")
 
-        cur_utt = None
-        cur_file = None
-        utt_begin = 0
-        current_labels = []
-        try:
-            for dict_name in self.dictionaries:
-                ctm_path = self.ctm_paths[dict_name]
-                with open(ctm_path, "r") as word_file:
-                    for line in word_file:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        interval = process_ctm_line(line)
-                        utt = interval.utterance
-                        if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
-                            utt_begin = cur_utt.begin
-                            cur_file = cur_utt.file_name
+            cur_utt = None
+            cur_file = ""
+            utt_begin = 0
+            current_labels = []
+            try:
+                for dict_name in self.dictionaries:
+                    ctm_path = self.ctm_paths[dict_name]
+                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
+                    with open(ctm_path, "r") as word_file:
+                        for line in word_file:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            interval = process_ctm_line(line)
+                            utt = interval.utterance
+                            if cur_utt is None:
+                                cur_utt = self.utterances[dict_name][utt]
+                                utt_begin = cur_utt.begin
+                                cur_file = cur_utt.file_name
+                                log_file.write(
+                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
+                                )
 
-                        if utt != cur_utt:
-                            process_current(cur_utt, current_labels)
-                            cur_utt = self.utterances[dict_name][utt]
-                            utt_begin = cur_utt.begin
-                            file_name = cur_utt.file_name
-                            if file_name != cur_file:
-                                process_current_file(cur_file)
-                                current_file_data = {}
-                                cur_file = file_name
-                            current_labels = []
-                        if utt_begin:
-                            interval.shift_times(utt_begin)
-                        current_labels.append(interval)
-                if current_labels:
-                    process_current(cur_utt, current_labels)
-                    process_current_file(cur_file)
-        except Exception:
-            self.stopped.stop()
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.error_catching[("word", self.job_name)] = "\n".join(
-                traceback.format_exception(exc_type, exc_value, exc_traceback)
-            )
+                            if utt != cur_utt:
+                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
+                                process_current(cur_utt, current_labels)
+                                cur_utt = self.utterances[dict_name][utt]
+                                utt_begin = cur_utt.begin
+                                file_name = cur_utt.file_name
+                                if file_name != cur_file:
+                                    log_file.write(f"Processing file: {cur_file}\n")
+                                    process_current_file(cur_file)
+                                    current_file_data = {}
+                                    cur_file = file_name
+                                current_labels = []
+                            if utt_begin:
+                                interval.shift_times(utt_begin)
+                            current_labels.append(interval)
+                    if current_labels:
+                        process_current(cur_utt, current_labels)
+                        process_current_file(cur_file)
+            except Exception:
+                self.stopped.stop()
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.error_catching[("word", self.job_name)] = "\n".join(
+                    traceback.format_exception(exc_type, exc_value, exc_traceback)
+                )
 
 
 class PhoneCtmProcessWorker(mp.Process):
@@ -701,72 +739,84 @@ class PhoneCtmProcessWorker(mp.Process):
         self.stopped = stopped
         self.error_catching = error_catching
 
+        self.log_path = arguments.log_path
         self.utterances = arguments.utterances
-
         self.reversed_phone_mappings = arguments.reversed_phone_mappings
         self.positions = arguments.positions
 
     def run(self) -> None:
         """Run the phone processing"""
         cur_utt = None
-        cur_file = None
+        cur_file = ""
         utt_begin = 0
-        current_labels = []
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            current_labels = []
 
-        current_file_data = {}
+            current_file_data = {}
 
-        def process_current_utt(cur_utt: Utterance, current_labels: list[CtmInterval]) -> None:
-            """Process current stack of intervals"""
-            actual_labels = parse_from_phone(
-                current_labels, self.reversed_phone_mappings[dict_name], self.positions[dict_name]
-            )
-            current_file_data[cur_utt.name] = actual_labels
+            def process_current_utt(cur_utt: Utterance, current_labels: List[CtmInterval]) -> None:
+                """Process current stack of intervals"""
+                actual_labels = parse_from_phone(
+                    current_labels,
+                    self.reversed_phone_mappings[dict_name],
+                    self.positions[dict_name],
+                )
+                current_file_data[cur_utt.name] = actual_labels
+                log_file.write(f"Parsed actual phone labels ({len(actual_labels)} for {cur_utt}\n")
 
-        def process_current_file(cur_file: str) -> None:
-            """Process current file and add to return queue"""
-            self.to_process_queue.put(("phone", cur_file, current_file_data))
+            def process_current_file(cur_file: str) -> None:
+                """Process current file and add to return queue"""
+                self.to_process_queue.put(("phone", cur_file, current_file_data))
+                log_file.write(f"Added phone records for {cur_file} to queue\n")
 
-        try:
-            for dict_name in self.dictionaries:
-                with open(self.ctm_paths[dict_name], "r") as word_file:
-                    for line in word_file:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        interval = process_ctm_line(line)
-                        utt = interval.utterance
-                        if cur_utt is None:
-                            cur_utt = self.utterances[dict_name][utt]
-                            cur_file = cur_utt.file_name
-                            utt_begin = cur_utt.begin
+            try:
+                for dict_name in self.dictionaries:
+                    ctm_path = self.ctm_paths[dict_name]
+                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
+                    with open(ctm_path, "r") as word_file:
+                        for line in word_file:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            interval = process_ctm_line(line)
+                            utt = interval.utterance
+                            if cur_utt is None:
+                                cur_utt = self.utterances[dict_name][utt]
+                                cur_file = cur_utt.file_name
+                                utt_begin = cur_utt.begin
+                                log_file.write(
+                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
+                                )
 
-                        if utt != cur_utt:
+                            if utt != cur_utt:
 
-                            process_current_utt(cur_utt, current_labels)
+                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
+                                process_current_utt(cur_utt, current_labels)
 
-                            cur_utt = self.utterances[dict_name][utt]
-                            file_name = cur_utt.file_name
-                            utt_begin = cur_utt.begin
+                                cur_utt = self.utterances[dict_name][utt]
+                                file_name = cur_utt.file_name
+                                utt_begin = cur_utt.begin
 
-                            if file_name != cur_file:
-                                process_current_file(cur_file)
-                                current_file_data = {}
-                                cur_file = file_name
-                            current_labels = []
-                        if utt_begin:
-                            interval.shift_times(utt_begin)
-                        current_labels.append(interval)
-                if current_labels:
-                    process_current_utt(cur_utt, current_labels)
-                    process_current_file(cur_file)
-        except Exception:
-            self.stopped.stop()
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.error_catching[("phone", self.job_name)] = (
-                "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-                + f"\n\n{len(self.utterances['english'].keys())}\nCould not find: {utt}\n"
-                + "\n".join(self.utterances["english"].keys())
-            )
+                                if file_name != cur_file:
+                                    log_file.write(f"Processing file: {cur_file}\n")
+                                    process_current_file(cur_file)
+                                    current_file_data = {}
+                                    cur_file = file_name
+                                current_labels = []
+                            if utt_begin:
+                                interval.shift_times(utt_begin)
+                            current_labels.append(interval)
+                    if current_labels:
+                        process_current_utt(cur_utt, current_labels)
+                        process_current_file(cur_file)
+            except Exception:
+                self.stopped.stop()
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                self.error_catching[("phone", self.job_name)] = (
+                    "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                    + f"\n\n{len(self.utterances['english'])}\nCould not find: {utt}\n"
+                    + "\n".join(self.utterances["english"])
+                )
 
 
 class CombineProcessWorker(mp.Process):
@@ -814,12 +864,12 @@ class CombineProcessWorker(mp.Process):
         self.finished_combining = finished_combining
         self.error_catching = error_catching
 
+        self.log_path = arguments.log_path
         self.files = arguments.files
         self.speakers = arguments.speakers
         self.dictionary_data = arguments.dictionary_data
         self.cleanup_textgrids = arguments.cleanup_textgrids
-
-        for file in self.files.values():
+        for file in self.files:
             for s in file.speaker_ordering:
                 if s.name not in self.speakers:
                     continue
@@ -827,60 +877,74 @@ class CombineProcessWorker(mp.Process):
 
     def run(self) -> None:
         """Run the combination function"""
-
         phone_data = {}
         word_data = {}
-        while True:
-            try:
-                w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
-            except Empty:
-                if self.finished_combining.stop_check():
-                    break
-                continue
-            self.to_process_queue.task_done()
-            if self.stopped.stop_check():
-                continue
-            if w_p == "phone":
-                if file_name in word_data:
-                    word_ctm = word_data.pop(file_name)
-                    phone_ctm = data
-                else:
-                    phone_data[file_name] = data
-                    continue
-            else:
-                if file_name in phone_data:
-                    phone_ctm = phone_data.pop(file_name)
-                    word_ctm = data
-                else:
-                    word_data[file_name] = data
-                    continue
-            try:
-                file = self.files[file_name]
-                for u_name, u in file.utterances.items():
-                    if u_name not in word_ctm:
-                        continue
-                    u.speaker.dictionary_data = self.dictionary_data[
-                        self.speakers[u.speaker_name].dictionary_name
-                    ]
-                    u.word_labels = word_ctm[u_name]
-                    u.phone_labels = phone_ctm[u_name]
-                processed_check = True
-                for s in file.speaker_ordering:
-                    if s.name not in self.speakers:
-                        continue
-                    if not file.has_fully_aligned_speaker(s):
-                        processed_check = False
+        count = 0
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            while True:
+                try:
+                    w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
+                except Empty:
+                    if self.finished_combining.stop_check():
                         break
-                if not processed_check:
                     continue
-                data = generate_tiers(file, cleanup_textgrids=self.cleanup_textgrids)
-                self.to_export_queue.put((file_name, data))
-            except Exception:
-                self.stopped.stop()
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                self.error_catching[("combining", self.job_name)] = "\n".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                )
+                log_file.write(f"Got {file_name}, {w_p}\n")
+                self.to_process_queue.task_done()
+                if self.stopped.stop_check():
+                    log_file.write("Got stop check, exiting\n")
+                    continue
+                if w_p == "phone":
+                    if file_name in word_data:
+                        word_ctm = word_data.pop(file_name)
+                        phone_ctm = data
+                    else:
+                        log_file.write(f"No word data yet for {file_name}, shelving\n")
+                        phone_data[file_name] = data
+                        continue
+                else:
+                    if file_name in phone_data:
+                        phone_ctm = phone_data.pop(file_name)
+                        word_ctm = data
+                    else:
+                        log_file.write(f"No phone data yet for {file_name}, shelving\n")
+                        word_data[file_name] = data
+                        continue
+                try:
+                    file = self.files[file_name]
+                    log_file.write(f"Generating tiers for {file}\n")
+                    for utterance in file.utterances:
+                        if utterance.name not in word_ctm:
+                            log_file.write(f"{utterance.name} not in word_ctm, skipping over\n")
+                            continue
+                        utterance.speaker.dictionary_data = self.dictionary_data[
+                            self.speakers[utterance.speaker_name].dictionary_name
+                        ]
+                        utterance.word_labels = word_ctm[utterance.name]
+                        utterance.phone_labels = phone_ctm[utterance.name]
+                    processed_check = True
+                    for s in file.speaker_ordering:
+                        if s.name not in self.speakers:
+                            continue
+                        if not file.has_fully_aligned_speaker(s):
+
+                            log_file.write(
+                                f"{file} is not fully aligned for speaker {s}, shelving\n"
+                            )
+                            processed_check = False
+                            break
+                    if not processed_check:
+                        continue
+                    log_file.write(f"Generating tiers for file {count} of {len(self.files)}\n")
+                    count += 1
+                    data = generate_tiers(file, cleanup_textgrids=self.cleanup_textgrids)
+                    self.to_export_queue.put((file_name, data))
+                    log_file.write(f"{file_name} put in export queue\n")
+                except Exception:
+                    self.stopped.stop()
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    self.error_catching[("combining", self.job_name)] = "\n".join(
+                        traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    )
 
 
 class ExportTextGridProcessWorker(mp.Process):
@@ -911,7 +975,7 @@ class ExportTextGridProcessWorker(mp.Process):
         for_write_queue: mp.Queue,
         stopped: Stopped,
         finished_processing: Stopped,
-        textgrid_errors: dict[str, str],
+        textgrid_errors: Dict[str, str],
         arguments: ExportTextGridArguments,
     ):
         mp.Process.__init__(self)
@@ -920,6 +984,7 @@ class ExportTextGridProcessWorker(mp.Process):
         self.finished_processing = finished_processing
         self.textgrid_errors = textgrid_errors
 
+        self.log_path = arguments.log_path
         self.files = arguments.files
         self.output_directory = arguments.output_directory
         self.backup_output_directory = arguments.backup_output_directory
@@ -928,29 +993,34 @@ class ExportTextGridProcessWorker(mp.Process):
 
     def run(self) -> None:
         """Run the exporter function"""
-        while True:
-            try:
-                file_name, data = self.for_write_queue.get(timeout=queue_polling_timeout)
-            except Empty:
-                if self.finished_processing.stop_check():
-                    break
-                continue
-            self.for_write_queue.task_done()
-            if self.stopped.stop_check():
-                continue
-            try:
-                overwrite = True
-                file = self.files[file_name]
-                output_path = file.construct_output_path(
-                    self.output_directory, self.backup_output_directory
-                )
-
-                export_textgrid(file, output_path, data, self.frame_shift, overwrite)
-            except Exception:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                self.textgrid_errors[file_name] = "\n".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                )
+        count = 0
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            while True:
+                try:
+                    file_name, data = self.for_write_queue.get(timeout=queue_polling_timeout)
+                except Empty:
+                    if self.finished_processing.stop_check():
+                        break
+                    continue
+                log_file.write(f"Got {file_name}\n")
+                self.for_write_queue.task_done()
+                if self.stopped.stop_check():
+                    log_file.write("Got stop check, exiting\n")
+                    continue
+                try:
+                    overwrite = True
+                    file = self.files[file_name]
+                    output_path = file.construct_output_path(
+                        self.output_directory, self.backup_output_directory
+                    )
+                    log_file.write(f"Exporting file {count} of {len(self.files)}\n")
+                    count += 1
+                    export_textgrid(file, output_path, data, self.frame_shift, overwrite)
+                except Exception:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    self.textgrid_errors[file_name] = "\n".join(
+                        traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    )
 
 
 class ExportPreparationProcessWorker(mp.Process):
@@ -982,7 +1052,7 @@ class ExportPreparationProcessWorker(mp.Process):
         for_write_queue: mp.Queue,
         stopped: Stopped,
         finished_combining: Stopped,
-        files: dict[str, File],
+        files: Dict[str, File],
     ):
         mp.Process.__init__(self)
         self.to_export_queue = to_export_queue

@@ -4,14 +4,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import soundfile
 
 from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
 from montreal_forced_aligner.exceptions import SoxError
 
-SoundFileInfoDict = dict[str, Union[int, float, str]]
+SoundFileInfoDict = Dict[str, Union[int, float, str]]
 
 supported_audio_extensions = [".flac", ".ogg", ".aiff", ".mp3"]
 
@@ -37,7 +37,7 @@ def load_text(path: str) -> str:
     return text
 
 
-def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction]) -> list[str]:
+def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction]) -> List[str]:
     """
     Parse an orthographic transcription given punctuation and clitic markers
 
@@ -65,8 +65,8 @@ def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction])
 
 
 def find_exts(
-    files: list[str],
-) -> tuple[list[str], dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    files: List[str],
+) -> Tuple[List[str], Dict[str, str], Dict[str, str], Dict[str, str], Dict[str, str]]:
     """
     Find and group sound file extensions and transcription file extensions
 
@@ -113,7 +113,7 @@ def find_exts(
     return identifiers, wav_files, lab_files, textgrid_files, other_audio_files
 
 
-def get_wav_info(file_path: str) -> dict[str, Any]:
+def get_wav_info(file_path: str) -> Dict[str, Any]:
     """
     Get sound file information
 

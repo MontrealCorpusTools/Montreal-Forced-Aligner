@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.segmenter import Segmenter
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 __all__ = ["create_segments", "validate_args", "run_create_segments"]
 
 
-def create_segments(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def create_segments(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the sound file segmentation
 
@@ -68,7 +68,7 @@ def validate_args(args: Namespace) -> None:
         raise ArgumentError("Corpus directory and output directory cannot be the same folder.")
 
 
-def run_create_segments(args: Namespace, unknown: Optional[list[str]] = None) -> None:
+def run_create_segments(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running sound file segmentation
 

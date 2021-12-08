@@ -6,12 +6,19 @@ import random
 import time
 from abc import ABCMeta, abstractmethod
 from collections import Counter
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import yaml
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
-from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.classes import (
+    File,
+    FileCollection,
+    Speaker,
+    SpeakerCollection,
+    Utterance,
+    UtteranceCollection,
+)
 from montreal_forced_aligner.corpus.multiprocessing import Job
 from montreal_forced_aligner.exceptions import CorpusError
 from montreal_forced_aligner.helper import output_mapping
@@ -47,11 +54,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     Attributes
     ----------
-    speakers: dict[str, Speaker]
+    speakers: :class:`~montreal_forced_aligner.corpus.classes.SpeakerCollection`
         Dictionary of speakers in the corpus
-    files: dict[str, File]
+    files: :class:`~montreal_forced_aligner.corpus.classes.FileCollection`
         Dictionary of files in the corpus
-    utterances: dict[str, Utterance]
+    utterances: :class:`~montreal_forced_aligner.corpus.classes.UtteranceCollection`
         Dictionary of utterances in the corpus
     jobs: list[Job]
         List of jobs for processing the corpus and splitting speakers
@@ -78,9 +85,9 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             raise CorpusError(
                 f"The specified path for the corpus ({corpus_directory}) is not a directory."
             )
-        self.speakers: dict[str, Speaker] = {}
-        self.files: dict[str, File] = {}
-        self.utterances: dict[str, Utterance] = {}
+        self.speakers = SpeakerCollection()
+        self.files = FileCollection()
+        self.utterances = UtteranceCollection()
         self.corpus_directory = corpus_directory
         self.speaker_characters = speaker_characters
         self.ignore_speakers = ignore_speakers
@@ -88,7 +95,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.stopped = Stopped()
         self.decode_error_files = []
         self.textgrid_read_errors = {}
-        self.jobs: list[Job] = []
+        self.jobs: List[Job] = []
         super().__init__(**kwargs)
 
     @property
@@ -119,19 +126,19 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
     def _write_spk2utt(self):
         """Write spk2utt scp file for Kaldi"""
         data = {
-            speaker.name: sorted(speaker.utterances.keys()) for speaker in self.speakers.values()
+            speaker.name: sorted(u.name for u in speaker.utterances) for speaker in self.speakers
         }
         output_mapping(data, os.path.join(self.corpus_output_directory, "spk2utt.scp"))
 
     def write_utt2spk(self):
         """Write utt2spk scp file for Kaldi"""
-        data = {u.name: u.speaker.name for u in self.utterances.values()}
+        data = {u.name: u.speaker.name for u in self.utterances}
         output_mapping(data, os.path.join(self.corpus_output_directory, "utt2spk.scp"))
 
     def _write_speakers(self):
         """Write speaker information for speeding up future runs"""
         to_save = []
-        for speaker in self.speakers.values():
+        for speaker in self.speakers:
             to_save.append(speaker.meta)
         with open(
             os.path.join(self.corpus_output_directory, "speakers.yaml"), "w", encoding="utf8"
@@ -141,7 +148,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
     def _write_files(self):
         """Write file information for speeding up future runs"""
         to_save = []
-        for file in self.files.values():
+        for file in self.files:
             to_save.append(file.meta)
         with open(
             os.path.join(self.corpus_output_directory, "files.yaml"), "w", encoding="utf8"
@@ -151,7 +158,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
     def _write_utterances(self):
         """Write utterance information for speeding up future runs"""
         to_save = []
-        for utterance in self.utterances.values():
+        for utterance in self.utterances:
             to_save.append(utterance.meta)
         with open(
             os.path.join(self.corpus_output_directory, "utterances.yaml"), "w", encoding="utf8"
@@ -166,11 +173,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             job.output_to_directory(split_dir)
 
     @property
-    def file_speaker_mapping(self) -> dict[str, list[str]]:
+    def file_speaker_mapping(self) -> Dict[str, List[str]]:
         """Speaker ordering for each file"""
-        return {file_name: file.speaker_ordering for file_name, file in self.files.items()}
+        return {file.name: file.speaker_ordering for file in self.files}
 
-    def get_word_frequency(self) -> dict[str, float]:
+    def get_word_frequency(self) -> Dict[str, float]:
         """
         Calculate the relative word frequency across all the texts in the corpus
 
@@ -180,7 +187,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             Dictionary of words and their relative frequencies
         """
         word_counts = Counter()
-        for u in self.utterances.values():
+        for u in self.utterances:
             text = u.text
             speaker = u.speaker
             d = speaker.dictionary
@@ -196,7 +203,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         return {k: v / sum(word_counts.values()) for k, v in word_counts.items()}
 
     @property
-    def corpus_word_set(self) -> list[str]:
+    def corpus_word_set(self) -> List[str]:
         """Set of words used in the corpus"""
         return sorted(self.word_counts)
 
@@ -209,11 +216,15 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
-        self.utterances[utterance.name] = utterance
-        if utterance.speaker.name not in self.speakers:
-            self.speakers[utterance.speaker.name] = utterance.speaker
-        if utterance.file.name not in self.files:
-            self.files[utterance.file.name] = utterance.file
+        self.utterances.add_utterance(utterance)
+        if utterance.speaker not in self.speakers:
+            self.speakers.add_speaker(utterance.speaker)
+        speaker = self.speakers[utterance.speaker.name]
+        speaker.add_utterance(utterance)
+        if utterance.file not in self.files:
+            self.files.add_file(utterance.file)
+        file = self.files[utterance.file.name]
+        file.add_utterance(utterance)
 
     def delete_utterance(self, utterance: Union[str, Utterance]) -> None:
         """
@@ -226,8 +237,10 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         """
         if isinstance(utterance, str):
             utterance = self.utterances[utterance]
-        utterance.speaker.delete_utterance(utterance)
-        utterance.file.delete_utterance(utterance)
+        speaker = self.speakers[utterance.speaker.name]
+        file = self.files[utterance.file.name]
+        speaker.delete_utterance(utterance)
+        file.delete_utterance(utterance)
         del self.utterances[utterance.name]
 
     def initialize_jobs(self) -> None:
@@ -239,7 +252,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.num_jobs = len(self.speakers)
         self.jobs = [Job(i) for i in range(self.num_jobs)]
         job_ind = 0
-        for s in sorted(self.speakers.values()):
+        for s in sorted(self.speakers):
             self.jobs[job_ind].add_speaker(s)
             job_ind += 1
             if job_ind == self.num_jobs:
@@ -254,14 +267,14 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         file: :class:`~montreal_forced_aligner.corpus.classes.File`
             File to be added
         """
-        self.files[file.name] = file
+        self.files.add_file(file)
         for speaker in file.speaker_ordering:
-            if speaker.name not in self.speakers:
-                self.speakers[speaker.name] = speaker
+            if speaker not in self.speakers:
+                self.speakers.add_speaker(speaker)
             else:
                 self.speakers[speaker.name].merge(speaker)
-        for u in file.utterances.values():
-            self.utterances[u.name] = u
+        for u in file.utterances:
+            self.add_utterance(u)
             if u.text:
                 self.word_counts.update(u.text.split())
 
@@ -285,14 +298,15 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         if larger_subset_num < self.num_utterances:
             # Get all shorter utterances that are not one word long
             utts = sorted(
-                (utt for utt in self.utterances.values() if " " in utt.text),
+                (utt for utt in self.utterances if " " in utt.text),
                 key=lambda x: x.duration,
             )
             larger_subset = utts[:larger_subset_num]
         else:
-            larger_subset = sorted(self.utterances.values())
+            larger_subset = sorted(self.utterances)
         random.seed(1234)  # make it deterministic sampling
-        subset_utts = set(random.sample(larger_subset, subset))
+        subset_utts = UtteranceCollection()
+        subset_utts.update(random.sample(larger_subset, subset))
         log_dir = os.path.join(subset_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -353,7 +367,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 "There were no sound files found of the appropriate format. Please double check the corpus path "
                 "and/or run the validation utility (mfa validate)."
             )
-        average_utterances = sum(len(x.utterances) for x in self.speakers.values()) / num_speakers
+        average_utterances = sum(len(x.utterances) for x in self.speakers) / num_speakers
         self.log_info(
             f"Number of speakers in corpus: {num_speakers}, "
             f"average number of utterances per speaker: {average_utterances}"
@@ -400,14 +414,14 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             speaker_data = yaml.safe_load(f)
 
         for entry in speaker_data:
-            self.speakers[entry["name"]] = Speaker(entry["name"])
+            self.speakers.add_speaker(Speaker(entry["name"]))
             self.speakers[entry["name"]].cmvn = entry["cmvn"]
 
         with open(files_path, "r", encoding="utf8") as f:
             files_data = yaml.safe_load(f)
         for entry in files_data:
-            self.files[entry["name"]] = File(
-                entry["wav_path"], entry["text_path"], entry["relative_path"]
+            self.files.add_file(
+                File(entry["wav_path"], entry["text_path"], entry["relative_path"])
             )
             self.files[entry["name"]].speaker_ordering = [
                 self.speakers[x] for x in entry["speaker_ordering"]
@@ -432,6 +446,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 self.word_counts.update(u.text.split())
             self.utterances[u.name].features = entry["features"]
             self.utterances[u.name].ignored = entry["ignored"]
+            self.add_utterance(u)
 
         self.log_debug(
             f"Loaded from corpus_data temp directory in {time.time() - begin_time} seconds"

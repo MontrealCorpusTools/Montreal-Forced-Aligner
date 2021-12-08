@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["train_acoustic_model", "validate_args", "run_train_acoustic_model"]
 
 
-def train_acoustic_model(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the acoustic model training
 
@@ -100,7 +100,7 @@ def validate_args(args: Namespace) -> None:
     args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
 
 
-def run_train_acoustic_model(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def run_train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running acoustic model training
 

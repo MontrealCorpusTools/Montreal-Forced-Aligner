@@ -6,7 +6,7 @@ Textgrid utilities
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from praatio import textgrid as tgio
 
@@ -60,8 +60,8 @@ def process_ctm_line(line: str) -> CtmInterval:
 
 
 def parse_from_word(
-    ctm_labels: list[CtmInterval], text: list[str], dictionary_data: DictionaryData
-) -> list[CtmInterval]:
+    ctm_labels: List[CtmInterval], text: List[str], dictionary_data: DictionaryData
+) -> List[CtmInterval]:
     """
     Parse CTM intervals into the corresponding text for an utterance
 
@@ -102,8 +102,8 @@ def parse_from_word(
 
 
 def parse_from_word_no_cleanup(
-    ctm_labels: list[CtmInterval], reversed_word_mapping: ReversedMappingType
-) -> list[CtmInterval]:
+    ctm_labels: List[CtmInterval], reversed_word_mapping: ReversedMappingType
+) -> List[CtmInterval]:
     """
     Assume that subwords in the CTM files are desired, so just does a reverse look up to get the sub word
     text
@@ -127,10 +127,10 @@ def parse_from_word_no_cleanup(
 
 
 def parse_from_phone(
-    ctm_labels: list[CtmInterval],
+    ctm_labels: List[CtmInterval],
     reversed_phone_mapping: ReversedMappingType,
-    positions: list[str],
-) -> list[CtmInterval]:
+    positions: List[str],
+) -> List[CtmInterval]:
     """
     Parse CtmIntervals to original phone transcriptions
 
@@ -157,7 +157,7 @@ def parse_from_phone(
     return ctm_labels
 
 
-def output_textgrid_writing_errors(output_directory: str, export_errors: dict[str, str]) -> None:
+def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[str, str]) -> None:
     """
     Output any errors that were encountered in writing TextGrids
 
@@ -184,7 +184,7 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: dict[st
 
 def generate_tiers(
     file: File, cleanup_textgrids: Optional[bool] = True
-) -> dict[Speaker, dict[str, list[CtmInterval]]]:
+) -> Dict[Speaker, Dict[str, List[CtmInterval]]]:
     """
     Generate TextGrid tiers for a given File
 
@@ -202,11 +202,11 @@ def generate_tiers(
     """
     output = {}
 
-    for u in file.utterances.values():
+    for u in file.utterances:
         if not u.word_labels:
             continue
         speaker = u.speaker
-        dictionary_data = speaker.dictionary_data
+        dictionary_data: DictionaryData = speaker.dictionary_data
 
         words = []
         phones = []
@@ -226,7 +226,7 @@ def generate_tiers(
                 cur_phones = []
                 while u.phone_labels[phone_ind].end <= end:
                     p = u.phone_labels[phone_ind]
-                    if p.label in dictionary_data.silence_phones:
+                    if p.label == dictionary_data.optional_silence_phone:
                         phone_ind += 1
                         continue
                     cur_phones.append(p)
@@ -242,7 +242,7 @@ def generate_tiers(
             for interval in u.word_labels:
                 words.append(interval)
             for interval in u.phone_labels:
-                if interval.label in dictionary_data.silence_phones and cleanup_textgrids:
+                if interval.label == dictionary_data.optional_silence_phone and cleanup_textgrids:
                     continue
                 phones.append(interval)
         if speaker not in output:
@@ -256,7 +256,7 @@ def generate_tiers(
 def export_textgrid(
     file: File,
     output_path: str,
-    speaker_data: dict[Speaker, dict[str, list[CtmInterval]]],
+    speaker_data: Dict[Speaker, Dict[str, List[CtmInterval]]],
     frame_shift: int,
     first_file_write: Optional[bool] = True,
 ) -> None:

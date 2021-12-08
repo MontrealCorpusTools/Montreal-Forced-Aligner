@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.alignment.pretrained import DictionaryTrainer
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["train_dictionary", "validate_args", "run_train_dictionary"]
 
 
-def train_dictionary(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def train_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the pronunciation probability training
 
@@ -75,7 +75,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_train_dictionary(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_train_dictionary(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running pronunciation probability training
 

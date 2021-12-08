@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 import yaml
 
@@ -63,22 +63,22 @@ class GmmGselectArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     ivector_options: MetaDict
     dubm_model: str
-    gselect_paths: dict[str, str]
+    gselect_paths: Dict[str, str]
 
 
 class AccGlobalStatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     ivector_options: MetaDict
-    gselect_paths: dict[str, str]
-    acc_paths: dict[str, str]
+    gselect_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
     dubm_path: str
 
 
@@ -86,10 +86,10 @@ class GaussToPostArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     ivector_options: MetaDict
-    post_paths: dict[str, str]
+    post_paths: Dict[str, str]
     dubm_path: str
 
 
@@ -97,21 +97,21 @@ class AccIvectorStatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     ivector_options: MetaDict
     ie_path: str
-    post_paths: dict[str, str]
-    acc_init_paths: dict[str, str]
+    post_paths: Dict[str, str]
+    acc_init_paths: Dict[str, str]
 
 
 def gmm_gselect_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     dubm_options: MetaDict,
     dubm_path: str,
-    gselect_paths: dict[str, str],
+    gselect_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for selecting GMM indices.
@@ -175,10 +175,10 @@ def gmm_gselect_func(
 
 def gauss_to_post_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     ivector_options: MetaDict,
-    post_paths: dict[str, str],
+    post_paths: Dict[str, str],
     dubm_path: str,
 ):
     """
@@ -258,11 +258,11 @@ def gauss_to_post_func(
 
 def acc_global_stats_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     dubm_options: MetaDict,
-    gselect_paths: dict[str, str],
-    acc_paths: dict[str, str],
+    gselect_paths: Dict[str, str],
+    acc_paths: Dict[str, str],
     dubm_path: str,
 ) -> None:
     """
@@ -329,12 +329,12 @@ def acc_global_stats_func(
 
 def acc_ivector_stats_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     ivector_options: MetaDict,
     ie_path: str,
-    post_paths: dict[str, str],
-    acc_init_paths: dict[str, str],
+    post_paths: Dict[str, str],
+    acc_init_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function that accumulates stats for ivector training.
@@ -468,7 +468,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         """Options for DUBM training"""
         return {"subsample": self.subsample, "num_gselect": self.num_gselect}
 
-    def gmm_gselect_arguments(self) -> list[GmmGselectArguments]:
+    def gmm_gselect_arguments(self) -> List[GmmGselectArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`
 
@@ -492,7 +492,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
     def acc_global_stats_arguments(
         self,
-    ) -> list[AccGlobalStatsArguments]:
+    ) -> List[AccGlobalStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`
 
@@ -720,7 +720,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         """Temporary directory path that trainer will save ivector extractor model"""
         return os.path.join(self.working_log_directory, "ivector_model.zip")
 
-    def acc_ivector_stats_arguments(self) -> list[AccIvectorStatsArguments]:
+    def acc_ivector_stats_arguments(self) -> List[AccIvectorStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`
 
@@ -775,7 +775,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.gauss_to_post()
         parse_logs(log_directory)
 
-    def gauss_to_post_arguments(self) -> list[GaussToPostArguments]:
+    def gauss_to_post_arguments(self) -> List[GaussToPostArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`
 
@@ -963,7 +963,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         For model export parameters
     """
 
-    def __init__(self, training_configuration: list[tuple[str, dict[str, Any]]] = None, **kwargs):
+    def __init__(self, training_configuration: List[Tuple[str, Dict[str, Any]]] = None, **kwargs):
         self.param_dict = {
             k: v
             for k, v in kwargs.items()
@@ -974,7 +974,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         self.final_identifier = None
         super().__init__(**kwargs)
         os.makedirs(self.output_directory, exist_ok=True)
-        self.training_configs: dict[str, AcousticModelTrainingMixin] = {}
+        self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         self.current_model = None
         if training_configuration is None:
             training_configuration = [("dubm", {}), ("ivector", {})]
@@ -1073,7 +1073,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments

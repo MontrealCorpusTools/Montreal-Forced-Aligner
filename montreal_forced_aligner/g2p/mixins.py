@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Dict, List
 
 from montreal_forced_aligner.abc import MfaWorker
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
@@ -22,7 +23,7 @@ class G2PMixin(metaclass=ABCMeta):
         self.include_bracketed = include_bracketed
 
     @abstractmethod
-    def generate_pronunciations(self) -> dict[str, list[str]]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
 
@@ -57,7 +58,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def generate_pronunciations(self) -> dict[str, list[str]]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
 

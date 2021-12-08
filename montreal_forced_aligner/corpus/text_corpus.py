@@ -225,7 +225,7 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         self.set_lexicon_word_set(self.corpus_word_set)
         self.write_lexicon_information()
 
-        for speaker in self.speakers.values():
+        for speaker in self.speakers:
             speaker.set_dictionary(self.get_dictionary(speaker.name))
         self.initialize_jobs()
         self.write_corpus_information()

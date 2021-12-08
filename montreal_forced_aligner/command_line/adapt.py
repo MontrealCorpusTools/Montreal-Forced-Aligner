@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.alignment import AdaptingAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["adapt_model", "validate_args", "run_adapt_model"]
 
 
-def adapt_model(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the acoustic model adaptation
 
@@ -104,7 +104,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_adapt_model(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def run_adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running acoustic model adaptation
 

@@ -20,5 +20,8 @@ def test_align_sick(
     export_directory = os.path.join(temp_dir, "test_align_export")
     shutil.rmtree(export_directory, ignore_errors=True)
     os.makedirs(export_directory, exist_ok=True)
+    assert "AY_S" not in a.phone_mapping
+    assert "AY_S" not in a.default_dictionary.phone_mapping
+    assert "AY_S" not in a.default_dictionary.reversed_phone_mapping.values()
     a.export_files(export_directory)
     assert os.path.exists(os.path.join(export_directory, "michael", "acoustic_corpus.TextGrid"))

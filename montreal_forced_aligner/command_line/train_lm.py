@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 __all__ = ["train_lm", "validate_args", "run_train_lm"]
 
 
-def train_lm(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def train_lm(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the language model training
 
@@ -98,7 +98,7 @@ def validate_args(args: Namespace) -> None:
         raise (ArgumentError(f"Could not find the model file {args.model_path}."))
 
 
-def run_train_lm(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_train_lm(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running language model training
 

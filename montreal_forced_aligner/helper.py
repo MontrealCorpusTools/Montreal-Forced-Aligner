@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 import numpy
 from colorama import Fore, Style
@@ -217,7 +217,7 @@ class TerminalPrinter:
         print(wrapper.fill(f"{self.colorize(key, key_color)} {value}"))
 
 
-def comma_join(sequence: list[Any]) -> str:
+def comma_join(sequence: List[Any]) -> str:
     """
     Helper function to combine a list into a human-readable expression with commas and a
     final "and" separator
@@ -451,7 +451,7 @@ def edit_distance(x: Labels, y: Labels) -> int:
     return int(table[-1][-1])
 
 
-def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> tuple[int, int]:
+def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
@@ -484,7 +484,7 @@ def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> tuple[int, i
     return edits, len(gold)
 
 
-def compare_labels(ref: str, test: str, mapping: Optional[dict[str, str]] = None) -> int:
+def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None) -> int:
     """
 
     Parameters
@@ -512,7 +512,7 @@ def compare_labels(ref: str, test: str, mapping: Optional[dict[str, str]] = None
 def overlap_scoring(
     first_element: CtmInterval,
     second_element: CtmInterval,
-    mapping: Optional[dict[str, str]] = None,
+    mapping: Optional[Dict[str, str]] = None,
 ) -> float:
     r"""
     Method to calculate overlap scoring
@@ -551,11 +551,11 @@ def overlap_scoring(
 
 
 def align_phones(
-    ref: list[CtmInterval],
-    test: list[CtmInterval],
-    silence_phones: set[str],
-    custom_mapping: Optional[dict[str, str]] = None,
-) -> tuple[Optional[float], Optional[int], Optional[int]]:
+    ref: List[CtmInterval],
+    test: List[CtmInterval],
+    silence_phones: Set[str],
+    custom_mapping: Optional[Dict[str, str]] = None,
+) -> Tuple[Optional[float], Optional[int], Optional[int]]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone

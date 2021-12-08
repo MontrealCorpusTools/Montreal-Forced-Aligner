@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING, Collection, Optional
+from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
 
 from colorama import Fore, Style
 
@@ -169,7 +169,7 @@ class ThirdpartyError(MFAError):
     def __init__(self, binary_name, open_fst=False, open_blas=False, libc=False, sox=False):
         super().__init__()
         self.message = f"Could not find '{self.error_text(binary_name)}'. "
-        extra = "Please ensure that you have downloaded the correct binaries."
+        extra = "Please ensure that you have installed MFA's conda dependencies."
         if open_fst:
             extra = (
                 f"Please ensure that you are in an environment that has the {self.emphasized_text('openfst')} conda package installed, "
@@ -362,7 +362,7 @@ class AlignmentError(MFAError):
         List of Kaldi log files with errors
     """
 
-    def __init__(self, error_logs: list[str]):
+    def __init__(self, error_logs: List[str]):
         super().__init__()
         output = "\n".join(error_logs)
         self.message = (
@@ -382,7 +382,7 @@ class AlignmentExportError(AlignmentError):
 
     """
 
-    def __init__(self, error_dict: dict[tuple[str, int], str]):
+    def __init__(self, error_dict: Dict[Tuple[str, int], str]):
         MFAError.__init__(self)
 
         message = "Error was encountered in processing CTMs:\n\n"
@@ -498,7 +498,7 @@ class PretrainedModelNotFoundError(ArgumentError):
     """
 
     def __init__(
-        self, name: str, model_type: Optional[str] = None, available: Optional[list[str]] = None
+        self, name: str, model_type: Optional[str] = None, available: Optional[List[str]] = None
     ):
         super().__init__()
         extra = ""
@@ -523,7 +523,7 @@ class MultipleModelTypesFoundError(ArgumentError):
         List of model types that have a model with the given name
     """
 
-    def __init__(self, name: str, possible_model_types: list[str]):
+    def __init__(self, name: str, possible_model_types: List[str]):
         super().__init__()
 
         possible_model_types = [f"{self.error_text(x)}" for x in possible_model_types]
@@ -547,7 +547,7 @@ class ModelExtensionError(ArgumentError):
         Extensions that the model supports
     """
 
-    def __init__(self, name: str, model_type: str, extensions: list[str]):
+    def __init__(self, name: str, model_type: str, extensions: List[str]):
         super().__init__()
         extra = ""
         if model_type:
@@ -649,7 +649,7 @@ class KaldiProcessingError(MFAError):
         Overall log file to find more information
     """
 
-    def __init__(self, error_logs: list[str], log_file: Optional[str] = None):
+    def __init__(self, error_logs: List[str], log_file: Optional[str] = None):
         super().__init__()
         self.message = (
             f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."

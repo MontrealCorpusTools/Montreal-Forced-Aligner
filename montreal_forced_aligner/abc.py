@@ -11,9 +11,22 @@ import shutil
 import sys
 import time
 from abc import ABC, ABCMeta, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, Type, Union, get_type_hints
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    get_type_hints,
+)
 
 import yaml
+
+from montreal_forced_aligner.helper import comma_join
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -41,22 +54,22 @@ __all__ = [
 ]
 
 # Configuration types
-MetaDict = dict[str, Any]
-Labels: list[Any]
-CtmErrorDict: dict[tuple[str, int], str]
+MetaDict = Dict[str, Any]
+Labels: List[Any]
+CtmErrorDict: Dict[Tuple[str, int], str]
 
 # Dictionary types
-DictionaryEntryType: list[dict[str, Union[tuple[str], float, None, int]]]
-ReversedMappingType: dict[int, str]
-WordsType: dict[str, DictionaryEntryType]
-MappingType: dict[str, int]
+DictionaryEntryType: List[Dict[str, Union[Tuple[str], float, None, int]]]
+ReversedMappingType: Dict[int, str]
+WordsType: Dict[str, DictionaryEntryType]
+MappingType: Dict[str, int]
 
 # Corpus types
-OneToOneMappingType: dict[str, str]
-OneToManyMappingType: dict[str, list[str]]
+OneToOneMappingType: Dict[str, str]
+OneToManyMappingType: Dict[str, List[str]]
 
 CorpusMappingType: Union[OneToOneMappingType, OneToManyMappingType]
-ScpType: Union[list[tuple[str, str]], list[tuple[str, list[Any]]]]
+ScpType: Union[List[Tuple[str, str]], List[Tuple[str, List[Any]]]]
 
 
 class TemporaryDirectoryMixin(metaclass=ABCMeta):
@@ -163,7 +176,7 @@ class MfaWorker(metaclass=ABCMeta):
         ...
 
     @classmethod
-    def extract_relevant_parameters(cls, config: MetaDict) -> MetaDict:
+    def extract_relevant_parameters(cls, config: MetaDict) -> Tuple[MetaDict, List[str]]:
         """
         Filter a configuration dictionary to just the relevant parameters for the current worker
 
@@ -176,11 +189,20 @@ class MfaWorker(metaclass=ABCMeta):
         -------
         dict[str, Any]
             Filtered configuration dictionary
+        list[str]
+            Skipped keys
         """
-        return {k: v for k, v in config.items() if k in cls.get_configuration_parameters()}
+        skipped = []
+        new_config = {}
+        for k, v in config.items():
+            if k in cls.get_configuration_parameters():
+                new_config[k] = v
+            else:
+                skipped.append(k)
+        return new_config, skipped
 
     @classmethod
-    def get_configuration_parameters(cls) -> dict[str, Type]:
+    def get_configuration_parameters(cls) -> Dict[str, Type]:
         """
         Get the types of parameters available to be configured
 
@@ -189,6 +211,7 @@ class MfaWorker(metaclass=ABCMeta):
         dict[str, Type]
             Dictionary of parameter names and their types
         """
+        mapping = {Dict: dict, Tuple: tuple, List: list, Set: set}
         configuration_params = {}
         for t, ty in get_type_hints(cls.__init__).items():
             configuration_params[t] = ty
@@ -209,6 +232,14 @@ class MfaWorker(metaclass=ABCMeta):
                         pass
             except AttributeError:
                 pass
+        for t, ty in configuration_params.items():
+            for v in mapping.values():
+                try:
+                    if ty.__origin__ == v:
+                        configuration_params[t] = v
+                        break
+                except AttributeError:
+                    break
         return configuration_params
 
     @property
@@ -257,12 +288,15 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         clean: bool = False,
         **kwargs,
     ):
+        kwargs, skipped = type(self).extract_relevant_parameters(kwargs)
         super().__init__(**kwargs)
         self.num_jobs = num_jobs
         self.clean = clean
         self.initialized = False
         self.start_time = time.time()
         self.setup_logger()
+        if skipped:
+            self.logger.warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
 
     def __del__(self):
         """Ensure that loggers are cleaned up on delete"""
@@ -282,7 +316,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         return self.workflow_directory
 
     @classmethod
-    def parse_args(cls, args: Optional[Namespace], unknown_args: Optional[list[str]]) -> MetaDict:
+    def parse_args(cls, args: Optional[Namespace], unknown_args: Optional[List[str]]) -> MetaDict:
         """
         Class method for parsing configuration parameters from command line arguments
 
@@ -323,6 +357,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 if param_type == bool:
                     if unknown_dict[name].lower() == "false":
                         params[name] = False
+        if getattr(args, "disable_mp", "False"):
+            params["use_mp"] = False
+        elif getattr(args, "disable_textgrid_cleanup", False):
+            params["cleanup_textgrids"] = False
         return params
 
     @classmethod
@@ -330,7 +368,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments
@@ -683,7 +721,7 @@ class AdapterMixin(ModelExporterMixin):
 class MfaModel(ABC):
     """Abstract class for MFA models"""
 
-    extensions: list[str]
+    extensions: List[str]
     model_type = "base_model"
 
     @classmethod
@@ -693,7 +731,7 @@ class MfaModel(ABC):
         return os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
 
     @classmethod
-    def get_available_models(cls) -> list[str]:
+    def get_available_models(cls) -> List[str]:
         """
         Get a list of available models for a given model type
 

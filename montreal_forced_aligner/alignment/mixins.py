@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List
 
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
@@ -60,7 +60,7 @@ class AlignMixin(DictionaryMixin):
     """
 
     logger: logging.Logger
-    jobs: list[Job]
+    jobs: List[Job]
     use_mp: bool
 
     def __init__(
@@ -95,11 +95,11 @@ class AlignMixin(DictionaryMixin):
         ...
 
     @abstractmethod
-    def construct_feature_proc_strings(self) -> list[dict[str, str]]:
+    def construct_feature_proc_strings(self) -> List[Dict[str, str]]:
         """Generate feature strings"""
         ...
 
-    def compile_train_graphs_arguments(self) -> list[CompileTrainGraphsArguments]:
+    def compile_train_graphs_arguments(self) -> List[CompileTrainGraphsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`
 
@@ -131,7 +131,7 @@ class AlignMixin(DictionaryMixin):
             )
         return args
 
-    def align_arguments(self) -> list[AlignArguments]:
+    def align_arguments(self) -> List[AlignArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
 
@@ -163,7 +163,7 @@ class AlignMixin(DictionaryMixin):
             )
         return args
 
-    def compile_information_arguments(self) -> list[CompileInformationArguments]:
+    def compile_information_arguments(self) -> List[CompileInformationArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
 

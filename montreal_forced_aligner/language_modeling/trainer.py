@@ -325,7 +325,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
             Normalized text
         """
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
-        for u in self.utterances.values():
+        for u in self.utterances:
             text = u.text.split()
             new_text = []
             for t in text:

@@ -13,7 +13,7 @@ import sys
 import textwrap
 import traceback
 from queue import Empty
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from colorama import Fore, Style
 
@@ -50,6 +50,25 @@ def get_mfa_version() -> str:
     return __version__
 
 
+def check_third_party():
+    """
+    Checks whether third party software is available on the path
+
+    Raises
+    -------
+    :class:`~montreal_forced_aligner.exceptions.ThirdpartyError`
+    """
+    bin_path = shutil.which("sox")
+    if bin_path is None:
+        raise ThirdpartyError("sox")
+    bin_path = shutil.which("fstcompile")
+    if bin_path is None:
+        raise ThirdpartyError("fstcompile", open_fst=True)
+    bin_path = shutil.which("compute-mfcc-feats")
+    if bin_path is None:
+        raise ThirdpartyError("compute-mfcc-feats")
+
+
 def thirdparty_binary(binary_name: str) -> str:
     """
     Generate full path to a given binary name
@@ -77,7 +96,7 @@ def thirdparty_binary(binary_name: str) -> str:
     return bin_path
 
 
-def log_kaldi_errors(error_logs: list[str], logger: logging.Logger) -> None:
+def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
     """
     Save details of Kaldi processing errors to a logger
 
@@ -97,7 +116,7 @@ def log_kaldi_errors(error_logs: list[str], logger: logging.Logger) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def guess_model_type(path: str) -> list[str]:
+def guess_model_type(path: str) -> List[str]:
     """
     Guess a model type given a path
 
@@ -307,7 +326,7 @@ class ProcessWorker(mp.Process):
         function: Callable,
         return_dict: dict,
         stopped: Stopped,
-        return_info: Optional[dict[int, Any]] = None,
+        return_info: Optional[Dict[int, Any]] = None,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
@@ -339,10 +358,10 @@ class ProcessWorker(mp.Process):
 
 def run_non_mp(
     function: Callable,
-    argument_list: list[tuple[Any, ...]],
+    argument_list: List[Tuple[Any, ...]],
     log_directory: str,
     return_info: bool = False,
-) -> Optional[dict[Any, Any]]:
+) -> Optional[Dict[Any, Any]]:
     """
     Similar to :func:`run_mp`, but no additional processes are used and the jobs are evaluated in sequential order
 
@@ -376,10 +395,10 @@ def run_non_mp(
 
 def run_mp(
     function: Callable,
-    argument_list: list[tuple[Any, ...]],
+    argument_list: List[Tuple[Any, ...]],
     log_directory: str,
     return_info: bool = False,
-) -> Optional[dict[int, Any]]:
+) -> Optional[Dict[int, Any]]:
     """
     Apply a function for each job in parallel
 

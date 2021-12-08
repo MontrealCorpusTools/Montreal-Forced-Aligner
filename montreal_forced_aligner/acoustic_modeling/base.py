@@ -9,7 +9,7 @@ import statistics
 import subprocess
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from tqdm import tqdm
 
@@ -42,15 +42,15 @@ class AlignmentImprovementArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     model_path: str
-    text_int_paths: dict[str, str]
-    word_boundary_paths: dict[str, str]
-    ali_paths: dict[str, str]
+    text_int_paths: Dict[str, str]
+    word_boundary_paths: Dict[str, str]
+    ali_paths: Dict[str, str]
     frame_shift: int
-    reversed_phone_mappings: dict[str, dict[int, str]]
-    positions: dict[str, list[str]]
-    phone_ctm_paths: dict[str, str]
+    reversed_phone_mappings: Dict[str, Dict[int, str]]
+    positions: Dict[str, List[str]]
+    phone_ctm_paths: Dict[str, str]
 
 
 class AccStatsArguments(NamedTuple):
@@ -59,19 +59,19 @@ class AccStatsArguments(NamedTuple):
     """
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
-    acc_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
     model_path: str
 
 
 def acc_stats_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
-    acc_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    ali_paths: Dict[str, str],
+    acc_paths: Dict[str, str],
     model_path: str,
 ) -> None:
     """
@@ -120,15 +120,15 @@ def acc_stats_func(
 
 def compute_alignment_improvement_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     model_path: str,
-    text_int_paths: dict[str, str],
-    word_boundary_paths: dict[str, str],
-    ali_paths: dict[str, str],
+    text_int_paths: Dict[str, str],
+    word_boundary_paths: Dict[str, str],
+    ali_paths: Dict[str, str],
     frame_shift: int,
-    reversed_phone_mappings: dict[str, dict[int, str]],
-    positions: dict[str, list[str]],
-    phone_ctm_paths: dict[str, str],
+    reversed_phone_mappings: Dict[str, Dict[int, str]],
+    positions: Dict[str, List[str]],
+    phone_ctm_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for computing alignment improvement over training
@@ -266,10 +266,10 @@ def compute_alignment_improvement_func(
 
 
 def compare_alignments(
-    alignments_one: dict[str, list[CtmInterval]],
-    alignments_two: dict[str, list[CtmInterval]],
-    silence_phones: set[str],
-) -> tuple[Optional[int], Optional[float]]:
+    alignments_one: Dict[str, List[CtmInterval]],
+    alignments_two: Dict[str, List[CtmInterval]],
+    silence_phones: Set[str],
+) -> Tuple[Optional[int], Optional[float]]:
     """
     Compares two sets of alignments for difference
 
@@ -386,7 +386,7 @@ class AcousticModelTrainingMixin(
         self.training_complete = False
         self.realignment_iterations = []  # Gets set later
 
-    def acc_stats_arguments(self) -> list[AccStatsArguments]:
+    def acc_stats_arguments(self) -> List[AccStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
 
@@ -408,7 +408,7 @@ class AcousticModelTrainingMixin(
             for j in self.jobs
         ]
 
-    def alignment_improvement_arguments(self) -> list[AlignmentImprovementArguments]:
+    def alignment_improvement_arguments(self) -> List[AlignmentImprovementArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`
 
@@ -490,7 +490,7 @@ class AcousticModelTrainingMixin(
         return self.worker.logger
 
     @property
-    def jobs(self) -> list[Job]:
+    def jobs(self) -> List[Job]:
         """Top-level worker's job objects"""
         return self.worker.jobs
 
@@ -501,7 +501,7 @@ class AcousticModelTrainingMixin(
 
     def construct_feature_proc_strings(
         self, speaker_independent: bool = False
-    ) -> list[dict[str, str]]:
+    ) -> List[Dict[str, str]]:
         """Top-level worker's feature strings"""
         return self.worker.construct_feature_proc_strings(speaker_independent)
 
@@ -706,7 +706,7 @@ class AcousticModelTrainingMixin(
 
     def parse_iteration_alignments(
         self, iteration: Optional[int] = None
-    ) -> dict[str, list[CtmInterval]]:
+    ) -> Dict[str, List[CtmInterval]]:
         """
         Function to parse phone CTMs in a given iteration
 
@@ -898,12 +898,17 @@ class AcousticModelTrainingMixin(
 
         from ..utils import get_mfa_version
 
+        phone_regex = None
+        if self.base_phone_regex is not None:
+            phone_regex = self.base_phone_regex.pattern
         data = {
             "phones": sorted(self.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_options,
+            "phone_set_type": self.phone_set_type,
+            "base_phone_regex": phone_regex,
             "multilingual_ipa": self.multilingual_ipa,
         }
         if self.multilingual_ipa:

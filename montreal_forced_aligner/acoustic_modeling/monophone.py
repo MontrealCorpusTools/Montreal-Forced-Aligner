@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.utils import run_mp, run_non_mp, thirdparty_binary
@@ -14,21 +14,21 @@ class MonoAlignEqualArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    fst_scp_paths: dict[str, str]
-    ali_ark_paths: dict[str, str]
-    acc_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    fst_scp_paths: Dict[str, str]
+    ali_ark_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
     model_path: str
 
 
 def mono_align_equal_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    fst_scp_paths: dict[str, str],
-    ali_ark_paths: dict[str, str],
-    acc_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    fst_scp_paths: Dict[str, str],
+    ali_ark_paths: Dict[str, str],
+    acc_paths: Dict[str, str],
     model_path: str,
 ):
     """
@@ -132,7 +132,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         self.max_gaussians = max_gaussians
         self.power = power
 
-    def mono_align_equal_arguments(self) -> list[MonoAlignEqualArguments]:
+    def mono_align_equal_arguments(self) -> List[MonoAlignEqualArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`
 

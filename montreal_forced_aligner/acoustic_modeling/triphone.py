@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
@@ -19,34 +19,34 @@ class TreeStatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.tree_stats_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     ci_phones: str
     model_path: str
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
-    treeacc_paths: dict[str, str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
+    treeacc_paths: Dict[str, str]
 
 
 class ConvertAlignmentsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.convert_alignments_func`"""
 
     log_path: str
-    dictionaries: list[str]
+    dictionaries: List[str]
     model_path: str
     tree_path: str
     align_model_path: str
-    ali_paths: dict[str, str]
-    new_ali_paths: dict[str, str]
+    ali_paths: Dict[str, str]
+    new_ali_paths: Dict[str, str]
 
 
 def convert_alignments_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     model_path: str,
     tree_path: str,
     align_model_path: str,
-    ali_paths: dict[str, str],
-    new_ali_paths: dict[str, str],
+    ali_paths: Dict[str, str],
+    new_ali_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for converting alignments from a previous trainer
@@ -96,12 +96,12 @@ def convert_alignments_func(
 
 def tree_stats_func(
     log_path: str,
-    dictionaries: list[str],
+    dictionaries: List[str],
     ci_phones: str,
     model_path: str,
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
-    treeacc_paths: dict[str, str],
+    feature_strings: Dict[str, str],
+    ali_paths: Dict[str, str],
+    treeacc_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for calculating tree stats for training
@@ -189,7 +189,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         self.max_gaussians = max_gaussians
         self.cluster_threshold = cluster_threshold
 
-    def tree_stats_arguments(self) -> list[TreeStatsArguments]:
+    def tree_stats_arguments(self) -> List[TreeStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.tree_stats_func`
 
@@ -205,7 +205,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             TreeStatsArguments(
                 os.path.join(self.working_log_directory, f"acc_tree.{j.name}.log"),
                 j.current_dictionary_names,
-                self.worker.silence_csl,
+                self.worker.context_independent_csl,
                 alignment_model_path,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.previous_aligner.working_directory, "ali", "ark"),
@@ -214,7 +214,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             for j in self.jobs
         ]
 
-    def convert_alignments_arguments(self) -> list[ConvertAlignmentsArguments]:
+    def convert_alignments_arguments(self) -> List[ConvertAlignmentsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.convert_alignments_func`
 

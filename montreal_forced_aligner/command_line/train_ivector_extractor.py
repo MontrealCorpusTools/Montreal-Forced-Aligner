@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 __all__ = ["train_ivector", "validate_args", "run_train_ivector_extractor"]
 
 
-def train_ivector(args: Namespace, unknown_args: Optional[list] = None) -> None:
+def train_ivector(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the ivector extractor training
 
@@ -75,7 +75,7 @@ def validate_args(args: Namespace) -> None:
         )
 
 
-def run_train_ivector_extractor(args: Namespace, unknown: Optional[list] = None) -> None:
+def run_train_ivector_extractor(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running ivector extraction training
 

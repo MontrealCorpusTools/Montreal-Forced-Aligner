@@ -58,6 +58,5 @@ def test_adapt_multilingual(
         "--debug",
     ]
     args, unknown = parser.parse_known_args(command)
-    print(args)
     run_adapt_model(args, unknown)
     assert os.path.exists(adapted_model_path)

@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, Any, Collection, Optional
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -62,16 +62,24 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
     """
 
     def __init__(self, dictionary_path, root_dictionary=None, **kwargs):
-        super().__init__(**kwargs)
         self.dictionary_model = DictionaryModel(dictionary_path)
+        super().__init__(**kwargs)
+        self.base_phone_regex = self.dictionary_model.base_phone_regex
+        self.phone_set_type = self.dictionary_model.phone_set_type
         self.root_dictionary = root_dictionary
         os.makedirs(self.dictionary_output_directory, exist_ok=True)
         self.words = {}
         self.graphemes = set()
-        self.words[self.silence_word] = [
-            {"pronunciation": (self.nonoptional_silence_phone,), "probability": 1}
+        self.words["<eps>"] = [
+            {
+                "pronunciation": (self.optional_silence_phone,),
+                "probability": 1,
+                "disambiguation": None,
+            }
         ]
-        self.words[self.oov_word] = [{"pronunciation": (self.oov_phone,), "probability": 1}]
+        self.words[self.oov_word] = [
+            {"pronunciation": (self.oov_phone,), "probability": 1, "disambiguation": None}
+        ]
         self.lookup_cache = {}
         self.int_cache = {}
         self.check_cache = {}
@@ -86,7 +94,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     raise DictionaryError(
                         f"Line {i} of {self.dictionary_model.path} does not have a pronunciation."
                     )
-                if word in [self.silence_word, self.oov_word]:
+                if word in self.specials_set:
                     continue
                 self.graphemes.update(word)
                 prob = 1
@@ -153,11 +161,16 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return os.path.join(self.temporary_directory, self.name)
 
     @property
-    def silences(self) -> set[str]:
+    def silences(self) -> Set[str]:
         """
         Set of symbols that correspond to silence
         """
         return self.silence_phones
+
+    @property
+    def actual_words(self):
+        """Words in the dictionary stripping out Kaldi's internal words"""
+        return {k: v for k, v in self.words.items() if k not in self.specials_set}
 
     def data(self, word_set: Optional[Collection[str]] = None) -> DictionaryData:
         """
@@ -173,6 +186,12 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         DictionaryData
             Data necessary for parsing text
         """
+        if (
+            self._dictionary_data is not None
+            and word_set is None
+            and self._dictionary_data.words_mapping
+        ):
+            return self._dictionary_data
 
         def word_check(word):
             """Check whether a word should be included in the output"""
@@ -243,7 +262,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self._dictionary_data = self.data(self.lexicon_word_set)
         self.generate_mappings()
 
-    def split_clitics(self, item: str) -> list[str]:
+    def split_clitics(self, item: str) -> List[str]:
         """
         Split a word into subwords based on clitic and compound markers
 
@@ -345,7 +364,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 self.max_disambiguation_symbol, max(last_used.values())
             )
 
-    def create_utterance_fst(self, text: list[str], frequent_words: list[tuple[str, int]]) -> str:
+    def create_utterance_fst(self, text: List[str], frequent_words: List[Tuple[str, int]]) -> str:
         """
         Create an FST for an utterance with frequent words as a unigram language model
 
@@ -372,7 +391,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         fst_text += f"0 {-1 * math.log(1 / num_words)}\n"
         return fst_text
 
-    def to_int(self, item: str) -> list[int]:
+    def to_int(self, item: str) -> List[int]:
         """
         Convert a given word into integer IDs
 
@@ -387,10 +406,10 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             List of integer IDs corresponding to each subword
         """
         if item not in self.int_cache:
-            self.int_cache[item] = self._dictionary_data.to_int(item)
+            self.int_cache[item] = self.data().to_int(item)
         return self.int_cache[item]
 
-    def _lookup(self, item: str) -> list[str]:
+    def _lookup(self, item: str) -> List[str]:
         """
         Look up a word and return the list of sub words if necessary taking into account clitic and compound markers
 
@@ -427,7 +446,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             True if the look up would not result in an OOV item
         """
         if item not in self.check_cache:
-            self.check_cache[item] = self._dictionary_data.check_word(item)
+            self.check_cache[item] = self.data().check_word(item)
         return self.check_cache[item]
 
     @property
@@ -439,6 +458,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         for k, v in self.words_mapping.items():
             mapping[v] = k
         return mapping
+
+    @property
+    def phone_mapping(self) -> Dict[str, int]:
+        """Mapping of phones to integer IDs"""
+        if self.root_dictionary is not None:
+            return self.root_dictionary.phone_mapping
+        return super().phone_mapping
 
     @property
     def reversed_phone_mapping(self) -> ReversedMappingType:
@@ -464,8 +490,14 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         if self.root_dictionary is not None:
             return self.root_dictionary.phones_dir
+        return super().phones_dir
 
-        return os.path.join(self.dictionary_output_directory, "phones")
+    @property
+    def phone_symbol_table_path(self) -> str:
+        """Path to file containing phone symbols and their integer IDs"""
+        if self.root_dictionary is not None:
+            return self.root_dictionary.phone_symbol_table_path
+        return super().phone_symbol_table_path
 
     @property
     def words_symbol_path(self) -> str:
@@ -507,13 +539,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             self.generate_mappings()
             os.makedirs(self.phones_dir, exist_ok=True)
             self._write_word_boundaries()
-            self._write_phone_map_file()
             self._write_phone_sets()
             self._write_phone_symbol_table()
             self._write_disambig()
             self._write_topo()
             self._write_extra_questions()
-
+        if debug:
+            self.export_lexicon(os.path.join(self.dictionary_output_directory, "lexicon.txt"))
         self._write_graphemes()
         self._write_word_file()
         self._write_align_lexicon()
@@ -592,10 +624,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         Write the alignment lexicon text file to the temporary directory
         """
-        if self.root_dictionary is None:
-            phone_mapping = self.phone_mapping
-        else:
-            phone_mapping = self.root_dictionary.phone_mapping
         path = os.path.join(self.phones_dir, "align_lexicon.int")
         if os.path.exists(path):
             return
@@ -623,7 +651,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                                     phones[j] += "_E"
                                 else:
                                     phones[j] += "_I"
-                    p = " ".join(str(phone_mapping[x]) for x in phones)
+                    p = " ".join(str(self.phone_mapping[x]) for x in phones)
                     f.write(f"{i} {i} {p}\n".format(i=i, p=p))
 
     def _write_fst_binary(
@@ -655,12 +683,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         else:
             lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
             output_fst = os.path.join(self.dictionary_output_directory, "L.fst")
-        if self.root_dictionary is not None:
-            phone_mapping = self.root_dictionary.phone_mapping
-            phones_file_path = self.root_dictionary.phone_symbol_table_path
-        else:
-            phone_mapping = self.phone_mapping
-            phones_file_path = self.phone_symbol_table_path
+
         words_file_path = os.path.join(self.dictionary_output_directory, "words.txt")
 
         log_path = os.path.join(self.dictionary_output_directory, "fst.log")
@@ -669,7 +692,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             compile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("fstcompile"),
-                    f"--isymbols={phones_file_path}",
+                    f"--isymbols={self.phone_symbol_table_path}",
                     f"--osymbols={words_file_path}",
                     "--keep_isymbols=false",
                     "--keep_osymbols=false",
@@ -688,7 +711,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     self.dictionary_output_directory, "phone_disambig0.txt"
                 )
                 with open(phone_disambig_path, "w") as f:
-                    f.write(str(phone_mapping["#0"]))
+                    f.write(str(self.phone_mapping["#0"]))
                 with open(word_disambig_path, "w") as f:
                     f.write(str(self.words_mapping["#0"]))
                 selfloop_proc = subprocess.Popen(
@@ -727,26 +750,21 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         Write the L.fst text file to the temporary directory
         """
-        nonoptional_silence = None
-        optional_silence_phone = None
         lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
         start_state = 0
         silence_state = 0
-        silence_cost = 0
         no_silence_cost = 0
         loop_state = 0
         next_state = 1
-        if self.silence_probability:
-            optional_silence_phone = self.optional_silence_phone
-            nonoptional_silence = self.nonoptional_silence_phone
-
-            silence_cost = -1 * math.log(self.silence_probability)
-            no_silence_cost = -1 * math.log(1.0 - self.silence_probability)
-            loop_state = 1
-            silence_state = 2
 
         with open(lexicon_fst_path, "w", encoding="utf8") as outf:
             if self.silence_probability:
+                optional_silence_phone = self.optional_silence_phone
+
+                silence_cost = -1 * math.log(self.silence_probability)
+                no_silence_cost = -1 * math.log(1.0 - self.silence_probability)
+                loop_state = 1
+                silence_state = 2
                 outf.write(
                     "\t".join(
                         map(str, [start_state, loop_state, "<eps>", "<eps>", no_silence_cost])
@@ -758,7 +776,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     "\t".join(
                         map(
                             str,
-                            [start_state, loop_state, nonoptional_silence, "<eps>", silence_cost],
+                            [
+                                start_state,
+                                loop_state,
+                                optional_silence_phone,
+                                "<eps>",
+                                silence_cost,
+                            ],
                         )
                     )
                     + "\n"
@@ -848,7 +872,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         silence_state = 2
         next_state = 3
 
-        silence_phone = self.nonoptional_silence_phone
+        silence_phone = self.optional_silence_phone
 
         silence_cost = -1 * math.log(self.silence_probability)
         no_silence_cost = -1 * math.log(1 - self.silence_probability)

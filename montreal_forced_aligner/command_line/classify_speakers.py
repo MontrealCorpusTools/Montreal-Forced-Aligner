@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 __all__ = ["classify_speakers", "validate_args", "run_classify_speakers"]
 
 
-def classify_speakers(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def classify_speakers(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the speaker classification
 
@@ -74,7 +74,7 @@ def validate_args(args: Namespace) -> None:
     args.ivector_extractor_path = validate_model_arg(args.ivector_extractor_path, "ivector")
 
 
-def run_classify_speakers(args: Namespace, unknown: Optional[list[str]] = None) -> None:
+def run_classify_speakers(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running speaker classification
 

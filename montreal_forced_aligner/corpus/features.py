@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Union
 
 from montreal_forced_aligner.utils import thirdparty_binary
 
@@ -27,9 +27,9 @@ class VadArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feats_scp_paths: dict[str, str]
-    vad_scp_paths: dict[str, str]
+    dictionaries: List[str]
+    feats_scp_paths: Dict[str, str]
+    vad_scp_paths: Dict[str, str]
     vad_options: MetaDict
 
 
@@ -39,11 +39,11 @@ class MfccArguments(NamedTuple):
     """
 
     log_path: str
-    dictionaries: list[str]
-    feats_scp_paths: dict[str, str]
-    lengths_paths: dict[str, str]
-    segment_paths: dict[str, str]
-    wav_paths: dict[str, str]
+    dictionaries: List[str]
+    feats_scp_paths: Dict[str, str]
+    lengths_paths: Dict[str, str]
+    segment_paths: Dict[str, str]
+    wav_paths: Dict[str, str]
     mfcc_options: MetaDict
 
 
@@ -51,13 +51,13 @@ class CalcFmllrArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
     ali_model_path: str
     model_path: str
-    spk2utt_paths: dict[str, str]
-    trans_paths: dict[str, str]
+    spk2utt_paths: Dict[str, str]
+    trans_paths: Dict[str, str]
     fmllr_options: MetaDict
 
 
@@ -82,11 +82,11 @@ def make_safe(value: Any) -> str:
 
 def mfcc_func(
     log_path: str,
-    dictionaries: list[str],
-    feats_scp_paths: dict[str, str],
-    lengths_paths: dict[str, str],
-    segment_paths: dict[str, str],
-    wav_paths: dict[str, str],
+    dictionaries: List[str],
+    feats_scp_paths: Dict[str, str],
+    lengths_paths: Dict[str, str],
+    segment_paths: Dict[str, str],
+    wav_paths: Dict[str, str],
     mfcc_options: MetaDict,
 ) -> None:
     """
@@ -182,9 +182,9 @@ def mfcc_func(
 
 def compute_vad_func(
     log_path: str,
-    dictionaries: list[str],
-    feats_scp_paths: dict[str, str],
-    vad_scp_paths: dict[str, str],
+    dictionaries: List[str],
+    feats_scp_paths: Dict[str, str],
+    vad_scp_paths: Dict[str, str],
     vad_options: MetaDict,
 ) -> None:
     """
@@ -232,13 +232,13 @@ def compute_vad_func(
 
 def calc_fmllr_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    ali_paths: Dict[str, str],
     ali_model_path: str,
     model_path: str,
-    spk2utt_paths: dict[str, str],
-    trans_paths: dict[str, str],
+    spk2utt_paths: Dict[str, str],
+    trans_paths: Dict[str, str],
     fmllr_options: MetaDict,
 ) -> None:
     """
@@ -687,26 +687,26 @@ class ExtractIvectorsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     ivector_options: MetaDict
-    ali_paths: dict[str, str]
+    ali_paths: Dict[str, str]
     ie_path: str
-    ivector_paths: dict[str, str]
-    weight_paths: dict[str, str]
+    ivector_paths: Dict[str, str]
+    weight_paths: Dict[str, str]
     model_path: str
     dubm_path: str
 
 
 def extract_ivectors_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     ivector_options: MetaDict,
-    ali_paths: dict[str, str],
+    ali_paths: Dict[str, str],
     ie_path: str,
-    ivector_paths: dict[str, str],
-    weight_paths: dict[str, str],
+    ivector_paths: Dict[str, str],
+    weight_paths: Dict[str, str],
     model_path: str,
     dubm_path: str,
 ) -> None:

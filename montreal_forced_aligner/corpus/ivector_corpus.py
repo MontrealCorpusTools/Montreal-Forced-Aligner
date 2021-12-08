@@ -1,5 +1,6 @@
 """Classes for corpora that use ivectors as features"""
 import os
+from typing import List
 
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import (
@@ -50,10 +51,10 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         with open(
             os.path.join(self.corpus_output_directory, "utt2spk.scp"), "w", encoding="utf8"
         ) as f:
-            for utterance in self.utterances.values():
+            for utterance in self.utterances:
                 f.write(f"{utterance.name} {utterance.speaker.name}\n")
 
-    def extract_ivectors_arguments(self) -> list[ExtractIvectorsArguments]:
+    def extract_ivectors_arguments(self) -> List[ExtractIvectorsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`
 
