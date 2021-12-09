@@ -30,6 +30,19 @@ Corpora
 Helper classes and functions
 ============================
 
+Collections
+-----------
+
+.. currentmodule::  montreal_forced_aligner.corpus.classes
+
+.. autosummary::
+   :toctree: generated/
+
+   Collection
+   SpeakerCollection
+   FileCollection
+   UtteranceCollection
+
 Multiprocessing
 ---------------
 

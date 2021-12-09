@@ -13,6 +13,18 @@ Beta releases
 2.0.0b9
 -------
 
+- Fixed a bug where unknown word phones were showing up as blank
+- Fixed a bug where TextGrid export would hang
+- Fixed compatibility issues with Python 3.8
+- Added logging for when configuration parameters are ignored
+- Added some functionality from the LibriSpeech recipe for triphone training with Arpabet
+
+  - Not sure if it'll improve anything, but I'll run some tests and maybe extend it to other phone sets
+
+- Added better logging to TextGrid export
+- Added new classes for managing collections of utterances, speakers, and files
+- Fixed a bug where oovs were not being properly reported by the validation tool
+
 2.0.0b8
 -------
 

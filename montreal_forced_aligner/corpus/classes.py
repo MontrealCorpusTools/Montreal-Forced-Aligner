@@ -1045,36 +1045,49 @@ T = TypeVar("T", Speaker, File, Utterance)
 
 
 class Collection:
+    """
+    Utility class for storing collections of corpus objects, allowing iteration, sorting, and
+    look up via names.
+    """
+
     CLASS_TYPE = ClassVar[MfaCorpusClass]
 
     def __init__(self):
         self._data: Dict[str, T] = {}
 
     def __iter__(self) -> Generator[T]:
+        """Iterator over the collection"""
         for v in self._data.values():
             yield v
 
     def __getitem__(self, key: str) -> T:
+        """Get an item by identifier"""
         return self._data[key]
 
     def __delitem__(self, key: str) -> None:
+        """Delete an item by identifier"""
         del self._data[key]
 
     def __setitem__(self, key: str, item: T) -> None:
+        """Set an item by identifier"""
         self._data[key] = item
 
     def __len__(self) -> int:
+        """Number of items in the collection"""
         return len(self._data)
 
     def __bool__(self) -> bool:
+        """Check for whether the collection contains any items"""
         return bool(self._data)
 
     def __contains__(self, item: Union[str, T]) -> bool:
+        """Check for whether the collection contains a specific item"""
         if not isinstance(item, str):
             item = item.name
         return item in self._data
 
     def update(self, other: Union[Collection, Set[T], List[T]]) -> None:
+        """Update collection from another collection"""
         if isinstance(other, Collection):
             self._data.update(other._data)
         else:
@@ -1082,28 +1095,78 @@ class Collection:
                 self._data[item.name] = item
 
     def __str__(self) -> str:
+        """String representation"""
         return str(self._data)
 
     def __repr__(self) -> str:
-        return f"<UtteranceCollection of {self._data}>"
+        """Object representation"""
+        return f"<Collection of {self._data}>"
 
 
 class SpeakerCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
     CLASS_TYPE = Speaker
 
     def add_speaker(self, speaker: Speaker) -> None:
+        """
+        Add speaker to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+            Speaker to be added
+        """
         self[speaker.name] = speaker
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<SpeakerCollection of {self._data}>"
 
 
 class FileCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
     CLASS_TYPE = File
 
     def add_file(self, file: File) -> None:
+        """
+        Add file to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.File`
+            File to be added
+        """
         self[file.name] = file
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<FileCollection of {self._data}>"
 
 
 class UtteranceCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
     CLASS_TYPE = Utterance
 
     def add_utterance(self, utterance: Utterance) -> None:
+        """
+        Add utterance to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+            Utterance to be added
+        """
         self[utterance.name] = utterance
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<UtteranceCollection of {self._data}>"
