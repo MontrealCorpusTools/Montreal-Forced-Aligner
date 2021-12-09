@@ -449,7 +449,7 @@ class PyniniValidator(PyniniGenerator):
         return self.word_list
 
 
-class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
+class G2PTrainer(MfaWorker, TrainerMixin):
     """
     Abstract mixin class for G2P training
 
@@ -497,7 +497,7 @@ class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
         self.g2p_graphemes = set()
 
 
-class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
+class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker):
     """
     Top-level G2P trainer that uses Pynini functionality
 
