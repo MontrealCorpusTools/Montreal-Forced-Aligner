@@ -33,7 +33,7 @@ Installation
     .. link-button:: https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html
             :type: url
             :text: Install Conda
-            :classes: btn-block btn-primary btn-navigation stretched-link
+            :classes: btn-block btn-primary btn-navigation
 
 
     ---

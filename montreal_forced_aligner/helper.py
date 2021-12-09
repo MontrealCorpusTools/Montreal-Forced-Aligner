@@ -53,16 +53,21 @@ def parse_old_features(config: MetaDict) -> MetaDict:
     feature_key_remapping = {
         "type": "feature_type",
         "deltas": "uses_deltas",
-        "lda": "uses_splices",
-        "fmllr": "uses_speaker_adaptation",
     }
+    skip_keys = ["lda", "fmllr"]
     if "features" in config:
-
+        for key in skip_keys:
+            if key in config["features"]:
+                del config["features"][key]
         for key, new_key in feature_key_remapping.items():
             if key in config["features"]:
+
                 config["features"][new_key] = config["features"][key]
                 del config["features"][key]
     else:
+        for key in skip_keys:
+            if key in config["features"]:
+                del config["features"][key]
         for key, new_key in feature_key_remapping.items():
             if key in config:
                 config[new_key] = config[key]
