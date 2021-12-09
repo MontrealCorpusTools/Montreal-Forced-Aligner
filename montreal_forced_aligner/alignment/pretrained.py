@@ -5,7 +5,7 @@ import os
 import subprocess
 import time
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import yaml
 
@@ -26,12 +26,12 @@ __all__ = ["PretrainedAligner"]
 
 def generate_pronunciations_func(
     log_path: str,
-    dictionaries: list[str],
-    text_int_paths: dict[str, str],
-    word_boundary_paths: dict[str, str],
-    ali_paths: dict[str, str],
+    dictionaries: List[str],
+    text_int_paths: Dict[str, str],
+    word_boundary_paths: Dict[str, str],
+    ali_paths: Dict[str, str],
     model_path: str,
-    pron_paths: dict[str, str],
+    pron_paths: Dict[str, str],
 ):
     """
     Multiprocessing function for generating pronunciations
@@ -109,12 +109,12 @@ class GeneratePronunciationsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.alignment.pretrained.generate_pronunciations_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    text_int_paths: dict[str, str]
-    word_boundary_paths: dict[str, str]
-    ali_paths: dict[str, str]
+    dictionaries: List[str]
+    text_int_paths: Dict[str, str]
+    word_boundary_paths: Dict[str, str]
+    ali_paths: Dict[str, str]
     model_path: str
-    pron_paths: dict[str, str]
+    pron_paths: Dict[str, str]
 
 
 class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
@@ -142,6 +142,11 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         self.acoustic_model = AcousticModel(acoustic_model_path)
         kwargs.update(self.acoustic_model.parameters)
         super().__init__(**kwargs)
+        self.phone_set_type = self.acoustic_model.meta["phone_set_type"]
+        self.base_phone_regex = self.acoustic_model.meta["base_phone_regex"]
+        for d in self.dictionary_mapping.values():
+            d.phone_set_type = self.phone_set_type
+            d.base_phone_regex = self.base_phone_regex
 
     @property
     def working_directory(self) -> str:
@@ -179,7 +184,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters from a config path or command-line arguments
@@ -302,7 +307,7 @@ class DictionaryTrainer(PretrainedAligner):
 
     def generate_pronunciations_arguments(
         self,
-    ) -> list[GeneratePronunciationsArguments]:
+    ) -> List[GeneratePronunciationsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.alignment.pretrained.generate_pronunciations_func`
 
@@ -402,7 +407,7 @@ class DictionaryTrainer(PretrainedAligner):
                             nonsil_after_counts[w] += 1
 
             dictionary.pronunciation_probabilities = True
-            for word, prons in dictionary.words.items():
+            for word, prons in dictionary.actual_words.items():
                 if word not in counts:
                     for p in prons:
                         p["probability"] = 1

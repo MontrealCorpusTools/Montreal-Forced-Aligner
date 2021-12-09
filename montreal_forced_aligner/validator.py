@@ -9,7 +9,7 @@ import os
 import subprocess
 import time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 import yaml
 
@@ -33,11 +33,11 @@ class CompileUtteranceTrainGraphsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.validator.compile_utterance_train_graphs_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    disambig_int_paths: dict[str, str]
-    disambig_L_fst_paths: dict[str, str]
-    fst_paths: dict[str, str]
-    graphs_paths: dict[str, str]
+    dictionaries: List[str]
+    disambig_int_paths: Dict[str, str]
+    disambig_L_fst_paths: Dict[str, str]
+    fst_paths: Dict[str, str]
+    graphs_paths: Dict[str, str]
     model_path: str
     tree_path: str
 
@@ -46,25 +46,25 @@ class TestUtterancesArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.validator.test_utterances_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    words_paths: dict[str, str]
-    graphs_paths: dict[str, str]
-    text_int_paths: dict[str, str]
-    edits_paths: dict[str, str]
-    out_int_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    words_paths: Dict[str, str]
+    graphs_paths: Dict[str, str]
+    text_int_paths: Dict[str, str]
+    edits_paths: Dict[str, str]
+    out_int_paths: Dict[str, str]
     model_path: str
 
 
 def test_utterances_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    words_paths: dict[str, str],
-    graphs_paths: dict[str, str],
-    text_int_paths: dict[str, str],
-    edits_paths: dict[str, str],
-    out_int_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    words_paths: Dict[str, str],
+    graphs_paths: Dict[str, str],
+    text_int_paths: Dict[str, str],
+    edits_paths: Dict[str, str],
+    out_int_paths: Dict[str, str],
     model_path: str,
 ):
     """
@@ -143,11 +143,11 @@ def test_utterances_func(
 
 def compile_utterance_train_graphs_func(
     log_path: str,
-    dictionaries: list[str],
-    disambig_int_paths: dict[str, str],
-    disambig_L_fst_paths: dict[str, str],
-    fst_paths: dict[str, str],
-    graphs_paths: dict[str, str],
+    dictionaries: List[str],
+    disambig_int_paths: Dict[str, str],
+    disambig_L_fst_paths: Dict[str, str],
+    fst_paths: Dict[str, str],
+    graphs_paths: Dict[str, str],
     model_path: str,
     tree_path: str,
 ):
@@ -240,7 +240,7 @@ class ValidationMixin(CorpusAligner):
 
     def utt2fst_scp_data(
         self, num_frequent_words: int = 10
-    ) -> list[dict[str, list[tuple[str, str]]]]:
+    ) -> List[Dict[str, List[Tuple[str, str]]]]:
         """
         Generate Kaldi style utt2fst scp data
 
@@ -261,7 +261,7 @@ class ValidationMixin(CorpusAligner):
             utts = j.job_utts()
             for dict_name, utt_data in utts.items():
                 data[dict_name] = []
-                for u_name, utterance in utt_data.items():
+                for utterance in utt_data:
                     new_text = []
                     dictionary = utterance.speaker.dictionary
                     if dict_name not in most_frequent:
@@ -277,7 +277,7 @@ class ValidationMixin(CorpusAligner):
                         new_text.extend(x for x in lookup if x != "")
                     data[dict_name].append(
                         (
-                            u_name,
+                            utterance.name,
                             dictionary.create_utterance_fst(
                                 new_text, most_frequent[dictionary.name]
                             ),
@@ -305,7 +305,7 @@ class ValidationMixin(CorpusAligner):
 
     def compile_utterance_train_graphs_arguments(
         self,
-    ) -> list[CompileUtteranceTrainGraphsArguments]:
+    ) -> List[CompileUtteranceTrainGraphsArguments]:
         """
         Generate Job arguments for :func:`compile_utterance_train_graphs_func`
 
@@ -334,7 +334,7 @@ class ValidationMixin(CorpusAligner):
             for j in self.jobs
         ]
 
-    def test_utterances_arguments(self) -> list[TestUtterancesArguments]:
+    def test_utterances_arguments(self) -> List[TestUtterancesArguments]:
         """
         Generate Job arguments for :func:`test_utterances_func`
 
@@ -383,9 +383,12 @@ class ValidationMixin(CorpusAligner):
                 self.logger.info("Skipping acoustic feature generation")
             else:
                 self.generate_features()
+            self.calculate_oovs_found()
 
-            if self.test_transcriptions:
+            if not self.ignore_acoustics and self.test_transcriptions:
                 self.initialize_utt_fsts()
+            else:
+                self.logger.info("Skipping transcription testing")
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)
@@ -468,15 +471,15 @@ class ValidationMixin(CorpusAligner):
         """
         Analyzes the set up process and outputs info to the console
         """
-        total_duration = sum(x.duration for x in self.files.values())
+        total_duration = sum(x.duration for x in self.files)
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
 
         ignored_count = len(self.no_transcription_files)
         ignored_count += len(self.textgrid_read_errors)
         ignored_count += len(self.decode_error_files)
-        num_sound_files = sum(1 for x in self.files.values() if x.wav_path is not None)
-        num_lab_files = sum(1 for x in self.files.values() if x.text_type == "lab")
-        num_textgrid_files = sum(1 for x in self.files.values() if x.text_type == "textgrid")
+        num_sound_files = sum(1 for x in self.files if x.wav_path is not None)
+        num_lab_files = sum(1 for x in self.files if x.text_type == "lab")
+        num_textgrid_files = sum(1 for x in self.files if x.text_type == "textgrid")
         self._print_header("Corpus")
         self._print_green_stat(num_sound_files, "sound files")
         self._print_green_stat(num_lab_files, "lab files")
@@ -519,11 +522,11 @@ class ValidationMixin(CorpusAligner):
         if oov_types:
             total_instances = 0
             with open(utterance_oov_path, "w", encoding="utf8") as f:
-                for utt, utterance in sorted(self.utterances.items()):
+                for utterance in sorted(self.utterances):
                     if not utterance.oovs:
                         continue
                     total_instances += len(utterance.oovs)
-                    f.write(f"{utt} {', '.join(utterance.oovs)}\n")
+                    f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
             self.save_oovs_found(output_dir)
             self._print_yellow_stat(len(oov_types), "OOV word types")
             self._print_yellow_stat(total_instances, "total OOV tokens")
@@ -579,7 +582,7 @@ class ValidationMixin(CorpusAligner):
         if self.ignore_acoustics:
             print("Acoustic feature generation was skipped.")
         output_dir = self.output_directory
-        missing_features = [x for x in self.utterances.values() if x.ignored]
+        missing_features = [x for x in self.utterances if x.ignored]
         if missing_features:
             path = os.path.join(output_dir, "missing_features.csv")
             with open(path, "w") as f:
@@ -786,6 +789,7 @@ class ValidationMixin(CorpusAligner):
         """
         Construct utterance FSTs
         """
+        self.logger.info("Initializing for testing transcriptions...")
         self.output_utt_fsts()
 
     def test_utterance_transcriptions(self) -> None:
@@ -883,7 +887,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
 
         """
@@ -952,7 +956,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.set_lexicon_word_set(self.corpus_word_set)
             self.write_lexicon_information()
 
-            for speaker in self.speakers.values():
+            for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
             self.initialize_jobs()
             self.write_corpus_information()
@@ -963,6 +967,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 self.logger.info("Skipping acoustic feature generation")
             else:
                 self.generate_features()
+            self.calculate_oovs_found()
 
             if self.test_transcriptions:
                 self.initialize_utt_fsts()
@@ -1022,17 +1027,13 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             self.set_lexicon_word_set(self.corpus_word_set)
             self.write_lexicon_information()
 
-            for speaker in self.speakers.values():
+            for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
             self.initialize_jobs()
             self.write_corpus_information()
             self.create_corpus_split()
             if self.test_transcriptions:
                 self.write_lexicon_information(write_disambiguation=True)
-            if self.ignore_acoustics:
-                self.logger.info("Skipping acoustic feature generation")
-            else:
-                self.generate_features()
             self.acoustic_model.validate(self)
             self.acoustic_model.export_model(self.working_directory)
             self.acoustic_model.log_details(self.logger)
@@ -1042,10 +1043,14 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                 self.logger.info("Skipping acoustic feature generation")
             else:
                 self.generate_features()
-
-            if self.test_transcriptions:
+            self.calculate_oovs_found()
+            if not self.ignore_acoustics and self.test_transcriptions:
                 self.initialize_utt_fsts()
+            else:
+                self.logger.info("Skipping transcription testing")
+
             self.initialized = True
+            self.logger.info("Finished initializing!")
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs, self.logger)

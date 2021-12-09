@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -210,7 +210,7 @@ class Transcriber(
         evaluation_mode: bool = False,
         min_language_model_weight: int = 7,
         max_language_model_weight: int = 17,
-        word_insertion_penalties: list[float] = None,
+        word_insertion_penalties: List[float] = None,
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -229,7 +229,7 @@ class Transcriber(
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments
@@ -282,7 +282,7 @@ class Transcriber(
         self.initialized = True
         self.logger.debug(f"Setup for transcription in {time.time() - begin} seconds")
 
-    def create_hclgs_arguments(self) -> dict[str, CreateHclgArguments]:
+    def create_hclgs_arguments(self) -> Dict[str, CreateHclgArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`
 
@@ -310,7 +310,7 @@ class Transcriber(
             )
         return args
 
-    def decode_arguments(self) -> list[DecodeArguments]:
+    def decode_arguments(self) -> List[DecodeArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
 
@@ -334,7 +334,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def score_arguments(self) -> list[ScoreArguments]:
+    def score_arguments(self) -> List[ScoreArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
 
@@ -357,7 +357,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def lm_rescore_arguments(self) -> list[LmRescoreArguments]:
+    def lm_rescore_arguments(self) -> List[LmRescoreArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
 
@@ -379,7 +379,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def carpa_lm_rescore_arguments(self) -> list[CarpaLmRescoreArguments]:
+    def carpa_lm_rescore_arguments(self) -> List[CarpaLmRescoreArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
 
@@ -409,7 +409,7 @@ class Transcriber(
         options["lattice_beam"] = self.lattice_beam
         return options
 
-    def initial_fmllr_arguments(self) -> list[InitialFmllrArguments]:
+    def initial_fmllr_arguments(self) -> List[InitialFmllrArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
 
@@ -433,7 +433,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def lat_gen_fmllr_arguments(self) -> list[LatGenFmllrArguments]:
+    def lat_gen_fmllr_arguments(self) -> List[LatGenFmllrArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
 
@@ -457,7 +457,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def final_fmllr_arguments(self) -> list[FinalFmllrArguments]:
+    def final_fmllr_arguments(self) -> List[FinalFmllrArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
 
@@ -481,7 +481,7 @@ class Transcriber(
             for j in self.jobs
         ]
 
-    def fmllr_rescore_arguments(self) -> list[FmllrRescoreArguments]:
+    def fmllr_rescore_arguments(self) -> List[FmllrRescoreArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
 
@@ -551,7 +551,7 @@ class Transcriber(
             "transition_scale": self.transition_scale,
         }
 
-    def get_tree_info(self) -> tuple[int, int]:
+    def get_tree_info(self) -> Tuple[int, int]:
         """
         Get the context width and central position for the acoustic model
 
@@ -931,5 +931,5 @@ class Transcriber(
             backup_output_directory = os.path.join(self.working_directory, "transcriptions")
             os.makedirs(backup_output_directory, exist_ok=True)
         self._load_transcripts()
-        for file in self.files.values():
+        for file in self.files:
             file.save(output_directory, backup_output_directory)

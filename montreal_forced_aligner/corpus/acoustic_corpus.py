@@ -9,7 +9,7 @@ import sys
 import time
 from abc import ABCMeta
 from queue import Empty
-from typing import Optional
+from typing import Dict, List, Optional
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
@@ -150,7 +150,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def construct_feature_proc_strings(
         self,
         speaker_independent: bool = False,
-    ) -> list[dict[str, str]]:
+    ) -> List[Dict[str, str]]:
         """
         Constructs a feature processing string to supply to Kaldi binaries, taking into account corpus features and the
         current working directory of the aligner (whether fMLLR or LDA transforms should be used, etc).
@@ -223,7 +223,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             strings.append(feat_strings)
         return strings
 
-    def compute_vad_arguments(self) -> list[VadArguments]:
+    def compute_vad_arguments(self) -> List[VadArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
 
@@ -243,7 +243,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for j in self.jobs
         ]
 
-    def calc_fmllr_arguments(self) -> list[CalcFmllrArguments]:
+    def calc_fmllr_arguments(self) -> List[CalcFmllrArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
 
@@ -268,7 +268,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for j in self.jobs
         ]
 
-    def mfcc_arguments(self) -> list[MfccArguments]:
+    def mfcc_arguments(self) -> List[MfccArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
 
@@ -429,10 +429,10 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         if self.utterances[f[0]].ignored:
                             continue
                         self.utterances[f[0]].features = f[1]
-        for u, utterance in self.utterances.items():
+        for utterance in self.utterances:
             if utterance.features is None:
                 utterance.ignored = True
-                ignore_check.append(u)
+                ignore_check.append(utterance.name)
         if ignore_check:
             self.log_warning(
                 "There were some utterances ignored due to short duration, see the log file for full "
@@ -446,11 +446,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def _write_feats(self):
         """Write feats scp file for Kaldi"""
-        if any(x.features is not None for x in self.utterances.values()):
+        if any(x.features is not None for x in self.utterances):
             with open(
                 os.path.join(self.corpus_output_directory, "feats.scp"), "w", encoding="utf8"
             ) as f:
-                for utterance in self.utterances.values():
+                for utterance in self.utterances:
                     if not utterance.features:
                         continue
                     f.write(f"{utterance.name} {utterance.features}\n")
@@ -668,12 +668,18 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 }
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
-
+        self.log_debug(f"Walking through {self.corpus_directory}...")
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
             identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
             relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
             if self.stopped.stop_check():
                 return
+            self.log_debug(f"Inside relative root {relative_path}:")
+            self.log_debug(f"    Found {len(identifiers)} identifiers")
+            self.log_debug(f"    Found {len(wav_files)} .wav files")
+            self.log_debug(f"    Found {len(other_audio_files)} other audio files")
+            self.log_debug(f"    Found {len(lab_files)} .lab files")
+            self.log_debug(f"    Found {len(textgrid_files)} .TextGrid files")
             if not use_audio_directory:
                 all_sound_files = {}
                 wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
@@ -699,7 +705,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     continue
                 if transcription_path is None:
                     self.no_transcription_files.append(wav_path)
-
                 try:
                     if hasattr(self, "construct_sanitize_function"):
                         file = parse_file(
@@ -782,14 +787,13 @@ class AcousticCorpusPronunciationMixin(
         self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 
         begin = time.time()
-        for speaker in self.speakers.values():
+        for speaker in self.speakers:
             speaker.set_dictionary(self.get_dictionary(speaker.name))
         self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
 
         begin = time.time()
         self.initialize_jobs()
         self.log_debug(f"Initialized jobs in {time.time() - begin}")
-
         begin = time.time()
         self.write_corpus_information()
         self.log_debug(f"Wrote corpus information in {time.time() - begin}")
@@ -808,7 +812,7 @@ class AcousticCorpusPronunciationMixin(
         self.log_debug(f"Setting up corpus took {time.time() - all_begin} seconds")
 
 
-class AcousticCorpus(AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin):
+class AcousticCorpus(AcousticCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     """
     Standalone class for working with acoustic corpora and pronunciation dictionaries
 
@@ -831,6 +835,73 @@ class AcousticCorpus(AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirec
 
     def __init__(self, num_jobs=3, **kwargs):
         super(AcousticCorpus, self).__init__(**kwargs)
+        self.num_jobs = num_jobs
+
+    @property
+    def identifier(self) -> str:
+        """Identifier for the corpus"""
+        return self.data_source_identifier
+
+    @property
+    def output_directory(self) -> str:
+        """Root temporary directory to store corpus and dictionary files"""
+        return os.path.join(self.temporary_directory, self.identifier)
+
+    @property
+    def working_directory(self) -> str:
+        """Working directory to save temporary corpus and dictionary files"""
+        return self.output_directory
+
+    def log_debug(self, message: str) -> None:
+        """
+        Print a debug message
+
+        Parameters
+        ----------
+        message: str
+            Debug message to log
+        """
+        print(message)
+
+    def log_error(self, message: str) -> None:
+        """
+        Print an error message
+
+        Parameters
+        ----------
+        message: str
+            Error message to log
+        """
+        print(message)
+
+    def log_info(self, message: str) -> None:
+        """
+        Print an info message
+
+        Parameters
+        ----------
+        message: str
+            Info message to log
+        """
+        print(message)
+
+    def log_warning(self, message: str) -> None:
+        """
+        Print a warning message
+
+        Parameters
+        ----------
+        message: str
+            Warning message to log
+        """
+        print(message)
+
+
+class AcousticCorpusWithPronunciations(
+    AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin
+):
+    def __init__(self, num_jobs=3, **kwargs):
+        super().__init__(**kwargs)
         self.num_jobs = num_jobs
 
     @property

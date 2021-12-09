@@ -6,7 +6,7 @@ MFA configuration
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
 
@@ -76,7 +76,7 @@ def generate_command_history_path() -> str:
     return os.path.join(get_temporary_directory(), "command_history.yaml")
 
 
-def load_command_history() -> list[dict[str, Any]]:
+def load_command_history() -> List[Dict[str, Any]]:
     """
     Load command history for MFA
 
@@ -95,7 +95,7 @@ def load_command_history() -> list[dict[str, Any]]:
     return history
 
 
-def update_command_history(command_data: dict[str, Any]) -> None:
+def update_command_history(command_data: Dict[str, Any]) -> None:
     """
     Update command history with most recent command
 
@@ -184,7 +184,7 @@ def update_global_config(args: Namespace) -> None:
         yaml.dump(default_config, f)
 
 
-def load_global_config() -> dict[str, Any]:
+def load_global_config() -> Dict[str, Any]:
     """
     Load the global MFA configuration
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -59,7 +59,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         Training blocks
     """
 
-    def __init__(self, training_configuration: list[tuple[str, dict[str, Any]]] = None, **kwargs):
+    def __init__(self, training_configuration: List[Tuple[str, Dict[str, Any]]] = None, **kwargs):
         self.param_dict = {
             k: v
             for k, v in kwargs.items()
@@ -74,7 +74,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.current_acoustic_model: Optional[AcousticModel] = None
         super().__init__(**kwargs)
         os.makedirs(self.output_directory, exist_ok=True)
-        self.training_configs: dict[str, AcousticModelTrainingMixin] = {}
+        self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         if training_configuration is None:
             training_configuration = [
                 ("monophone", {}),
@@ -91,7 +91,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments

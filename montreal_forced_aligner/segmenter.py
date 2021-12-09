@@ -10,7 +10,7 @@ Segmenting files
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, NamedTuple, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Union
 
 import yaml
 
@@ -25,7 +25,7 @@ from .utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp
 if TYPE_CHECKING:
     from argparse import Namespace
 
-SegmentationType = list[dict[str, float]]
+SegmentationType = List[Dict[str, float]]
 
 __all__ = ["Segmenter"]
 
@@ -33,12 +33,12 @@ __all__ = ["Segmenter"]
 class SegmentVadArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`"""
 
-    dictionaries: list[str]
-    vad_paths: dict[str, str]
+    dictionaries: List[str]
+    vad_paths: Dict[str, str]
     segmentation_options: MetaDict
 
 
-def get_initial_segmentation(frames: list[Union[int, str]], frame_shift: int) -> SegmentationType:
+def get_initial_segmentation(frames: List[Union[int, str]], frame_shift: int) -> SegmentationType:
     """
     Compute initial segmentation over voice activity
 
@@ -124,10 +124,10 @@ def merge_segments(
 
 
 def segment_vad_func(
-    dictionaries: list[str],
-    vad_paths: dict[str, str],
+    dictionaries: List[str],
+    vad_paths: Dict[str, str],
     segmentation_options: MetaDict,
-) -> dict[str, Utterance]:
+) -> Dict[str, Utterance]:
     """
     Multiprocessing function to generate segments from VAD output.
 
@@ -206,7 +206,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters for segmentation from a config path or command-line arguments
@@ -240,7 +240,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
-    def segment_vad_arguments(self) -> list[SegmentVadArguments]:
+    def segment_vad_arguments(self) -> List[SegmentVadArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`
 
@@ -303,7 +303,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                 utterance.file = file
                 utterance.set_speaker(speaker)
                 self.add_utterance(utterance)
-        utterance_ids = [x.name for x in self.utterances.values() if x.begin is None]
+        utterance_ids = [x.name for x in self.utterances if x.begin is None]
         for u in utterance_ids:
             self.delete_utterance(u)
 
@@ -366,5 +366,5 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         if not self.overwrite:
             backup_output_directory = os.path.join(self.working_directory, "transcriptions")
             os.makedirs(backup_output_directory, exist_ok=True)
-        for f in self.files.values():
+        for f in self.files:
             f.save(output_directory, backup_output_directory)

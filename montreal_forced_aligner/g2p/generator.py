@@ -8,7 +8,7 @@ import queue
 import sys
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
 import tqdm
 
@@ -75,7 +75,7 @@ class RewriterWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: dict[str, Union[str, Any]],
+        return_dict: Dict[str, Union[str, Any]],
         rewriter: Rewriter,
         counter: Counter,
         stopped: Stopped,
@@ -112,7 +112,7 @@ class RewriterWorker(mp.Process):
         return
 
 
-def clean_up_word(word: str, graphemes: set[str]) -> tuple[str, list[str]]:
+def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -150,7 +150,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
         For top level G2P generation parameters
     """
 
-    def generate_pronunciations(self) -> dict[str, list[str]]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations for the word set
 
@@ -190,7 +190,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.g2p_model = G2PModel(g2p_model_path)
         super().__init__(**kwargs)
 
-    def generate_pronunciations(self) -> dict[str, list[str]]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
 
@@ -334,7 +334,7 @@ class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
         self.initialized = True
 
     @property
-    def words_to_g2p(self) -> list[str]:
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         return self.word_list
 
@@ -365,7 +365,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         self.initialized = True
 
     @property
-    def words_to_g2p(self) -> list[str]:
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         word_list = self.corpus_word_set
         if not self.include_bracketed:
@@ -398,7 +398,7 @@ class OrthographicCorpusGenerator(OrthographyGenerator, TextCorpusMixin, TopLeve
         self.initialized = True
 
     @property
-    def words_to_g2p(self) -> list[str]:
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         word_list = self.corpus_word_set
         if not self.include_bracketed:
@@ -444,6 +444,6 @@ class OrthographicWordListGenerator(OrthographyGenerator, TopLevelMfaWorker):
         self.initialized = True
 
     @property
-    def words_to_g2p(self) -> list[str]:
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         return self.word_list

@@ -14,7 +14,7 @@ def test_basic(basic_dict_path, generated_dir):
 
     assert dictionary
     assert len(dictionary) > 0
-    assert set(dictionary.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
+    assert set(dictionary.phones) == {"sil", "noi", "spn", "phonea", "phoneb", "phonec"}
     assert set(dictionary.kaldi_non_silence_phones) == {
         "phonea_B",
         "phonea_I",
@@ -52,7 +52,7 @@ def test_basic_noposition(basic_dict_path, generated_dir):
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     d = dictionary.default_dictionary
-    assert set(d.phones) == {"sil", "sp", "spn", "phonea", "phoneb", "phonec"}
+    assert set(d.phones) == {"sil", "noi", "spn", "phonea", "phoneb", "phonec"}
 
 
 def test_frclitics(frclitics_dict_path, generated_dir):
@@ -120,6 +120,15 @@ def test_english_clitics(english_dictionary, generated_dir):
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     d = dictionary.default_dictionary
+    assert d.dictionary_model.phone_set_type == "ARPA"
+    assert d.extra_questions_mapping
+    for k, v in d.extra_questions_mapping.items():
+        print(k)
+        print(v)
+        assert len(v) == len(set(v))
+    assert all(x.endswith("0") for x in d.extra_questions_mapping["stress_0"])
+    assert all(x.endswith("1") for x in d.extra_questions_mapping["stress_1"])
+    assert all(x.endswith("2") for x in d.extra_questions_mapping["stress_2"])
     assert d.split_clitics("l'orme's") == ["l'", "orme's"]
 
     assert d.to_int("l'orme's") == [d.words_mapping["l'"], d.words_mapping["orme's"]]

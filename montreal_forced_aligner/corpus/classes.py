@@ -1,12 +1,28 @@
 """Class definitions for Speakers, Files, Utterances and Jobs"""
 from __future__ import annotations
 
+import abc
 import os
 import sys
 import traceback
 from collections import Counter
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
+import librosa
+import numpy as np
 from praatio import textgrid
 from praatio.utilities.constants import Interval
 
@@ -14,7 +30,6 @@ from montreal_forced_aligner.corpus.helper import get_wav_info, load_text, parse
 from montreal_forced_aligner.exceptions import CorpusError, TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary import DictionaryData
     from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
     from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
@@ -83,7 +98,14 @@ def parse_file(
     return file
 
 
-class Speaker:
+class MfaCorpusClass(metaclass=abc.ABCMeta):
+    @property
+    @abc.abstractmethod
+    def name(self) -> str:
+        ...
+
+
+class Speaker(MfaCorpusClass):
     """
     Class representing information about a speaker
 
@@ -94,7 +116,7 @@ class Speaker:
 
     Attributes
     ----------
-    utterances: dict[str, :class:`~montreal_forced_aligner.corpus.classes.Utterance`]
+    utterances: :class:`~montreal_forced_aligner.corpus.classes.UtteranceCollection`
         Utterances that the speaker is associated with
     cmvn: str, optional
         String pointing to any CMVN that has been calculated for this speaker
@@ -105,74 +127,83 @@ class Speaker:
     """
 
     def __init__(self, name):
-        self.name = name
-        self.utterances = {}
+        self._name = name
+        self.utterances = UtteranceCollection()
         self.cmvn = None
         self.dictionary: Optional[PronunciationDictionaryMixin] = None
         self.dictionary_data: Optional[DictionaryData] = None
         self.dictionary_name: Optional[str] = None
         self.word_counts = Counter()
 
-    def __getstate__(self):
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def __getstate__(self) -> Dict[str, str]:
         """Get dictionary for pickling"""
         data = {"name": self.name, "cmvn": self.cmvn, "dictionary_name": self.dictionary_name}
         return data
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         """Recreate object following pickling"""
-        self.name = state["name"]
+        self._name = state["name"]
         self.cmvn = state["cmvn"]
         self.dictionary_name = state["dictionary_name"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return Speaker's name"""
         return self.name
 
-    def __eq__(self, other):
+    def __eq__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name == self.name
         if isinstance(other, str):
             return self.name == other
-        raise NotImplementedError
+        raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __lt__(self, other):
+    def __lt__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is less than another Speaker"""
         if isinstance(other, Speaker):
             return other.name < self.name
         if isinstance(other, str):
             return self.name < other
-        raise NotImplementedError
+        raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __lte__(self, other):
+    def __lte__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is less than or equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name <= self.name
         if isinstance(other, str):
             return self.name <= other
-        raise NotImplementedError
+        raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __gt__(self, other):
+    def __gt__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is greater than another Speaker"""
         if isinstance(other, Speaker):
             return other.name > self.name
         if isinstance(other, str):
             return self.name > other
-        raise NotImplementedError
+        raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __gte__(self, other):
+    def __gte__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is greater than or equal to another Speaker"""
         if isinstance(other, Speaker):
             return other.name >= self.name
         if isinstance(other, str):
             return self.name >= other
-        raise NotImplementedError
+        raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __hash__(self):
+    def __hash__(self) -> hash:
         """Get the hash of the speaker"""
         return hash(self.name)
 
-    def add_utterance(self, utterance: Utterance):
+    @property
+    def num_utterances(self) -> int:
+        """Get the number of utterances for the speaker"""
+        return len(self.utterances)
+
+    def add_utterance(self, utterance: Utterance) -> None:
         """
         Associate an utterance with a speaker
 
@@ -181,12 +212,9 @@ class Speaker:
         utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to be added
         """
-        utterance.speaker = self
-        self.utterances[utterance.name] = utterance
-        if utterance.text:
-            self.word_counts.update(utterance.text.split())
+        self.utterances.add_utterance(utterance)
 
-    def delete_utterance(self, utterance: Utterance):
+    def delete_utterance(self, utterance: Utterance) -> None:
         """
         Delete an utterance associated with a speaker
 
@@ -196,10 +224,9 @@ class Speaker:
             Utterance to be deleted
         """
         identifier = utterance.name
-        utterance.speaker = None
         del self.utterances[identifier]
 
-    def merge(self, speaker: Speaker):
+    def merge(self, speaker: Speaker) -> None:
         """
         Merge two speakers together
 
@@ -208,11 +235,11 @@ class Speaker:
         speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
             Other speaker to take utterances from
         """
-        for u in speaker.utterances.values():
+        for u in speaker.utterances:
             self.add_utterance(u)
-        speaker.utterances = []
+        speaker.utterances = UtteranceCollection()
 
-    def word_set(self) -> set[str]:
+    def word_set(self) -> Set[str]:
         """
         Generate the word set of all the words in a speaker's utterances
 
@@ -222,6 +249,12 @@ class Speaker:
             Speaker's word set
         """
         words = set()
+        if self.dictionary is not None:
+            words.update(self.dictionary.specials_set)
+            words.update(self.dictionary.clitic_set)
+        self.word_counts = Counter()
+        for u in self.utterances:
+            self.word_counts.update(u.text.split())
         for word in self.word_counts:
             if self.dictionary is not None:
                 word = self.dictionary._lookup(word)
@@ -244,15 +277,15 @@ class Speaker:
         self.dictionary_data = dictionary.data(self.word_set())
 
     @property
-    def files(self) -> set["File"]:
+    def files(self) -> Set["File"]:
         """Files that the speaker is associated with"""
         files = set()
-        for u in self.utterances.values():
+        for u in self.utterances:
             files.add(u.file)
         return files
 
     @property
-    def meta(self):
+    def meta(self) -> Dict[str, str]:
         """Metadata for the speaker"""
         data = {
             "name": self.name,
@@ -263,7 +296,7 @@ class Speaker:
         return data
 
 
-class File:
+class File(MfaCorpusClass):
     """
     File class for representing metadata and associations of Files
 
@@ -275,6 +308,19 @@ class File:
         Transcription file path
     relative_path: str, optional
         Relative path to the corpus root
+
+    Attributes
+    ----------
+    utterances: :class:`~montreal_forced_aligner.corpus.classes.UtteranceCollection`
+        Utterances in the file
+    speaker_ordering: list[Speaker]
+        Ordering of speakers in the transcription file
+    wav_info: dict[str, Any]
+        Information about sound file
+    waveform: np.array
+        Audio samples
+    aligned: bool
+        Flag for whether a file has alignments
 
     Raises
     ------
@@ -291,19 +337,68 @@ class File:
         self.wav_path = wav_path
         self.text_path = text_path
         if self.wav_path is not None:
-            self.name = os.path.splitext(os.path.basename(self.wav_path))[0]
+            self._name = os.path.splitext(os.path.basename(self.wav_path))[0]
         elif self.text_path is not None:
-            self.name = os.path.splitext(os.path.basename(self.text_path))[0]
+            self._name = os.path.splitext(os.path.basename(self.text_path))[0]
         else:
             raise CorpusError("File objects must have either a wav_path or text_path")
         self.relative_path = relative_path
         self.wav_info = None
-        self.speaker_ordering: list[Speaker] = []
-        self.utterances: dict[str, Utterance] = {}
+        self.waveform = None
+        self.speaker_ordering: List[Speaker] = []
+        self.utterances = UtteranceCollection()
         self.aligned = False
 
+    def __eq__(self, other: Union[File, str]) -> bool:
+        """Check if a File is equal to another File"""
+        if isinstance(other, File):
+            return other.name == self.name
+        if isinstance(other, str):
+            return self.name == other
+        raise TypeError("Files can only be compared to other files and strings.")
+
+    def __lt__(self, other: Union[File, str]) -> bool:
+        """Check if a File is less than another File"""
+        if isinstance(other, File):
+            return other.name < self.name
+        if isinstance(other, str):
+            return self.name < other
+        raise TypeError("Files can only be compared to other files and strings.")
+
+    def __lte__(self, other: Union[File, str]) -> bool:
+        """Check if a File is less than or equal to another File"""
+        if isinstance(other, File):
+            return other.name <= self.name
+        if isinstance(other, str):
+            return self.name <= other
+        raise TypeError("Files can only be compared to other files and strings.")
+
+    def __gt__(self, other: Union[File, str]) -> bool:
+        """Check if a File is greater than another File"""
+        if isinstance(other, File):
+            return other.name > self.name
+        if isinstance(other, str):
+            return self.name > other
+        raise TypeError("Files can only be compared to other files and strings.")
+
+    def __gte__(self, other: Union[File, str]) -> bool:
+        """Check if a File is greater than or equal to another File"""
+        if isinstance(other, File):
+            return other.name >= self.name
+        if isinstance(other, str):
+            return self.name >= other
+        raise TypeError("Files can only be compared to other files and strings.")
+
+    def __hash__(self) -> hash:
+        """Get the hash of the file"""
+        return hash(self.name)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
     def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
-        for u in self.utterances.values():
+        for u in self.utterances:
             if u.speaker != speaker:
                 continue
             if u.word_labels is None:
@@ -312,11 +407,11 @@ class File:
                 return False
         return True
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Representation of File objects"""
         return f'<File {self.name} Sound path="{self.wav_path}" Text path="{self.text_path}">'
 
-    def __getstate__(self):
+    def __getstate__(self) -> Dict[str, Any]:
         """Create dictionary for pickle"""
         return {
             "name": self.name,
@@ -325,20 +420,22 @@ class File:
             "relative_path": self.relative_path,
             "aligned": self.aligned,
             "wav_info": self.wav_info,
+            "waveform": self.waveform,
             "speaker_ordering": [x.__getstate__() for x in self.speaker_ordering],
-            "utterances": self.utterances.values(),
+            "utterances": self.utterances,
         }
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         """Update object following pickling"""
-        self.name = state["name"]
+        self._name = state["name"]
         self.wav_path = state["wav_path"]
         self.text_path = state["text_path"]
         self.relative_path = state["relative_path"]
         self.wav_info = state["wav_info"]
+        self.waveform = state["waveform"]
         self.aligned = state["aligned"]
         self.speaker_ordering = state["speaker_ordering"]
-        self.utterances = {}
+        self.utterances = UtteranceCollection()
         for i, s in enumerate(self.speaker_ordering):
             self.speaker_ordering[i] = Speaker("")
             self.speaker_ordering[i].__setstate__(s)
@@ -352,7 +449,7 @@ class File:
 
     def save(
         self, output_directory: Optional[str] = None, backup_output_directory: Optional[str] = None
-    ):
+    ) -> None:
         """
         Output File to TextGrid or lab
 
@@ -366,7 +463,7 @@ class File:
         """
         utterance_count = len(self.utterances)
         if utterance_count == 1:
-            utterance = next(iter(self.utterances.values()))
+            utterance = next(iter(self.utterances))
             if utterance.begin is None and not utterance.phone_labels:
                 output_path = self.construct_output_path(
                     output_directory, backup_output_directory, enforce_lab=True
@@ -388,7 +485,7 @@ class File:
 
         tg = textgrid.Textgrid()
         tg.maxTimestamp = max_time
-        for utterance in self.utterances.values():
+        for utterance in self.utterances:
 
             if utterance.speaker is None:
                 speaker = "speech"
@@ -413,7 +510,7 @@ class File:
         tg.save(output_path, includeBlankSpaces=True, format="long_textgrid")
 
     @property
-    def meta(self):
+    def meta(self) -> Dict[str, Any]:
         """Metadata for the File"""
         return {
             "wav_path": self.wav_path,
@@ -425,21 +522,21 @@ class File:
         }
 
     @property
-    def has_sound_file(self):
+    def has_sound_file(self) -> bool:
         """Flag for whether the File has a sound file"""
         if self.wav_path is not None and os.path.exists(self.wav_path):
             return True
         return False
 
     @property
-    def has_text_file(self):
+    def has_text_file(self) -> bool:
         """Flag for whether the File has a text file"""
         if self.text_path is not None and os.path.exists(self.text_path):
             return True
         return False
 
     @property
-    def text_type(self):
+    def text_type(self) -> Optional[str]:
         """Type of text file"""
         if self.has_text_file:
             if os.path.splitext(self.text_path)[1].lower() == ".textgrid":
@@ -579,8 +676,7 @@ class File:
         utterance: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
             Utterance to add
         """
-        utterance.file = self
-        self.utterances[utterance.name] = utterance
+        self.utterances.add_utterance(utterance)
         self.add_speaker(utterance.speaker)
 
     def delete_utterance(self, utterance: Utterance) -> None:
@@ -593,7 +689,6 @@ class File:
             Utterance to remove
         """
         identifier = utterance.name
-        utterance.file = None
         del self.utterances[identifier]
 
     def load_info(self) -> None:
@@ -622,6 +717,25 @@ class File:
         return self.wav_info["num_channels"]
 
     @property
+    def num_utterances(self) -> int:
+        """Get the number of utterances for the sound file"""
+        return len(self.utterances)
+
+    @property
+    def num_speakers(self) -> int:
+        """Get the number of speakers in the sound file"""
+        return len(self.speaker_ordering)
+
+    @property
+    def sample_rate(self) -> int:
+        """Get the sample rate of the sound file"""
+        if self.wav_path is None:
+            return 0
+        if not self.wav_info:
+            self.load_info()
+        return self.wav_info["sample_rate"]
+
+    @property
     def format(self) -> str:
         """Get the sound file format"""
         if not self.wav_info:
@@ -634,6 +748,34 @@ class File:
         if not self.wav_info:
             self.load_info()
         return self.wav_info["sox_string"]
+
+    def load_wav_data(self) -> None:
+        self.waveform, _ = librosa.load(self.wav_path, sr=None, mono=False)
+
+    def normalized_waveform(
+        self, begin: float = 0, end: Optional[float] = None
+    ) -> Tuple[np.array, np.array]:
+        if self.waveform is None:
+            self.load_wav_data()
+        if end is None:
+            end = self.duration
+
+        begin_sample = int(begin * self.sample_rate)
+        end_sample = int(end * self.sample_rate)
+        if len(self.waveform.shape) > 1 and self.waveform.shape[0] == 2:
+            y = self.waveform[:, begin_sample:end_sample] / np.max(
+                np.abs(self.waveform[:, begin_sample:end_sample]), axis=0
+            )
+            y[np.isnan(y)] = 0
+            y[0, :] += 3
+            y[0, :] += 1
+        else:
+            y = (
+                self.waveform[begin_sample:end_sample]
+                / np.max(np.abs(self.waveform[begin_sample:end_sample]), axis=0)
+            ) + 1
+        x = np.arange(start=begin_sample, stop=end_sample) / self.sample_rate
+        return x, y
 
     def for_wav_scp(self) -> str:
         """
@@ -649,7 +791,7 @@ class File:
         return self.wav_path
 
 
-class Utterance:
+class Utterance(MfaCorpusClass):
     """
     Class for information about specific utterances
 
@@ -714,13 +856,11 @@ class Utterance:
         self.ignored = False
         self.features = None
         self.feature_length = None
-        self.phone_labels: Optional[list[CtmInterval]] = None
-        self.word_labels: Optional[list[CtmInterval]] = None
+        self.phone_labels: Optional[List[CtmInterval]] = None
+        self.word_labels: Optional[List[CtmInterval]] = None
         self.oovs = set()
-        self.speaker.add_utterance(self)
-        self.file.add_utterance(self)
 
-    def __getstate__(self):
+    def __getstate__(self) -> Dict[str, Any]:
         """Get the state of the object for pickling"""
         return {
             "file_name": self.file_name,
@@ -738,7 +878,7 @@ class Utterance:
             "word_labels": self.word_labels,
         }
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         """Reconstruct the object following pickling"""
         self.file_name = state["file_name"]
         self.speaker_name = state["speaker_name"]
@@ -754,141 +894,55 @@ class Utterance:
         self.phone_labels = state["phone_labels"]
         self.word_labels = state["word_labels"]
 
-    def delete(self):
-        """Delete this utterance and clean up references in other objects"""
-        pass
-
-    def __str__(self):
+    def __str__(self) -> str:
         """String representation"""
         return self.name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Object representation"""
         return f'<Utterance "{self.name}">'
 
-    def __eq__(self, other) -> bool:
-        """
-        Check if this utterance is equal to another one
-
-        Parameters
-        ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
-            Utterance to compare against
-
-        Returns
-        -------
-        bool
-            True if same name
-
-        Raises
-        ------
-        NotImplementedError
-            If other is not an Utterance or a str
-        """
+    def __eq__(self, other: Union[Utterance, str]) -> bool:
+        """Check if a Utterance is equal to another Utterance"""
         if isinstance(other, Utterance):
             return other.name == self.name
         if isinstance(other, str):
             return self.name == other
-        raise NotImplementedError
+        raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __lt__(self, other) -> bool:
-        """
-        Check if this utterance is less than another one
-
-        Parameters
-        ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
-            Utterance to compare against
-
-        Returns
-        -------
-        bool
-            True if name is less than other's name
-
-        Raises
-        ------
-        NotImplementedError
-            If other is not an Utterance or a str"""
+    def __lt__(self, other: Union[Utterance, str]) -> bool:
+        """Check if a Utterance is less than another Utterance"""
         if isinstance(other, Utterance):
             return other.name < self.name
         if isinstance(other, str):
             return self.name < other
-        raise NotImplementedError
+        raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __lte__(self, other) -> bool:
-        """
-        Check if this utterance is less than or equal to another one
-
-        Parameters
-        ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
-            Utterance to compare against
-
-        Returns
-        -------
-        bool
-            True if name is less than or equal to other's name
-
-        Raises
-        ------
-        NotImplementedError
-            If other is not an Utterance or a str"""
+    def __lte__(self, other: Union[Utterance, str]) -> bool:
+        """Check if a Utterance is less than or equal to another Utterance"""
         if isinstance(other, Utterance):
             return other.name <= self.name
         if isinstance(other, str):
             return self.name <= other
-        raise NotImplementedError
+        raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __gt__(self, other) -> bool:
-        """
-        Check if this utterance is greater than another one
-
-        Parameters
-        ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
-            Utterance to compare against
-
-        Returns
-        -------
-        bool
-            True if name is greater than other's name
-
-        Raises
-        ------
-        NotImplementedError
-            If other is not an Utterance or a str
-        """
+    def __gt__(self, other: Union[Utterance, str]) -> bool:
+        """Check if a Utterance is greater than another Utterance"""
         if isinstance(other, Utterance):
             return other.name > self.name
         if isinstance(other, str):
             return self.name > other
-        raise NotImplementedError
+        raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __gte__(self, other) -> bool:
-        """
-        Check if this utterance is greater than or equal to another one
-
-        Parameters
-        ----------
-        other: :class:`~montreal_forced_aligner.corpus.classes.Utterance` or str
-            Utterance to compare against
-
-        Returns
-        -------
-        bool
-            True if name is greater than or equal to other's name
-
-        Raises
-        ------
-        NotImplementedError
-            If other is not an Utterance or a str"""
+    def __gte__(self, other: Union[Utterance, str]) -> bool:
+        """Check if a Utterance is greater than or equal to another Utterance"""
         if isinstance(other, Utterance):
             return other.name >= self.name
         if isinstance(other, str):
             return self.name >= other
-        raise NotImplementedError
+        raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __hash__(self):
+    def __hash__(self) -> hash:
         """Compute the hash of this function"""
         return hash(self.name)
 
@@ -900,7 +954,7 @@ class Utterance:
         return self.file.duration
 
     @property
-    def meta(self) -> MetaDict:
+    def meta(self) -> Dict[str, Any]:
         """Metadata dictionary for the utterance"""
         return {
             "speaker": self.speaker.name,
@@ -914,7 +968,7 @@ class Utterance:
             "feature_length": self.feature_length,
         }
 
-    def set_speaker(self, speaker: Speaker):
+    def set_speaker(self, speaker: Speaker) -> None:
         """
         Set the speaker of the utterance and updates other objects
 
@@ -928,11 +982,11 @@ class Utterance:
         self.file.add_utterance(self)
 
     @property
-    def is_segment(self):
+    def is_segment(self) -> bool:
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
 
-    def text_for_scp(self) -> list[str]:
+    def text_for_scp(self) -> List[str]:
         """
         Generate the text for exporting to Kaldi's text scp
 
@@ -943,7 +997,7 @@ class Utterance:
         """
         return self.text.split()
 
-    def text_int_for_scp(self) -> Optional[list[int]]:
+    def text_int_for_scp(self) -> Optional[List[int]]:
         """
         Generate the text for exporting to Kaldi's text int scp
 
@@ -964,7 +1018,7 @@ class Utterance:
                 new_text.append(w)
         return new_text
 
-    def segment_for_scp(self) -> list[Any]:
+    def segment_for_scp(self) -> List[Any]:
         """
         Generate data for Kaldi's segments scp file
 
@@ -976,11 +1030,143 @@ class Utterance:
         return [self.file.name, self.begin, self.end, self.channel]
 
     @property
-    def name(self):
+    def name(self) -> str:
         """The name of the utterance"""
         base = f"{self.file_name}"
+        base = base.replace(" ", "-space-").replace(".", "-").replace("_", "-")
         if not base.startswith(f"{self.speaker_name}-"):
             base = f"{self.speaker_name}-" + base
         if self.is_segment:
-            base = f"{self.file_name}-{self.begin}-{self.end}"
+            base = f"{base}-{self.begin}-{self.end}"
         return base.replace(" ", "-space-").replace(".", "-").replace("_", "-")
+
+
+T = TypeVar("T", Speaker, File, Utterance)
+
+
+class Collection:
+    """
+    Utility class for storing collections of corpus objects, allowing iteration, sorting, and
+    look up via names.
+    """
+
+    CLASS_TYPE = ClassVar[MfaCorpusClass]
+
+    def __init__(self):
+        self._data: Dict[str, T] = {}
+
+    def __iter__(self) -> Generator[T]:
+        """Iterator over the collection"""
+        for v in self._data.values():
+            yield v
+
+    def __getitem__(self, key: str) -> T:
+        """Get an item by identifier"""
+        return self._data[key]
+
+    def __delitem__(self, key: str) -> None:
+        """Delete an item by identifier"""
+        del self._data[key]
+
+    def __setitem__(self, key: str, item: T) -> None:
+        """Set an item by identifier"""
+        self._data[key] = item
+
+    def __len__(self) -> int:
+        """Number of items in the collection"""
+        return len(self._data)
+
+    def __bool__(self) -> bool:
+        """Check for whether the collection contains any items"""
+        return bool(self._data)
+
+    def __contains__(self, item: Union[str, T]) -> bool:
+        """Check for whether the collection contains a specific item"""
+        if not isinstance(item, str):
+            item = item.name
+        return item in self._data
+
+    def update(self, other: Union[Collection, Set[T], List[T]]) -> None:
+        """Update collection from another collection"""
+        if isinstance(other, Collection):
+            self._data.update(other._data)
+        else:
+            for item in other:
+                self._data[item.name] = item
+
+    def __str__(self) -> str:
+        """String representation"""
+        return str(self._data)
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<Collection of {self._data}>"
+
+
+class SpeakerCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
+    CLASS_TYPE = Speaker
+
+    def add_speaker(self, speaker: Speaker) -> None:
+        """
+        Add speaker to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
+            Speaker to be added
+        """
+        self[speaker.name] = speaker
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<SpeakerCollection of {self._data}>"
+
+
+class FileCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
+    CLASS_TYPE = File
+
+    def add_file(self, file: File) -> None:
+        """
+        Add file to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.File`
+            File to be added
+        """
+        self[file.name] = file
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<FileCollection of {self._data}>"
+
+
+class UtteranceCollection(Collection):
+    """
+    Utility class for storing collections of speakers
+    """
+
+    CLASS_TYPE = Utterance
+
+    def add_utterance(self, utterance: Utterance) -> None:
+        """
+        Add utterance to the collection
+
+        Parameters
+        ----------
+        speaker: :class:`~montreal_forced_aligner.corpus.classes.Utterance`
+            Utterance to be added
+        """
+        self[utterance.name] = utterance
+
+    def __repr__(self) -> str:
+        """Object representation"""
+        return f"<UtteranceCollection of {self._data}>"

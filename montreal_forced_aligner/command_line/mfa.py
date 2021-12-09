@@ -33,6 +33,7 @@ from montreal_forced_aligner.config import (
 )
 from montreal_forced_aligner.exceptions import MFAError
 from montreal_forced_aligner.models import MODEL_TYPES
+from montreal_forced_aligner.utils import check_third_party
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -381,6 +382,8 @@ def create_parser() -> ArgumentParser:
     )
     validate_parser.add_argument(
         "--ignore_acoustics",
+        "--skip_acoustics",
+        dest="ignore_acoustics",
         help="Skip acoustic feature generation and associated validation",
         action="store_true",
     )
@@ -842,6 +845,8 @@ def main() -> None:
     """
     Main function for the MFA command line interface
     """
+
+    check_third_party()
 
     hooks = ExitHooks()
     hooks.hook()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import requests
 
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def list_downloadable_models(model_type: str) -> list[str]:
+def list_downloadable_models(model_type: str) -> List[str]:
     """
     Generate a list of models available for download
 

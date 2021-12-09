@@ -6,9 +6,10 @@ Model classes
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import TYPE_CHECKING, Collection, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
 
 import yaml
 
@@ -322,6 +323,9 @@ class AcousticModel(Archive):
         for key in ["multilingual_ipa"]:
             params[key] = self.meta[key]
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
+        params["oov_phone"] = self.meta["oov_phone"]
+        params["optional_silence_phone"] = self.meta["optional_silence_phone"]
+        params["other_noise_phone"] = self.meta["other_noise_phone"]
         return params
 
     @property
@@ -366,6 +370,16 @@ class AcousticModel(Archive):
                     self._meta["features"] = default_features
             if "phone_type" not in self._meta:
                 self._meta["phone_type"] = "triphone"
+            if "optional_silence_phone" not in self._meta:
+                self._meta["optional_silence_phone"] = "sil"
+            if "oov_phone" not in self._meta:
+                self._meta["oov_phone"] = "spn"
+            if "other_noise_phone" not in self._meta:
+                self._meta["other_noise_phone"] = "sp"
+            if "phone_set_type" not in self._meta:
+                self._meta["phone_set_type"] = "UNKNOWN"
+            if "base_phone_regex" not in self._meta:
+                self._meta["base_phone_regex"] = None
             self._meta["phones"] = set(self._meta.get("phones", []))
         self.parse_old_features()
         return self._meta
@@ -761,12 +775,19 @@ class DictionaryModel(MfaModel):
         count = 0
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
+        self.phone_set_type = "UNKNOWN"
+        arpa_detect = re.compile(r"^\D{2}\d$")
         with open(self.path, "r", encoding="utf8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 line = line.split()
+                for phone in line:
+                    m = re.match(arpa_detect, phone)
+                    if m:
+                        self.phone_set_type = "ARPA"
+
                 _ = line.pop(0)  # word
                 next_item = line.pop(0)
                 if self.pronunciation_probabilities:
@@ -790,6 +811,13 @@ class DictionaryModel(MfaModel):
                 count += 1
                 if count > 10:
                     break
+
+    @property
+    def base_phone_regex(self) -> Optional[str]:
+        if self.phone_set_type == "UNKNOWN":
+            return None
+        if self.phone_set_type == "ARPA":
+            return r"(\D+)"
 
     @property
     def meta(self) -> MetaDict:
@@ -865,7 +893,7 @@ class DictionaryModel(MfaModel):
         """Name of the dictionary"""
         return os.path.splitext(os.path.basename(self.path))[0]
 
-    def load_dictionary_paths(self) -> dict[str, DictionaryModel]:
+    def load_dictionary_paths(self) -> Dict[str, DictionaryModel]:
         """
         Load the pronunciation dictionaries
 

@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 import traceback
-from typing import Any, Callable, NamedTuple, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import tqdm
 
@@ -46,7 +46,7 @@ except ImportError:
     G2P_DISABLED = True
 
 
-Labels = list[Any]
+Labels = List[Any]
 
 TOKEN_TYPES = ["byte", "utf8"]
 INF = float("inf")
@@ -64,7 +64,7 @@ class RandomStart(NamedTuple):
     p_path: str
     c_path: str
     tempdir: str
-    train_opts: list[str]
+    train_opts: List[str]
 
 
 class RandomStartWorker(mp.Process):
@@ -177,7 +177,7 @@ class PairNGramAligner:
         self.logger.info("Success! FAR path: %s; encoder path: %s", far_path, encoder_path)
 
     @staticmethod
-    def _label_union(labels: set[int], epsilon: bool) -> Fst:
+    def _label_union(labels: Set[int], epsilon: bool) -> Fst:
         """Creates FSA over a union of the labels."""
         side = pynini.Fst()
         src = side.add_state()
@@ -209,8 +209,8 @@ class PairNGramAligner:
     ) -> None:
         """Builds covering grammar and lexicon FARs."""
         # Sets of labels for the covering grammar.
-        g_labels: set[int] = set()
-        p_labels: set[int] = set()
+        g_labels: Set[int] = set()
+        p_labels: Set[int] = set()
         self.logger.info("Constructing grapheme and phoneme FARs")
         g_writer = pywrapfst.FarWriter.create(self.g_path)
         p_writer = pywrapfst.FarWriter.create(self.p_path)
@@ -241,7 +241,7 @@ class PairNGramAligner:
         covering.write(self.c_path)
 
     @staticmethod
-    def _random_start(random_start: RandomStart) -> tuple[str, float]:
+    def _random_start(random_start: RandomStart) -> Tuple[str, float]:
         """Performs a single random start."""
         start = time.time()
         logger = logging.getLogger("g2p_aligner")
@@ -439,17 +439,17 @@ class PyniniValidator(PyniniGenerator):
         For parameters to generate pronunciations
     """
 
-    def __init__(self, word_list: list[str], **kwargs):
+    def __init__(self, word_list: List[str], **kwargs):
         super().__init__(**kwargs)
         self.word_list = word_list
 
     @property
-    def words_to_g2p(self) -> list[str]:
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         return self.word_list
 
 
-class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
+class G2PTrainer(MfaWorker, TrainerMixin):
     """
     Abstract mixin class for G2P training
 
@@ -497,7 +497,7 @@ class G2PTrainer(MfaWorker, TrainerMixin, PronunciationDictionaryMixin):
         self.g2p_graphemes = set()
 
 
-class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
+class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker):
     """
     Top-level G2P trainer that uses Pynini functionality
 
@@ -836,7 +836,7 @@ class PyniniTrainer(G2PTrainer, TopLevelMfaWorker):
 
     def compute_validation_errors(
         self,
-        hypothesis_values: dict[str, list[str]],
+        hypothesis_values: Dict[str, List[str]],
     ):
         """
         Computes validation errors

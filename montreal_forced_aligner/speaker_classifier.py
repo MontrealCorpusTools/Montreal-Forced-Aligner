@@ -7,7 +7,7 @@ Speaker classification
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import yaml
@@ -60,7 +60,7 @@ class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin
         cls,
         config_path: Optional[str] = None,
         args: Optional[Namespace] = None,
-        unknown_args: Optional[list[str]] = None,
+        unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters for speaker classification from a config path or command-line arguments
@@ -169,7 +169,7 @@ class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin
         km.fit(x)
         y = km.labels_
         for i, u in enumerate(self.ivectors.keys()):
-            speaker_name = y[i]
+            speaker_name = f"Speaker {y[i]}"
             utterance = self.utterances[u]
             if speaker_name not in self.speakers:
                 self.speakers[speaker_name] = Speaker(speaker_name)
@@ -189,5 +189,5 @@ class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin
             backup_output_directory = os.path.join(self.working_directory, "output")
             os.makedirs(backup_output_directory, exist_ok=True)
 
-        for file in self.files.values():
+        for file in self.files:
             file.save(output_directory, backup_output_directory)

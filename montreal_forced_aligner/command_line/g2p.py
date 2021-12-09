@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.g2p.generator import (
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 __all__ = ["generate_dictionary", "validate_args", "run_g2p"]
 
 
-def generate_dictionary(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def generate_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the G2P command
 
@@ -95,7 +95,7 @@ def validate_args(args: Namespace) -> None:
         args.g2p_model_path = validate_model_arg(args.g2p_model_path, "g2p")
 
 
-def run_g2p(args: Namespace, unknown: Optional[list[str]] = None) -> None:
+def run_g2p(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running G2P
 

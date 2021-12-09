@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
 from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
@@ -24,20 +24,20 @@ class MapAccStatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
     model_path: str
-    ali_paths: dict[str, str]
-    acc_paths: dict[str, str]
+    ali_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
 
 
 def map_acc_stats_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
     model_path: str,
-    ali_paths: dict[str, str],
-    acc_paths: dict[str, str],
+    ali_paths: Dict[str, str],
+    acc_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for accumulating mapped stats for adapting acoustic models to new
@@ -116,7 +116,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         self.initialized = False
         self.adaptation_done = False
 
-    def map_acc_stats_arguments(self, alignment=False) -> list[MapAccStatsArguments]:
+    def map_acc_stats_arguments(self, alignment=False) -> List[MapAccStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`
 

@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import NamedTuple
+from typing import Dict, List, NamedTuple
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -24,22 +24,22 @@ class AccStatsTwoFeatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    ali_paths: dict[str, str]
-    acc_paths: dict[str, str]
+    dictionaries: List[str]
+    ali_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
     model_path: str
-    feature_strings: dict[str, str]
-    si_feature_strings: dict[str, str]
+    feature_strings: Dict[str, str]
+    si_feature_strings: Dict[str, str]
 
 
 def acc_stats_two_feats_func(
     log_path: str,
-    dictionaries: list[str],
-    ali_paths: dict[str, str],
-    acc_paths: dict[str, str],
+    dictionaries: List[str],
+    ali_paths: Dict[str, str],
+    acc_paths: Dict[str, str],
     model_path: str,
-    feature_strings: dict[str, str],
-    si_feature_strings: dict[str, str],
+    feature_strings: Dict[str, str],
+    si_feature_strings: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for accumulating stats across speaker-independent and
@@ -142,7 +142,7 @@ class SatTrainer(TriphoneTrainer):
         self.power = power
         self.fmllr_iterations = []
 
-    def acc_stats_two_feats_arguments(self) -> list[AccStatsTwoFeatsArguments]:
+    def acc_stats_two_feats_arguments(self) -> List[AccStatsTwoFeatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`
 

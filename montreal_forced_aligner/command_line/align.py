@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 __all__ = ["align_corpus", "validate_args", "run_align_corpus"]
 
 
-def align_corpus(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Run the alignment
 
@@ -78,7 +78,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_align_corpus(args: Namespace, unknown_args: Optional[list[str]] = None) -> None:
+def run_align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running alignment
 

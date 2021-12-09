@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
@@ -20,12 +20,12 @@ class LdaAccStatsArguments(NamedTuple):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`"""
 
     log_path: str
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
     model_path: str
     lda_options: MetaDict
-    acc_paths: dict[str, str]
+    acc_paths: Dict[str, str]
 
 
 class CalcLdaMlltArguments(NamedTuple):
@@ -33,22 +33,22 @@ class CalcLdaMlltArguments(NamedTuple):
 
     log_path: str
     """Log file to save stderr"""
-    dictionaries: list[str]
-    feature_strings: dict[str, str]
-    ali_paths: dict[str, str]
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
     model_path: str
     lda_options: MetaDict
-    macc_paths: dict[str, str]
+    macc_paths: Dict[str, str]
 
 
 def lda_acc_stats_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    ali_paths: Dict[str, str],
     model_path: str,
     lda_options: MetaDict,
-    acc_paths: dict[str, str],
+    acc_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function to accumulate LDA stats
@@ -126,12 +126,12 @@ def lda_acc_stats_func(
 
 def calc_lda_mllt_func(
     log_path: str,
-    dictionaries: list[str],
-    feature_strings: dict[str, str],
-    ali_paths: dict[str, str],
+    dictionaries: List[str],
+    feature_strings: Dict[str, str],
+    ali_paths: Dict[str, str],
     model_path: str,
     lda_options: MetaDict,
-    macc_paths: dict[str, str],
+    macc_paths: Dict[str, str],
 ) -> None:
     """
     Multiprocessing function for estimating LDA with MLLT.
@@ -266,7 +266,7 @@ class LdaTrainer(TriphoneTrainer):
         self.splice_left_context = splice_left_context
         self.splice_right_context = splice_right_context
 
-    def lda_acc_stats_arguments(self) -> list[LdaAccStatsArguments]:
+    def lda_acc_stats_arguments(self) -> List[LdaAccStatsArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`
 
@@ -289,7 +289,7 @@ class LdaTrainer(TriphoneTrainer):
             for j in self.jobs
         ]
 
-    def calc_lda_mllt_arguments(self) -> list[CalcLdaMlltArguments]:
+    def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`
 
@@ -355,6 +355,10 @@ class LdaTrainer(TriphoneTrainer):
             Reference Kaldi script
 
         """
+        worker_lda_path = os.path.join(self.worker.working_directory, "lda.mat")
+        lda_path = os.path.join(self.working_directory, "lda.mat")
+        if os.path.exists(worker_lda_path):
+            os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
 
         if self.use_mp:
@@ -371,7 +375,7 @@ class LdaTrainer(TriphoneTrainer):
                 [
                     thirdparty_binary("est-lda"),
                     f"--dim={self.lda_dimension}",
-                    os.path.join(self.working_directory, "lda.mat"),
+                    lda_path,
                 ]
                 + acc_list,
                 stderr=log_file,
@@ -379,8 +383,8 @@ class LdaTrainer(TriphoneTrainer):
             )
             est_lda_proc.communicate()
         shutil.copyfile(
-            os.path.join(self.working_directory, "lda.mat"),
-            os.path.join(self.worker.working_directory, "lda.mat"),
+            lda_path,
+            worker_lda_path,
         )
 
     def _trainer_initialization(self) -> None:

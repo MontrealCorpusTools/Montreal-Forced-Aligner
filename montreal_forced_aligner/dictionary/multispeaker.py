@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import TYPE_CHECKING, Collection, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
 
 from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
@@ -49,8 +49,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def __init__(self, dictionary_path: str = None, **kwargs):
         super().__init__(**kwargs)
         self.dictionary_model = DictionaryModel(dictionary_path)
+        self.base_phone_regex = self.dictionary_model.base_phone_regex
+        self.phone_set_type = self.dictionary_model.phone_set_type
         self.speaker_mapping = {}
-        self.dictionary_mapping: dict[str, PronunciationDictionary] = {}
+        self.dictionary_mapping: Dict[str, PronunciationDictionary] = {}
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""
@@ -78,6 +80,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """Sum the counts of oovs found in pronunciation dictionaries"""
         for dictionary in self.dictionary_mapping.values():
             self.oovs_found.update(dictionary.oovs_found)
+        self.save_oovs_found(self.output_directory)
 
     @property
     def default_dictionary(self) -> PronunciationDictionary:
@@ -135,7 +138,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             if d.max_disambiguation_symbol > self.max_disambiguation_symbol:
                 self.max_disambiguation_symbol = d.max_disambiguation_symbol
         self._write_word_boundaries()
-        self._write_phone_map_file()
         self._write_phone_sets()
         self._write_phone_symbol_table()
         self._write_disambig()
@@ -157,7 +159,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             d.set_lexicon_word_set(word_set)
 
     @property
-    def output_paths(self) -> dict[str, str]:
+    def output_paths(self) -> Dict[str, str]:
         """
         Mapping of output directory for child directories
         """
