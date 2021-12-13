@@ -10,6 +10,14 @@
 Beta releases
 =============
 
+2.0.0b10
+--------
+
+- Changed the functionality of validating dictionary phones and acoustic model phones so that the aligner will simply ignore pronunciations containing phones not in the acoustic model (and print a warning).  The validator utility will provide further detail on what was ignored.
+- Fixed a bug where evaluation of training G2P models was not actually triggered
+- Refactored PairNGramAligner into the :class:`~montreal_forced_aligner.g2p.trainer.PyniniTrainer` class to improve logging output
+- Changed the starting index of training blocks with the same name. Old behavior was ``sat``, ``sat1``, ``sat2``, etc.  The new behavior is ``sat``, ``sat2``, ``sat3``, etc.
+
 2.0.0b9
 -------
 

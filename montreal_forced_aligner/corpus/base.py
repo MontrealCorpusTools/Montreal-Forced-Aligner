@@ -221,10 +221,12 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.speakers.add_speaker(utterance.speaker)
         speaker = self.speakers[utterance.speaker.name]
         speaker.add_utterance(utterance)
+        utterance.speaker = speaker
         if utterance.file not in self.files:
             self.files.add_file(utterance.file)
         file = self.files[utterance.file.name]
         file.add_utterance(utterance)
+        utterance.file = file
 
     def delete_utterance(self, utterance: Union[str, Utterance]) -> None:
         """
@@ -271,8 +273,6 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         for speaker in file.speaker_ordering:
             if speaker not in self.speakers:
                 self.speakers.add_speaker(speaker)
-            else:
-                self.speakers[speaker.name].merge(speaker)
         for u in file.utterances:
             self.add_utterance(u)
             if u.text:

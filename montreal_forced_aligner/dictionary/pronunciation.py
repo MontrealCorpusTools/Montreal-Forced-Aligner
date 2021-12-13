@@ -67,6 +67,9 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.base_phone_regex = self.dictionary_model.base_phone_regex
         self.phone_set_type = self.dictionary_model.phone_set_type
         self.root_dictionary = root_dictionary
+        pretrained = False
+        if self.non_silence_phones:
+            pretrained = True
         os.makedirs(self.dictionary_output_directory, exist_ok=True)
         self.words = {}
         self.graphemes = set()
@@ -114,6 +117,12 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     pron = self.parse_ipa(line)
                 else:
                     pron = tuple(line)
+                if pretrained:
+                    difference = set(pron) - self.non_silence_phones
+                    if difference:
+                        self.excluded_phones.update(difference)
+                        self.excluded_pronunciation_count += 1
+                        continue
                 pronunciation = {
                     "pronunciation": pron,
                     "probability": prob,
@@ -445,9 +454,25 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         bool
             True if the look up would not result in an OOV item
         """
-        if item not in self.check_cache:
-            self.check_cache[item] = self.data().check_word(item)
-        return self.check_cache[item]
+        if item in self.check_cache:
+            return self.check_cache[item]
+        if item == "":
+            self.check_cache[item] = False
+            return False
+        if item in self.words:
+            self.check_cache[item] = True
+            return True
+        sanitized = self.construct_sanitize_function()(item)
+        if sanitized in self.words:
+            self.check_cache[item] = True
+            return True
+
+        sanitized = self.construct_split_words_function()(sanitized)
+        for s in sanitized:
+            if s not in self.words:
+                self.check_cache[item] = True
+                return False
+        return True
 
     @property
     def reversed_word_mapping(self) -> ReversedMappingType:

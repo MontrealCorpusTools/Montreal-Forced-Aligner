@@ -13,7 +13,7 @@ def test_trainer(sick_dict, sick_corpus, generated_dir):
         dictionary_path=sick_dict,
         temporary_directory=data_directory,
     )
-    assert a.final_identifier == "sat_1"
+    assert a.final_identifier == "sat_2"
     assert a.training_configs[a.final_identifier].subset == 0
     assert a.training_configs[a.final_identifier].num_leaves == 4200
     assert a.training_configs[a.final_identifier].max_gaussians == 40000

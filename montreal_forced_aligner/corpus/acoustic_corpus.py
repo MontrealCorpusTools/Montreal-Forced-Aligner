@@ -852,50 +852,6 @@ class AcousticCorpus(AcousticCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
         """Working directory to save temporary corpus and dictionary files"""
         return self.output_directory
 
-    def log_debug(self, message: str) -> None:
-        """
-        Print a debug message
-
-        Parameters
-        ----------
-        message: str
-            Debug message to log
-        """
-        print(message)
-
-    def log_error(self, message: str) -> None:
-        """
-        Print an error message
-
-        Parameters
-        ----------
-        message: str
-            Error message to log
-        """
-        print(message)
-
-    def log_info(self, message: str) -> None:
-        """
-        Print an info message
-
-        Parameters
-        ----------
-        message: str
-            Info message to log
-        """
-        print(message)
-
-    def log_warning(self, message: str) -> None:
-        """
-        Print a warning message
-
-        Parameters
-        ----------
-        message: str
-            Warning message to log
-        """
-        print(message)
-
 
 class AcousticCorpusWithPronunciations(
     AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin
@@ -918,47 +874,3 @@ class AcousticCorpusWithPronunciations(
     def working_directory(self) -> str:
         """Working directory to save temporary corpus and dictionary files"""
         return self.output_directory
-
-    def log_debug(self, message: str) -> None:
-        """
-        Print a debug message
-
-        Parameters
-        ----------
-        message: str
-            Debug message to log
-        """
-        print(message)
-
-    def log_error(self, message: str) -> None:
-        """
-        Print an error message
-
-        Parameters
-        ----------
-        message: str
-            Error message to log
-        """
-        print(message)
-
-    def log_info(self, message: str) -> None:
-        """
-        Print an info message
-
-        Parameters
-        ----------
-        message: str
-            Info message to log
-        """
-        print(message)
-
-    def log_warning(self, message: str) -> None:
-        """
-        Print a warning message
-
-        Parameters
-        ----------
-        message: str
-            Warning message to log
-        """
-        print(message)

@@ -203,7 +203,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         p.update(self.param_dict)
         p.update(params)
         identifier = train_type
-        index = 1
+        index = 2
         while identifier in self.training_configs:
             identifier = f"{train_type}_{index}"
             index += 1

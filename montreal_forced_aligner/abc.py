@@ -155,25 +155,49 @@ class MfaWorker(metaclass=ABCMeta):
         self.use_mp = use_mp
         self.dirty = False
 
-    @abstractmethod
     def log_debug(self, message: str) -> None:
-        """Abstract method for logging debug messages"""
-        ...
+        """
+        Print a debug message
 
-    @abstractmethod
-    def log_info(self, message: str) -> None:
-        """Abstract method for logging info messages"""
-        ...
+        Parameters
+        ----------
+        message: str
+            Debug message to log
+        """
+        print(message)
 
-    @abstractmethod
-    def log_warning(self, message: str) -> None:
-        """Abstract method for logging warning messages"""
-        ...
-
-    @abstractmethod
     def log_error(self, message: str) -> None:
-        """Abstract method for logging error messages"""
-        ...
+        """
+        Print an error message
+
+        Parameters
+        ----------
+        message: str
+            Error message to log
+        """
+        print(message)
+
+    def log_info(self, message: str) -> None:
+        """
+        Print an info message
+
+        Parameters
+        ----------
+        message: str
+            Info message to log
+        """
+        print(message)
+
+    def log_warning(self, message: str) -> None:
+        """
+        Print a warning message
+
+        Parameters
+        ----------
+        message: str
+            Warning message to log
+        """
+        print(message)
 
     @classmethod
     def extract_relevant_parameters(cls, config: MetaDict) -> Tuple[MetaDict, List[str]]:

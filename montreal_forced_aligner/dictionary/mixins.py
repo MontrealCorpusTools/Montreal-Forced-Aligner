@@ -323,6 +323,8 @@ class DictionaryMixin:
         if non_silence_phones is None:
             non_silence_phones = set()
         self.non_silence_phones = non_silence_phones
+        self.excluded_phones = set()
+        self.excluded_pronunciation_count = 0
         self.max_disambiguation_symbol = max_disambiguation_symbol
         if disambiguation_symbols is None:
             disambiguation_symbols = set()

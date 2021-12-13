@@ -75,6 +75,22 @@ def english_dictionary():
 
 
 @pytest.fixture(scope="session")
+def german_prosodylab_acoustic_model():
+    from montreal_forced_aligner.command_line.model import download_model
+
+    download_model("acoustic", "german_prosodylab")
+    return "german_prosodylab"
+
+
+@pytest.fixture(scope="session")
+def german_prosodylab_dictionary():
+    from montreal_forced_aligner.command_line.model import download_model
+
+    download_model("dictionary", "german_prosodylab")
+    return "german_prosodylab"
+
+
+@pytest.fixture(scope="session")
 def english_ipa_acoustic_model():
     from montreal_forced_aligner.command_line.model import download_model
 

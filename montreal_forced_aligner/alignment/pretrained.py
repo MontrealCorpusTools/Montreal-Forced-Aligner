@@ -167,6 +167,12 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     "This may cause issues, run with --clean, if you hit an error."
                 )
             self.load_corpus()
+            if self.excluded_pronunciation_count:
+                self.logger.warning(
+                    f"There were {self.excluded_pronunciation_count} pronunciations in the dictionary that"
+                    f"were ignored for containing one of {len(self.excluded_phones)} phones not present in the"
+                    f"trained acoustic model.  Please run `mfa validate` to get more details."
+                )
             self.acoustic_model.validate(self)
             self.acoustic_model.export_model(self.working_directory)
             self.acoustic_model.log_details(self.logger)

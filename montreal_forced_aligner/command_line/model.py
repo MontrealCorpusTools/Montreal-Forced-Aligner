@@ -67,9 +67,10 @@ def download_model(model_type: str, name: str) -> None:
     name: str
         Name of model
     """
-    if name is None:
+    if not name:
         downloadable = "\n".join(f"  - {x}" for x in list_downloadable_models(model_type))
         print(f"Available models to download for {model_type}:\n\n{downloadable}")
+        return
     try:
         model_class = MODEL_TYPES[model_type]
         extension = model_class.extensions[0]
@@ -189,7 +190,7 @@ def validate_args(args: Namespace) -> None:
             raise ModelTypeNotSupportedError(args.model_type, MODEL_TYPES)
         elif args.model_type:
             args.model_type = args.model_type.lower()
-        if args.name is not None:
+        if args.name:
             available_languages = list_downloadable_models(args.model_type)
             if args.name not in available_languages:
                 raise PretrainedModelNotFoundError(args.name, args.model_type, available_languages)

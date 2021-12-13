@@ -68,6 +68,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self.non_silence_phones.update(
                     self.dictionary_mapping[dictionary.name].non_silence_phones
                 )
+                self.excluded_phones.update(
+                    self.dictionary_mapping[dictionary.name].excluded_phones
+                )
+                self.excluded_pronunciation_count += self.dictionary_mapping[
+                    dictionary.name
+                ].excluded_pronunciation_count
         for dictionary in self.dictionary_mapping.values():
             dictionary.non_silence_phones = self.non_silence_phones
 

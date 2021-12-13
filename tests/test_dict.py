@@ -1,5 +1,6 @@
 import os
 
+from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
 
@@ -29,6 +30,20 @@ def test_basic(basic_dict_path, generated_dir):
         "phonec_E",
         "phonec_S",
     }
+
+
+def test_missing_phones(
+    basic_corpus_dir, generated_dir, german_prosodylab_acoustic_model, german_prosodylab_dictionary
+):
+
+    output_directory = os.path.join(generated_dir, "dictionary_tests")
+    aligner = PretrainedAligner(
+        acoustic_model_path=german_prosodylab_acoustic_model,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=german_prosodylab_dictionary,
+        temporary_directory=output_directory,
+    )
+    aligner.setup()
 
 
 def test_extra_annotations(extra_annotations_path, generated_dir):

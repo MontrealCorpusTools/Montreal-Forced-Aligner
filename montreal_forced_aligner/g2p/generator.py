@@ -284,7 +284,51 @@ class PyniniGenerator(G2PTopLevelMixin):
         return to_return
 
 
-class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
+class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
+    """
+    Class for running validation for G2P model training
+
+    Parameters
+    ----------
+    word_list: list[str]
+        List of words to generate pronunciations
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.g2p.generator.PyniniGenerator`
+        For parameters to generate pronunciations
+    """
+
+    def __init__(self, word_list: List[str] = None, **kwargs):
+        super().__init__(**kwargs)
+        if word_list is None:
+            word_list = []
+        self.word_list = word_list
+
+    @property
+    def words_to_g2p(self) -> List[str]:
+        """Words to produce pronunciations"""
+        return self.word_list
+
+    @property
+    def data_directory(self) -> str:
+        """Data directory"""
+        return self.working_directory
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Name of the word list file"""
+        return "validation"
+
+    def setup(self) -> None:
+        """Set up the G2P generator"""
+        if self.initialized:
+            return
+        self.g2p_model.validate(self.words_to_g2p)
+        self.initialized = True
+
+
+class PyniniWordListGenerator(PyniniValidator):
     """
     Top-level worker for generating pronunciations from a word list and a Pynini G2P model
 
@@ -308,7 +352,6 @@ class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
 
     def __init__(self, word_list_path: str, **kwargs):
         self.word_list_path = word_list_path
-        self.word_list = []
         super().__init__(**kwargs)
 
     @property
@@ -332,11 +375,6 @@ class PyniniWordListGenerator(PyniniGenerator, TopLevelMfaWorker):
             self.word_list = [x for x in self.word_list if not self.check_bracketed(x)]
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
-
-    @property
-    def words_to_g2p(self) -> List[str]:
-        """Words to produce pronunciations"""
-        return self.word_list
 
 
 class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker):

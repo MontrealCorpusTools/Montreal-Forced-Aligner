@@ -888,7 +888,7 @@ def main() -> None:
             run_train_g2p(args, unknown)
         elif args.subcommand == "validate":
             run_validate_corpus(args, unknown)
-        elif args.subcommand == "model":
+        elif args.subcommand in ["model", "models"]:
             run_model(args)
         elif args.subcommand == "train_lm":
             run_train_lm(args, unknown)

@@ -473,13 +473,13 @@ class AcousticModel(Archive):
 
     def validate(self, dictionary: DictionaryMixin) -> None:
         """
-        Validate this acoustic model against a pronunciation dictionary or G2P model to ensure their
+        Validate this acoustic model against a pronunciation dictionary to ensure their
         phone sets are compatible
 
         Parameters
         ----------
-        dictionary: Union[:class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`, :class:`~montreal_forced_aligner.models.G2PModel`]
-            PronunciationDictionaryMixin or G2P model to compare phone sets with
+        dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+            DictionaryMixin  to compare phone sets with
 
         Raises
         ------
