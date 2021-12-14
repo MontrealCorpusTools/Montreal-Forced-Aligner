@@ -551,6 +551,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         """
         from .utils import CustomFormatter, get_mfa_version
 
+        current_version = get_mfa_version()
+        # Remove previous directory if versions are different
+        if os.path.exists(self.worker_config_path):
+            with open(self.worker_config_path, "r") as f:
+                conf = yaml.load(f, Loader=yaml.SafeLoader)
+            if conf.get("version", current_version) != current_version:
+                self.clean = True
         if self.clean:
             shutil.rmtree(self.output_directory, ignore_errors=True)
         os.makedirs(self.workflow_directory, exist_ok=True)
@@ -572,7 +579,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             handler.setLevel(logging.INFO)
         handler.setFormatter(CustomFormatter())
         self.logger.addHandler(handler)
-        self.logger.debug(f"Set up logger for MFA version: {get_mfa_version()}")
+        self.logger.debug(f"Set up logger for MFA version: {current_version}")
         if self.clean:
             self.logger.debug("Cleaned previous run")
 

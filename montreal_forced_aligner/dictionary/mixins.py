@@ -268,8 +268,6 @@ class DictionaryMixin:
         shared_silence_phones: bool = False,
         silence_probability: float = 0.5,
         punctuation: List[str] = None,
-        phone_set_type: Optional[str] = None,
-        base_phone_regex: Optional[str] = None,
         clitic_markers: List[str] = None,
         compound_markers: List[str] = None,
         multilingual_ipa: bool = False,
@@ -311,10 +309,6 @@ class DictionaryMixin:
         self.oov_word = oov_word
         self.silence_word = silence_word
         self.noise_word = noise_word
-        if base_phone_regex is not None:
-            base_phone_regex = re.compile(base_phone_regex)
-        self.base_phone_regex: re.Pattern = base_phone_regex
-        self.phone_set_type = phone_set_type
         self.position_dependent_phones = position_dependent_phones
         self.optional_silence_phone = optional_silence_phone
         self.oov_phone = oov_phone
@@ -332,6 +326,16 @@ class DictionaryMixin:
         if clitic_set is None:
             clitic_set = set()
         self.clitic_set = clitic_set
+
+    @property
+    def base_phone_regex(self) -> Optional[str]:
+        """Regex pattern for extracting a base phone for the phone set"""
+        return None
+
+    @property
+    def phone_set_type(self) -> str:
+        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
+        return "UNKNOWN"
 
     @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
@@ -362,7 +366,6 @@ class DictionaryMixin:
             silence_phones = sorted(self.silence_phones)
             for pos in [""] + self.positions:
                 mapping[f"silence{pos}"] = [x + pos for x in silence_phones]
-
         return mapping
 
     @property
@@ -473,7 +476,7 @@ class DictionaryMixin:
             for p in self.non_silence_phones:
                 m = re.match(self.base_phone_regex, p)
                 if m:
-                    base_phone = m.group(0)
+                    base_phone = m.groups()[0]
                     base_phones.add(base_phone)
 
         return sorted(self.non_silence_phones | base_phones)
@@ -486,7 +489,7 @@ class DictionaryMixin:
             if self.phone_set_type == "ARPA":
                 m = re.match(self.base_phone_regex, p)
                 if m:
-                    base_phone = m.group(0)
+                    base_phone = m.groups()[0]
                     if base_phone not in groups:
                         groups[base_phone] = []
                         if self.position_dependent_phones:

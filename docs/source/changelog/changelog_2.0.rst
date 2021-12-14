@@ -17,6 +17,7 @@ Beta releases
 - Fixed a bug where evaluation of training G2P models was not actually triggered
 - Refactored PairNGramAligner into the :class:`~montreal_forced_aligner.g2p.trainer.PyniniTrainer` class to improve logging output
 - Changed the starting index of training blocks with the same name. Old behavior was ``sat``, ``sat1``, ``sat2``, etc.  The new behavior is ``sat``, ``sat2``, ``sat3``, etc.
+- Revert a change with how sets, roots and extra questions are handled
 
 2.0.0b9
 -------

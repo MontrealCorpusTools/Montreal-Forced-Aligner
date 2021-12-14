@@ -106,6 +106,10 @@ xref_links = {
         "Conda installation",
         "https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html",
     ),
+    "miniconda": (
+        "Miniconda",
+        "https://docs.conda.io/en/latest/miniconda.html",
+    ),
     "conda_forge": ("Conda Forge", "https://conda-forge.org/"),
     "pydata_sphinx_theme": (
         "Pydata Sphinx Theme",

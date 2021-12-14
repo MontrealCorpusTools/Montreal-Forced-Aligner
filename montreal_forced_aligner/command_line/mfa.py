@@ -347,6 +347,12 @@ def create_parser() -> ArgumentParser:
         default="",
         help="Audio directory root to use for finding audio files",
     )
+    train_parser.add_argument(
+        "--enable_detect_phone_set",
+        dest="detect_phone_set",
+        help="Enable auto-detecting phone sets from the dictionary during training",
+        action="store_true",
+    )
     add_global_options(train_parser, textgrid_output=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
@@ -774,6 +780,16 @@ def create_parser() -> ArgumentParser:
         "--enable_textgrid_cleanup",
         help="Enable postprocessing of TextGrids that cleans up "
         "silences and recombines compound words and clitics",
+        action="store_true",
+    )
+    config_parser.add_argument(
+        "--disable_detect_phone_set",
+        help="Disable auto-detecting phone sets from the dictionary during training",
+        action="store_true",
+    )
+    config_parser.add_argument(
+        "--enable_detect_phone_set",
+        help="Enable auto-detecting phone sets from the dictionary during training",
         action="store_true",
     )
     config_parser.add_argument(

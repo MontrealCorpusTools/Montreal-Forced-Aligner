@@ -64,8 +64,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
     def __init__(self, dictionary_path, root_dictionary=None, **kwargs):
         self.dictionary_model = DictionaryModel(dictionary_path)
         super().__init__(**kwargs)
-        self.base_phone_regex = self.dictionary_model.base_phone_regex
-        self.phone_set_type = self.dictionary_model.phone_set_type
         self.root_dictionary = root_dictionary
         pretrained = False
         if self.non_silence_phones:
@@ -154,6 +152,20 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             raise DictionaryFileError(
                 f"No words were found in the dictionary path {self.dictionary_model.path}"
             )
+
+    @property
+    def base_phone_regex(self) -> Optional[str]:
+        """Regex pattern for extracting a base phone for the phone set"""
+        if self.root_dictionary is None:
+            return self.dictionary_model.base_phone_regex
+        return self.root_dictionary.base_phone_regex
+
+    @property
+    def phone_set_type(self) -> str:
+        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
+        if self.root_dictionary is None:
+            return self.dictionary_model.phone_set_type
+        return self.root_dictionary.phone_set_type
 
     @property
     def name(self) -> str:

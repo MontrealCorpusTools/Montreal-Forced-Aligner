@@ -135,6 +135,7 @@ def update_global_config(args: Namespace) -> None:
         "terminal_colors": True,
         "terminal_width": 120,
         "cleanup_textgrids": True,
+        "detect_phone_set": False,
         "num_jobs": 3,
         "blas_num_threads": 1,
         "use_mp": True,
@@ -168,6 +169,10 @@ def update_global_config(args: Namespace) -> None:
         default_config["cleanup_textgrids"] = False
     if args.enable_textgrid_cleanup:
         default_config["cleanup_textgrids"] = True
+    if args.disable_detect_phone_set:
+        default_config["detect_phone_set"] = False
+    if args.enable_detect_phone_set:
+        default_config["detect_phone_set"] = True
     if args.disable_terminal_colors:
         default_config["terminal_colors"] = False
     if args.enable_terminal_colors:
@@ -202,6 +207,7 @@ def load_global_config() -> Dict[str, Any]:
         "terminal_colors": True,
         "terminal_width": 120,
         "cleanup_textgrids": True,
+        "detect_phone_set": False,
         "num_jobs": 3,
         "blas_num_threads": 1,
         "use_mp": True,
