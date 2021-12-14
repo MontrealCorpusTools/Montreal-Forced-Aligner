@@ -241,6 +241,8 @@ class Speaker(MfaCorpusClass):
             words.update(self.dictionary.clitic_set)
         self.word_counts = Counter()
         for u in self.utterances:
+            if not u.text:
+                continue
             self.word_counts.update(u.text.split())
         for word in self.word_counts:
             if self.dictionary is not None:
