@@ -45,3 +45,26 @@ def test_validate_training_corpus(
     ]
     args, unknown = parser.parse_known_args(command)
     run_validate_corpus(args)
+
+
+def test_validate_missing_phones(
+    multilingual_ipa_tg_corpus_dir,
+    german_prosodylab_acoustic_model,
+    german_prosodylab_dictionary,
+    temp_dir,
+):
+
+    command = [
+        "validate",
+        multilingual_ipa_tg_corpus_dir,
+        german_prosodylab_dictionary,
+        german_prosodylab_acoustic_model,
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "--ignore_acoustics",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_validate_corpus(args)

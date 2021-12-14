@@ -16,7 +16,7 @@ from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import parse_old_features
-from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.models import AcousticModel, DictionaryModel
 from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
@@ -35,6 +35,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     ----------
     training_configuration : list[tuple[str, dict[str, Any]]]
         Training identifiers and parameters for training blocks
+    detect_phone_set: bool
+        Flag for auto detecting phone sets for use in building triphone trees
 
     See Also
     --------
@@ -59,7 +61,12 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         Training blocks
     """
 
-    def __init__(self, training_configuration: List[Tuple[str, Dict[str, Any]]] = None, **kwargs):
+    def __init__(
+        self,
+        training_configuration: List[Tuple[str, Dict[str, Any]]] = None,
+        detect_phone_set: bool = True,
+        **kwargs,
+    ):
         self.param_dict = {
             k: v
             for k, v in kwargs.items()
@@ -73,6 +80,10 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.current_trainer = None
         self.current_acoustic_model: Optional[AcousticModel] = None
         super().__init__(**kwargs)
+        if not detect_phone_set:
+            self.dictionary_model = DictionaryModel(
+                self.dictionary_model.path, detect_phone_set=detect_phone_set
+            )
         os.makedirs(self.output_directory, exist_ok=True)
         self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         if training_configuration is None:
@@ -203,7 +214,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         p.update(self.param_dict)
         p.update(params)
         identifier = train_type
-        index = 1
+        index = 2
         while identifier in self.training_configs:
             identifier = f"{train_type}_{index}"
             index += 1

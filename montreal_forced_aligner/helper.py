@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import numpy
 from colorama import Fore, Style
@@ -53,16 +53,21 @@ def parse_old_features(config: MetaDict) -> MetaDict:
     feature_key_remapping = {
         "type": "feature_type",
         "deltas": "uses_deltas",
-        "lda": "uses_splices",
-        "fmllr": "uses_speaker_adaptation",
     }
+    skip_keys = ["lda", "fmllr"]
     if "features" in config:
-
+        for key in skip_keys:
+            if key in config["features"]:
+                del config["features"][key]
         for key, new_key in feature_key_remapping.items():
             if key in config["features"]:
+
                 config["features"][new_key] = config["features"][key]
                 del config["features"][key]
     else:
+        for key in skip_keys:
+            if key in config:
+                del config[key]
         for key, new_key in feature_key_remapping.items():
             if key in config:
                 config[new_key] = config[key]
@@ -95,6 +100,8 @@ class TerminalPrinter:
         self.colors["reset"] = ""
         self.colors["normal"] = ""
         self.width = c["terminal_width"]
+        self.indent_level = 0
+        self.indent_size = 2
         if c["terminal_colors"]:
             self.colors["bright"] = Style.BRIGHT
             self.colors["green"] = Fore.GREEN
@@ -104,6 +111,112 @@ class TerminalPrinter:
             self.colors["yellow"] = Fore.YELLOW
             self.colors["reset"] = Style.RESET_ALL
             self.colors["normal"] = Style.NORMAL
+
+    @property
+    def indent_string(self) -> str:
+        """Indent string to use in formatting the output messages"""
+        return " " * self.indent_size * self.indent_level
+
+    def print_header(self, header: str) -> None:
+        """
+        Print a section header
+
+        Parameters
+        ----------
+        header: str
+            Section header string
+        """
+        self.indent_level = 0
+        print()
+        underline = "*" * len(header)
+        print(self.colorize(underline, "bright"))
+        print(self.colorize(header, "bright"))
+        print(self.colorize(underline, "bright"))
+        print()
+        self.indent_level += 1
+
+    def print_sub_header(self, header: str) -> None:
+        """
+        Print a subsection header
+
+        Parameters
+        ----------
+        header: str
+            Subsection header string
+        """
+        underline = "=" * len(header)
+        print(self.indent_string + self.colorize(header, "bright"))
+        print(self.indent_string + self.colorize(underline, "bright"))
+        print()
+        self.indent_level += 1
+
+    def print_end_section(self) -> None:
+        """Mark the end of a section"""
+        self.indent_level -= 1
+        print()
+
+    def print_info_lines(self, lines: Union[list[str], str]) -> None:
+        """
+        Print formatted information lines
+
+        Parameters
+        ----------
+        lines: Union[list[str], str
+            Lines to format
+        """
+        if isinstance(lines, str):
+            lines = [lines]
+        for line in lines:
+            print(
+                textwrap.fill(
+                    line,
+                    initial_indent=self.indent_string,
+                    subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
+                    width=self.width,
+                    break_on_hyphens=False,
+                    break_long_words=False,
+                    drop_whitespace=False,
+                )
+            )
+
+    def print_green_stat(self, stat: Any, text: str) -> None:
+        """
+        Print a statistic in green
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'green')} {text}")
+
+    def print_yellow_stat(self, stat, text) -> None:
+        """
+        Print a statistic in yellow
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'yellow')} {text}")
+
+    def print_red_stat(self, stat, text) -> None:
+        """
+        Print a statistic in red
+
+        Parameters
+        ----------
+        stat: Any
+            Statistic to print
+        text: str
+            Other text to follow statistic
+        """
+        print(self.indent_string + f"{self.colorize(stat, 'red')} {text}")
 
     def colorize(self, text: Any, color: str) -> str:
         """

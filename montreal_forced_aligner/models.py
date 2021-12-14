@@ -97,7 +97,6 @@ class Archive(MfaModel):
         feature_key_remapping = {
             "type": "feature_type",
             "deltas": "uses_deltas",
-            "lda": "uses_splices",
             "fmllr": "uses_speaker_adaptation",
         }
 
@@ -473,13 +472,13 @@ class AcousticModel(Archive):
 
     def validate(self, dictionary: DictionaryMixin) -> None:
         """
-        Validate this acoustic model against a pronunciation dictionary or G2P model to ensure their
+        Validate this acoustic model against a pronunciation dictionary to ensure their
         phone sets are compatible
 
         Parameters
         ----------
-        dictionary: Union[:class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`, :class:`~montreal_forced_aligner.models.G2PModel`]
-            PronunciationDictionaryMixin or G2P model to compare phone sets with
+        dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
+            DictionaryMixin  to compare phone sets with
 
         Raises
         ------
@@ -762,34 +761,50 @@ class LanguageModel(Archive):
 class DictionaryModel(MfaModel):
     """
     Class for representing MFA pronunciation dictionaries
+
+    Parameters
+    ----------
+    path: str
+        Path to the dictionary file
+    working_directory: str, optional
+        Path to working directory (currently not needed, but present to maintain consistency with other MFA Models
     """
 
     model_type = "dictionary"
 
     extensions = [".dict", ".txt", ".yaml", ".yml"]
 
-    def __init__(self, path: str):
+    def __init__(
+        self, path: str, working_directory: Optional[str] = None, detect_phone_set: bool = True
+    ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
         self.path = path
-        count = 0
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         self.phone_set_type = "UNKNOWN"
-        arpa_detect = re.compile(r"^\D{2}\d$")
+        self.phones = set()
+        self.graphemes = set()
+        arpa_detect = re.compile(r"^[A-Z]{2}\d$")
+        ipa_detect = re.compile(r"[əɚʊɤʁ˥˩ɹʉɒʃɕŋʰ̚ʲɾ]")
         with open(self.path, "r", encoding="utf8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 line = line.split()
-                for phone in line:
-                    m = re.match(arpa_detect, phone)
-                    if m:
-                        self.phone_set_type = "ARPA"
+                if detect_phone_set:
+                    for phone in line:
+                        m = arpa_detect.match(phone)
+                        if m:
+                            self.phone_set_type = "ARPA"
+                        m = ipa_detect.search(phone)
+                        if m:
+                            self.phone_set_type = "IPA"
 
-                _ = line.pop(0)  # word
+                word = line.pop(0)  # word
                 next_item = line.pop(0)
+                self.graphemes.update(word)
                 if self.pronunciation_probabilities:
                     try:
                         prob = float(next_item)
@@ -797,10 +812,12 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.pronunciation_probabilities = False
+                        self.phones.add(next_item)
                 try:
                     next_item = line.pop(0)
                 except IndexError:
                     self.silence_probabilities = False
+                    self.phones.add(next_item)
                 if self.silence_probabilities:
                     try:
                         prob = float(next_item)
@@ -808,9 +825,10 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.silence_probabilities = False
-                count += 1
-                if count > 10:
-                    break
+                        self.phones.add(next_item)
+                if not line:
+                    continue
+                self.phones.update(line)
 
     @property
     def base_phone_regex(self) -> Optional[str]:
@@ -818,13 +836,34 @@ class DictionaryModel(MfaModel):
             return None
         if self.phone_set_type == "ARPA":
             return r"(\D+)"
+        if self.phone_set_type == "IPA":
+            return r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̂̋̏‿̆͜͡ˌˈ̣]+)"
+
+    @property
+    def extra_questions(self) -> Dict[str, list[str]]:
+        extra_questions = {}
+        if self.phone_set_type == "ARPA":
+            extra_questions["non_silence_arpa_questions"] = []
+            for p in sorted(self.phones):
+                extra_questions["non_silence_arpa_questions"].append(p)
+            # extra stress questions
+            for i in range(3):
+                extra_questions[f"stress_{i}"] = []
+                for p in sorted(self.phones):
+                    if str(i) not in p:
+                        continue
+                    extra_questions[f"stress_{i}"].append(p)
+        return extra_questions
 
     @property
     def meta(self) -> MetaDict:
         """Metadata for the dictionary"""
         return {
+            "phone_set_type": self.phone_set_type,
+            "base_phone_regex": self.base_phone_regex,
             "pronunciation_probabilities": self.pronunciation_probabilities,
             "silence_probabilities": self.silence_probabilities,
+            "phones": self.phones,
         }
 
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:

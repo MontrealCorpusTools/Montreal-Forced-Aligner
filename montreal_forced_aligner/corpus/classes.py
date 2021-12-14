@@ -226,19 +226,6 @@ class Speaker(MfaCorpusClass):
         identifier = utterance.name
         del self.utterances[identifier]
 
-    def merge(self, speaker: Speaker) -> None:
-        """
-        Merge two speakers together
-
-        Parameters
-        ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
-            Other speaker to take utterances from
-        """
-        for u in speaker.utterances:
-            self.add_utterance(u)
-        speaker.utterances = UtteranceCollection()
-
     def word_set(self) -> Set[str]:
         """
         Generate the word set of all the words in a speaker's utterances
@@ -254,6 +241,8 @@ class Speaker(MfaCorpusClass):
             words.update(self.dictionary.clitic_set)
         self.word_counts = Counter()
         for u in self.utterances:
+            if not u.text:
+                continue
             self.word_counts.update(u.text.split())
         for word in self.word_counts:
             if self.dictionary is not None:
@@ -985,6 +974,17 @@ class Utterance(MfaCorpusClass):
     def is_segment(self) -> bool:
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
+
+    @property
+    def num_oovs(self):
+        """Number of unique OOV items in an utterance"""
+        count = 0
+        if self.speaker.dictionary is None:
+            return count
+        for w in set(self.text.split()):
+            if self.speaker.dictionary.check_word(w):
+                count += 1
+        return count
 
     def text_for_scp(self) -> List[str]:
         """

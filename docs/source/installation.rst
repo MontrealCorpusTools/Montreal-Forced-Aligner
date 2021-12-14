@@ -13,7 +13,7 @@ Installation
 All platforms
 =============
 
-1. Install Anaconda/Miniconda (https://docs.conda.io/en/latest/miniconda.html)
+1. Install :xref:`miniconda`/:xref:`conda_installation`
 2. Create new environment and install MFA: :code:`conda create -n aligner -c conda-forge montreal-forced-aligner`
 
    a.  You can enable the :code:`conda-forge` channel by default by running :code:`conda config --add channels conda-forge` in order to omit the :code:`-c conda-forge` from these commands
@@ -48,6 +48,27 @@ If the Conda installation above does not work or the binaries don't work on your
 .. note::
 
    You can also clone the conda forge feedstocks for `OpenFst <https://github.com/conda-forge/openfst-feedstock>`_, `SoX <https://github.com/conda-forge/sox-feedstock>`_, `Kaldi <https://github.com/conda-forge/kaldi-feedstock>`_, and `MFA <https://github.com/conda-forge/montreal-forced-aligner-feedstock>`_ and run them with `conda build <https://docs.conda.io/projects/conda-build/en/latest/>`_ to build for your specific system.
+
+Installing via pip
+------------------
+
+To install with pip and install minimal dependencies from conda:
+
+1. Create a conda environment:
+
+   * :fa:`fab fa-linux` Linux/:fa:`fab fa-apple` MacOSX: ``conda create -n aligner kaldi pynini``
+   * :fa:`fab fa-windows` Windows: ``conda create -n aligner kaldi``
+
+2. Activate environment via ``conda activate aligner``
+3. Install MFA
+
+   * From PyPi: ``pip install montreal-forced-aligner``
+   * From :fa:`fab fa-github` GitHub: ``pip install git+https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner.git``
+   * From inside the MFA repository root directory, you can install a local version via:
+
+     * ``pip install -e .``
+     * ``python setup.py install``
+     * ``python setup.py develop``
 
 MFA temporary files
 ===================

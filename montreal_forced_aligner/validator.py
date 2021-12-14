@@ -9,7 +9,7 @@ import os
 import subprocess
 import time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 
 import yaml
 
@@ -17,7 +17,7 @@ from .acoustic_modeling.trainer import TrainableAligner
 from .alignment import CorpusAligner, PretrainedAligner
 from .alignment.multiprocessing import compile_information_func
 from .exceptions import ConfigError, KaldiProcessingError
-from .helper import TerminalPrinter, edit_distance, load_scp, save_scp
+from .helper import TerminalPrinter, comma_join, edit_distance, load_scp, save_scp
 from .utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
@@ -395,78 +395,6 @@ class ValidationMixin(CorpusAligner):
                 e.update_log_file(self.logger)
             raise
 
-    @property
-    def indent_string(self) -> str:
-        """Indent string to use in formatting the output messages"""
-        return " " * 4
-
-    def _print_header(self, header: str) -> None:
-        """
-        Print a section header
-
-        Parameters
-        ----------
-        header: str
-            Section header string
-        """
-        print()
-        underline = "*" * len(header)
-        print(self.printer.colorize(underline, "bright"))
-        print(self.printer.colorize(header, "bright"))
-        print(self.printer.colorize(underline, "bright"))
-
-    def _print_sub_header(self, header: str) -> None:
-        """
-        Print a subsection header
-
-        Parameters
-        ----------
-        header: str
-            Subsection header string
-        """
-        underline = "=" * len(header)
-        print(self.printer.colorize(header, "bright"))
-        print(self.printer.colorize(underline, "bright"))
-
-    def _print_green_stat(self, stat: Any, text: str) -> None:
-        """
-        Print a statistic in green
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        print(self.indent_string + f"{self.printer.colorize(stat, 'green')} {text}")
-
-    def _print_yellow_stat(self, stat, text) -> None:
-        """
-        Print a statistic in yellow
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        print(self.indent_string + f"{self.printer.colorize(stat, 'yellow')} {text}")
-
-    def _print_red_stat(self, stat, text) -> None:
-        """
-        Print a statistic in red
-
-        Parameters
-        ----------
-        stat: Any
-            Statistic to print
-        text: str
-            Other text to follow statistic
-        """
-        print(self.indent_string + f"{self.printer.colorize(stat, 'red')} {text}")
-
     def analyze_setup(self) -> None:
         """
         Analyzes the set up process and outputs info to the console
@@ -480,26 +408,28 @@ class ValidationMixin(CorpusAligner):
         num_sound_files = sum(1 for x in self.files if x.wav_path is not None)
         num_lab_files = sum(1 for x in self.files if x.text_type == "lab")
         num_textgrid_files = sum(1 for x in self.files if x.text_type == "textgrid")
-        self._print_header("Corpus")
-        self._print_green_stat(num_sound_files, "sound files")
-        self._print_green_stat(num_lab_files, "lab files")
-        self._print_green_stat(num_textgrid_files, "textgrid files")
+
+        self.printer.print_header("Corpus")
+
+        self.printer.print_green_stat(num_sound_files, "sound files")
+        self.printer.print_green_stat(num_lab_files, "lab files")
+        self.printer.print_green_stat(num_textgrid_files, "textgrid files")
         if len(self.no_transcription_files):
-            self._print_yellow_stat(
+            self.printer.print_yellow_stat(
                 len(self.no_transcription_files),
                 "sound files without corresponding transcriptions",
             )
         if len(self.decode_error_files):
-            self._print_red_stat(len(self.decode_error_files), "read errors for lab files")
+            self.printer.print_red_stat(len(self.decode_error_files), "read errors for lab files")
         if len(self.textgrid_read_errors):
-            self._print_red_stat(len(self.textgrid_read_errors), "read errors for TextGrid files")
+            self.printer.print_red_stat(
+                len(self.textgrid_read_errors), "read errors for TextGrid files"
+            )
 
-        self._print_green_stat(len(self.speakers), "speakers")
-        self._print_green_stat(self.num_utterances, "utterances")
-        self._print_green_stat(total_duration, "seconds total duration")
+        self.printer.print_green_stat(len(self.speakers), "speakers")
+        self.printer.print_green_stat(self.num_utterances, "utterances")
+        self.printer.print_green_stat(total_duration, "seconds total duration")
         print()
-
-        self.analyze_oovs()
         self.analyze_wav_errors()
         self.analyze_missing_features()
         self.analyze_files_with_no_transcription()
@@ -510,11 +440,15 @@ class ValidationMixin(CorpusAligner):
         if len(self.textgrid_read_errors) or num_textgrid_files:
             self.analyze_textgrid_read_errors()
 
+        self.printer.print_header("Dictionary")
+        self.analyze_oovs()
+        self.analyze_missing_phones()
+
     def analyze_oovs(self) -> None:
         """
         Analyzes OOVs in the corpus and constructs message
         """
-        self._print_sub_header("Dictionary")
+        self.printer.print_sub_header("Out of vocabulary words")
         output_dir = self.output_directory
         oov_types = self.oovs_found
         oov_path = os.path.join(output_dir, "oovs_found.txt")
@@ -528,36 +462,60 @@ class ValidationMixin(CorpusAligner):
                     total_instances += len(utterance.oovs)
                     f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
             self.save_oovs_found(output_dir)
-            self._print_yellow_stat(len(oov_types), "OOV word types")
-            self._print_yellow_stat(total_instances, "total OOV tokens")
-            print()
-            print(self.indent_string + "For a full list of the word types, please see:")
-            print()
-            print(
-                self.indent_string + self.indent_string + self.printer.colorize(oov_path, "bright")
-            )
-            print()
-            print(self.indent_string + "For a by-utterance breakdown of missing words, see:")
-            print()
-
-            print(
-                self.indent_string
-                + self.indent_string
-                + self.printer.colorize(utterance_oov_path, "bright")
-            )
+            self.printer.print_yellow_stat(len(oov_types), "OOV word types")
+            self.printer.print_yellow_stat(total_instances, "total OOV tokens")
+            lines = [
+                "",
+                "For a full list of the word types, please see:",
+                "",
+                self.printer.indent_string + self.printer.colorize(oov_path, "bright"),
+                "",
+                "For a by-utterance breakdown of missing words, see:",
+                "",
+                self.printer.indent_string + self.printer.colorize(utterance_oov_path, "bright"),
+                "",
+            ]
+            self.printer.print_info_lines(lines)
         else:
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize('no', 'yellow')} missing words from the dictionary. If you plan on using the a model trained "
                 "on this dataset to align other datasets in the future, it is recommended that there be at "
                 "least some missing words."
             )
-        print()
+        self.printer.print_end_section()
+
+    def analyze_missing_phones(self) -> None:
+        """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
+        self.printer.print_sub_header("Acoustic model compatibility")
+        if self.excluded_pronunciation_count:
+            self.printer.print_yellow_stat(
+                len(self.excluded_phones), "phones not in acoustic model"
+            )
+            self.printer.print_yellow_stat(
+                self.excluded_pronunciation_count, "ignored pronunciations"
+            )
+
+            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
+            self.printer.print_info_lines(
+                [
+                    "",
+                    "Phones missing acoustic models:",
+                    "",
+                    self.printer.indent_string + comma_join(phone_string),
+                ]
+            )
+        else:
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
+            )
+        self.printer.print_end_section()
 
     def analyze_wav_errors(self) -> None:
         """
         Analyzes any sound file issues in the corpus and constructs message
         """
-        self._print_sub_header("Sound file read errors")
+        self.printer.print_sub_header("Sound file read errors")
+
         output_dir = self.output_directory
         wav_read_errors = self.sound_file_errors
         if wav_read_errors:
@@ -566,21 +524,26 @@ class ValidationMixin(CorpusAligner):
                 for p in wav_read_errors:
                     f.write(f"{p}\n")
 
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize(len(wav_read_errors), 'red')} issues reading sound files. "
                 f"Please see {self.printer.colorize(path, 'bright')} for a list."
             )
         else:
-            print(f"There were {self.printer.colorize('no', 'green')} issues reading sound files.")
-        print()
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} issues reading sound files."
+            )
+
+        self.printer.print_end_section()
 
     def analyze_missing_features(self) -> None:
         """
         Analyzes issues in feature generation in the corpus and constructs message
         """
-        self._print_sub_header("Feature generation")
+        self.printer.print_sub_header("Feature generation")
         if self.ignore_acoustics:
-            print("Acoustic feature generation was skipped.")
+            self.printer.print_info_lines("Acoustic feature generation was skipped.")
+            self.printer.print_end_section()
+            return
         output_dir = self.output_directory
         missing_features = [x for x in self.utterances if x.ignored]
         if missing_features:
@@ -593,66 +556,66 @@ class ValidationMixin(CorpusAligner):
                     else:
                         f.write(f"{utt.file.wav_path}\n")
 
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize(len(missing_features), 'red')} utterances missing features. "
                 f"Please see {self.printer.colorize(path, 'bright')} for a list."
             )
         else:
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize('no', 'green')} utterances missing features."
             )
-        print()
+        self.printer.print_end_section()
 
     def analyze_files_with_no_transcription(self) -> None:
         """
         Analyzes issues with sound files that have no transcription files
         in the corpus and constructs message
         """
-        self._print_sub_header("Files without transcriptions")
+        self.printer.print_sub_header("Files without transcriptions")
         output_dir = self.output_directory
         if self.no_transcription_files:
             path = os.path.join(output_dir, "missing_transcriptions.csv")
             with open(path, "w") as f:
                 for file_path in self.no_transcription_files:
                     f.write(f"{file_path}\n")
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize(len(self.no_transcription_files), 'red')} sound files missing transcriptions. "
                 f"Please see {self.printer.colorize(path, 'bright')} for a list."
             )
         else:
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize('no', 'green')} sound files missing transcriptions."
             )
-        print()
+        self.printer.print_end_section()
 
     def analyze_transcriptions_with_no_wavs(self) -> None:
         """
         Analyzes issues with transcription that have no sound files
         in the corpus and constructs message
         """
-        self._print_sub_header("Transcriptions without sound files")
+        self.printer.print_sub_header("Transcriptions without sound files")
         output_dir = self.output_directory
         if self.transcriptions_without_wavs:
             path = os.path.join(output_dir, "transcriptions_missing_sound_files.csv")
             with open(path, "w") as f:
                 for file_path in self.transcriptions_without_wavs:
                     f.write(f"{file_path}\n")
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize(len(self.transcriptions_without_wavs), 'red')} transcription files missing sound files. "
                 f"Please see {self.printer.colorize(path, 'bright')} for a list."
             )
         else:
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize('no', 'green')} transcription files missing sound files."
             )
-        print()
+        self.printer.print_end_section()
 
     def analyze_textgrid_read_errors(self) -> None:
         """
         Analyzes issues with reading TextGrid files
         in the corpus and constructs message
         """
-        self._print_sub_header("TextGrid read errors")
+        self.printer.print_sub_header("TextGrid read errors")
         output_dir = self.output_directory
         if self.textgrid_read_errors:
             path = os.path.join(output_dir, "textgrid_read_errors.txt")
@@ -661,33 +624,43 @@ class ValidationMixin(CorpusAligner):
                     f.write(
                         f"The TextGrid file {k} gave the following error on load:\n\n{v}\n\n\n"
                     )
-            print(
-                f"There were {self.printer.colorize(len(self.textgrid_read_errors), 'red')} TextGrid files that could not be loaded. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+            self.printer.print_info_lines(
+                [
+                    f"There were {self.printer.colorize(len(self.textgrid_read_errors), 'red')} TextGrid files that could not be loaded. "
+                    "For details, please see:",
+                    "",
+                    self.printer.indent_string + self.printer.colorize(path, "bright"),
+                ]
             )
         else:
-            print(f"There were {self.printer.colorize('no', 'green')} issues reading TextGrids.")
-        print()
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} issues reading TextGrids."
+            )
+
+        self.printer.print_end_section()
 
     def analyze_unreadable_text_files(self) -> None:
         """
         Analyzes issues with reading text files
         in the corpus and constructs message
         """
-        self._print_sub_header("Text file read errors")
+        self.printer.print_sub_header("Text file read errors")
         output_dir = self.output_directory
         if self.decode_error_files:
             path = os.path.join(output_dir, "utf8_read_errors.csv")
             with open(path, "w") as f:
                 for file_path in self.decode_error_files:
                     f.write(f"{file_path}\n")
-            print(
+            self.printer.print_info_lines(
                 f"There were {self.printer.colorize(len(self.decode_error_files), 'red')} text files that could not be read. "
                 f"Please see {self.printer.colorize(path, 'bright')} for a list."
             )
         else:
-            print(f"There were {self.printer.colorize('no', 'green')} issues reading text files.")
-        print()
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} issues reading text files."
+            )
+
+        self.printer.print_end_section()
 
     def compile_information(self) -> None:
         """
@@ -736,22 +709,24 @@ class ValidationMixin(CorpusAligner):
             self.logger.debug(
                 "No utterances were aligned, this likely indicates serious problems with the aligner."
             )
-            self._print_red_stat(0, f"of {len(self.utterances)} utterances were aligned")
+            self.printer.print_red_stat(0, f"of {len(self.utterances)} utterances were aligned")
         else:
             if too_short_count:
-                self._print_red_stat(too_short_count, "utterances were too short to be aligned")
+                self.printer.print_red_stat(
+                    too_short_count, "utterances were too short to be aligned"
+                )
             else:
-                self._print_green_stat(0, "utterances were too short to be aligned")
+                self.printer.print_green_stat(0, "utterances were too short to be aligned")
             if beam_too_narrow_count:
                 self.logger.debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
-                self._print_yellow_stat(
+                self.printer.print_yellow_stat(
                     beam_too_narrow_count, "utterances that need a larger beam to align"
                 )
             else:
-                self._print_green_stat(0, "utterances that need a larger beam to align")
+                self.printer.print_green_stat(0, "utterances that need a larger beam to align")
 
             num_utterances = self.num_utterances
             if unaligned_utts:
@@ -770,12 +745,16 @@ class ValidationMixin(CorpusAligner):
                             f.write(
                                 f"{utterance.file.wav_path},,,{utt_duration},{utt_length_words}\n"
                             )
-                print(
-                    f"There were {self.printer.colorize(len(unaligned_utts), 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
-                    f"Please see {self.printer.colorize(path, 'bright')} for a list."
+                self.printer.print_info_lines(
+                    [
+                        f"There were {self.printer.colorize(len(unaligned_utts), 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
+                        f"For details, please see:",
+                        "",
+                        self.printer.indent_string + self.printer.colorize(path, "bright"),
+                    ]
                 )
 
-            self._print_green_stat(
+            self.printer.print_green_stat(
                 num_utterances - beam_too_narrow_count - too_short_count,
                 "utterances were successfully aligned",
             )
@@ -985,12 +964,12 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         self.setup()
         self.analyze_setup()
         if self.ignore_acoustics:
-            print("Skipping test alignments.")
+            self.printer.print_info_lines("Skipping test alignments.")
             return
-        self._print_header("Training")
+        self.printer.print_header("Training")
         self.train(True)
         if self.test_transcriptions:
-            self._print_header("Test transcriptions")
+            self.printer.print_header("Test transcriptions")
             self.test_utterance_transcriptions()
 
 
@@ -1102,9 +1081,9 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         if self.ignore_acoustics:
             print("Skipping test alignments.")
             return
-        self._print_header("Alignment")
+        self.printer.print_header("Alignment")
         self.align()
         self.compile_information()
         if self.test_transcriptions:
-            self._print_header("Test transcriptions")
+            self.printer.print_header("Test transcriptions")
             self.test_utterance_transcriptions()

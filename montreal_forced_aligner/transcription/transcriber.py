@@ -89,7 +89,7 @@ class TranscriberMixin:
         silence_weight: float = 0.01,
         max_active: int = 7000,
         lattice_beam: int = 6,
-        first_beam: int = 0,
+        first_beam: int = 10,
         first_max_active: int = 2000,
         language_model_weight: int = 10,
         word_insertion_penalty: float = 0.5,

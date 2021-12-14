@@ -29,6 +29,5 @@ Helper
 .. autosummary::
    :toctree: generated/
 
-   PairNGramAligner
    RandomStartWorker
    RandomStart

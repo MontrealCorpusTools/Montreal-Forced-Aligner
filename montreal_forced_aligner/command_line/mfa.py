@@ -347,6 +347,12 @@ def create_parser() -> ArgumentParser:
         default="",
         help="Audio directory root to use for finding audio files",
     )
+    train_parser.add_argument(
+        "--enable_detect_phone_set",
+        dest="detect_phone_set",
+        help="Enable auto-detecting phone sets from the dictionary during training",
+        action="store_true",
+    )
     add_global_options(train_parser, textgrid_output=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
@@ -777,6 +783,16 @@ def create_parser() -> ArgumentParser:
         action="store_true",
     )
     config_parser.add_argument(
+        "--disable_detect_phone_set",
+        help="Disable auto-detecting phone sets from the dictionary during training",
+        action="store_true",
+    )
+    config_parser.add_argument(
+        "--enable_detect_phone_set",
+        help="Enable auto-detecting phone sets from the dictionary during training",
+        action="store_true",
+    )
+    config_parser.add_argument(
         "--disable_terminal_colors", help="Turn off colored text in output", action="store_true"
     )
     config_parser.add_argument(
@@ -888,7 +904,7 @@ def main() -> None:
             run_train_g2p(args, unknown)
         elif args.subcommand == "validate":
             run_validate_corpus(args, unknown)
-        elif args.subcommand == "model":
+        elif args.subcommand in ["model", "models"]:
             run_model(args)
         elif args.subcommand == "train_lm":
             run_train_lm(args, unknown)

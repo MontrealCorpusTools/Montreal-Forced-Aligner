@@ -26,7 +26,6 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] = No
     unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
-
     trainer = TrainableAligner(
         corpus_directory=args.corpus_directory,
         dictionary_path=args.dictionary_path,

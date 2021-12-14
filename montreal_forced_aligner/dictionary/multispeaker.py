@@ -49,10 +49,18 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def __init__(self, dictionary_path: str = None, **kwargs):
         super().__init__(**kwargs)
         self.dictionary_model = DictionaryModel(dictionary_path)
-        self.base_phone_regex = self.dictionary_model.base_phone_regex
-        self.phone_set_type = self.dictionary_model.phone_set_type
         self.speaker_mapping = {}
         self.dictionary_mapping: Dict[str, PronunciationDictionary] = {}
+
+    @property
+    def base_phone_regex(self) -> Optional[str]:
+        """Regex pattern for extracting a base phone for the phone set"""
+        return self.dictionary_model.base_phone_regex
+
+    @property
+    def phone_set_type(self) -> str:
+        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
+        return self.dictionary_model.phone_set_type
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""
@@ -68,6 +76,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self.non_silence_phones.update(
                     self.dictionary_mapping[dictionary.name].non_silence_phones
                 )
+                self.excluded_phones.update(
+                    self.dictionary_mapping[dictionary.name].excluded_phones
+                )
+                self.excluded_pronunciation_count += self.dictionary_mapping[
+                    dictionary.name
+                ].excluded_pronunciation_count
         for dictionary in self.dictionary_mapping.values():
             dictionary.non_silence_phones = self.non_silence_phones
 
