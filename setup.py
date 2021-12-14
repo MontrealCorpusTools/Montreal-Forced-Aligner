@@ -54,5 +54,6 @@ if __name__ == '__main__':
         cmdclass={'test': PyTest},
         extras_require={
             'testing': ['pytest'],
+            'docs': ['sphinx', 'numpydoc', 'mock','pyyaml'],
         }
           )
