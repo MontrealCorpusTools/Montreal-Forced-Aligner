@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import functools
-import logging
 import multiprocessing as mp
 import operator
 import os
@@ -14,12 +13,13 @@ import subprocess
 import sys
 import time
 import traceback
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set
 
 import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+from montreal_forced_aligner.exceptions import PyniniAlignmentError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.helper import score
 from montreal_forced_aligner.models import G2PModel
@@ -76,36 +76,88 @@ class RandomStartWorker(mp.Process):
         self,
         job_q: mp.Queue,
         return_dict: dict,
-        function: Callable,
+        log_file: str,
+        error_dict: dict,
         counter: Counter,
         stopped: Stopped,
+        finished_signal: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
-        self.function = function
+        self.log_file = log_file
+        self.error_dict = error_dict
         self.counter = counter
         self.stopped = stopped
+        self.finished_signal = finished_signal
 
     def run(self) -> None:
         """Run the random start worker"""
-        while True:
-            try:
-                args = self.job_q.get(timeout=1)
-            except queue.Empty:
-                break
-            self.job_q.task_done()
-            if self.stopped.stop_check():
-                continue
-            try:
-                fst_path, likelihood = self.function(args)
-                self.return_dict[fst_path] = likelihood
-            except Exception:
-                self.stopped.stop()
-                self.return_dict["MFA_ERROR"] = args, Exception(
-                    traceback.format_exception(*sys.exc_info())
-                )
-            self.counter.increment()
+        with open(self.log_file, "w", encoding="utf8") as log_file:
+            while True:
+                try:
+                    args = self.job_q.get(timeout=1)
+                except queue.Empty:
+                    break
+                self.job_q.task_done()
+                if self.stopped.stop_check():
+                    continue
+                try:
+                    start = time.time()
+                    # Randomize channel model.
+                    c_path = os.path.join(args.tempdir, f"c-{args.seed:05d}.fst")
+                    fst_path = os.path.join(args.tempdir, f"t-{args.seed:05d}.fst")
+                    likelihood_path = fst_path.replace(".fst", ".like")
+                    if not os.path.exists(fst_path):
+                        cmd = [
+                            "baumwelchrandomize",
+                            f"--seed={args.seed}",
+                            args.c_path,
+                            c_path,
+                        ]
+                        subprocess.check_call(cmd, stderr=log_file)
+                        random_end = time.time()
+                        log_file.write(
+                            f"{args.seed} randomization took {random_end - start} seconds\n"
+                        )
+                        # Train on randomized channel model.
+
+                        likelihood = INF
+                        cmd = [
+                            "baumwelchtrain",
+                            *args.train_opts,
+                            args.g_path,
+                            args.p_path,
+                            c_path,
+                            fst_path,
+                        ]
+                        log_file.write(f"{args.seed} train command: {' '.join(cmd)}\n")
+                        with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
+                            # Parses STDERR to capture the likelihood.
+                            for line in proc.stderr:  # type: ignore
+                                log_file.write(line)
+                                log_file.flush()
+                                line = line.rstrip()
+                                match = re.match(r"INFO: Iteration \d+: (-?\d*(\.\d*)?)", line)
+                                assert match, line
+                                likelihood = float(match.group(1))
+                                self.counter.increment()
+                            with open(likelihood_path, "w") as f:
+                                f.write(str(likelihood))
+                        log_file.write(
+                            f"{args.seed} training took {time.time() - random_end} seconds\n"
+                        )
+                    else:
+                        with open(likelihood_path, "r") as f:
+                            likelihood = f.read().strip()
+                    self.return_dict[fst_path] = likelihood
+                except Exception:
+                    self.stopped.stop()
+                    self.finished_signal.stop()
+                    self.error_dict[args.idx] = args, Exception(
+                        traceback.format_exception(*sys.exc_info())
+                    )
+        self.finished_signal.stop()
         return
 
 
@@ -212,14 +264,14 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         seed: int = 1917,
         delta: float = 1 / 1024,
         lr: float = 1.0,
-        batch_size: int = 200,
+        batch_size: int = 800,
         num_iterations: int = 10,
         smoothing_method: str = "kneser_ney",
         pruning_method: str = "relative_entropy",
         model_size: int = 1000000,
         input_epsilon: bool = True,
         output_epsilon: bool = True,
-        fst_default_cache_gc="",
+        fst_default_cache_gc="false",
         fst_default_cache_gc_limit="",
         **kwargs,
     ):
@@ -578,52 +630,6 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         )
         covering.write(self.c_path)
 
-    @staticmethod
-    def _random_start(random_start: RandomStart) -> Tuple[str, float]:
-        """Performs a single random start."""
-        start = time.time()
-        logger = logging.getLogger("g2p_aligner")
-        # Randomize channel model.
-        c_path = os.path.join(random_start.tempdir, f"c-{random_start.seed:05d}.fst")
-        t_path = os.path.join(random_start.tempdir, f"t-{random_start.seed:05d}.fst")
-        likelihood_path = t_path.replace(".fst", ".like")
-        if not os.path.exists(t_path):
-            cmd = [
-                "baumwelchrandomize",
-                f"--seed={random_start.seed}",
-                random_start.c_path,
-                c_path,
-            ]
-            subprocess.check_call(cmd)
-            random_end = time.time()
-            logger.debug(f"{random_start.seed} randomization took {random_end - start} seconds")
-            # Train on randomized channel model.
-
-            likelihood = INF
-            cmd = [
-                "baumwelchtrain",
-                *random_start.train_opts,
-                random_start.g_path,
-                random_start.p_path,
-                c_path,
-                t_path,
-            ]
-            logger.debug(f"{random_start.seed} train command: {' '.join(cmd)}")
-            with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
-                # Parses STDERR to capture the likelihood.
-                for line in proc.stderr:  # type: ignore
-                    line = line.rstrip()
-                    match = re.match(r"INFO: Iteration \d+: (-?\d*(\.\d*)?)", line)
-                    assert match, line
-                    likelihood = float(match.group(1))
-                with open(likelihood_path, "w") as f:
-                    f.write(str(likelihood))
-            logger.debug(f"{random_start.seed} training took {time.time() - random_end} seconds")
-        else:
-            with open(likelihood_path, "r") as f:
-                likelihood = f.read().strip()
-        return t_path, likelihood
-
     def _alignments(
         self,
         cores: int,
@@ -671,57 +677,60 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
             ]
             stopped = Stopped()
             num_commands = len(starts)
-            if cores > len(starts):
-                cores = len(starts)
-            job_queue = mp.JoinableQueue(cores + 2)
+            job_queue = mp.JoinableQueue()
 
             # Actually runs starts.
             self.logger.info("Calculating alignments...")
             begin = time.time()
-            last_value = 0
-            ind = 0
-            with tqdm.tqdm(total=num_commands) as pbar:
-                while True:
-                    if ind == num_commands:
-                        break
-                    try:
-                        job_queue.put(starts[ind], False)
-                    except queue.Full:
-                        break
-                    ind += 1
+            max_value = num_commands * max_iters
+            with tqdm.tqdm(total=num_commands * max_iters) as pbar:
+                for start in starts:
+                    job_queue.put(start)
                 manager = mp.Manager()
+                error_dict = manager.dict()
                 return_dict = manager.dict()
                 procs = []
                 counter = Counter()
-                for _ in range(cores):
+                finished_signals = [Stopped() for _ in range(cores)]
+                for i in range(cores):
+                    log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
                     p = RandomStartWorker(
-                        job_queue, return_dict, self._random_start, counter, stopped
+                        job_queue,
+                        return_dict,
+                        log_path,
+                        error_dict,
+                        counter,
+                        stopped,
+                        finished_signals[i],
                     )
                     procs.append(p)
                     p.start()
-                while True:
-                    if ind == num_commands:
+
+                value = 0
+                last_value = 0
+                if len(self.g2p_training_dictionary) > 10000:
+                    sleep_increment = 10
+                else:
+                    sleep_increment = 2
+                while value < max_value:
+                    time.sleep(sleep_increment)
+                    if stopped.stop_check():
                         break
-                    job_queue.put(starts[ind])
-                    value = counter.value()
-                    pbar.update(value - last_value)
-                    last_value = value
-                    ind += 1
-                while True:
-                    time.sleep(30)
                     value = counter.value()
                     if value != last_value:
                         pbar.update(value - last_value)
                         last_value = value
-                    if value >= random_starts:
-                        break
+                        for i, sig in enumerate(finished_signals):
+                            if not sig.stop_check():
+                                self.log_debug(f"Waiting on job {i}")
+                                break
+                        else:
+                            break
                 job_queue.join()
                 for p in procs:
                     p.join()
-            if "MFA_ERROR" in return_dict:
-                element, exc = return_dict["MFA_ERROR"]
-                print(element)
-                raise exc
+            if error_dict:
+                raise PyniniAlignmentError(error_dict)
             (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
             self.logger.info(f"Best likelihood: {best_likelihood}")
             self.logger.debug(

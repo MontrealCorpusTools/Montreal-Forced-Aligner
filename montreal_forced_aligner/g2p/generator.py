@@ -8,16 +8,17 @@ import queue
 import sys
 import time
 import traceback
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple, Union
 
 import tqdm
 
-from ..abc import TopLevelMfaWorker
-from ..corpus.text_corpus import TextCorpusMixin
-from ..exceptions import G2PError
-from ..models import G2PModel
-from ..utils import Counter, Stopped
-from .mixins import G2PTopLevelMixin
+from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
+from montreal_forced_aligner.exceptions import G2PError, PyniniGenerationError
+from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
+from montreal_forced_aligner.helper import comma_join
+from montreal_forced_aligner.models import G2PModel
+from montreal_forced_aligner.utils import Counter, Stopped
 
 try:
     import pynini
@@ -75,17 +76,21 @@ class RewriterWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: Dict[str, Union[str, Any]],
+        return_dict: Dict[str, str],
+        error_dict: Dict[str, Exception],
         rewriter: Rewriter,
         counter: Counter,
         stopped: Stopped,
+        finished_signal: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_q = job_q
         self.return_dict = return_dict
+        self.error_dict = error_dict
         self.rewriter = rewriter
         self.counter = counter
         self.stopped = stopped
+        self.finished_signal = finished_signal
 
     def run(self) -> None:
         """Run the rewriting function"""
@@ -103,16 +108,16 @@ class RewriterWorker(mp.Process):
                     self.return_dict[word] = rep
             except rewrite.Error:
                 pass
-            except Exception:
+            except Exception:  # noqa
                 self.stopped.stop()
-                self.return_dict["MFA_EXCEPTION"] = word, Exception(
-                    traceback.format_exception(*sys.exc_info())
-                )
+                self.finished_signal.stop()
+                self.error_dict[word] = Exception(traceback.format_exception(*sys.exc_info()))
             self.counter.increment()
+        self.finished_signal.stop()
         return
 
 
-def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
+def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, Set[str]]:
     """
     Clean up word by removing graphemes not in a specified set
 
@@ -131,10 +136,10 @@ def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, List[str]]:
         Graphemes excluded
     """
     new_word = []
-    missing_graphemes = []
+    missing_graphemes = set()
     for c in word:
         if c not in graphemes:
-            missing_graphemes.append(c)
+            missing_graphemes.add(c)
         else:
             new_word.append(c)
     return "".join(new_word), missing_graphemes
@@ -213,7 +218,6 @@ class PyniniGenerator(G2PTopLevelMixin):
             output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
         rewriter = Rewriter(fst, input_token_type, output_token_type, self.num_pronunciations)
 
-        ind = 0
         num_words = len(self.words_to_g2p)
         words = list(self.words_to_g2p)
         begin = time.time()
@@ -224,7 +228,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         if num_words < 30 or self.num_jobs < 2:
             for word in words:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
-                missing_graphemes.update(m)
+                missing_graphemes = missing_graphemes | m
                 if not w:
                     continue
                 try:
@@ -234,49 +238,61 @@ class PyniniGenerator(G2PTopLevelMixin):
                 to_return[word] = pron
         else:
             stopped = Stopped()
-            job_queue = mp.JoinableQueue(100)
-            with tqdm.tqdm(total=num_words) as pbar:
-                while True:
-                    if ind == num_words:
+            job_queue = mp.JoinableQueue()
+            offset = 0
+            for word in words:
+                w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
+                missing_graphemes = missing_graphemes | m
+                if not w:
+                    offset += 1
+                    continue
+                job_queue.put(w)
+            self.log_debug(
+                f"Skipping {offset} words due to only containing the following graphemes: "
+                f"{comma_join(sorted(missing_graphemes))}"
+            )
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_dict = manager.dict()
+            procs = []
+            counter = Counter()
+            finished_signals = [Stopped() for _ in range(self.num_jobs)]
+            for i in range(self.num_jobs):
+                p = RewriterWorker(
+                    job_queue,
+                    return_dict,
+                    error_dict,
+                    rewriter,
+                    counter,
+                    stopped,
+                    finished_signals[i],
+                )
+                procs.append(p)
+                p.start()
+            value = 0
+            if num_words - offset > 10000:
+                sleep_increment = 10
+            else:
+                sleep_increment = 2
+            with tqdm.tqdm(total=num_words - offset) as pbar:
+                while value < num_words - offset:
+                    time.sleep(sleep_increment)
+                    if stopped.stop_check():
                         break
-                    try:
-                        w, m = clean_up_word(words[ind], self.g2p_model.meta["graphemes"])
-                        missing_graphemes.update(m)
-                        if not w:
-                            ind += 1
-                            continue
-                        job_queue.put(w, False)
-                    except queue.Full:
-                        break
-                    ind += 1
-                manager = mp.Manager()
-                return_dict = manager.dict()
-                procs = []
-                counter = Counter()
-                for _ in range(self.num_jobs):
-                    p = RewriterWorker(job_queue, return_dict, rewriter, counter, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    if ind == num_words:
-                        break
-                    w, m = clean_up_word(words[ind], self.g2p_model.meta["graphemes"])
-                    missing_graphemes.update(m)
-                    if not w:
-                        ind += 1
-                        continue
-                    job_queue.put(w)
                     value = counter.value()
-                    pbar.update(value - last_value)
-                    last_value = value
-                    ind += 1
-                job_queue.join()
+                    if value != last_value:
+                        pbar.update(value - last_value)
+                        last_value = value
+                        for sig in finished_signals:
+                            if not sig.stop_check():
+                                break
+                        else:
+                            break
+            job_queue.join()
             for p in procs:
                 p.join()
-            if "MFA_EXCEPTION" in return_dict:
-                element, exc = return_dict["MFA_EXCEPTION"]
-                self.log_error(f"Encountered error processing: {element}")
-                raise exc
+            if error_dict:
+                raise PyniniGenerationError(error_dict)
             for w in self.words_to_g2p:
                 if w in return_dict:
                     to_return[w] = return_dict[w]

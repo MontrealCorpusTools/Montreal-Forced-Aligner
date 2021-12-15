@@ -89,8 +89,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 line = line.strip()
                 if not line:
                     continue
-                line = line.split()
-                word = self.sanitize(line.pop(0).lower())
+                if "\t" in line:
+                    word, line = line.split("\t")
+                    word = self.sanitize(word.lower())
+                    line = line.strip().split()
+                else:
+                    line = line.split()
+                    word = self.sanitize(line.pop(0).lower())
                 if not line:
                     raise DictionaryError(
                         f"Line {i} of {self.dictionary_model.path} does not have a pronunciation."

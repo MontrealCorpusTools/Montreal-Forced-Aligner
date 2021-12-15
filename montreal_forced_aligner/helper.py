@@ -112,6 +112,70 @@ class TerminalPrinter:
             self.colors["reset"] = Style.RESET_ALL
             self.colors["normal"] = Style.NORMAL
 
+    def error_text(self, text: Any) -> str:
+        """
+        Highlight text as an error
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "red")
+
+    def emphasized_text(self, text: Any) -> str:
+        """
+        Highlight text as emphasis
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "bright")
+
+    def pass_text(self, text: Any) -> str:
+        """
+        Highlight text as good
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "green")
+
+    def warning_text(self, text: Any) -> str:
+        """
+        Highlight text as a warning
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "yellow")
+
     @property
     def indent_string(self) -> str:
         """Indent string to use in formatting the output messages"""
@@ -155,6 +219,35 @@ class TerminalPrinter:
         self.indent_level -= 1
         print()
 
+    def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
+        """
+        Format lines
+
+        Parameters
+        ----------
+        lines: Union[list[str], str
+            Lines to format
+
+        Returns
+        -------
+        str
+            Formatted string
+        """
+        if isinstance(lines, str):
+            lines = [lines]
+
+        for i, line in enumerate(lines):
+            lines[i] = textwrap.fill(
+                line,
+                initial_indent=self.indent_string,
+                subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
+                width=self.width,
+                break_on_hyphens=False,
+                break_long_words=False,
+                drop_whitespace=False,
+            )
+        return lines
+
     def print_info_lines(self, lines: Union[list[str], str]) -> None:
         """
         Print formatted information lines
@@ -166,18 +259,9 @@ class TerminalPrinter:
         """
         if isinstance(lines, str):
             lines = [lines]
+        lines = self.format_info_lines(lines)
         for line in lines:
-            print(
-                textwrap.fill(
-                    line,
-                    initial_indent=self.indent_string,
-                    subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
-                    width=self.width,
-                    break_on_hyphens=False,
-                    break_long_words=False,
-                    drop_whitespace=False,
-                )
-            )
+            print(line)
 
     def print_green_stat(self, stat: Any, text: str) -> None:
         """

@@ -35,24 +35,24 @@ def test_train_and_align_basic(
 
 
 def test_train_and_align_basic_speaker_dict(
-    basic_corpus_dir,
-    speaker_dictionary_path,
+    multilingual_ipa_tg_corpus_dir,
+    ipa_speaker_dict_path,
     generated_dir,
     temp_dir,
-    mono_train_config_path,
+    basic_train_config_path,
     textgrid_output_model_path,
 ):
     if os.path.exists(textgrid_output_model_path):
         os.remove(textgrid_output_model_path)
     command = [
         "train",
-        basic_corpus_dir,
-        speaker_dictionary_path,
-        os.path.join(generated_dir, "basic_output"),
+        multilingual_ipa_tg_corpus_dir,
+        ipa_speaker_dict_path,
+        os.path.join(generated_dir, "ipa_speaker_output"),
         "-t",
         temp_dir,
         "--config_path",
-        mono_train_config_path,
+        basic_train_config_path,
         "-q",
         "--clean",
         "--debug",
