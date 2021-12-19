@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
 from montreal_forced_aligner.command_line.mfa import parser
 
@@ -13,6 +15,7 @@ def test_cluster(
     transcription_language_model,
     temp_dir,
 ):
+    pytest.skip("Speaker diarization functionality disabled.")
     output_path = os.path.join(generated_dir, "cluster_test")
     command = [
         "classify_speakers",

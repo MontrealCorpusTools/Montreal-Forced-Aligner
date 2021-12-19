@@ -6,6 +6,7 @@ import os
 import sys
 import traceback
 from collections import Counter
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -36,66 +37,27 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.textgrid import CtmInterval
 
 
-__all__ = ["parse_file", "File", "Speaker", "Utterance"]
+__all__ = ["File", "Speaker", "Utterance"]
 
 
-def parse_file(
-    file_name: str,
-    wav_path: Optional[str],
-    text_path: Optional[str],
-    relative_path: str,
-    speaker_characters: Union[int, str],
-    sanitize_function: Optional[Callable] = None,
-    stop_check: Optional[Callable] = None,
-) -> File:
-    """
-    Parse a collection of sound file and transcription file into a File
-
-    Parameters
-    ----------
+@dataclass(order=True, frozen=True)
+class UtteranceData:
+    speaker_name: str
     file_name: str
-        File identifier
-    wav_path: str
-        Full sound file path
-    text_path: str
-        Full transcription path
-    relative_path: str
-        Relative path from the corpus directory root
-    speaker_characters: int, optional
-        Number of characters in the file name to specify the speaker
-    sanitize_function: Callable, optional
-        Function to sanitize words and strip punctuation
-    stop_check: Callable
-        Check whether to stop parsing early
+    begin: Optional[float]
+    end: Optional[float]
+    channel: Optional[int]
+    text: Optional[str]
 
-    Returns
-    -------
-    :class:`~montreal_forced_aligner.corpus.classes.File`
-        Parsed file
-    """
-    file = File(wav_path, text_path, relative_path=relative_path)
-    if file.has_sound_file:
-        root = os.path.dirname(wav_path)
-        file.wav_info = get_wav_info(wav_path)
-    else:
-        root = os.path.dirname(text_path)
-    if not speaker_characters:
-        speaker_name = os.path.basename(root)
-    elif isinstance(speaker_characters, int):
-        speaker_name = file_name[:speaker_characters]
-    elif speaker_characters == "prosodylab":
-        speaker_name = file_name.split("_")[1]
-    else:
-        speaker_name = file_name
-    root_speaker = None
-    if speaker_characters or file.text_type != "textgrid":
-        root_speaker = Speaker(speaker_name)
-    file.load_text(
-        root_speaker=root_speaker,
-        sanitize_function=sanitize_function,
-        stop_check=stop_check,
-    )
-    return file
+
+@dataclass(order=True, frozen=True)
+class FileData:
+    wav_path: str
+    text_path: str
+    relative_path: str
+    wav_info: Dict[str, Any]
+    speaker_ordering: List[str]
+    utterances: List[UtteranceData]
 
 
 class MfaCorpusClass(metaclass=abc.ABCMeta):
@@ -338,6 +300,86 @@ class File(MfaCorpusClass):
         self.utterances = UtteranceCollection()
         self.aligned = False
 
+    @property
+    def multiprocessing_data(self):
+        return FileData(
+            self.wav_path,
+            self.text_path,
+            self.relative_path,
+            self.wav_info,
+            [s.name for s in self.speaker_ordering],
+            [u.multiprocessing_data for u in self.utterances],
+        )
+
+    @classmethod
+    def load_from_mp_data(cls, file_data: FileData) -> File:
+
+        file = File(file_data.wav_path, file_data.text_path, relative_path=file_data.relative_path)
+        for s in file_data.speaker_ordering:
+            file.add_speaker(Speaker(s))
+        for u in file_data.utterances:
+            u = Utterance.load_from_mp_data(u, file)
+            file.utterances.add_utterance(u)
+        return file
+
+    @classmethod
+    def parse_file(
+        cls,
+        file_name: str,
+        wav_path: Optional[str],
+        text_path: Optional[str],
+        relative_path: str,
+        speaker_characters: Union[int, str],
+        sanitize_function: Optional[Callable] = None,
+    ):
+        """
+        Parse a collection of sound file and transcription file into a File
+
+        Parameters
+        ----------
+        file_name: str
+            File identifier
+        wav_path: str
+            Full sound file path
+        text_path: str
+            Full transcription path
+        relative_path: str
+            Relative path from the corpus directory root
+        speaker_characters: int, optional
+            Number of characters in the file name to specify the speaker
+        sanitize_function: Callable, optional
+            Function to sanitize words and strip punctuation
+        stop_check: Callable
+            Check whether to stop parsing early
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.classes.File`
+            Parsed file
+        """
+        file = File(wav_path, text_path, relative_path=relative_path)
+        if file.has_sound_file:
+            root = os.path.dirname(wav_path)
+            file.wav_info = get_wav_info(wav_path)
+        else:
+            root = os.path.dirname(text_path)
+        if not speaker_characters:
+            speaker_name = os.path.basename(root)
+        elif isinstance(speaker_characters, int):
+            speaker_name = file_name[:speaker_characters]
+        elif speaker_characters == "prosodylab":
+            speaker_name = file_name.split("_")[1]
+        else:
+            speaker_name = file_name
+        root_speaker = None
+        if speaker_characters or file.text_type != "textgrid":
+            root_speaker = Speaker(speaker_name)
+        file.load_text(
+            root_speaker=root_speaker,
+            sanitize_function=sanitize_function,
+        )
+        return file
+
     def __eq__(self, other: Union[File, str]) -> bool:
         """Check if a File is equal to another File"""
         if isinstance(other, File):
@@ -578,7 +620,6 @@ class File(MfaCorpusClass):
         self,
         root_speaker: Optional[Speaker] = None,
         sanitize_function: Optional[SanitizeFunction] = None,
-        stop_check: Optional[Callable] = None,
     ) -> None:
         """
         Load the transcription text from the text_file of the object
@@ -628,8 +669,6 @@ class File(MfaCorpusClass):
                 else:
                     speaker = root_speaker
                 for begin, end, text in ti.entryList:
-                    if stop_check is not None and stop_check():
-                        return
                     text = text.lower().strip()
                     words = parse_transcription(text, sanitize_function)
                     if not words:
@@ -848,6 +887,19 @@ class Utterance(MfaCorpusClass):
         self.phone_labels: Optional[List[CtmInterval]] = None
         self.word_labels: Optional[List[CtmInterval]] = None
         self.oovs = set()
+
+    @property
+    def multiprocessing_data(self):
+        return UtteranceData(
+            self.speaker_name, self.file_name, self.begin, self.end, self.channel, self.text
+        )
+
+    @classmethod
+    def load_from_mp_data(cls, data: UtteranceData, file: File) -> Utterance:
+        utterance = Utterance(
+            Speaker(data.speaker_name), file, data.begin, data.end, data.channel, data.text
+        )
+        return utterance
 
     def __getstate__(self) -> Dict[str, Any]:
         """Get the state of the object for pickling"""

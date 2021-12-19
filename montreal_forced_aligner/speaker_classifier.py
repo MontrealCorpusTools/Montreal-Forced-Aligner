@@ -9,12 +9,9 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, List, Optional
 
-import numpy as np
 import yaml
-from sklearn.cluster import KMeans
 
 from .abc import FileExporterMixin, TopLevelMfaWorker
-from .corpus.classes import Speaker
 from .corpus.ivector_corpus import IvectorCorpusMixin
 from .exceptions import KaldiProcessingError
 from .helper import load_scp
@@ -28,7 +25,9 @@ if TYPE_CHECKING:
 __all__ = ["SpeakerClassifier"]
 
 
-class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
+class SpeakerClassifier(
+    IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin
+):  # pragma: no cover
     """
     Class for performing speaker classification, not currently very functional, but
     is planned to be expanded in the future
@@ -157,23 +156,12 @@ class SpeakerClassifier(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin
         """
         Cluster utterances based on their ivectors
         """
-        self.setup()
-
-        if not self.ivectors:
-            self.load_ivectors()
-        x = []
-        for v in self.ivectors.values():
-            x.append(v)
-        x = np.array(x)
-        km = KMeans(self.num_speakers, max_iter=100)
-        km.fit(x)
-        y = km.labels_
-        for i, u in enumerate(self.ivectors.keys()):
-            speaker_name = f"Speaker {y[i]}"
-            utterance = self.utterances[u]
-            if speaker_name not in self.speakers:
-                self.speakers[speaker_name] = Speaker(speaker_name)
-            utterance.set_speaker(self.speakers[speaker_name])
+        self.logger.error(
+            "Speaker diarization functionality is currently under construction and not working in the current version."
+        )
+        raise NotImplementedError(
+            "Speaker diarization functionality is currently under construction and not working in the current version."
+        )
 
     def export_files(self, output_directory: str) -> None:
         """

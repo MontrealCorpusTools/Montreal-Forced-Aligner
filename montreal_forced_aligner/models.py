@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Union
 
 import yaml
 
@@ -775,33 +775,45 @@ class DictionaryModel(MfaModel):
     extensions = [".dict", ".txt", ".yaml", ".yml"]
 
     def __init__(
-        self, path: str, working_directory: Optional[str] = None, detect_phone_set: bool = True
+        self, path: str, working_directory: Optional[str] = None, phone_set: Optional[str] = None
     ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
         self.path = path
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
-        self.phone_set_type = "UNKNOWN"
+        self.phone_set_type = phone_set
+        detect_phone_set = False
+        if not self.phone_set_type or self.phone_set_type == "AUTO":
+            detect_phone_set = True
         self.phones = set()
         self.graphemes = set()
-        arpa_detect = re.compile(r"^[A-Z]{2}\d$")
-        ipa_detect = re.compile(r"[əɚʊɤʁ˥˩ɹʉɒʃɕŋʰ̚ʲɾ]")
+        arpa_detect = re.compile(r" [A-Z]{2}[012]? ")
+        pinyin_detect = re.compile(r" [a-z]{1,3}[12345]? ")
+        ipa_detect = re.compile(r" [əɚʊɤʁ˥˩ɹɔɛʉɒʃɕŋʰ̚ʲɾ] ")
+        counts = {"UNKNOWN": 0, "ARPA": 0, "IPA": 0, "PINYIN": 0}
+        count = 0
         with open(self.path, "r", encoding="utf8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                line = line.split()
                 if detect_phone_set:
-                    for phone in line:
-                        m = arpa_detect.match(phone)
-                        if m:
-                            self.phone_set_type = "ARPA"
-                        m = ipa_detect.search(phone)
-                        if m:
-                            self.phone_set_type = "IPA"
+                    m = arpa_detect.match(line)
+                    if m:
+                        counts["ARPA"] += 1
+                    m = ipa_detect.search(line)
+                    if m:
+                        counts["IPA"] += 1
+                    m = pinyin_detect.search(line)
+                    if m:
+                        counts["PINYIN"] += 1
+                else:
+                    count += 1
+                    if count > 15:
+                        break
 
+                line = line.split()
                 word = line.pop(0)  # word
                 next_item = line.pop(0)
                 self.graphemes.update(word)
@@ -829,30 +841,218 @@ class DictionaryModel(MfaModel):
                 if not line:
                     continue
                 self.phones.update(line)
+        if detect_phone_set:
+            self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
     @property
     def base_phone_regex(self) -> Optional[str]:
         if self.phone_set_type == "UNKNOWN":
             return None
         if self.phone_set_type == "ARPA":
-            return r"(\D+)"
+            return r"([A-Z]{2})[012]"
+        if self.phone_set_type == "PINYIN":
+            return r"[a-z]{1,3}[12345]"
         if self.phone_set_type == "IPA":
             return r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̂̋̏‿̆͜͡ˌˈ̣]+)"
 
     @property
-    def extra_questions(self) -> Dict[str, list[str]]:
+    def extra_short_phones(self) -> Set[str]:
+        if self.phone_set_type == "ARPA":
+            return {"AH0", "IH0", "ER0", "UH0"}
+        if self.phone_set_type == "IPA":
+            return {"ʔ", "ə", "ɚ", "ɾ", "p̚", "t̚", "k̚"}
+        return set()
+
+    @property
+    def affricate_phones(self) -> Set[str]:
+        if self.phone_set_type == "ARPA":
+            return {"CH", "JH"}
+        if self.phone_set_type == "IPA":
+            return {"ts", "tʃ", "tʂ", "tɕ", "tç", "dʒ", "dʐ", "dʑ"}
+        return set()
+
+    @property
+    def stop_phones(self) -> Set[str]:
+        if self.phone_set_type == "ARPA":
+            return {"B", "D", "G"}
+        if self.phone_set_type == "IPA":
+            return {"b", "p", "d", "t", "k"}
+        return set()
+
+    @property
+    def diphthong_phones(self) -> Set[str]:
+        if self.phone_set_type == "ARPA":
+            return {
+                "AY0",
+                "AY1",
+                "AY2",
+                "AW0",
+                "AW1",
+                "AW2",
+                "OY0",
+                "OY1",
+                "OY2",
+                "EY0",
+                "EY1",
+                "EY2",
+                "OW0",
+                "OW1",
+                "OW2",
+            }
+        if self.phone_set_type == "IPA":
+            return {"əw", "eɪ", "aʊ", "oʊ", "aɪ", "ɔɪ"}
+        return set()
+
+    @property
+    def extra_questions(self) -> Dict[str, Set[str]]:
         extra_questions = {}
         if self.phone_set_type == "ARPA":
-            extra_questions["non_silence_arpa_questions"] = []
-            for p in sorted(self.phones):
-                extra_questions["non_silence_arpa_questions"].append(p)
+            extra_questions["bilabial_variation"] = {"P", "B"}
+            extra_questions["dental_lenition"] = {"D", "DH"}
+            extra_questions["flapping"] = {"T", "D"}
+            extra_questions["nasal_variation"] = {"M", "N", "NG"}
+            extra_questions["voiceless_sibilant_variation"] = {"CH", "SH", "S"}
+            extra_questions["voiceless_sibilant_variation"] = {"JH", "ZH", "Z"}
+            extra_questions["voiceless_fricative_variation"] = {"F", "TH", "HH", "K"}
+            extra_questions["voiced_fricative_variation"] = {"V", "DH", "HH", "G"}
+            extra_questions["dorsal_variation"] = {"HH", "K", "G"}
+            extra_questions["rhotic_variation"] = {"ER0", "ER1", "ER2", "R"}
+
+            extra_questions["low_back_variation"] = {
+                "AO0",
+                "AO1",
+                "AO2",
+                "AA0",
+                "AA1",
+                "AA2",
+            }
+            extra_questions["central_variation"] = {
+                "ER0",
+                "ER1",
+                "ER2",
+                "AH0",
+                "AH1",
+                "AH2",
+                "UH0",
+                "UH1",
+                "UH2",
+                "IH0",
+                "IH1",
+                "IH2",
+            }
+            extra_questions["close_back_variation"] = {
+                "UW1",
+                "UW2",
+                "UW0",
+                "UH1",
+                "UH2",
+                "UH0",
+            }
+
             # extra stress questions
             for i in range(3):
-                extra_questions[f"stress_{i}"] = []
+                extra_questions[f"stress_{i}"] = set()
                 for p in sorted(self.phones):
                     if str(i) not in p:
                         continue
-                    extra_questions[f"stress_{i}"].append(p)
+                    extra_questions[f"stress_{i}"].add(p)
+        elif self.phone_set_type == "IPA":
+            extra_questions["dental_lenition"] = {"ð", "d"}
+            extra_questions["flapping"] = {"d", "t", "ɾ"}
+            extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
+            extra_questions["labial_lenition"] = {"β", "b"}
+            extra_questions["velar_lenition"] = {"ɣ", "ɡ"}
+            extra_questions["nasal_variation"] = {"m", "n", "ɲ", "ŋ", "ɴ", "ɳ", "ɱ", "ɴ"}
+            extra_questions["trill_variation"] = {"r", "ʁ", "ɾ", "ɽ", "ɽr", "ɢ̆", "ʀ", "ɺ", "ɭ"}
+            extra_questions["syllabic_rhotic_variation"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
+            extra_questions["uvular_variation"] = {"ʁ", "x", "χ", "h", "ɣ", "ɰ", "ʀ"}
+            extra_questions["lateral_variation"] = {"l", "ɫ", "ʎ", "ʟ", "ɭ"}
+
+            extra_questions["dorsal_stop_variation"] = {
+                "kʰ",
+                "k",
+                "kʼ",
+                "k͈",
+                "ɡ",
+                "ɠ",
+                "ɟ",
+                "k̚",
+                "kʲ",
+                "cʰ",
+                "c",
+                "cʼ",
+                "q",
+                "qʼ",
+                "qʰ",
+            }
+            extra_questions["bilabial_stop_variation"] = {"pʰ", "b", "ɓ", "p", "pʼ", "p͈", "p̚"}
+            extra_questions["alveolar_stop_variation"] = {
+                "tʰ",
+                "t",
+                "tʼ",
+                "d",
+                "ʈʼ" "ɗ",
+                "t͈",
+                "t̚",
+            }
+            extra_questions["voiceless_fricative_variation"] = {
+                "θ",
+                "θʼ",
+                "f",
+                "fʼ",
+                "ð",
+                "ɸ",
+                "ɸʼ",
+                "ç",
+                "çʼ",
+                "x",
+                "xʼ",
+                "χ",
+                "χʼ",
+                "h",
+            }
+            extra_questions["voiced_fricative_variation"] = {"v", "ð", "β", "ʋ"}
+            extra_questions["voiceless_affricate_variation"] = {
+                "ɕ",
+                "ɕʼ",
+                "ʂ",
+                "ʂʼ",
+                "s",
+                "sʼ",
+                "ʃ",
+                "ʃʼ",
+                "tɕ",
+                "tɕʼ",
+                "tɕʰ",
+                "tɕ͈",
+                "ʈʂ",
+                "ʈʂʼ",
+                "ʈʂʰ",
+                "ts",
+                "tsʼ",
+                "tsʰ",
+                "tʃ",
+                "tʃʼ",
+                "tʃʰ",
+            }
+            extra_questions["voiced_affricate_variation"] = {
+                "ʐ",
+                "ʑ",
+                "z",
+                "ʒ",
+                "ɖʐ",
+                "dʑ",
+                "dz",
+                "dʒ",
+            }
+
+            extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ" "ɔ"}
+            extra_questions["mid_back_vowel_variation"] = {"ɤ", "o", "ɔ"}
+            extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e"}
+            extra_questions["high_front_variation"] = {"i", "ɪ", "ɨ"}
+            extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ"}
+            extra_questions["round_back_variation"] = {"oʊ", "ɔ", "o"}
+            extra_questions["central_variation"] = {"ə", "ɤ", "ʌ", "ʊ", "ɵ", "ɐ", "ɝ"}
         return extra_questions
 
     @property

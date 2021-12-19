@@ -270,9 +270,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             File to be added
         """
         self.files.add_file(file)
-        for speaker in file.speaker_ordering:
-            if speaker not in self.speakers:
+        for i, speaker in enumerate(file.speaker_ordering):
+            if speaker.name not in self.speakers:
                 self.speakers.add_speaker(speaker)
+            else:
+                file.speaker_ordering[i] = self.speakers[speaker.name]
         for u in file.utterances:
             self.add_utterance(u)
             if u.text:

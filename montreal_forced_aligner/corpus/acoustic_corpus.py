@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
-from montreal_forced_aligner.corpus.classes import parse_file
+from montreal_forced_aligner.corpus.classes import File
 from montreal_forced_aligner.corpus.features import (
     CalcFmllrArguments,
     FeatureConfigMixin,
@@ -499,10 +499,20 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return_dict["decode_error_files"] = manager.list()
         return_dict["textgrid_read_errors"] = manager.dict()
         finished_adding = Stopped()
+        stopped = Stopped()
+        sanitize_function = None
+        if hasattr(self, "construct_sanitize_function"):
+            sanitize_function = self.construct_sanitize_function()
         procs = []
         for _ in range(self.num_jobs):
             p = CorpusProcessWorker(
-                job_queue, return_dict, return_queue, self.stopped, finished_adding
+                job_queue,
+                return_dict,
+                return_queue,
+                stopped,
+                finished_adding,
+                sanitize_function,
+                self.speaker_characters,
             )
             procs.append(p)
             p.start()
@@ -557,33 +567,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     elif file_name in textgrid_files:
                         tg_name = textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
+                    if wav_path is None and transcription_path is None:  # Not a file for MFA
+                        continue
                     if wav_path is None:
                         self.transcriptions_without_wavs.append(transcription_path)
                         continue
                     if transcription_path is None:
                         self.no_transcription_files.append(wav_path)
-                    if hasattr(self, "construct_sanitize_function"):
-                        job_queue.put(
-                            (
-                                file_name,
-                                wav_path,
-                                transcription_path,
-                                relative_path,
-                                self.speaker_characters,
-                                self.construct_sanitize_function(),
-                            )
-                        )
-                    else:
-                        job_queue.put(
-                            (
-                                file_name,
-                                wav_path,
-                                transcription_path,
-                                relative_path,
-                                self.speaker_characters,
-                                None,
-                            )
-                        )
+                    job_queue.put((file_name, wav_path, transcription_path, relative_path))
 
             finished_adding.stop()
             self.log_debug("Finished adding jobs!")
@@ -601,7 +592,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 except Empty:
                     break
 
-                self.add_file(file)
+                self.add_file(File.load_from_mp_data(file))
 
             if "error" in return_dict:
                 raise return_dict["error"][1]
@@ -651,6 +642,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         Load a corpus without using multiprocessing
         """
         begin_time = time.time()
+        sanitize_function = None
+        if hasattr(self, "construct_sanitize_function"):
+            sanitize_function = self.construct_sanitize_function()
 
         all_sound_files = {}
         use_audio_directory = False
@@ -700,30 +694,22 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 elif file_name in textgrid_files:
                     tg_name = textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
+                if wav_path is None and transcription_path is None:  # Not a file for MFA
+                    continue
                 if wav_path is None:
                     self.transcriptions_without_wavs.append(transcription_path)
                     continue
                 if transcription_path is None:
                     self.no_transcription_files.append(wav_path)
                 try:
-                    if hasattr(self, "construct_sanitize_function"):
-                        file = parse_file(
-                            file_name,
-                            wav_path,
-                            transcription_path,
-                            relative_path,
-                            self.speaker_characters,
-                            self.construct_sanitize_function(),
-                        )
-                    else:
-                        file = parse_file(
-                            file_name,
-                            wav_path,
-                            transcription_path,
-                            relative_path,
-                            self.speaker_characters,
-                            None,
-                        )
+                    file = File.parse_file(
+                        file_name,
+                        wav_path,
+                        transcription_path,
+                        relative_path,
+                        self.speaker_characters,
+                        sanitize_function,
+                    )
                     self.add_file(file)
                 except TextParseError as e:
                     self.decode_error_files.append(e)

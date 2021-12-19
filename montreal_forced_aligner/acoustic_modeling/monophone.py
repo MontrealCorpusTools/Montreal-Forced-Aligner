@@ -270,10 +270,10 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 [thirdparty_binary("gmm-info"), "--print-args=false", self.model_path],
                 stderr=log_file,
                 stdout=subprocess.PIPE,
+                text=True,
             )
             stdout, stderr = proc.communicate()
-            num = stdout.decode("utf8")
-            matches = re.search(r"gaussians (\d+)", num)
+            matches = re.search(r"gaussians (\d+)", stdout)
             num_gauss = int(matches.groups()[0])
         if os.path.exists(self.model_path):
             os.remove(init_log_path)

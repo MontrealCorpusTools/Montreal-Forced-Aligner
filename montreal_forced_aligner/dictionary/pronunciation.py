@@ -173,6 +173,36 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return self.root_dictionary.phone_set_type
 
     @property
+    def extra_short_phones(self) -> Set[str]:
+        if self.root_dictionary is None:
+            return self.dictionary_model.extra_short_phones
+        return self.root_dictionary.extra_short_phones
+
+    @property
+    def affricate_phones(self) -> Set[str]:
+        if self.root_dictionary is None:
+            return self.dictionary_model.affricate_phones
+        return self.root_dictionary.affricate_phones
+
+    @property
+    def stop_phones(self) -> Set[str]:
+        if self.root_dictionary is None:
+            return self.dictionary_model.stop_phones
+        return self.root_dictionary.stop_phones
+
+    @property
+    def diphthong_phones(self) -> Set[str]:
+        if self.root_dictionary is None:
+            return self.dictionary_model.diphthong_phones
+        return self.root_dictionary.diphthong_phones
+
+    @property
+    def extra_questions(self) -> Dict[str, Set[str]]:
+        if self.root_dictionary is None:
+            return self.dictionary_model.extra_questions
+        return self.root_dictionary.extra_questions
+
+    @property
     def name(self) -> str:
         """Name of the dictionary"""
         return self.dictionary_model.name

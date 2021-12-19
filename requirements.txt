@@ -1,9 +1,8 @@
 praatio>=5.0
-numpy
 tqdm
 pyyaml
-soundfile
 librosa
 requests
-scikit-learn
 colorama
+biopython
+requests

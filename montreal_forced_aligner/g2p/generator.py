@@ -132,7 +132,7 @@ def clean_up_word(word: str, graphemes: Set[str]) -> Tuple[str, Set[str]]:
     -------
     str
         Cleaned up word
-    list
+    Set[str]
         Graphemes excluded
     """
     new_word = []
@@ -179,6 +179,8 @@ class PyniniGenerator(G2PTopLevelMixin):
     ----------
     g2p_model_path: str
         Path to G2P model
+    strict_graphemes: bool
+        Flag for whether to be strict with missing graphemes and skip words containing new graphemes
 
     See Also
     --------
@@ -191,8 +193,9 @@ class PyniniGenerator(G2PTopLevelMixin):
         G2P model
     """
 
-    def __init__(self, g2p_model_path: str, **kwargs):
+    def __init__(self, g2p_model_path: str, strict_graphemes: bool = False, **kwargs):
         self.g2p_model = G2PModel(g2p_model_path)
+        self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
 
     def generate_pronunciations(self) -> Dict[str, List[str]]:
@@ -225,30 +228,41 @@ class PyniniGenerator(G2PTopLevelMixin):
         missing_graphemes = set()
         self.log_info("Generating pronunciations...")
         to_return = {}
+        skipped_words = 0
         if num_words < 30 or self.num_jobs < 2:
             for word in words:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes = missing_graphemes | m
+                if self.strict_graphemes and m:
+                    skipped_words += 1
+                    continue
                 if not w:
+                    skipped_words += 1
                     continue
                 try:
                     pron = rewriter.rewrite(w)
                 except rewrite.Error:
                     continue
                 to_return[word] = pron
+            self.log_debug(
+                f"Skipping {skipped_words} words due to only containing the following graphemes: "
+                f"{comma_join(sorted(missing_graphemes))}"
+            )
         else:
             stopped = Stopped()
             job_queue = mp.JoinableQueue()
-            offset = 0
             for word in words:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes = missing_graphemes | m
+                if self.strict_graphemes and m:
+                    skipped_words += 1
+                    continue
                 if not w:
-                    offset += 1
+                    skipped_words += 1
                     continue
                 job_queue.put(w)
             self.log_debug(
-                f"Skipping {offset} words due to only containing the following graphemes: "
+                f"Skipping {skipped_words} words due to only containing the following graphemes: "
                 f"{comma_join(sorted(missing_graphemes))}"
             )
             manager = mp.Manager()
@@ -270,12 +284,13 @@ class PyniniGenerator(G2PTopLevelMixin):
                 procs.append(p)
                 p.start()
             value = 0
-            if num_words - offset > 10000:
+            num_words -= skipped_words
+            if num_words > 10000:
                 sleep_increment = 10
             else:
                 sleep_increment = 2
-            with tqdm.tqdm(total=num_words - offset) as pbar:
-                while value < num_words - offset:
+            with tqdm.tqdm(total=num_words) as pbar:
+                while value < num_words:
                     time.sleep(sleep_increment)
                     if stopped.stop_check():
                         break

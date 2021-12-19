@@ -74,6 +74,7 @@ class RandomStartWorker(mp.Process):
 
     def __init__(
         self,
+        job_name: int,
         job_q: mp.Queue,
         return_dict: dict,
         log_file: str,
@@ -83,6 +84,7 @@ class RandomStartWorker(mp.Process):
         finished_signal: Stopped,
     ):
         mp.Process.__init__(self)
+        self.job_name = job_name
         self.job_q = job_q
         self.return_dict = return_dict
         self.log_file = log_file
@@ -132,6 +134,7 @@ class RandomStartWorker(mp.Process):
                             fst_path,
                         ]
                         log_file.write(f"{args.seed} train command: {' '.join(cmd)}\n")
+                        log_file.flush()
                         with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
                             # Parses STDERR to capture the likelihood.
                             for line in proc.stderr:  # type: ignore
@@ -695,6 +698,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
                 for i in range(cores):
                     log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
                     p = RandomStartWorker(
+                        i,
                         job_queue,
                         return_dict,
                         log_path,
@@ -708,7 +712,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
 
                 value = 0
                 last_value = 0
-                if len(self.g2p_training_dictionary) > 10000:
+                if len(self.g2p_training_dictionary) > 100000:
                     sleep_increment = 10
                 else:
                     sleep_increment = 2
@@ -716,16 +720,16 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
                     time.sleep(sleep_increment)
                     if stopped.stop_check():
                         break
+                    for i, sig in enumerate(finished_signals):
+                        if not sig.stop_check():
+                            self.log_debug(f"Waiting on job {i}")
+                            break
+                    else:
+                        break
                     value = counter.value()
                     if value != last_value:
                         pbar.update(value - last_value)
                         last_value = value
-                        for i, sig in enumerate(finished_signals):
-                            if not sig.stop_check():
-                                self.log_debug(f"Waiting on job {i}")
-                                break
-                        else:
-                            break
                 job_queue.join()
                 for p in procs:
                     p.join()

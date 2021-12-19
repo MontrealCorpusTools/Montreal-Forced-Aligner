@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Union
 
 from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
@@ -61,6 +61,26 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def phone_set_type(self) -> str:
         """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
         return self.dictionary_model.phone_set_type
+
+    @property
+    def extra_short_phones(self) -> Set[str]:
+        return self.dictionary_model.extra_short_phones
+
+    @property
+    def affricate_phones(self) -> Set[str]:
+        return self.dictionary_model.affricate_phones
+
+    @property
+    def stop_phones(self) -> Set[str]:
+        return self.dictionary_model.stop_phones
+
+    @property
+    def diphthong_phones(self) -> Set[str]:
+        return self.dictionary_model.diphthong_phones
+
+    @property
+    def extra_questions(self) -> Dict[str, List[str]]:
+        return self.dictionary_model.extra_questions
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""

@@ -348,10 +348,12 @@ def create_parser() -> ArgumentParser:
         help="Audio directory root to use for finding audio files",
     )
     train_parser.add_argument(
-        "--enable_detect_phone_set",
-        dest="detect_phone_set",
-        help="Enable auto-detecting phone sets from the dictionary during training",
-        action="store_true",
+        "--phone_set",
+        dest="phone_set",
+        type=str,
+        help="Enable extra decision tree modeling based on the phone set",
+        default="UNKNOWN",
+        choices=["AUTO", "IPA", "ARPA", "PINYIN"],
     )
     add_global_options(train_parser, textgrid_output=True)
 
@@ -912,7 +914,7 @@ def main() -> None:
             run_train_dictionary(args, unknown)
         elif args.subcommand == "train_ivector":
             run_train_ivector_extractor(args, unknown)
-        elif args.subcommand == "classify_speakers":
+        elif args.subcommand == "classify_speakers":  # pragma: no cover
             run_classify_speakers(args, unknown)
         elif args.subcommand in ["annotator", "anchor"]:
             run_anchor()

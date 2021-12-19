@@ -233,11 +233,6 @@ class ValidationMixin(CorpusAligner):
         self.test_transcriptions = test_transcriptions
         self.printer = TerminalPrinter()
 
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for validation"""
-        return "validation"
-
     def utt2fst_scp_data(
         self, num_frequent_words: int = 10
     ) -> List[Dict[str, List[Tuple[str, str]]]]:
@@ -442,7 +437,6 @@ class ValidationMixin(CorpusAligner):
 
         self.printer.print_header("Dictionary")
         self.analyze_oovs()
-        self.analyze_missing_phones()
 
     def analyze_oovs(self) -> None:
         """
@@ -481,32 +475,6 @@ class ValidationMixin(CorpusAligner):
                 f"There were {self.printer.colorize('no', 'yellow')} missing words from the dictionary. If you plan on using the a model trained "
                 "on this dataset to align other datasets in the future, it is recommended that there be at "
                 "least some missing words."
-            )
-        self.printer.print_end_section()
-
-    def analyze_missing_phones(self) -> None:
-        """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
-        self.printer.print_sub_header("Acoustic model compatibility")
-        if self.excluded_pronunciation_count:
-            self.printer.print_yellow_stat(
-                len(self.excluded_phones), "phones not in acoustic model"
-            )
-            self.printer.print_yellow_stat(
-                self.excluded_pronunciation_count, "ignored pronunciations"
-            )
-
-            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
-            self.printer.print_info_lines(
-                [
-                    "",
-                    "Phones missing acoustic models:",
-                    "",
-                    self.printer.indent_string + comma_join(phone_string),
-                ]
-            )
-        else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
             )
         self.printer.print_end_section()
 
@@ -861,6 +829,11 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         self.training_configs = {}
         self.add_config("monophone", {})
 
+    @property
+    def workflow_identifier(self) -> str:
+        """Identifier for validation"""
+        return "validate_training"
+
     @classmethod
     def parse_parameters(
         cls,
@@ -989,6 +962,11 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    @property
+    def workflow_identifier(self) -> str:
+        """Identifier for validation"""
+        return "validate_pretrained"
+
     def setup(self):
         """
         Set up the corpus and validator
@@ -1078,6 +1056,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         """
         self.setup()
         self.analyze_setup()
+        self.analyze_missing_phones()
         if self.ignore_acoustics:
             print("Skipping test alignments.")
             return
@@ -1087,3 +1066,29 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         if self.test_transcriptions:
             self.printer.print_header("Test transcriptions")
             self.test_utterance_transcriptions()
+
+    def analyze_missing_phones(self) -> None:
+        """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
+        self.printer.print_sub_header("Acoustic model compatibility")
+        if self.excluded_pronunciation_count:
+            self.printer.print_yellow_stat(
+                len(self.excluded_phones), "phones not in acoustic model"
+            )
+            self.printer.print_yellow_stat(
+                self.excluded_pronunciation_count, "ignored pronunciations"
+            )
+
+            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
+            self.printer.print_info_lines(
+                [
+                    "",
+                    "Phones missing acoustic models:",
+                    "",
+                    self.printer.indent_string + comma_join(phone_string),
+                ]
+            )
+        else:
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
+            )
+        self.printer.print_end_section()

@@ -338,6 +338,26 @@ class DictionaryMixin:
         return "UNKNOWN"
 
     @property
+    def extra_short_phones(self) -> Set[str]:
+        return set()
+
+    @property
+    def extra_questions(self) -> Dict[str, Set[str]]:
+        return {}
+
+    @property
+    def affricate_phones(self) -> Set[str]:
+        return set()
+
+    @property
+    def stop_phones(self) -> Set[str]:
+        return set()
+
+    @property
+    def diphthong_phones(self) -> Set[str]:
+        return set()
+
+    @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
         mapping = {}
         mapping["silence_question"] = []
@@ -345,20 +365,32 @@ class DictionaryMixin:
             mapping["silence_question"].append(p)
             if self.position_dependent_phones:
                 mapping["silence_question"].extend([p + x for x in self.positions])
-        if self.phone_set_type == "ARPA":
-            mapping["non_silence_arpa_questions"] = []
-            for p in self.kaldi_grouped_phones.keys():
+        for k, v in self.extra_questions.items():
+            if k not in mapping:
+                mapping[k] = []
+            if self.phone_set_type == "ARPA":
                 if self.position_dependent_phones:
-                    mapping["non_silence_arpa_questions"].extend([p + x for x in self.positions])
+                    for x in sorted(v):
+                        mapping[k].extend([x + pos for pos in self.positions])
                 else:
-                    mapping["non_silence_arpa_questions"].append(p)
-            # extra stress questions
-            for i in range(3):
-                mapping[f"stress_{i}"] = []
-                for p in self.kaldi_non_silence_phones:
-                    if str(i) not in p:
-                        continue
-                    mapping[f"stress_{i}"].append(p)
+                    mapping[k] = sorted(v)
+            elif self.phone_set_type == "IPA":
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    m = re.match(self.base_phone_regex, x)
+                    if m:
+                        base_phone = m.groups()[0]
+                        if base_phone in v:
+                            filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    continue
+                if k not in mapping:
+                    mapping[k] = []
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
         if self.position_dependent_phones:
             phones = sorted(self.non_silence_phones)
             for pos in self.positions:
@@ -445,48 +477,145 @@ class DictionaryMixin:
                 silence_phones.append(p + pos)
         return silence_phones
 
+    def _generate_positional_list(self, phones):
+        positional_phones = []
+        for p in sorted(phones):
+            if self.base_phone_regex is not None:
+                m = re.match(self.base_phone_regex, p)
+                if m:
+                    base_phone = m.groups()[0]
+                else:
+                    base_phone = p
+                if self.phone_set_type == "ARPA":
+                    if p in self.extra_short_phones:
+                        base_phone = "AH0"
+                for pos in self.positions:
+                    pos_p = base_phone + pos
+                    if pos_p not in positional_phones:
+                        positional_phones.append(pos_p)
+            for pos in self.positions:
+                pos_p = p + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
+        return positional_phones
+
+    def _generate_non_positional_list(self, phones):
+        base_phones = set()
+        if self.base_phone_regex is not None:
+            for p in phones:
+                m = re.match(self.base_phone_regex, p)
+                if m:
+                    base_phone = m.groups()[0]
+                    base_phones.add(base_phone)
+
+        return sorted(phones | base_phones)
+
+    def _generate_phone_list(self, phones):
+        if self.position_dependent_phones:
+            return self._generate_positional_list(phones)
+        return self._generate_non_positional_list(phones)
+
     @property
     def positional_non_silence_phones(self) -> List[str]:
         """
         List of non-silence phones with positions
         """
-        non_silence_phones = []
-        for p in sorted(self.non_silence_phones):
-            if self.phone_set_type == "ARPA":
-                m = re.match(self.base_phone_regex, p)
-                if m:
-                    base_phone = m.group(0)
-                    for pos in self.positions:
-                        pos_p = base_phone + pos
-                        if pos_p not in non_silence_phones:
-                            non_silence_phones.append(pos_p)
-            for pos in self.positions:
-                pos_p = p + pos
-                if pos_p not in non_silence_phones:
-                    non_silence_phones.append(pos_p)
-        return non_silence_phones
+        return self._generate_positional_list(self.non_silence_phones)
+
+    @property
+    def positional_extra_short_phones(self) -> List[str]:
+        """
+        List of non-silence phones with positions
+        """
+        return self._generate_positional_list(self.extra_short_phones)
+
+    @property
+    def positional_stop_phones(self) -> List[str]:
+        """
+        List of non-silence phones with positions
+        """
+        return self._generate_positional_list(self.stop_phones)
+
+    @property
+    def positional_affricate_phones(self) -> List[str]:
+        """
+        List of non-silence phones with positions
+        """
+        return self._generate_positional_list(self.affricate_phones)
+
+    @property
+    def positional_diphthong_phones(self) -> List[str]:
+        """
+        List of non-silence phones with positions
+        """
+        return self._generate_positional_list(self.diphthong_phones)
+
+    @property
+    def kaldi_extra_short_phones(self):
+        """Non silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_extra_short_phones
+        return self._generate_non_positional_list(self.extra_short_phones)
+
+    @property
+    def kaldi_diphthong_phones(self):
+        """Non silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_diphthong_phones
+        return self._generate_non_positional_list(self.diphthong_phones)
+
+    @property
+    def kaldi_stop_phones(self):
+        """Non silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_stop_phones
+        return self._generate_non_positional_list(self.stop_phones)
+
+    @property
+    def kaldi_affricate_phones(self):
+        """Non silence phones in Kaldi format"""
+        if self.position_dependent_phones:
+            return self.positional_affricate_phones
+        return self._generate_non_positional_list(self.affricate_phones)
 
     @property
     def kaldi_non_silence_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_non_silence_phones
-        base_phones = set()
-        if self.phone_set_type == "ARPA":
-            for p in self.non_silence_phones:
-                m = re.match(self.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                    base_phones.add(base_phone)
+        return self._generate_non_positional_list(self.non_silence_phones)
 
-        return sorted(self.non_silence_phones | base_phones)
+    @property
+    def kaldi_phones_for_topo(self):
+        mapping = {}
+        for p in sorted(self.non_silence_phones):
+            if p in self.extra_short_phones:
+                num_states = 1  # One state for extra short sounds
+            elif p in self.diphthong_phones:
+                num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif p in self.affricate_phones:
+                num_states = 4  # 4 states for affricates (closure, burst, onset of frication, offset of frication)
+            elif p in self.stop_phones:
+                num_states = 2  # Two states for stops (closure, burst), extra states added below for aspirated, ejectives
+            else:
+                num_states = self.num_non_silence_states
+            if self.phone_set_type == "IPA":
+                if re.match(r"^.*[ʱʼʰʲʷ]$", p):
+                    num_states += 1
+            if num_states not in mapping:
+                mapping[num_states] = []
+            mapping[num_states].extend(
+                [x for x in self._generate_phone_list({p}) if x not in mapping[num_states]]
+            )
+        return mapping
 
     @property
     def kaldi_grouped_phones(self) -> Dict[str, List[str]]:
         """Non silence phones in Kaldi format"""
         groups = {}
         for p in sorted(self.non_silence_phones):
-            if self.phone_set_type == "ARPA":
+            if self.phone_set_type in ["ARPA", "IPA"]:
                 m = re.match(self.base_phone_regex, p)
                 if m:
                     base_phone = m.groups()[0]
@@ -496,18 +625,18 @@ class DictionaryMixin:
                             groups[base_phone] = [base_phone + pos for pos in self.positions]
                         else:
                             groups[base_phone] = [base_phone]
-                    if base_phone == p:
-                        continue
-                    if self.position_dependent_phones:
-                        groups[base_phone].extend([p + pos for pos in self.positions])
-                    else:
-                        groups[base_phone].append(p)
-            else:
-                if self.position_dependent_phones:
-                    groups[p] = [p + pos for pos in self.positions]
                 else:
-                    groups[p] = [p]
-
+                    base_phone = p
+            else:
+                base_phone = p
+            if base_phone not in groups:
+                groups[base_phone] = []
+            if self.position_dependent_phones:
+                groups[base_phone].extend(
+                    [p + pos for pos in self.positions if p + pos not in groups[base_phone]]
+                )
+            else:
+                groups[base_phone].append(p)
         return groups
 
     @property
@@ -678,62 +807,57 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
         """
         Write the topo file to the temporary directory
         """
-        topo_template = "<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>"
-        topo_sil_template = "<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>"
-        topo_transition_template = "<Transition> {} {}"
 
         sil_transp = 1 / (self.num_silence_states - 1)
-        initial_transition = [
-            topo_transition_template.format(x, sil_transp)
-            for x in range(self.num_silence_states - 1)
-        ]
-        middle_transition = [
-            topo_transition_template.format(x, sil_transp)
-            for x in range(1, self.num_silence_states)
-        ]
-        final_transition = [
-            topo_transition_template.format(self.num_silence_states - 1, 0.75),
-            topo_transition_template.format(self.num_silence_states, 0.25),
-        ]
-        states = []
-        for i in range(self.num_non_silence_states):
-            states.append(topo_template.format(cur_state=i, next_state=i + 1))
-        states.append(f"<State> {self.num_non_silence_states} </State>")
-        non_silence_state_string = "\n".join(states)
 
-        states = []
+        silence_lines = [
+            "<TopologyEntry>",
+            "<ForPhones>",
+            " ".join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones),
+            "</ForPhones>",
+        ]
         for i in range(self.num_silence_states):
-            if i == 0:
-                transition = " ".join(initial_transition)
-            elif i == self.num_silence_states - 1:
-                transition = " ".join(final_transition)
+            if i == 0:  # Initial silence state
+                transition_string = " ".join(
+                    f"<Transition> {x} {sil_transp}" for x in range(self.num_silence_states - 1)
+                )
+                silence_lines.append(f"<State> {i} <PdfClass> {i} {transition_string} </State>")
+            elif i < self.num_silence_states - 1:  # non-final silence states
+                transition_string = " ".join(
+                    f"<Transition> {x} {sil_transp}" for x in range(1, self.num_silence_states)
+                )
+                silence_lines.append(f"<State> {i} <PdfClass> {i} {transition_string} </State>")
             else:
-                transition = " ".join(middle_transition)
-            states.append(topo_sil_template.format(cur_state=i, transitions=transition))
-        states.append(f"<State> {self.num_silence_states} </State>")
-        silence_state_string = "\n".join(states)
+                silence_lines.append(
+                    f"<State> {i} <PdfClass> {i} <Transition> {i} 0.75 <Transition> {self.num_silence_states} 0.25 </State>"
+                )
+        silence_lines.append(f"<State> {self.num_silence_states} </State>")
+        silence_lines.append("</TopologyEntry>")
+        silence_topo_string = "\n".join(silence_lines)
+
+        topo_sections = [silence_topo_string]
+
+        for num_states, phone_list in self.kaldi_phones_for_topo.items():
+            non_silence_lines = [
+                "<TopologyEntry>",
+                "<ForPhones>",
+                " ".join(str(self.phone_mapping[x]) for x in phone_list),
+                "</ForPhones>",
+            ]
+            for i in range(num_states):
+                non_silence_lines.append(
+                    f"<State> {i} <PdfClass> {i} <Transition> {i} 0.75 <Transition> {i+1} 0.25 </State>"
+                )
+            non_silence_lines.append(f"<State> {num_states} </State>")
+            non_silence_lines.append("</TopologyEntry>")
+            non_silence_topo_string = "\n".join(non_silence_lines)
+            topo_sections.append(non_silence_topo_string)
 
         with open(self.topo_path, "w") as f:
-            f.write(
-                f"""
-            <Topology>
-            <TopologyEntry>
-            <ForPhones>
-            {' '.join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones)}
-            </ForPhones>
-            {silence_state_string}
-            </TopologyEntry>
-
-
-            <TopologyEntry>
-            <ForPhones>
-            {' '.join(str(self.phone_mapping[x]) for x in self.kaldi_non_silence_phones)}
-            </ForPhones>
-            {non_silence_state_string}
-            </TopologyEntry>
-            </Topology>
-            """
-            )
+            f.write("<Topology>\n")
+            for section in topo_sections:
+                f.write(section + "\n\n")
+            f.write("</Topology>\n")
 
     def _write_phone_sets(self) -> None:
         """

@@ -135,8 +135,10 @@ def test_english_clitics(english_dictionary, generated_dir):
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     d = dictionary.default_dictionary
-    assert d.dictionary_model.phone_set_type == "ARPA"
+    assert d.phone_set_type == "UNKNOWN"
+    dictionary.dictionary_model.phone_set_type = "ARPA"
     assert d.extra_questions_mapping
+    assert d.phone_set_type == "ARPA"
     for k, v in d.extra_questions_mapping.items():
         print(k)
         print(v)

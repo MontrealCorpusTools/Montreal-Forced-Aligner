@@ -1,8 +1,6 @@
 """
 Corpus loading worker
 ---------------------
-
-
 """
 from __future__ import annotations
 
@@ -22,9 +20,9 @@ from montreal_forced_aligner.exceptions import TextGridParseError, TextParseErro
 from montreal_forced_aligner.helper import output_mapping
 
 if TYPE_CHECKING:
-
     from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
     from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
+    from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
 
     FileInfoDict = Dict[
         str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
@@ -63,6 +61,8 @@ class CorpusProcessWorker(mp.Process):
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
+        sanitize_function: Optional[SanitizeFunction],
+        speaker_characters: Union[int, str],
     ):
         mp.Process.__init__(self)
         self.job_q = job_q
@@ -70,16 +70,18 @@ class CorpusProcessWorker(mp.Process):
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
+        self.sanitize_function = sanitize_function
+        self.speaker_characters = speaker_characters
 
     def run(self) -> None:
         """
         Run the corpus loading job
         """
-        from ..corpus.classes import parse_file
+        from ..corpus.classes import File
 
         while True:
             try:
-                arguments = self.job_q.get(timeout=1)
+                file_name, wav_path, text_path, relative_path = self.job_q.get(timeout=1)
             except Empty:
                 if self.finished_adding.stop_check():
                     break
@@ -88,15 +90,23 @@ class CorpusProcessWorker(mp.Process):
             if self.stopped.stop_check():
                 continue
             try:
-                file = parse_file(*arguments, stop_check=self.stopped.stop_check)
-                self.return_q.put(file)
+                file = File.parse_file(
+                    file_name,
+                    wav_path,
+                    text_path,
+                    relative_path,
+                    self.speaker_characters,
+                    self.sanitize_function,
+                )
+
+                self.return_q.put(file.multiprocessing_data)
             except TextParseError as e:
                 self.return_dict["decode_error_files"].append(e)
             except TextGridParseError as e:
                 self.return_dict["textgrid_read_errors"][e.file_name] = e
             except Exception:
                 self.stopped.stop()
-                self.return_dict["error"] = arguments, Exception(
+                self.return_dict["error"] = file_name, Exception(
                     traceback.format_exception(*sys.exc_info())
                 )
         return
