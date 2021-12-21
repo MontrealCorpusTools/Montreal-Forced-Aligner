@@ -28,13 +28,12 @@ from praatio import textgrid
 from praatio.utilities.constants import Interval
 
 from montreal_forced_aligner.corpus.helper import get_wav_info, load_text, parse_transcription
+from montreal_forced_aligner.data import CtmInterval
 from montreal_forced_aligner.exceptions import CorpusError, TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.dictionary import DictionaryData
     from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
     from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
-    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = ["File", "Speaker", "Utterance"]
@@ -84,8 +83,6 @@ class Speaker(MfaCorpusClass):
         String pointing to any CMVN that has been calculated for this speaker
     dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`, optional
         Pronunciation dictionary that the speaker is associated with
-    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`, optional
-        Dictionary data from the speaker's dictionary
     """
 
     def __init__(self, name):
@@ -93,7 +90,6 @@ class Speaker(MfaCorpusClass):
         self.utterances = UtteranceCollection()
         self.cmvn = None
         self.dictionary: Optional[PronunciationDictionaryMixin] = None
-        self.dictionary_data: Optional[DictionaryData] = None
         self.dictionary_name: Optional[str] = None
         self.word_counts = Counter()
 
@@ -208,7 +204,7 @@ class Speaker(MfaCorpusClass):
             self.word_counts.update(u.text.split())
         for word in self.word_counts:
             if self.dictionary is not None:
-                word = self.dictionary._lookup(word)
+                word = self.dictionary.lookup(word)
                 words.update(word)
             else:
                 words.add(word)
@@ -225,7 +221,6 @@ class Speaker(MfaCorpusClass):
         """
         self.dictionary = dictionary
         self.dictionary_name = dictionary.name
-        self.dictionary_data = dictionary.data(self.word_set())
 
     @property
     def files(self) -> Set["File"]:
@@ -349,8 +344,6 @@ class File(MfaCorpusClass):
             Number of characters in the file name to specify the speaker
         sanitize_function: Callable, optional
             Function to sanitize words and strip punctuation
-        stop_check: Callable
-            Check whether to stop parsing early
 
         Returns
         -------
@@ -427,6 +420,17 @@ class File(MfaCorpusClass):
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def is_fully_aligned(self) -> bool:
+        for u in self.utterances:
+            if u.ignored:
+                continue
+            if u.word_labels is None:
+                return False
+            if u.phone_labels is None:
+                return False
+        return True
 
     def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
         for u in self.utterances:
@@ -575,6 +579,45 @@ class File(MfaCorpusClass):
             return "lab"
         return None
 
+    @property
+    def aligned_data(self) -> Dict[str, Dict[str, List[CtmInterval]]]:
+        data = {}
+        for s in self.speaker_ordering:
+            if s.name not in data:
+                data[s.name] = {"words": [], "phones": []}
+        for u in self.utterances:
+            if u.word_labels is None:
+                continue
+            data[u.speaker_name]["words"].extend(u.word_labels)
+            data[u.speaker_name]["phones"].extend(u.phone_labels)
+        return data
+
+    def clean_up(self):
+        for u in self.utterances:
+            if not u.word_labels:
+                continue
+            cur_ind = 0
+            actual_labels = []
+            dictionary = u.speaker.dictionary
+            for word in u.text.split():
+                ints = dictionary.to_int(word)
+                b = 1000000
+                e = -1
+                for i in ints:
+                    cur = u.word_labels[cur_ind]
+                    if i == dictionary.words_mapping[cur.label]:
+                        if cur.begin < b:
+                            b = cur.begin
+                        if cur.end > e:
+                            e = cur.end
+                    cur_ind += 1
+                lab = CtmInterval(b, e, word, u.name)
+                actual_labels.append(lab)
+            u.word_labels = actual_labels
+            u.phone_labels = [
+                x for x in u.phone_labels if x.label != dictionary.optional_silence_phone
+            ]
+
     def construct_output_path(
         self,
         output_directory: Optional[str] = None,
@@ -630,8 +673,6 @@ class File(MfaCorpusClass):
             Speaker derived from the root directory, ignored for TextGrids
         sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`, optional
             Function to sanitize words and strip punctuation
-        stop_check: Callable
-            Function to check whether this should break early
         """
         if self.text_type == "lab":
             try:
@@ -853,8 +894,6 @@ class Utterance(MfaCorpusClass):
         be processed by Kaldi
     features: str, optional
         Feature string reference to the computed features archive
-    feature_length: int, optional
-        Number of feature frames
     phone_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
         Saved aligned phone labels
     word_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
@@ -875,7 +914,7 @@ class Utterance(MfaCorpusClass):
         self.speaker = speaker
         self.file = file
         self.file_name = file.name
-        self.speaker_name = speaker.name
+        self.speaker_name: str = speaker.name
         self.begin = begin
         self.end = end
         self.channel = channel
@@ -883,7 +922,6 @@ class Utterance(MfaCorpusClass):
         self.transcription_text = None
         self.ignored = False
         self.features = None
-        self.feature_length = None
         self.phone_labels: Optional[List[CtmInterval]] = None
         self.word_labels: Optional[List[CtmInterval]] = None
         self.oovs = set()
@@ -914,7 +952,6 @@ class Utterance(MfaCorpusClass):
             "oovs": self.oovs,
             "ignored": self.ignored,
             "features": self.features,
-            "feature_length": self.feature_length,
             "phone_labels": self.phone_labels,
             "word_labels": self.word_labels,
         }
@@ -931,7 +968,6 @@ class Utterance(MfaCorpusClass):
         self.oovs = state["oovs"]
         self.ignored = state["ignored"]
         self.features = state["features"]
-        self.feature_length = state["feature_length"]
         self.phone_labels = state["phone_labels"]
         self.word_labels = state["word_labels"]
 
@@ -1006,7 +1042,6 @@ class Utterance(MfaCorpusClass):
             "text": self.text,
             "ignored": self.ignored,
             "features": self.features,
-            "feature_length": self.feature_length,
         }
 
     def set_speaker(self, speaker: Speaker) -> None:
@@ -1038,6 +1073,26 @@ class Utterance(MfaCorpusClass):
                 count += 1
         return count
 
+    def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]):
+        if not isinstance(intervals, list):
+            intervals = [intervals]
+        if self.word_labels is None:
+            self.word_labels = []
+        for interval in intervals:
+            if self.begin is not None:
+                interval.shift_times(self.begin)
+        self.word_labels.extend(intervals)
+
+    def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]):
+        if not isinstance(intervals, list):
+            intervals = [intervals]
+        if self.phone_labels is None:
+            self.phone_labels = []
+        for interval in intervals:
+            if self.begin is not None:
+                interval.shift_times(self.begin)
+        self.phone_labels.extend(intervals)
+
     def text_for_scp(self) -> List[str]:
         """
         Generate the text for exporting to Kaldi's text scp
@@ -1058,14 +1113,14 @@ class Utterance(MfaCorpusClass):
         list[int]
             List of word IDs, or None if the utterance's speaker doesn't have an associated dictionary
         """
-        if self.speaker.dictionary_data is None:
+        if self.speaker.dictionary is None:
             return
         text = self.text_for_scp()
         new_text = []
         for i, t in enumerate(text):
-            lookup = self.speaker.dictionary_data.to_int(t)
+            lookup = self.speaker.dictionary.to_int(t)
             for w in lookup:
-                if w == self.speaker.dictionary_data.oov_int:
+                if w == self.speaker.dictionary.oov_int:
                     self.oovs.add(text[i])
                 new_text.append(w)
         return new_text
@@ -1079,7 +1134,7 @@ class Utterance(MfaCorpusClass):
         list[Any]
             Segment data
         """
-        return [self.file.name, self.begin, self.end, self.channel]
+        return [self.file_name, self.begin, self.end, self.channel]
 
     @property
     def name(self) -> str:
@@ -1107,11 +1162,6 @@ class Collection:
     def __init__(self):
         self._data: Dict[str, T] = {}
 
-    def __iter__(self) -> Generator[T]:
-        """Iterator over the collection"""
-        for v in self._data.values():
-            yield v
-
     def __getitem__(self, key: str) -> T:
         """Get an item by identifier"""
         return self._data[key]
@@ -1137,6 +1187,17 @@ class Collection:
         if not isinstance(item, str):
             item = item.name
         return item in self._data
+
+    def subset(self, subset_identifiers: Set[str]) -> Generator[T]:
+        for item in self:
+            if subset_identifiers and item.name not in subset_identifiers:
+                continue
+            yield item
+
+    def __iter__(self) -> Generator[T]:
+        """Iterator over the collection"""
+        for v in self._data.values():
+            yield v
 
     def update(self, other: Union[Collection, Set[T], List[T]]) -> None:
         """Update collection from another collection"""
@@ -1218,6 +1279,13 @@ class UtteranceCollection(Collection):
             Utterance to be added
         """
         self[utterance.name] = utterance
+
+    def __iter__(self) -> Generator[Utterance]:
+        """Iterator over the collection"""
+        for v in self._data.values():
+            if v.ignored:
+                continue
+            yield v
 
     def __repr__(self) -> str:
         """Object representation"""

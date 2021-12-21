@@ -7,33 +7,28 @@ import shutil
 import sys
 import time
 import traceback
+from queue import Empty
 from typing import List, Optional
+
+import tqdm
 
 from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
     AliToCtmArguments,
-    CleanupWordCtmArguments,
-    CleanupWordCtmProcessWorker,
-    CombineCtmArguments,
-    CombineProcessWorker,
-    ExportPreparationProcessWorker,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
-    NoCleanupWordCtmArguments,
-    NoCleanupWordCtmProcessWorker,
     PhoneCtmArguments,
     PhoneCtmProcessWorker,
+    WordCtmArguments,
+    WordCtmProcessWorker,
     ali_to_ctm_func,
 )
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.exceptions import AlignmentExportError
 from montreal_forced_aligner.textgrid import (
-    ctm_to_textgrid,
+    export_textgrid,
     output_textgrid_writing_errors,
-    parse_from_phone,
-    parse_from_word,
-    parse_from_word_no_cleanup,
     process_ctm_line,
 )
 from montreal_forced_aligner.utils import Stopped, run_mp, run_non_mp
@@ -58,27 +53,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def cleanup_word_ctm_arguments(self) -> List[CleanupWordCtmArguments]:
-        """
-        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`
-
-        Returns
-        -------
-        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmArguments`]
-            Arguments for processing
-        """
-        return [
-            CleanupWordCtmArguments(
-                os.path.join(self.working_log_directory, f"parse_word_ctm.{j.name}.log"),
-                j.construct_path_dictionary(self.working_directory, "word", "ctm"),
-                j.current_dictionary_names,
-                j.job_utts(),
-                j.dictionary_data(),
-            )
-            for j in self.jobs
-        ]
-
-    def no_cleanup_word_ctm_arguments(self) -> List[NoCleanupWordCtmArguments]:
+    def word_ctm_arguments(self) -> List[WordCtmArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`
 
@@ -88,12 +63,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Arguments for processing
         """
         return [
-            NoCleanupWordCtmArguments(
-                os.path.join(self.working_log_directory, f"parse_word_ctm.{j.name}.log"),
+            WordCtmArguments(
                 j.construct_path_dictionary(self.working_directory, "word", "ctm"),
                 j.current_dictionary_names,
-                j.job_utts(),
-                j.dictionary_data(),
             )
             for j in self.jobs
         ]
@@ -109,33 +81,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         return [
             PhoneCtmArguments(
-                os.path.join(self.working_log_directory, f"parse_phone_ctm.{j.name}.log"),
                 j.construct_path_dictionary(self.working_directory, "phone", "ctm"),
                 j.current_dictionary_names,
-                j.job_utts(),
-                j.reversed_phone_mappings(),
-                j.positions(),
-            )
-            for j in self.jobs
-        ]
-
-    def combine_ctm_arguments(self) -> List[CombineCtmArguments]:
-        """
-        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`
-
-        Returns
-        -------
-        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.CombineCtmArguments`]
-            Arguments for processing
-        """
-        return [
-            CombineCtmArguments(
-                os.path.join(self.working_log_directory, f"combine_ctms.{j.name}.log"),
-                j.current_dictionary_names,
-                j.job_files(),
-                j.job_speakers(),
-                j.dictionary_data(),
-                self.cleanup_textgrids,
             )
             for j in self.jobs
         ]
@@ -152,7 +99,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         return [
             ExportTextGridArguments(
                 os.path.join(self.working_log_directory, f"export_textgrids.{j.name}.log"),
-                self.files,
                 self.frame_shift,
                 self.textgrid_output,
                 self.backup_output_directory,
@@ -208,70 +154,40 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             os.makedirs(self.backup_output_directory, exist_ok=True)
 
         self.logger.debug("Beginning to process ctm files...")
-        ctm_begin_time = time.time()
         word_procs = []
         phone_procs = []
-        combine_procs = []
-        finished_signals = [Stopped() for _ in range(self.num_jobs)]
+        word_finished_signals = [Stopped() for _ in range(self.num_jobs)]
+        phone_finished_signals = [Stopped() for _ in range(self.num_jobs)]
         finished_processing = Stopped()
-        to_process_queue = [mp.JoinableQueue() for _ in range(self.num_jobs)]
-        to_export_queue = mp.JoinableQueue()
+        to_process_queue = mp.JoinableQueue()
         for_write_queue = mp.JoinableQueue()
-        finished_combining = Stopped()
-
-        if self.cleanup_textgrids:
-            word_ctm_args = self.cleanup_word_ctm_arguments()
-        else:
-            word_ctm_args = self.no_cleanup_word_ctm_arguments()
+        total_utterances = self.num_utterances
+        word_ctm_args = self.word_ctm_arguments()
         phone_ctm_args = self.phone_ctm_arguments()
-        combine_ctm_args = self.combine_ctm_arguments()
         export_args = self.export_textgrid_arguments()
         for j in self.jobs:
-            if self.cleanup_textgrids:
-                word_p = CleanupWordCtmProcessWorker(
-                    j.name,
-                    to_process_queue[j.name],
-                    stopped,
-                    error_catching,
-                    word_ctm_args[j.name],
-                )
-            else:
-                word_p = NoCleanupWordCtmProcessWorker(
-                    j.name,
-                    to_process_queue[j.name],
-                    stopped,
-                    error_catching,
-                    word_ctm_args[j.name],
-                )
+            word_p = WordCtmProcessWorker(
+                j.name,
+                to_process_queue,
+                stopped,
+                error_catching,
+                word_ctm_args[j.name],
+                word_finished_signals[j.name],
+            )
 
             word_procs.append(word_p)
             word_p.start()
 
             phone_p = PhoneCtmProcessWorker(
                 j.name,
-                to_process_queue[j.name],
+                to_process_queue,
                 stopped,
                 error_catching,
                 phone_ctm_args[j.name],
+                phone_finished_signals[j.name],
             )
             phone_p.start()
             phone_procs.append(phone_p)
-
-            combine_p = CombineProcessWorker(
-                j.name,
-                to_process_queue[j.name],
-                to_export_queue,
-                stopped,
-                finished_signals[j.name],
-                error_catching,
-                combine_ctm_args[j.name],
-            )
-            combine_p.start()
-            combine_procs.append(combine_p)
-        preparation_proc = ExportPreparationProcessWorker(
-            to_export_queue, for_write_queue, stopped, finished_combining, self.files
-        )
-        preparation_proc.start()
 
         export_procs = []
         for j in self.jobs:
@@ -284,35 +200,84 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
             export_proc.start()
             export_procs.append(export_proc)
+        try:
+            with tqdm.tqdm(total=total_utterances * 2) as pbar:
+                while True:
+                    try:
+                        w_p, intervals = to_process_queue.get(timeout=1)
+                    except Empty:
+                        for sig in word_finished_signals:
+                            if not sig.stop_check():
+                                break
+                        for sig in phone_finished_signals:
+                            if not sig.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    to_process_queue.task_done()
+                    if self.stopped.stop_check():
+                        self.logger.debug("Got stop check, exiting")
+                        continue
+                    pbar.update(1)
+                    utt = self.utterances[intervals[0].utterance]
+                    dictionary = self.get_dictionary(utt.speaker_name)
+                    if w_p == "word":
+                        for interval in intervals:
+                            label = dictionary.reversed_word_mapping[int(interval.label)]
+                            interval.label = label
+                        utt.add_word_intervals(intervals)
+                    else:
+                        for interval in intervals:
+                            label = dictionary.reversed_phone_mapping[int(interval.label)]
+                            if self.position_dependent_phones:
+                                for p in dictionary.positions:
+                                    if label.endswith(p):
+                                        label = label[: -1 * len(p)]
+                            interval.label = label
+                        utt.add_phone_intervals(intervals)
+                    file = self.files[utt.file_name]
+                    if file.is_fully_aligned:
+                        if self.cleanup_textgrids:
+                            file.clean_up()
+                        tiers = file.aligned_data
+                        output_path = file.construct_output_path(
+                            self.textgrid_output, self.backup_output_directory
+                        )
+                        duration = file.duration
+                        for_write_queue.put((tiers, output_path, duration))
+        except Exception:
+            stopped.stop()
+            while True:
+                try:
+                    _ = to_process_queue.get(timeout=1)
+                except Empty:
+                    for sig in word_finished_signals:
+                        if not sig.stop_check():
+                            break
+                    for sig in phone_finished_signals:
+                        if not sig.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                to_process_queue.task_done()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            error_catching["main"] = "\n".join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback)
+            )
+        finally:
+            finished_processing.stop()
+            self.logger.debug("Waiting for processes to finish...")
+            for i in range(self.num_jobs):
+                word_procs[i].join()
+                phone_procs[i].join()
+            to_process_queue.join()
 
-        self.logger.debug("Waiting for processes to finish...")
-        for i in range(self.num_jobs):
-            word_procs[i].join()
-            phone_procs[i].join()
-            finished_signals[i].stop()
-
-        self.logger.debug(f"Ctm parsers took {time.time() - ctm_begin_time} seconds")
-
-        self.logger.debug("Waiting for processes to finish...")
-        for i in range(self.num_jobs):
-            to_process_queue[i].join()
-            combine_procs[i].join()
-        finished_combining.stop()
-
-        self.logger.debug(f"Combiners took {time.time() - ctm_begin_time} seconds")
-        self.logger.debug("Beginning export...")
-
-        to_export_queue.join()
-        preparation_proc.join()
-
-        self.logger.debug(f"Adding jobs for export took {time.time() - export_begin}")
-        self.logger.debug("Waiting for export processes to join...")
-
-        finished_processing.stop()
-        for i in range(self.num_jobs):
-            export_procs[i].join()
-        for_write_queue.join()
-        self.logger.debug(f"Export took {time.time() - export_begin} seconds")
+            for_write_queue.join()
+            for i in range(self.num_jobs):
+                export_procs[i].join()
+            self.logger.debug(f"Export took {time.time() - export_begin} seconds")
 
         if error_catching:
             self.logger.error("Error was encountered in processing CTMs")
@@ -366,108 +331,55 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         Parse CTM files to TextGrids without using multiprocessing
         """
 
-        def process_current_word_labels():
-            """Process the current stack of word labels"""
-            speaker = cur_utt.speaker
-
-            text = cur_utt.text.split()
-            if self.cleanup_textgrids:
-                actual_labels = parse_from_word(current_labels, text, speaker.dictionary_data)
-            else:
-                actual_labels = parse_from_word_no_cleanup(
-                    current_labels, speaker.dictionary_data.reversed_words_mapping
-                )
-            cur_utt.word_labels = actual_labels
-
-        def process_current_phone_labels():
-            """Process the current stack of phone labels"""
-            speaker = cur_utt.speaker
-
-            cur_utt.phone_labels = parse_from_phone(
-                current_labels,
-                speaker.dictionary.reversed_phone_mapping,
-                speaker.dictionary.positions,
-            )
-
         export_errors = {}
-        if self.cleanup_textgrids:
-            w_args = self.cleanup_word_ctm_arguments()
-        else:
-            w_args = self.no_cleanup_word_ctm_arguments()
+        w_args = self.word_ctm_arguments()
         p_args = self.phone_ctm_arguments()
         for j in self.jobs:
 
             word_arguments = w_args[j.name]
             phone_arguments = p_args[j.name]
             self.logger.debug(f"Parsing ctms for job {j.name}...")
-            cur_utt = None
-            current_labels = []
+
             for dict_name in word_arguments.dictionaries:
                 with open(word_arguments.ctm_paths[dict_name], "r") as f:
                     for line in f:
                         line = line.strip()
                         if line == "":
                             continue
-                        ctm_interval = process_ctm_line(line)
-                        utt = self.utterances[ctm_interval.utterance]
-                        if cur_utt is None:
-                            cur_utt = utt
-                        if utt.is_segment:
-                            utt_begin = utt.begin
-                        else:
-                            utt_begin = 0
-                        if utt != cur_utt:
-                            process_current_word_labels()
-                            cur_utt = utt
-                            current_labels = []
+                        interval = process_ctm_line(line)
+                        utt = self.utterances[interval.utterance]
+                        dictionary = self.get_dictionary(utt.speaker_name)
+                        label = dictionary.reversed_word_mapping[int(interval.label)]
+                        interval.label = label
+                        utt.add_word_intervals(interval)
 
-                        ctm_interval.shift_times(utt_begin)
-                        current_labels.append(ctm_interval)
-                if current_labels:
-                    process_current_word_labels()
-            cur_utt = None
-            current_labels = []
             for dict_name in phone_arguments.dictionaries:
                 with open(phone_arguments.ctm_paths[dict_name], "r") as f:
                     for line in f:
                         line = line.strip()
                         if line == "":
                             continue
-                        ctm_interval = process_ctm_line(line)
-                        utt = self.utterances[ctm_interval.utterance]
-                        if cur_utt is None:
-                            cur_utt = utt
-                        if utt.is_segment:
-                            utt_begin = utt.begin
-                        else:
-                            utt_begin = 0
-                        if utt != cur_utt and cur_utt is not None:
-                            process_current_phone_labels()
-                            cur_utt = utt
-                            current_labels = []
+                        interval = process_ctm_line(line)
+                        utt = self.utterances[interval.utterance]
+                        dictionary = self.get_dictionary(utt.speaker_name)
 
-                        ctm_interval.shift_times(utt_begin)
-                        current_labels.append(ctm_interval)
-                if current_labels:
-                    process_current_phone_labels()
+                        label = dictionary.reversed_phone_mapping[int(interval.label)]
+                        if self.position_dependent_phones:
+                            for p in dictionary.positions:
+                                if label.endswith(p):
+                                    label = label[: -1 * len(p)]
+                        interval.label = label
+                        utt.add_phone_intervals(interval)
+        for file in self.files:
+            data = file.aligned_data
 
-            self.logger.debug(f"Generating TextGrids for job {j.name}...")
-            processed_files = set()
-            for file in j.job_files():
-                first_file_write = True
-                file.aligned = True
-                if file.name in processed_files:
-                    first_file_write = False
-                try:
-                    ctm_to_textgrid(file, self, first_file_write)
-                    processed_files.add(file.name)
-                except Exception:
-                    if self.debug:
-                        raise
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    export_errors[file.name] = "\n".join(
-                        traceback.format_exception(exc_type, exc_value, exc_traceback)
-                    )
+            backup_output_directory = None
+            if not self.overwrite:
+                backup_output_directory = self.backup_output_directory
+                os.makedirs(backup_output_directory, exist_ok=True)
+            output_path = file.construct_output_path(self.textgrid_output, backup_output_directory)
+            export_textgrid(data, output_path, file.duration, self.frame_shift)
+
         if export_errors:
             self.logger.warning(
                 f"There were {len(export_errors)} errors encountered in generating TextGrids. "

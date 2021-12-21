@@ -900,7 +900,7 @@ class AcousticModelTrainingMixin(
 
         phone_regex = None
         if self.base_phone_regex is not None:
-            phone_regex = self.base_phone_regex.pattern
+            phone_regex = self.base_phone_regex
         data = {
             "phones": sorted(self.non_silence_phones),
             "version": get_mfa_version(),
@@ -909,11 +909,7 @@ class AcousticModelTrainingMixin(
             "features": self.feature_options,
             "phone_set_type": self.phone_set_type,
             "base_phone_regex": phone_regex,
-            "multilingual_ipa": self.multilingual_ipa,
         }
-        if self.multilingual_ipa:
-            data["strip_diacritics"] = self.strip_diacritics
-            data["digraphs"] = self.digraphs
         return data
 
     def export_model(self, output_model_path: str) -> None:

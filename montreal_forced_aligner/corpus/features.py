@@ -39,11 +39,9 @@ class MfccArguments(NamedTuple):
     """
 
     log_path: str
-    dictionaries: List[str]
-    feats_scp_paths: Dict[str, str]
-    lengths_paths: Dict[str, str]
-    segment_paths: Dict[str, str]
-    wav_paths: Dict[str, str]
+    wav_path: str
+    segment_path: str
+    feats_scp_path: str
     mfcc_options: MetaDict
 
 
@@ -82,11 +80,9 @@ def make_safe(value: Any) -> str:
 
 def mfcc_func(
     log_path: str,
-    dictionaries: List[str],
-    feats_scp_paths: Dict[str, str],
-    lengths_paths: Dict[str, str],
-    segment_paths: Dict[str, str],
-    wav_paths: Dict[str, str],
+    wav_path: str,
+    segment_path: str,
+    feats_scp_path: str,
     mfcc_options: MetaDict,
 ) -> None:
     """
@@ -111,73 +107,57 @@ def mfcc_func(
     ----------
     log_path: str
         Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feats_scp_paths: dict[str, str]
-        Dictionary of feature scp files per dictionary name
-    lengths_paths: dict[str, str]
-        Dictionary of feature lengths files per dictionary name
-    segment_paths: dict[str, str]
-        Dictionary of segment scp files per dictionary name
-    wav_paths: dict[str, str]
-        Dictionary of sound file scp files per dictionary name
+    wav_path: str
+        Sound file scp path
+    segment_path: str
+        Segment scp path
+    feats_scp_path: str
+        Output feature scp path
     mfcc_options: dict[str, Any]
         Options for MFCC generation
     """
     with open(log_path, "w") as log_file:
-        for dict_name in dictionaries:
-            mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
-            raw_ark_path = feats_scp_paths[dict_name].replace(".scp", ".ark")
-            for k, v in mfcc_options.items():
-                mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-            if os.path.exists(segment_paths[dict_name]):
-                mfcc_base_command += ["ark:-", "ark:-"]
-                seg_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("extract-segments"),
-                        f"scp,p:{wav_paths[dict_name]}",
-                        segment_paths[dict_name],
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    stdin=seg_proc.stdout,
-                    env=os.environ,
-                )
-            else:
-                mfcc_base_command += [f"scp,p:{wav_paths[dict_name]}", "ark:-"]
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
-                )
-            copy_proc = subprocess.Popen(
+        mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
+        raw_ark_path = feats_scp_path.replace(".scp", ".ark")
+        for k, v in mfcc_options.items():
+            mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
+        if os.path.exists(segment_path):
+            mfcc_base_command += ["ark:-", "ark:-"]
+            seg_proc = subprocess.Popen(
                 [
-                    thirdparty_binary("copy-feats"),
-                    "--compress=true",
+                    thirdparty_binary("extract-segments"),
+                    f"scp,p:{wav_path}",
+                    segment_path,
                     "ark:-",
-                    f"ark,scp:{raw_ark_path},{feats_scp_paths[dict_name]}",
                 ],
-                stdin=comp_proc.stdout,
+                stdout=subprocess.PIPE,
                 stderr=log_file,
                 env=os.environ,
             )
-            copy_proc.communicate()
-
-            utt_lengths_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("feat-to-len"),
-                    f"scp:{feats_scp_paths[dict_name]}",
-                    f"ark,t:{lengths_paths[dict_name]}",
-                ],
+            comp_proc = subprocess.Popen(
+                mfcc_base_command,
+                stdout=subprocess.PIPE,
                 stderr=log_file,
+                stdin=seg_proc.stdout,
                 env=os.environ,
             )
-            utt_lengths_proc.communicate()
+        else:
+            mfcc_base_command += [f"scp,p:{wav_path}", "ark:-"]
+            comp_proc = subprocess.Popen(
+                mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
+            )
+        copy_proc = subprocess.Popen(
+            [
+                thirdparty_binary("copy-feats"),
+                "--compress=true",
+                "ark:-",
+                f"ark,scp:{raw_ark_path},{feats_scp_path}",
+            ],
+            stdin=comp_proc.stdout,
+            stderr=log_file,
+            env=os.environ,
+        )
+        copy_proc.communicate()
 
 
 def compute_vad_func(

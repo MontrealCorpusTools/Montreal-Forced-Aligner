@@ -6,27 +6,17 @@ import abc
 import os
 import re
 from collections import Counter
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import TemporaryDirectoryMixin
-from montreal_forced_aligner.data import CtmInterval
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import (
-        DictionaryEntryType,
-        MappingType,
-        MetaDict,
-        ReversedMappingType,
-        WordsType,
-    )
+    from montreal_forced_aligner.abc import MetaDict
 
 DEFAULT_PUNCTUATION = list(r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
 DEFAULT_CLITIC_MARKERS = list("'’")
 DEFAULT_COMPOUND_MARKERS = list("-/")
-DEFAULT_STRIP_DIACRITICS = ["ː", "ˑ", "̩", "̆", "̑", "̯", "͡", "‿", "͜"]
-DEFAULT_DIGRAPHS = ["[dt][szʒʃʐʑʂɕç]", "[aoɔe][ʊɪ]"]
 DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")")]
 
 __all__ = ["SanitizeFunction", "DictionaryMixin"]
@@ -271,8 +261,6 @@ class DictionaryMixin:
         clitic_markers: List[str] = None,
         compound_markers: List[str] = None,
         multilingual_ipa: bool = False,
-        strip_diacritics: List[str] = None,
-        digraphs: List[str] = None,
         brackets: List[Tuple[str, str]] = None,
         non_silence_phones: Set[str] = None,
         disambiguation_symbols: Set[str] = None,
@@ -281,16 +269,10 @@ class DictionaryMixin:
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
-        self.digraphs = DEFAULT_DIGRAPHS
         self.punctuation = DEFAULT_PUNCTUATION
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.brackets = DEFAULT_BRACKETS
-        if strip_diacritics is not None:
-            self.strip_diacritics = strip_diacritics
-        if digraphs is not None:
-            self.digraphs = digraphs
         if punctuation is not None:
             self.punctuation = punctuation
         if clitic_markers is not None:
@@ -383,9 +365,8 @@ class DictionaryMixin:
                         if base_phone in v:
                             filtered_v.add(x)
                 if len(filtered_v) < 2:
+                    del mapping[k]
                     continue
-                if k not in mapping:
-                    mapping[k] = []
                 if self.position_dependent_phones:
                     for x in sorted(filtered_v):
                         mapping[k].extend([x + pos for pos in self.positions])
@@ -404,8 +385,6 @@ class DictionaryMixin:
     def dictionary_options(self) -> MetaDict:
         """Dictionary options"""
         return {
-            "strip_diacritics": self.strip_diacritics,
-            "digraphs": self.digraphs,
             "punctuation": self.punctuation,
             "clitic_markers": self.clitic_markers,
             "clitic_set": self.clitic_set,
@@ -740,38 +719,6 @@ class DictionaryMixin:
         """
         return self.construct_sanitize_function()(item)
 
-    def parse_ipa(self, transcription: List[str]) -> Tuple[str, ...]:
-        """
-        Parse a transcription in a multilingual IPA format (strips out diacritics and splits digraphs).
-
-        Parameters
-        ----------
-        transcription: list[str]
-            Transcription to parse
-
-        Returns
-        -------
-        tuple[str, ...]
-            Parsed transcription
-        """
-        new_transcription = []
-        for t in transcription:
-            new_t = t
-            for d in self.strip_diacritics:
-                new_t = new_t.replace(d, "")
-            if "g" in new_t:
-                new_t = new_t.replace("g", "ɡ")
-
-            found = False
-            for digraph in self.digraphs:
-                if re.match(rf"^{digraph}$", new_t):
-                    found = True
-            if found:
-                new_transcription.extend(new_t)
-                continue
-            new_transcription.append(new_t)
-        return tuple(new_transcription)
-
 
 class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     def _write_word_boundaries(self) -> None:
@@ -952,6 +899,8 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
             phone_extra_int, "w", encoding="utf8"
         ) as intf:
             for v in self.extra_questions_mapping.values():
+                if not v:
+                    continue
                 outf.write(f"{' '.join(v)}\n")
                 intf.write(f"{' '.join(str(self.phone_mapping[x]) for x in v)}\n")
         # error
@@ -968,275 +917,3 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
             for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
                 outf.write(f"{d}\n")
                 intf.write(f"{self.phone_mapping[d]}\n")
-
-
-@dataclass
-class DictionaryData:
-    """
-    Information required for parsing Kaldi-internal ids to text
-
-    Attributes
-    ----------
-    dictionary_options: dict[str, Any]
-        Options for the dictionary
-    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
-        Function to sanitize text
-    split_function: :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
-        Function to split words into subwords
-    words_mapping: MappingType
-        Mapping from words to their integer IDs
-    reversed_words_mapping: ReversedMappingType
-        Mapping from integer IDs to words
-    words: WordsType
-        Words and their associated pronunciations
-    """
-
-    dictionary_options: MetaDict
-    sanitize_function: SanitizeFunction
-    split_function: SplitWordsFunction
-    words_mapping: MappingType
-    reversed_words_mapping: ReversedMappingType
-    words: WordsType
-    lookup_cache: Dict[str, List[str]]
-
-    @property
-    def oov_word(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["oov_word"]
-
-    @property
-    def oov_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["oov_phone"]
-
-    @property
-    def other_noise_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["other_noise_phone"]
-
-    @property
-    def optional_silence_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["optional_silence_phone"]
-
-    @property
-    def oov_int(self) -> int:
-        """Out of vocabulary integer ID"""
-        return self.words_mapping[self.oov_word]
-
-    @property
-    def compound_markers(self) -> List[str]:
-        """Characters that separate compound words"""
-        return self.dictionary_options["compound_markers"]
-
-    @property
-    def clitic_markers(self) -> List[str]:
-        """Characters that mark clitics"""
-        return self.dictionary_options["clitic_markers"]
-
-    @property
-    def clitic_set(self) -> Set[str]:
-        """Set of clitics"""
-        return self.dictionary_options["clitic_set"]
-
-    @property
-    def punctuation(self) -> List[str]:
-        """Characters to treat as punctuation"""
-        return self.dictionary_options["punctuation"]
-
-    @property
-    def strip_diacritics(self) -> List[str]:
-        """IPA diacritics to strip in multilingual IPA mode"""
-        return self.dictionary_options["strip_diacritics"]
-
-    @property
-    def multilingual_ipa(self) -> bool:
-        """Flag for multilingual IPA mode"""
-        return self.dictionary_options["multilingual_ipa"]
-
-    @property
-    def silence_phones(self) -> Set[str]:
-        """Silence phones"""
-        return {
-            self.dictionary_options["optional_silence_phone"],
-            self.dictionary_options["oov_phone"],
-            self.dictionary_options["other_noise_phone"],
-        }
-
-    def lookup(
-        self,
-        item: str,
-    ) -> List[str]:
-        """
-        Look up a word and return the list of sub words if necessary
-        taking into account clitic and compound markers
-
-        Parameters
-        ----------
-        item: str
-            Word to look up
-
-        Returns
-        -------
-        list[str]
-            List of subwords that are in the dictionary
-        """
-        if item in self.lookup_cache:
-            return self.lookup_cache[item]
-        if item in self.words:
-            return [item]
-        sanitized = self.sanitize_function(item)
-        if sanitized in self.words:
-            self.lookup_cache[item] = [sanitized]
-            return [sanitized]
-        split = self.split_function(sanitized)
-        oov_count = sum(1 for x in split if x not in self.words)
-        if oov_count < len(
-            split
-        ):  # Only returned split item if it gains us any transcribed speech
-            self.lookup_cache[item] = split
-            return split
-        self.lookup_cache[item] = [sanitized]
-        return [sanitized]
-
-    def to_int(
-        self,
-        item: str,
-    ) -> List[int]:
-        """
-        Convert a given word into integer IDs
-
-        Parameters
-        ----------
-        item: str
-            Word to look up
-
-        Returns
-        -------
-        list[int]
-            List of integer IDs corresponding to each subword
-        """
-        if item == "":
-            return []
-        sanitized = self.lookup(item)
-        text_int = []
-        for item in sanitized:
-            if not item:
-                continue
-            if item not in self.words_mapping:
-                text_int.append(self.oov_int)
-            else:
-                text_int.append(self.words_mapping[item])
-        return text_int
-
-    def check_word(self, item: str) -> bool:
-        """
-        Check whether a word is in the dictionary, takes into account sanitization and
-        clitic and compound markers
-
-        Parameters
-        ----------
-        item: str
-            Word to check
-
-        Returns
-        -------
-        bool
-            True if the look up would not result in an OOV item
-        """
-        if item == "":
-            return False
-        if item in self.words:
-            return True
-        sanitized = self.sanitize_function(item)
-        if sanitized in self.words:
-            return True
-
-        sanitized = self.split_function(sanitized)
-        if all(s in self.words for s in sanitized):
-            return True
-        return False
-
-    def map_to_original_pronunciation(
-        self, phones: List[CtmInterval], subpronunciations: List[DictionaryEntryType]
-    ) -> List[CtmInterval]:
-        """
-        Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
-
-        Parameters
-        ----------
-        phones: list[CtmInterval]
-            List of aligned phones
-        subpronunciations: list[DictionaryEntryType]
-            Pronunciations of each sub word to reconstruct the transcriptions
-
-        Returns
-        -------
-        list[CtmInterval]
-            Intervals with their original IPA pronunciation rather than the internal simplified form
-        """
-        transcription = tuple(x.label for x in phones)
-        new_phones = []
-        mapping_ind = 0
-        transcription_ind = 0
-        for pronunciations in subpronunciations:
-            pron = None
-            if mapping_ind >= len(phones):
-                break
-            for p in pronunciations:
-                if (
-                    "original_pronunciation" in p
-                    and transcription == p["pronunciation"] == p["original_pronunciation"]
-                ) or (transcription == p["pronunciation"] and "original_pronunciation" not in p):
-                    new_phones.extend(phones)
-                    mapping_ind += len(phones)
-                    break
-                if (
-                    p["pronunciation"]
-                    == transcription[
-                        transcription_ind : transcription_ind + len(p["pronunciation"])
-                    ]
-                    and pron is None
-                ):
-                    pron = p
-            if mapping_ind >= len(phones):
-                break
-            if not pron:
-                new_phones.extend(phones)
-                mapping_ind += len(phones)
-                break
-            to_extend = phones[transcription_ind : transcription_ind + len(pron["pronunciation"])]
-            transcription_ind += len(pron["pronunciation"])
-            p = pron
-            if (
-                "original_pronunciation" not in p
-                or p["pronunciation"] == p["original_pronunciation"]
-            ):
-                new_phones.extend(to_extend)
-                mapping_ind += len(to_extend)
-                break
-            for pi in p["original_pronunciation"]:
-                if pi == phones[mapping_ind].label:
-                    new_phones.append(phones[mapping_ind])
-                else:
-                    modded_phone = pi
-                    new_p = phones[mapping_ind].label
-                    for diacritic in self.strip_diacritics:
-                        modded_phone = modded_phone.replace(diacritic, "")
-                    if modded_phone == new_p:
-                        phones[mapping_ind].label = pi
-                        new_phones.append(phones[mapping_ind])
-                    elif mapping_ind != len(phones) - 1:
-                        new_p = phones[mapping_ind].label + phones[mapping_ind + 1].label
-                        if modded_phone == new_p:
-                            new_phones.append(
-                                CtmInterval(
-                                    phones[mapping_ind].begin,
-                                    phones[mapping_ind + 1].end,
-                                    new_p,
-                                    phones[mapping_ind].utterance,
-                                )
-                            )
-                            mapping_ind += 1
-                mapping_ind += 1
-        return new_phones

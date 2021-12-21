@@ -368,11 +368,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             "architecture": self.acoustic_model.meta["architecture"],
             "train_date": str(datetime.now()),
             "features": self.feature_options,
-            "multilingual_ipa": self.multilingual_ipa,
         }
-        if self.multilingual_ipa:
-            data["strip_diacritics"] = self.strip_diacritics
-            data["digraphs"] = self.digraphs
         return data
 
     def export_model(self, output_model_path: str) -> None:

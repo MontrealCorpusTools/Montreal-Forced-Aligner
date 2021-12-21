@@ -66,6 +66,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.transcriptions_without_wavs = []
         self.no_transcription_files = []
         self.stopped = Stopped()
+        self.features_generated = False
 
     def load_corpus(self) -> None:
         """
@@ -92,6 +93,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if not overwrite and os.path.exists(
             os.path.join(self.corpus_output_directory, "feats.scp")
         ):
+            self.features_generated = True
             return
         self.log_info(f"Generating base features ({self.feature_type})...")
         if self.feature_type == "mfcc":
@@ -101,7 +103,17 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             self.log_info("Calculating CMVN...")
             self.calc_cmvn()
         self.write_corpus_information()
+        self.features_generated = True
         self.create_corpus_split()
+
+    def create_corpus_split(self) -> None:
+        if self.features_generated:
+            super().create_corpus_split()
+        else:
+            split_dir = self.split_directory
+            os.makedirs(os.path.join(split_dir, "log"), exist_ok=True)
+            for job in self.jobs:
+                job.output_for_features(split_dir)
 
     def write_corpus_information(self) -> None:
         """
@@ -280,11 +292,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             MfccArguments(
                 os.path.join(self.split_directory, "log", f"make_mfcc.{j.name}.log"),
-                j.current_dictionary_names,
-                j.construct_path_dictionary(self.split_directory, "feats", "scp"),
-                j.construct_path_dictionary(self.split_directory, "utterance_lengths", "scp"),
-                j.construct_path_dictionary(self.split_directory, "segments", "scp"),
-                j.construct_path_dictionary(self.split_directory, "wav", "scp"),
+                j.construct_path(self.split_directory, "wav", "scp"),
+                j.construct_path(self.split_directory, "segments", "scp"),
+                j.construct_path(self.split_directory, "feats", "scp"),
                 self.mfcc_options,
             )
             for j in self.jobs
@@ -403,34 +413,19 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         split_directory = self.split_directory
         ignore_check = []
         for job in self.jobs:
-            feats_paths = job.construct_path_dictionary(split_directory, "feats", "scp")
-            lengths_paths = job.construct_path_dictionary(
-                split_directory, "utterance_lengths", "scp"
-            )
-            for dict_name in job.current_dictionary_names:
-                path = feats_paths[dict_name]
-                lengths_path = lengths_paths[dict_name]
-                if os.path.exists(lengths_path):
-                    with open(lengths_path, "r") as inf:
-                        for line in inf:
-                            line = line.strip()
-                            utt, length = line.split()
-                            length = int(length)
-                            if length < 13:  # Minimum length to align one phone plus silence
-                                self.utterances[utt].ignored = True
-                                ignore_check.append(utt)
-                            self.utterances[utt].feature_length = length
-                with open(path, "r") as inf:
-                    for line in inf:
-                        line = line.strip()
-                        if line == "":
-                            continue
-                        f = line.split(maxsplit=1)
-                        if self.utterances[f[0]].ignored:
-                            continue
-                        self.utterances[f[0]].features = f[1]
+            feats_path = job.construct_path(split_directory, "feats", "scp")
+
+            with open(feats_path, "r") as inf:
+                for line in inf:
+                    line = line.strip()
+                    if line == "":
+                        continue
+                    f = line.split(maxsplit=1)
+                    if self.utterances[f[0]].ignored:
+                        continue
+                    self.utterances[f[0]].features = f[1]
         for utterance in self.utterances:
-            if utterance.features is None:
+            if utterance.features is None or utterance.duration < 0.13:
                 utterance.ignored = True
                 ignore_check.append(utterance.name)
         if ignore_check:

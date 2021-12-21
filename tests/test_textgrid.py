@@ -1,9 +1,12 @@
 import os
 
+import pytest
+
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.textgrid import CtmInterval
 
 
+@pytest.mark.skip
 def test_mapping(english_us_ipa_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "textgrid_tests")
     dictionary = MultispeakerDictionary(

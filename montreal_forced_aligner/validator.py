@@ -252,32 +252,28 @@ class ValidationMixin(CorpusAligner):
         job_data = []
         most_frequent = {}
         for j in self.jobs:
-            data = {}
-            utts = j.job_utts()
-            for dict_name, utt_data in utts.items():
-                data[dict_name] = []
-                for utterance in utt_data:
-                    new_text = []
-                    dictionary = utterance.speaker.dictionary
-                    if dict_name not in most_frequent:
-                        word_frequencies = self.get_word_frequency()
-                        most_frequent[dict_name] = sorted(
-                            word_frequencies.items(), key=lambda x: -x[1]
-                        )[:num_frequent_words]
+            data = {x: [] for x in j.current_dictionary_names}
+            for utterance in j.current_utterances:
+                new_text = []
+                dictionary = utterance.speaker.dictionary
+                dict_name = utterance.speaker.dictionary_name
+                if dict_name not in most_frequent:
+                    word_frequencies = self.get_word_frequency()
+                    most_frequent[dict_name] = sorted(
+                        word_frequencies.items(), key=lambda x: -x[1]
+                    )[:num_frequent_words]
 
-                    for t in utterance.text:
-                        lookup = utterance.speaker.dictionary.split_clitics(t)
-                        if lookup is None:
-                            continue
-                        new_text.extend(x for x in lookup if x != "")
-                    data[dict_name].append(
-                        (
-                            utterance.name,
-                            dictionary.create_utterance_fst(
-                                new_text, most_frequent[dictionary.name]
-                            ),
-                        )
+                for t in utterance.text:
+                    lookup = utterance.speaker.dictionary.split_clitics(t)
+                    if lookup is None:
+                        continue
+                    new_text.extend(x for x in lookup if x != "")
+                data[dict_name].append(
+                    (
+                        utterance.name,
+                        dictionary.create_utterance_fst(new_text, most_frequent[dictionary.name]),
                     )
+                )
             job_data.append(data)
         return job_data
 
@@ -903,26 +899,58 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         if self.initialized:
             return
         try:
+            all_begin = time.time()
             self.dictionary_setup()
-            self._load_corpus()
-            self.set_lexicon_word_set(self.corpus_word_set)
-            self.write_lexicon_information()
+            self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
+            begin = time.time()
+            self._load_corpus()
+            self.log_debug(f"Loaded corpus in {time.time() - begin}")
+
+            begin = time.time()
+            self.set_lexicon_word_set(self.corpus_word_set)
+            self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
+
+            begin = time.time()
+            self.write_lexicon_information()
+            self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+
+            begin = time.time()
             for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
+            self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
+
+            begin = time.time()
             self.initialize_jobs()
+            self.log_debug(f"Initialized jobs in {time.time() - begin}")
+
+            begin = time.time()
             self.write_corpus_information()
+            self.log_debug(f"Wrote corpus information in {time.time() - begin}")
+
+            begin = time.time()
             self.create_corpus_split()
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
+            self.log_debug(f"Created corpus split directory in {time.time() - begin}")
+
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
+                if self.test_transcriptions:
+                    begin = time.time()
+                    self.write_lexicon_information(write_disambiguation=True)
+                    self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+                begin = time.time()
                 self.generate_features()
+                self.log_debug(f"Generated features in {time.time() - begin}")
+
+            begin = time.time()
             self.calculate_oovs_found()
+            self.log_debug(f"Calculated OOVs in {time.time() - begin}")
 
             if self.test_transcriptions:
+                begin = time.time()
                 self.initialize_utt_fsts()
+                self.log_debug(f"Initialized utterance FSTs in {time.time() - begin}")
             self.initialized = True
         except Exception as e:
             if isinstance(e, KaldiProcessingError):

@@ -15,11 +15,7 @@ if TYPE_CHECKING:
         ReversedMappingType,
     )
 
-from montreal_forced_aligner.dictionary.mixins import (
-    DictionaryData,
-    SplitWordsFunction,
-    TemporaryDictionaryMixin,
-)
+from montreal_forced_aligner.dictionary.mixins import SplitWordsFunction, TemporaryDictionaryMixin
 from montreal_forced_aligner.exceptions import DictionaryError, DictionaryFileError
 from montreal_forced_aligner.models import DictionaryModel
 from montreal_forced_aligner.utils import thirdparty_binary
@@ -81,9 +77,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.words[self.oov_word] = [
             {"pronunciation": (self.oov_phone,), "probability": 1, "disambiguation": None}
         ]
-        self.lookup_cache = {}
-        self.int_cache = {}
-        self.check_cache = {}
         with open(self.dictionary_model.path, "r", encoding="utf8") as inf:
             for i, line in enumerate(inf):
                 line = line.strip()
@@ -116,10 +109,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     right_sil_prob = None
                     left_sil_prob = None
                     left_nonsil_prob = None
-                if self.multilingual_ipa:
-                    pron = self.parse_ipa(line)
-                else:
-                    pron = tuple(line)
+                pron = tuple(line)
                 if pretrained:
                     difference = set(pron) - self.non_silence_phones
                     if difference:
@@ -151,7 +141,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 if is_clitic:
                     self.clitic_set.add(word)
         self.words_mapping = {}
-        self._dictionary_data: Optional[DictionaryData] = None
+        self._to_int_cache = {}
         self.lexicon_word_set = None
         if not self.graphemes:
             raise DictionaryFileError(
@@ -228,57 +218,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """Words in the dictionary stripping out Kaldi's internal words"""
         return {k: v for k, v in self.words.items() if k not in self.specials_set}
 
-    def data(self, word_set: Optional[Collection[str]] = None) -> DictionaryData:
-        """
-        Generates a dictionary data for use in parsing utilities
-
-        Parameters
-        ----------
-        word_set: Collection[str], optional
-            Word set to limit data to
-
-        Returns
-        -------
-        DictionaryData
-            Data necessary for parsing text
-        """
-        if (
-            self._dictionary_data is not None
-            and word_set is None
-            and self._dictionary_data.words_mapping
-        ):
-            return self._dictionary_data
-
-        def word_check(word):
-            """Check whether a word should be included in the output"""
-            if word in word_set:
-                return True
-            if word in self.clitic_set:
-                return True
-            if word in self.specials_set:
-                return True
-            return False
-
-        if word_set:
-            words_mapping = {k: v for k, v in self.words_mapping.items() if word_check(k)}
-            reversed_word_mapping = {
-                k: v for k, v in self.reversed_word_mapping.items() if word_check(v)
-            }
-            words = {k: v for k, v in self.words.items() if word_check(k)}
-        else:
-            words_mapping = self.words_mapping
-            reversed_word_mapping = self.reversed_word_mapping
-            words = self.words
-        return DictionaryData(
-            self.dictionary_options,
-            self.construct_sanitize_function(),
-            self.construct_split_words_function(),
-            words_mapping,
-            reversed_word_mapping,
-            words,
-            self.lookup_cache,
-        )
-
     def construct_split_words_function(self) -> SplitWordsFunction:
         """
         Construct a :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction` to use in multiprocessing jobs
@@ -312,10 +251,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.lexicon_word_set = {self.silence_word, self.oov_word}
         self.lexicon_word_set.update(self.clitic_set)
         for word in word_set:
-            self.lookup_cache[word] = split_function(word)
-            self.lexicon_word_set.update(self.lookup_cache[word])
+            self.lexicon_word_set.update(split_function(word))
 
-        self._dictionary_data = self.data(self.lexicon_word_set)
         self.generate_mappings()
 
     def split_clitics(self, item: str) -> List[str]:
@@ -382,7 +319,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.words_mapping["</s>"] = i + 3
         self.oovs_found = Counter()
         self.add_disambiguation()
-        self._dictionary_data = self.data()
 
     def add_disambiguation(self) -> None:
         """
@@ -447,6 +383,37 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         fst_text += f"0 {-1 * math.log(1 / num_words)}\n"
         return fst_text
 
+    def lookup(
+        self,
+        item: str,
+    ) -> List[str]:
+        """
+        Look up a word and return the list of sub words if necessary
+        taking into account clitic and compound markers
+
+        Parameters
+        ----------
+        item: str
+            Word to look up
+
+        Returns
+        -------
+        list[str]
+            List of subwords that are in the dictionary
+        """
+        if item in self.words:
+            return [item]
+        sanitized = self.construct_sanitize_function()(item)
+        if sanitized in self.words:
+            return [sanitized]
+        split = self.construct_split_words_function()(sanitized)
+        oov_count = sum(1 for x in split if x not in self.words)
+        if oov_count < len(
+            split
+        ):  # Only returned split item if it gains us any transcribed speech
+            return split
+        return [sanitized]
+
     def to_int(self, item: str) -> List[int]:
         """
         Convert a given word into integer IDs
@@ -461,30 +428,21 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         list[int]
             List of integer IDs corresponding to each subword
         """
-        if item not in self.int_cache:
-            self.int_cache[item] = self.data().to_int(item)
-        return self.int_cache[item]
-
-    def _lookup(self, item: str) -> List[str]:
-        """
-        Look up a word and return the list of sub words if necessary taking into account clitic and compound markers
-
-        Parameters
-        ----------
-        item: str
-            Word to look up
-
-        Returns
-        -------
-        list[str]
-            List of subwords that are in the dictionary
-        """
-        if item not in self.lookup_cache:
-            if self._dictionary_data is not None:
-                self.lookup_cache[item] = self._dictionary_data.lookup(item)
+        if item == "":
+            return []
+        if item in self._to_int_cache:
+            return self._to_int_cache[item]
+        sanitized = self.lookup(item)
+        text_int = []
+        for item in sanitized:
+            if not item:
+                continue
+            if item not in self.words_mapping:
+                text_int.append(self.oov_int)
             else:
-                self.lookup_cache[item] = self.construct_split_words_function()(item)
-        return self.lookup_cache[item]
+                text_int.append(self.words_mapping[item])
+        self._to_int_cache[item] = text_int
+        return text_int
 
     def check_word(self, item: str) -> bool:
         """
@@ -501,23 +459,17 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         bool
             True if the look up would not result in an OOV item
         """
-        if item in self.check_cache:
-            return self.check_cache[item]
         if item == "":
-            self.check_cache[item] = False
             return False
         if item in self.words:
-            self.check_cache[item] = True
             return True
         sanitized = self.construct_sanitize_function()(item)
         if sanitized in self.words:
-            self.check_cache[item] = True
             return True
 
         sanitized = self.construct_split_words_function()(sanitized)
         for s in sanitized:
             if s not in self.words:
-                self.check_cache[item] = True
                 return False
         return True
 
@@ -620,7 +572,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             self.export_lexicon(os.path.join(self.dictionary_output_directory, "lexicon.txt"))
         self._write_graphemes()
         self._write_word_file()
-        self._write_align_lexicon()
         if write_disambiguation:
             self._write_fst_text_disambiguated()
         else:
@@ -691,40 +642,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         with open(words_path, "w", encoding="utf8", newline=newline) as f:
             for w, i in sorted(self.words_mapping.items(), key=lambda x: x[1]):
                 f.write(f"{w} {i}\n")
-
-    def _write_align_lexicon(self) -> None:
-        """
-        Write the alignment lexicon text file to the temporary directory
-        """
-        path = os.path.join(self.phones_dir, "align_lexicon.int")
-        if os.path.exists(path):
-            return
-
-        with open(path, "w", encoding="utf8") as f:
-            for w, i in self.words_mapping.items():
-                if self.exclude_for_alignment(w):
-                    continue
-                if w not in self.words:  # special characters
-                    continue
-                for pron in sorted(
-                    self.words[w],
-                    key=lambda x: (x["pronunciation"], x["probability"], x["disambiguation"]),
-                ):
-
-                    phones = list(pron["pronunciation"])
-                    if self.position_dependent_phones:
-                        if len(phones) == 1:
-                            phones[0] += "_S"
-                        else:
-                            for j in range(len(phones)):
-                                if j == 0:
-                                    phones[j] += "_B"
-                                elif j == len(phones) - 1:
-                                    phones[j] += "_E"
-                                else:
-                                    phones[j] += "_I"
-                    p = " ".join(str(self.phone_mapping[x]) for x in phones)
-                    f.write(f"{i} {i} {p}\n".format(i=i, p=p))
 
     def _write_fst_binary(
         self,

@@ -367,13 +367,10 @@ class DictionaryTrainer(PretrainedAligner):
         utt_mapping = {}
         for j in self.jobs:
             args = jobs[j.name]
-            dict_data = j.dictionary_data()
             for dict_name, pron_path in args.pron_paths.items():
                 if dict_name not in pron_counts:
                     pron_counts[dict_name] = defaultdict(Counter)
                     utt_mapping[dict_name] = {}
-                word_lookup = dict_data[dict_name].reversed_words_mapping
-                phone_lookup = self.dictionary_mapping[dict_name].reversed_phone_mapping
                 with open(pron_path, "r", encoding="utf8") as f:
                     last_utt = None
                     for line in f:
@@ -384,12 +381,15 @@ class DictionaryTrainer(PretrainedAligner):
                                 utt_mapping[dict_name][last_utt].append("</s>")
                             utt_mapping[dict_name][utt] = ["<s>"]
                             last_utt = utt
-
-                        word = word_lookup[int(line[3])]
+                        dictionary = self.get_dictionary(self.utterances[utt].speaker_name)
+                        word = dictionary.reversed_word_mapping[int(line[3])]
                         if word == "<eps>":
                             utt_mapping[dict_name][utt].append(word)
                         else:
-                            pron = tuple(phone_lookup[int(x)].split("_")[0] for x in line[4:])
+                            pron = tuple(
+                                dictionary.reversed_phone_mapping[int(x)].split("_")[0]
+                                for x in line[4:]
+                            )
                             pron_string = " ".join(pron)
                             utt_mapping[dict_name][utt].append(word + " " + pron_string)
                             pron_counts[dict_name][word][pron] += 1

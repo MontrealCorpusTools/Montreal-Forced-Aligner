@@ -32,10 +32,8 @@ def test_speaker_word_set(
     corpus.load_corpus()
     speaker_one = corpus.speakers["speaker_one"]
     assert "chad" in speaker_one.word_set()
-    assert speaker_one.dictionary_data.lookup("chad-like") == ["chad", "like"]
-    assert speaker_one.dictionary_data.oov_int not in speaker_one.dictionary_data.to_int(
-        "chad-like"
-    )
+    assert speaker_one.dictionary.lookup("chad-like") == ["chad", "like"]
+    assert speaker_one.dictionary.oov_int not in speaker_one.dictionary.to_int("chad-like")
 
 
 def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
@@ -78,14 +76,15 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     )
     corpus.load_corpus()
     for speaker in corpus.speakers:
-        data = speaker.dictionary.data()
-        assert speaker.dictionary.silence_phones == data.silence_phones
-        assert speaker.dictionary.multilingual_ipa == data.multilingual_ipa
-        assert speaker.dictionary.words_mapping == data.words_mapping
-        assert speaker.dictionary.punctuation == data.punctuation
-        assert speaker.dictionary.clitic_markers == data.clitic_markers
-        assert speaker.dictionary.oov_int == data.oov_int
-        assert speaker.dictionary.words == data.words
+        assert speaker.dictionary.silence_phones == corpus.silence_phones
+        assert speaker.dictionary.multilingual_ipa == corpus.multilingual_ipa
+        assert (
+            speaker.dictionary.words_mapping == corpus.get_dictionary(speaker.name).words_mapping
+        )
+        assert speaker.dictionary.punctuation == corpus.punctuation
+        assert speaker.dictionary.clitic_markers == corpus.clitic_markers
+        assert speaker.dictionary.oov_int == corpus.get_dictionary(speaker.name).oov_int
+        assert speaker.dictionary.words == corpus.get_dictionary(speaker.name).words
     assert corpus.get_feat_dim() == 39
 
 
@@ -314,11 +313,11 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir):
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    assert len(corpus.utterances) == 3
-    assert len([x for x in corpus.utterances if not x.ignored]) == 1
-    assert len([x for x in corpus.utterances if x.features is not None]) == 1
-    assert len([x for x in corpus.utterances if x.ignored]) == 2
-    assert len([x for x in corpus.utterances if x.features is None]) == 2
+    assert len(corpus.utterances._data) == 3
+    assert len([x for x in corpus.utterances._data.values() if not x.ignored]) == 1
+    assert len([x for x in corpus.utterances._data.values() if x.features is not None]) == 2
+    assert len([x for x in corpus.utterances._data.values() if x.ignored]) == 2
+    assert len([x for x in corpus.utterances._data.values() if x.features is None]) == 1
 
 
 def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_us_ipa_dictionary):

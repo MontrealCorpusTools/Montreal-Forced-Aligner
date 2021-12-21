@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Union
 
 from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
@@ -79,7 +79,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         return self.dictionary_model.diphthong_phones
 
     @property
-    def extra_questions(self) -> Dict[str, List[str]]:
+    def extra_questions(self) -> Dict[str, Set[str]]:
         return self.dictionary_model.extra_questions
 
     def dictionary_setup(self):
