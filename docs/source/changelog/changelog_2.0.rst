@@ -10,6 +10,17 @@
 Beta releases
 =============
 
+2.0.0b11
+--------
+
+- Re-optimized corpus loading following the switch to a more class-based API.
+- Optimized validation, particularly when acoustics are being ignored
+- Added better progress bars for corpus loading and G2P training
+- Changed the default behavior of G2P generation to use a threshold system rather than returning a single top pronunciation.  The threshold defaults to 0.99, but can be specified through ``--g2p_threshold``.  Specifying number of pronunciations will override this behavior.
+- Changed the behavior of G2P evaluation to check whether the generated hypothesis is in the golden pronunciation set, so languages with pronunciation variation will be less penalized in evaluation
+- Added :class:`~montreal_forced_aligner.dictionary.pronunciation.Word` and :class:`~montreal_forced_aligner.dictionary.pronunciation.Pronunciation` data classes
+- Refactored and simplified TextGrid export process
+
 2.0.0b10
 --------
 

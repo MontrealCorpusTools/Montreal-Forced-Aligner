@@ -18,13 +18,13 @@ from montreal_forced_aligner.corpus.classes import (
     Utterance,
     UtteranceCollection,
 )
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import output_mapping
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
     from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
-    from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
 
     FileInfoDict = Dict[
         str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
@@ -58,20 +58,24 @@ class CorpusProcessWorker(mp.Process):
 
     def __init__(
         self,
+        name: int,
         job_q: mp.Queue,
         return_dict: dict,
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
-        sanitize_function: Optional[SanitizeFunction],
+        finished_processing: Stopped,
         speaker_characters: Union[int, str],
+        sanitize_function: Optional[MultispeakerSanitizationFunction],
     ):
         mp.Process.__init__(self)
+        self.name = str(name)
         self.job_q = job_q
         self.return_dict = return_dict
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
+        self.finished_processing = finished_processing
         self.sanitize_function = sanitize_function
         self.speaker_characters = speaker_characters
 
@@ -111,6 +115,7 @@ class CorpusProcessWorker(mp.Process):
                 self.return_dict["error"] = file_name, Exception(
                     traceback.format_exception(*sys.exc_info())
                 )
+        self.finished_processing.stop()
         return
 
 

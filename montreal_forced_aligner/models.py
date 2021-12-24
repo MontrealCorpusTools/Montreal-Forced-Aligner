@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Union
 import yaml
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
+from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
@@ -108,8 +109,6 @@ class Archive(MfaModel):
             self._meta["features"]["uses_splices"] = os.path.exists(
                 os.path.join(self.dirname, "lda.mat")
             )
-        if "multilingual_ipa" not in self._meta:
-            self._meta["multilingual_ipa"] = False
         if "uses_speaker_adaptation" not in self._meta["features"]:
             self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
                 os.path.join(self.dirname, "final.alimdl")
@@ -319,12 +318,11 @@ class AcousticModel(Archive):
     def parameters(self) -> MetaDict:
         """Parameters to pass to top-level workers"""
         params = {**self.meta["features"]}
-        for key in ["multilingual_ipa"]:
-            params[key] = self.meta[key]
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
         params["optional_silence_phone"] = self.meta["optional_silence_phone"]
         params["other_noise_phone"] = self.meta["other_noise_phone"]
+        params["phone_set_type"] = self.meta["phone_set_type"]
         return params
 
     @property
@@ -359,7 +357,6 @@ class AcousticModel(Archive):
                 self._meta = {
                     "version": "0.9.0",
                     "architecture": "gmm-hmm",
-                    "multilingual_ipa": False,
                     "features": default_features,
                 }
             else:
@@ -377,8 +374,6 @@ class AcousticModel(Archive):
                 self._meta["other_noise_phone"] = "sp"
             if "phone_set_type" not in self._meta:
                 self._meta["phone_set_type"] = "UNKNOWN"
-            if "base_phone_regex" not in self._meta:
-                self._meta["base_phone_regex"] = None
             self._meta["phones"] = set(self._meta.get("phones", []))
         self.parse_old_features()
         return self._meta
@@ -416,9 +411,6 @@ class AcousticModel(Archive):
         else:
             configuration_data["Acoustic model"]["data"]["Phones"] = ("None found!", "red")
 
-        configuration_data["Acoustic model"]["data"]["Configuration options"] = {
-            "Multilingual IPA": self.meta["multilingual_ipa"],
-        }
         printer.print_config(configuration_data)
 
     def add_model(self, source: str) -> None:
@@ -775,23 +767,30 @@ class DictionaryModel(MfaModel):
     extensions = [".dict", ".txt", ".yaml", ".yml"]
 
     def __init__(
-        self, path: str, working_directory: Optional[str] = None, phone_set: Optional[str] = None
+        self, path: str, working_directory: Optional[str] = None, phone_set_type: str = "UNKNOWN"
     ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
         self.path = path
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
-        self.phone_set_type = phone_set
+        self.phone_set_type = PhoneSetType[phone_set_type]
         detect_phone_set = False
-        if not self.phone_set_type or self.phone_set_type == "AUTO":
+        if self.phone_set_type == PhoneSetType.AUTO:
             detect_phone_set = True
-        self.phones = set()
-        self.graphemes = set()
-        arpa_detect = re.compile(r" [A-Z]{2}[012]? ")
-        pinyin_detect = re.compile(r" [a-z]{1,3}[12345]? ")
-        ipa_detect = re.compile(r" [əɚʊɤʁ˥˩ɹɔɛʉɒʃɕŋʰ̚ʲɾ] ")
-        counts = {"UNKNOWN": 0, "ARPA": 0, "IPA": 0, "PINYIN": 0}
+
+        patterns = {
+            PhoneSetType.ARPA: re.compile(r" [A-Z]{2}[012]? "),
+            PhoneSetType.IPA: re.compile(r" [a-z]{1,3}[12345]? "),
+            PhoneSetType.PINYIN: re.compile(r" [əɚʊɤʁ˥˩ɹɔɛʉɒʃɕŋʰ̚ʲɾ] "),
+        }
+        counts = {
+            PhoneSetType.UNKNOWN: 0,
+            PhoneSetType.ARPA: 0,
+            PhoneSetType.IPA: 0,
+            PhoneSetType.PINYIN: 0,
+        }
+
         count = 0
         with open(self.path, "r", encoding="utf8") as f:
             for line in f:
@@ -799,24 +798,30 @@ class DictionaryModel(MfaModel):
                 if not line:
                     continue
                 if detect_phone_set:
-                    m = arpa_detect.match(line)
-                    if m:
-                        counts["ARPA"] += 1
-                    m = ipa_detect.search(line)
-                    if m:
-                        counts["IPA"] += 1
-                    m = pinyin_detect.search(line)
-                    if m:
-                        counts["PINYIN"] += 1
+                    phone_set = None
+                    for phone_set, pattern in patterns.items():
+                        if pattern.search(line):
+                            counts[phone_set] += 1
+
+                            break
+                    else:
+                        counts[PhoneSetType.UNKNOWN] += 1
+                        continue
+                    if counts[phone_set] > 100:
+                        other_sets_max = max(counts[x] for x in counts if x != phone_set)
+                        if counts[phone_set] - other_sets_max >= 100:
+                            break
                 else:
                     count += 1
                     if count > 15:
                         break
 
-                line = line.split()
-                word = line.pop(0)  # word
-                next_item = line.pop(0)
-                self.graphemes.update(word)
+                _, line = line.split(maxsplit=1)  # word
+                try:
+                    next_item, line = line.split(maxsplit=1)
+                except ValueError:
+                    next_item = line
+                    line = ""
                 if self.pronunciation_probabilities:
                     try:
                         prob = float(next_item)
@@ -824,12 +829,11 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.pronunciation_probabilities = False
-                        self.phones.add(next_item)
                 try:
-                    next_item = line.pop(0)
-                except IndexError:
+                    next_item, line = line.split(maxsplit=1)
+                except ValueError:
                     self.silence_probabilities = False
-                    self.phones.add(next_item)
+                    continue
                 if self.silence_probabilities:
                     try:
                         prob = float(next_item)
@@ -837,51 +841,47 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.silence_probabilities = False
-                        self.phones.add(next_item)
-                if not line:
-                    continue
-                self.phones.update(line)
         if detect_phone_set:
             self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
     @property
     def base_phone_regex(self) -> Optional[str]:
-        if self.phone_set_type == "UNKNOWN":
+        if self.phone_set_type == PhoneSetType.UNKNOWN:
             return None
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             return r"([A-Z]{2})[012]"
-        if self.phone_set_type == "PINYIN":
+        if self.phone_set_type == PhoneSetType.PINYIN:
             return r"[a-z]{1,3}[12345]"
-        if self.phone_set_type == "IPA":
+        if self.phone_set_type == PhoneSetType.IPA:
             return r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̂̋̏‿̆͜͡ˌˈ̣]+)"
 
     @property
     def extra_short_phones(self) -> Set[str]:
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             return {"AH0", "IH0", "ER0", "UH0"}
-        if self.phone_set_type == "IPA":
+        if self.phone_set_type == PhoneSetType.IPA:
             return {"ʔ", "ə", "ɚ", "ɾ", "p̚", "t̚", "k̚"}
         return set()
 
     @property
     def affricate_phones(self) -> Set[str]:
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             return {"CH", "JH"}
-        if self.phone_set_type == "IPA":
+        if self.phone_set_type == PhoneSetType.IPA:
             return {"ts", "tʃ", "tʂ", "tɕ", "tç", "dʒ", "dʐ", "dʑ"}
         return set()
 
     @property
     def stop_phones(self) -> Set[str]:
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             return {"B", "D", "G"}
-        if self.phone_set_type == "IPA":
+        if self.phone_set_type == PhoneSetType.IPA:
             return {"b", "p", "d", "t", "k"}
         return set()
 
     @property
     def diphthong_phones(self) -> Set[str]:
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             return {
                 "AY0",
                 "AY1",
@@ -899,14 +899,14 @@ class DictionaryModel(MfaModel):
                 "OW1",
                 "OW2",
             }
-        if self.phone_set_type == "IPA":
+        if self.phone_set_type == PhoneSetType.IPA:
             return {"əw", "eɪ", "aʊ", "oʊ", "aɪ", "ɔɪ"}
         return set()
 
     @property
     def extra_questions(self) -> Dict[str, Set[str]]:
         extra_questions = {}
-        if self.phone_set_type == "ARPA":
+        if self.phone_set_type == PhoneSetType.ARPA:
             extra_questions["bilabial_variation"] = {"P", "B"}
             extra_questions["dental_lenition"] = {"D", "DH"}
             extra_questions["flapping"] = {"T", "D"}
@@ -950,13 +950,26 @@ class DictionaryModel(MfaModel):
             }
 
             # extra stress questions
-            for i in range(3):
-                extra_questions[f"stress_{i}"] = set()
-                for p in sorted(self.phones):
-                    if str(i) not in p:
-                        continue
-                    extra_questions[f"stress_{i}"].add(p)
-        elif self.phone_set_type == "IPA":
+            vowels = [
+                "AA",
+                "AE",
+                "AH",
+                "AO",
+                "AW",
+                "AY",
+                "EH",
+                "ER",
+                "EY",
+                "IH",
+                "IY",
+                "OW",
+                "OY",
+                "UH",
+                "UW",
+            ]
+            for i in range(2):
+                extra_questions[f"stress_{i}"] = {f"{x}{i}" for x in vowels}
+        elif self.phone_set_type == PhoneSetType.IPA:
             extra_questions["dental_lenition"] = {"ð", "d"}
             extra_questions["flapping"] = {"d", "t", "ɾ"}
             extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
@@ -1046,13 +1059,23 @@ class DictionaryModel(MfaModel):
                 "dʒ",
             }
 
-            extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ" "ɔ"}
-            extra_questions["mid_back_vowel_variation"] = {"ɤ", "o", "ɔ"}
-            extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e"}
-            extra_questions["high_front_variation"] = {"i", "ɪ", "ɨ"}
-            extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ"}
-            extra_questions["round_back_variation"] = {"oʊ", "ɔ", "o"}
-            extra_questions["central_variation"] = {"ə", "ɤ", "ʌ", "ʊ", "ɵ", "ɐ", "ɝ"}
+            extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ", "ɔ"}
+            extra_questions["mid_back_vowel_variation"] = {"oʊ", "ɤ", "o", "ɔ"}
+            extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e", "œ", "ø"}
+            extra_questions["high_front_variation"] = {"i", "y", "ɪ", "ʏ", "ɨ", "ʉ"}
+            extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ", "ʉ"}
+            extra_questions["central_variation"] = {
+                "ə",
+                "ɤ",
+                "ɚ",
+                "ʌ",
+                "ʊ",
+                "ɵ",
+                "ɐ",
+                "ɞ",
+                "ɘ",
+                "ɝ",
+            }
         return extra_questions
 
     @property
@@ -1060,10 +1083,8 @@ class DictionaryModel(MfaModel):
         """Metadata for the dictionary"""
         return {
             "phone_set_type": self.phone_set_type,
-            "base_phone_regex": self.base_phone_regex,
             "pronunciation_probabilities": self.pronunciation_probabilities,
             "silence_probabilities": self.silence_probabilities,
-            "phones": self.phones,
         }
 
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:

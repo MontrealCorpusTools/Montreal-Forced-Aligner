@@ -31,11 +31,8 @@ Multiprocessing workers and functions
    compile_train_graphs_func
    compile_information_func
    ali_to_ctm_func
+   WordCtmProcessWorker
    PhoneCtmProcessWorker
-   CleanupWordCtmProcessWorker
-   NoCleanupWordCtmProcessWorker
-   CombineProcessWorker
-   ExportPreparationProcessWorker
    ExportTextGridProcessWorker
 
 
@@ -55,20 +52,9 @@ Multiprocessing argument classes
    :toctree: generated/
 
    AlignArguments
-   compile_train_graphs_func
    CompileTrainGraphsArguments
-   compile_information_func
    CompileInformationArguments
-   ali_to_ctm_func
    AliToCtmArguments
-   PhoneCtmProcessWorker
    PhoneCtmArguments
-   CleanupWordCtmProcessWorker
-   CleanupWordCtmArguments
-   NoCleanupWordCtmProcessWorker
-   NoCleanupWordCtmArguments
-   CombineProcessWorker
-   CombineCtmArguments
-   ExportPreparationProcessWorker
-   ExportTextGridProcessWorker
+   WordCtmArguments
    ExportTextGridArguments

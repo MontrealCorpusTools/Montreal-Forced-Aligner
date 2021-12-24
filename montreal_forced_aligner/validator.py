@@ -390,21 +390,22 @@ class ValidationMixin(CorpusAligner):
         """
         Analyzes the set up process and outputs info to the console
         """
+        begin = time.time()
         total_duration = sum(x.duration for x in self.files)
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
+        self.log_debug(f"Duration calculation took {time.time() - begin}")
 
+        begin = time.time()
         ignored_count = len(self.no_transcription_files)
         ignored_count += len(self.textgrid_read_errors)
         ignored_count += len(self.decode_error_files)
-        num_sound_files = sum(1 for x in self.files if x.wav_path is not None)
-        num_lab_files = sum(1 for x in self.files if x.text_type == "lab")
-        num_textgrid_files = sum(1 for x in self.files if x.text_type == "textgrid")
+        self.log_debug(f"Ignored count calculation took {time.time() - begin}")
 
         self.printer.print_header("Corpus")
 
-        self.printer.print_green_stat(num_sound_files, "sound files")
-        self.printer.print_green_stat(num_lab_files, "lab files")
-        self.printer.print_green_stat(num_textgrid_files, "textgrid files")
+        self.printer.print_green_stat(self.files.sound_file_count, "sound files")
+        self.printer.print_green_stat(self.files.lab_count, "lab files")
+        self.printer.print_green_stat(self.files.textgrid_count, "textgrid files")
         if len(self.no_transcription_files):
             self.printer.print_yellow_stat(
                 len(self.no_transcription_files),
@@ -426,9 +427,9 @@ class ValidationMixin(CorpusAligner):
         self.analyze_files_with_no_transcription()
         self.analyze_transcriptions_with_no_wavs()
 
-        if len(self.decode_error_files) or num_lab_files:
+        if len(self.decode_error_files) or self.files.lab_count:
             self.analyze_unreadable_text_files()
-        if len(self.textgrid_read_errors) or num_textgrid_files:
+        if len(self.textgrid_read_errors) or self.files.textgrid_count:
             self.analyze_textgrid_read_errors()
 
         self.printer.print_header("Dictionary")
@@ -441,16 +442,20 @@ class ValidationMixin(CorpusAligner):
         self.printer.print_sub_header("Out of vocabulary words")
         output_dir = self.output_directory
         oov_types = self.oovs_found
+        calculate_frequency = not oov_types
         oov_path = os.path.join(output_dir, "oovs_found.txt")
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
-        if oov_types:
-            total_instances = 0
-            with open(utterance_oov_path, "w", encoding="utf8") as f:
-                for utterance in sorted(self.utterances):
-                    if not utterance.oovs:
-                        continue
-                    total_instances += len(utterance.oovs)
-                    f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
+
+        total_instances = 0
+        with open(utterance_oov_path, "w", encoding="utf8") as f:
+            for utterance in self.utterances:
+                if not utterance.oovs:
+                    continue
+                total_instances += len(utterance.oovs)
+                f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
+                if calculate_frequency:
+                    self.oovs_found.update(utterance.oovs)
+        if self.oovs_found:
             self.save_oovs_found(output_dir)
             self.printer.print_yellow_stat(len(oov_types), "OOV word types")
             self.printer.print_yellow_stat(total_instances, "total OOV tokens")
@@ -912,29 +917,31 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
 
             begin = time.time()
-            self.write_lexicon_information()
-            self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
-
-            begin = time.time()
             for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
             self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
 
-            begin = time.time()
-            self.initialize_jobs()
-            self.log_debug(f"Initialized jobs in {time.time() - begin}")
-
-            begin = time.time()
-            self.write_corpus_information()
-            self.log_debug(f"Wrote corpus information in {time.time() - begin}")
-
-            begin = time.time()
-            self.create_corpus_split()
-            self.log_debug(f"Created corpus split directory in {time.time() - begin}")
+            self.calculate_oovs_found()
 
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
+
+                begin = time.time()
+                self.write_lexicon_information()
+                self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+
+                begin = time.time()
+                self.initialize_jobs()
+                self.log_debug(f"Initialized jobs in {time.time() - begin}")
+
+                begin = time.time()
+                self.write_corpus_information()
+                self.log_debug(f"Wrote corpus information in {time.time() - begin}")
+
+                begin = time.time()
+                self.create_corpus_split()
+                self.log_debug(f"Created corpus split directory in {time.time() - begin}")
                 if self.test_transcriptions:
                     begin = time.time()
                     self.write_lexicon_information(write_disambiguation=True)
@@ -942,10 +949,9 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 begin = time.time()
                 self.generate_features()
                 self.log_debug(f"Generated features in {time.time() - begin}")
-
-            begin = time.time()
-            self.calculate_oovs_found()
-            self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+                begin = time.time()
+                self.calculate_oovs_found()
+                self.log_debug(f"Calculated OOVs in {time.time() - begin}")
 
             if self.test_transcriptions:
                 begin = time.time()
@@ -958,12 +964,24 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 e.update_log_file(self.logger)
             raise
 
+    def calculate_oovs_found(self) -> None:
+        """Sum the counts of oovs found in pronunciation dictionaries"""
+        begin = time.time()
+        self.logger.info("Calculating OOVs...")
+        for u in self.utterances:
+            self.oovs_found.update(u.oovs)
+        self.save_oovs_found(self.output_directory)
+        self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+
     def validate(self):
         """
         Performs validation of the corpus
         """
+        begin = time.time()
+        self.log_debug(f"Setup took {time.time() - begin}")
         self.setup()
         self.analyze_setup()
+        self.log_debug(f"Setup took {time.time() - begin}")
         if self.ignore_acoustics:
             self.printer.print_info_lines("Skipping test alignments.")
             return
@@ -1086,7 +1104,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         self.analyze_setup()
         self.analyze_missing_phones()
         if self.ignore_acoustics:
-            print("Skipping test alignments.")
+            self.log_info("Skipping test alignments.")
             return
         self.printer.print_header("Alignment")
         self.align()

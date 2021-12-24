@@ -125,14 +125,14 @@ def test_english_clitics(english_dictionary, generated_dir):
         dictionary_path=english_dictionary,
         position_dependent_phones=False,
         temporary_directory=output_directory,
+        phone_set_type="AUTO",
     )
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     d = dictionary.default_dictionary
-    assert d.phone_set_type == "UNKNOWN"
-    dictionary.dictionary_model.phone_set_type = "ARPA"
+    assert dictionary.phone_set_type.name == "ARPA"
     assert d.extra_questions_mapping
-    assert d.phone_set_type == "ARPA"
+    assert d.phone_set_type.name == "ARPA"
     for k, v in d.extra_questions_mapping.items():
         print(k)
         print(v)
@@ -140,9 +140,13 @@ def test_english_clitics(english_dictionary, generated_dir):
     assert all(x.endswith("0") for x in d.extra_questions_mapping["stress_0"])
     assert all(x.endswith("1") for x in d.extra_questions_mapping["stress_1"])
     assert all(x.endswith("2") for x in d.extra_questions_mapping["stress_2"])
-    assert d.split_clitics("l'orme's") == ["l'", "orme's"]
+    assert d.split_clitics("l'orme's") == ["l'", "orme", "'s"]
 
-    assert d.to_int("l'orme's") == [d.words_mapping["l'"], d.words_mapping["orme's"]]
+    assert d.to_int("l'orme's") == [
+        d.words_mapping["l'"],
+        d.words_mapping["orme"],
+        d.words_mapping["'s"],
+    ]
 
 
 def test_devanagari(english_dictionary, generated_dir):
@@ -200,7 +204,6 @@ def test_xsampa_dir(xsampa_dict_path, generated_dir):
     dictionary = MultispeakerDictionary(
         dictionary_path=xsampa_dict_path,
         position_dependent_phones=False,
-        multilingual_ipa=True,
         punctuation=list(".-']["),
         temporary_directory=output_directory,
     )
@@ -220,7 +223,6 @@ def test_multispeaker_config(multispeaker_dictionary_config_path, sick_corpus, g
     dictionary = MultispeakerDictionary(
         dictionary_path=multispeaker_dictionary_config_path,
         position_dependent_phones=False,
-        multilingual_ipa=True,
         punctuation=list(".-']["),
         temporary_directory=output_directory,
     )

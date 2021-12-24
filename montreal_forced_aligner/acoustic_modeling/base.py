@@ -898,9 +898,6 @@ class AcousticModelTrainingMixin(
 
         from ..utils import get_mfa_version
 
-        phone_regex = None
-        if self.base_phone_regex is not None:
-            phone_regex = self.base_phone_regex
         data = {
             "phones": sorted(self.non_silence_phones),
             "version": get_mfa_version(),
@@ -908,7 +905,6 @@ class AcousticModelTrainingMixin(
             "train_date": str(datetime.now()),
             "features": self.feature_options,
             "phone_set_type": self.phone_set_type,
-            "base_phone_regex": phone_regex,
         }
         return data
 

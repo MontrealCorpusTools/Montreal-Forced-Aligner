@@ -10,6 +10,7 @@ from montreal_forced_aligner.corpus.acoustic_corpus import (
 from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
 from montreal_forced_aligner.corpus.helper import get_wav_info
 from montreal_forced_aligner.corpus.text_corpus import TextCorpus
+from montreal_forced_aligner.dictionary.pronunciation import Pronunciation
 from montreal_forced_aligner.exceptions import SoxError
 
 
@@ -77,7 +78,6 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
     corpus.load_corpus()
     for speaker in corpus.speakers:
         assert speaker.dictionary.silence_phones == corpus.silence_phones
-        assert speaker.dictionary.multilingual_ipa == corpus.multilingual_ipa
         assert (
             speaker.dictionary.words_mapping == corpus.get_dictionary(speaker.name).words_mapping
         )
@@ -389,14 +389,23 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
     corpus.load_corpus()
     assert "i’m" not in corpus.default_dictionary.words
     assert "’m" not in corpus.default_dictionary.words
-    assert corpus.default_dictionary.words["i'm"][0]["pronunciation"] == ("ay", "m", "ih")
-    assert corpus.default_dictionary.words["i'm"][1]["pronunciation"] == ("ay", "m")
-    assert corpus.default_dictionary.words["'m"][0]["pronunciation"] == ("m",)
+    assert (
+        Pronunciation(("ay", "m", "ih"), 1, None, None, None)
+        in corpus.default_dictionary.words["i'm"].pronunciations
+    )
+    assert (
+        Pronunciation(("ay", "m"), 1, None, None, None)
+        in corpus.default_dictionary.words["i'm"].pronunciations
+    )
+    assert (
+        Pronunciation(("m",), 1, None, None, None)
+        in corpus.default_dictionary.words["'m"].pronunciations
+    )
 
     assert corpus.utterances["weird-words-weird-words"].oovs == {
-        "talking-ajfish",
+        "ajfish",
         "asds-asda",
-        "sdasd-me",
+        "sdasd",
     }
 
     corpus.set_lexicon_word_set(corpus.corpus_word_set)

@@ -279,6 +279,8 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.add_utterance(u)
             if u.text:
                 self.word_counts.update(u.text.split())
+            if u.normalized_text:
+                self.word_counts.update(u.normalized_text)
 
     @property
     def data_source_identifier(self) -> str:
@@ -351,11 +353,12 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.log_info("Setting up corpus information...")
         loaded = self._load_corpus_from_temp()
         if not loaded:
+            self.log_debug("Could not load from temp")
+            self.log_info("Loading corpus from source files...")
             if self.use_mp:
-                self.log_debug("Loading from source with multiprocessing")
+
                 self._load_corpus_from_source_mp()
             else:
-                self.log_debug("Loading from source without multiprocessing")
                 self._load_corpus_from_source()
         else:
             self.log_debug("Successfully loaded from temporary files")
@@ -423,7 +426,12 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             files_data = yaml.safe_load(f)
         for entry in files_data:
             self.files.add_file(
-                File(entry["wav_path"], entry["text_path"], entry["relative_path"])
+                File(
+                    name=entry["name"],
+                    wav_path=entry["wav_path"],
+                    text_path=entry["text_path"],
+                    relative_path=entry["relative_path"],
+                )
             )
             self.files[entry["name"]].speaker_ordering = [
                 self.speakers[x] for x in entry["speaker_ordering"]
@@ -443,6 +451,8 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 channel=entry["channel"],
                 text=entry["text"],
             )
+            u.oovs = entry["oovs"]
+            u.normalized_text = entry["normalized_text"]
             self.utterances[u.name] = u
             if u.text:
                 self.word_counts.update(u.text.split())

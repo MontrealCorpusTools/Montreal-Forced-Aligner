@@ -349,7 +349,7 @@ def create_parser() -> ArgumentParser:
     )
     train_parser.add_argument(
         "--phone_set",
-        dest="phone_set",
+        dest="phone_set_type",
         type=str,
         help="Enable extra decision tree modeling based on the phone set",
         default="UNKNOWN",
@@ -401,6 +401,14 @@ def create_parser() -> ArgumentParser:
         type=str,
         default="",
         help="Audio directory root to use for finding audio files",
+    )
+    validate_parser.add_argument(
+        "--phone_set",
+        dest="phone_set_type",
+        type=str,
+        help="Enable extra decision tree modeling based on the phone set",
+        default="UNKNOWN",
+        choices=["AUTO", "IPA", "ARPA", "PINYIN"],
     )
     add_global_options(validate_parser)
 

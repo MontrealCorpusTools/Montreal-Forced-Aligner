@@ -15,6 +15,7 @@ from colorama import Fore, Style
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CorpusMappingType, Labels, MetaDict, ScpType
+    from montreal_forced_aligner.dictionary.pronunciation import Word
     from montreal_forced_aligner.textgrid import CtmInterval
 
 
@@ -646,6 +647,43 @@ def edit_distance(x: Labels, y: Labels) -> int:
                 c3 = table[i - 1][j - 1]
                 table[i][j] = min(c1, c2, c3) + 1
     return int(table[-1][-1])
+
+
+def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
+    """
+    Computes sufficient statistics for LER calculation.
+
+    Parameters
+    ----------
+    gold: Labels
+        The reference labels
+    hypo: Labels
+        The hypothesized labels
+    multiple_hypotheses: bool
+        Flag for whether the hypotheses contain multiple
+
+    Returns
+    -------
+    int
+        Edit distance
+    int
+        Length of the gold labels
+    """
+    for h in hypo.pronunciations:
+        if h in gold.pronunciations:
+            return 0, len(h)
+    edits = 100000
+    best_length = 100000
+    for g in gold.pronunciations:
+        for h in hypo.pronunciations:
+            e = edit_distance(g.pronunciation, h.pronunciation)
+            if e < edits:
+                edits = e
+                best_length = len(g)
+            if not edits:
+                best_length = len(g)
+                break
+    return edits, best_length
 
 
 def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, int]:

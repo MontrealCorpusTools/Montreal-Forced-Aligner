@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -15,14 +16,13 @@ if TYPE_CHECKING:
         ReversedMappingType,
     )
 
+from montreal_forced_aligner.data import Pronunciation, Word
 from montreal_forced_aligner.dictionary.mixins import SplitWordsFunction, TemporaryDictionaryMixin
 from montreal_forced_aligner.exceptions import DictionaryError, DictionaryFileError
 from montreal_forced_aligner.models import DictionaryModel
 from montreal_forced_aligner.utils import thirdparty_binary
 
-__all__ = [
-    "PronunciationDictionaryMixin",
-]
+__all__ = ["PronunciationDictionaryMixin", "PronunciationDictionary"]
 
 
 class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
@@ -58,8 +58,12 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
     """
 
     def __init__(self, dictionary_path, root_dictionary=None, **kwargs):
-        self.dictionary_model = DictionaryModel(dictionary_path)
         super().__init__(**kwargs)
+        self.dictionary_model = DictionaryModel(
+            dictionary_path, phone_set_type=self.phone_set_type
+        )
+
+        self.phone_set_type = self.dictionary_model.phone_set_type
         self.root_dictionary = root_dictionary
         pretrained = False
         if self.non_silence_phones:
@@ -67,16 +71,18 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         os.makedirs(self.dictionary_output_directory, exist_ok=True)
         self.words = {}
         self.graphemes = set()
-        self.words["<eps>"] = [
-            {
-                "pronunciation": (self.optional_silence_phone,),
-                "probability": 1,
-                "disambiguation": None,
-            }
-        ]
-        self.words[self.oov_word] = [
-            {"pronunciation": (self.oov_phone,), "probability": 1, "disambiguation": None}
-        ]
+
+        eps_word = Word(
+            "<eps>", {Pronunciation((self.optional_silence_phone,), 1, None, None, None)}
+        )
+        oov_word = Word(self.oov_word, {Pronunciation((self.oov_phone,), 1, None, None, None)})
+        self.words["<eps>"] = eps_word
+        self.words[self.oov_word] = oov_word
+        sanitize = False
+        clitic_cleanup_regex = None
+        if len(self.clitic_markers) > 1:
+            sanitize = True
+            clitic_cleanup_regex = re.compile(rf'[{"".join(self.clitic_markers[1:])}]')
         with open(self.dictionary_model.path, "r", encoding="utf8") as inf:
             for i, line in enumerate(inf):
                 line = line.strip()
@@ -84,11 +90,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     continue
                 if "\t" in line:
                     word, line = line.split("\t")
-                    word = self.sanitize(word.lower())
                     line = line.strip().split()
                 else:
                     line = line.split()
-                    word = self.sanitize(line.pop(0).lower())
+                    word = line.pop(0)
+                word = word.lower()
+                if sanitize:
+                    word = clitic_cleanup_regex.sub(self.clitic_markers[0], word)
                 if not line:
                     raise DictionaryError(
                         f"Line {i} of {self.dictionary_model.path} does not have a pronunciation."
@@ -104,11 +112,9 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 if self.dictionary_model.silence_probabilities:
                     right_sil_prob = float(line.pop(0))
                     left_sil_prob = float(line.pop(0))
-                    left_nonsil_prob = float(line.pop(0))
                 else:
                     right_sil_prob = None
                     left_sil_prob = None
-                    left_nonsil_prob = None
                 pron = tuple(line)
                 if pretrained:
                     difference = set(pron) - self.non_silence_phones
@@ -116,33 +122,25 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                         self.excluded_phones.update(difference)
                         self.excluded_pronunciation_count += 1
                         continue
-                pronunciation = {
-                    "pronunciation": pron,
-                    "probability": prob,
-                    "disambiguation": None,
-                    "right_sil_prob": right_sil_prob,
-                    "left_sil_prob": left_sil_prob,
-                    "left_nonsil_prob": left_nonsil_prob,
-                }
-                if self.multilingual_ipa:
-                    pronunciation["original_pronunciation"] = tuple(line)
-                if not any(x in self.silence_phones for x in pron):
-                    self.non_silence_phones.update(pron)
-                if word in self.words and pron in {x["pronunciation"] for x in self.words[word]}:
+                pronunciation = Pronunciation(pron, prob, None, left_sil_prob, right_sil_prob)
+                if word in self.words and pronunciation in self.words[word]:
                     continue
+                self.non_silence_phones.update(pron)
                 if word not in self.words:
-                    self.words[word] = []
-                self.words[word].append(pronunciation)
+                    self.words[word] = Word(word, set())
+
+                self.words[word].pronunciations.add(pronunciation)
                 # test whether a word is a clitic
-                is_clitic = False
-                for cm in self.clitic_markers:
-                    if word.startswith(cm) or word.endswith(cm):
-                        is_clitic = True
-                if is_clitic:
+                if self.clitic_markers[0] not in word:
+                    continue
+                if word.startswith(self.clitic_markers[0]) or word.endswith(
+                    self.clitic_markers[0]
+                ):
                     self.clitic_set.add(word)
+        self.lexicon_word_set = set(self.words.keys())
+        self.non_silence_phones -= self.silence_phones
         self.words_mapping = {}
         self._to_int_cache = {}
-        self.lexicon_word_set = None
         if not self.graphemes:
             raise DictionaryFileError(
                 f"No words were found in the dictionary path {self.dictionary_model.path}"
@@ -156,38 +154,36 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return self.root_dictionary.base_phone_regex
 
     @property
-    def phone_set_type(self) -> str:
-        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.phone_set_type
-        return self.root_dictionary.phone_set_type
-
-    @property
     def extra_short_phones(self) -> Set[str]:
+        """Set of extra short phones"""
         if self.root_dictionary is None:
             return self.dictionary_model.extra_short_phones
         return self.root_dictionary.extra_short_phones
 
     @property
     def affricate_phones(self) -> Set[str]:
+        """Set of affricates"""
         if self.root_dictionary is None:
             return self.dictionary_model.affricate_phones
         return self.root_dictionary.affricate_phones
 
     @property
     def stop_phones(self) -> Set[str]:
+        """Set of stops"""
         if self.root_dictionary is None:
             return self.dictionary_model.stop_phones
         return self.root_dictionary.stop_phones
 
     @property
     def diphthong_phones(self) -> Set[str]:
+        """Set of diphthongs"""
         if self.root_dictionary is None:
             return self.dictionary_model.diphthong_phones
         return self.root_dictionary.diphthong_phones
 
     @property
     def extra_questions(self) -> Dict[str, Set[str]]:
+        """Extra questions for triphone tree clustering"""
         if self.root_dictionary is None:
             return self.dictionary_model.extra_questions
         return self.root_dictionary.extra_questions
@@ -228,10 +224,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             Function for sanitizing text
         """
         f = SplitWordsFunction(
-            self.punctuation,
             self.clitic_markers,
             self.compound_markers,
-            self.brackets,
             self.clitic_set,
             set(self.words.keys()),
         )
@@ -247,11 +241,9 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         word_set: Collection[str]
             Word set to limit generated files to
         """
-        split_function = self.construct_split_words_function()
         self.lexicon_word_set = {self.silence_word, self.oov_word}
         self.lexicon_word_set.update(self.clitic_set)
-        for word in word_set:
-            self.lexicon_word_set.update(split_function(word))
+        self.lexicon_word_set.update(word_set)
 
         self.generate_mappings()
 
@@ -278,7 +270,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
 
     def __len__(self) -> int:
         """Return the number of pronunciations across all words"""
-        return sum(len(x) for x in self.words.values())
+        return sum(len(x.pronunciations) for x in self.words.values())
 
     def exclude_for_alignment(self, word: str) -> bool:
         """
@@ -327,14 +319,14 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         subsequences = set()
         pronunciation_counts = defaultdict(int)
 
-        for w, prons in self.words.items():
+        for w, word in self.words.items():
             if self.exclude_for_alignment(w):
                 continue
-            for p in prons:
-                pronunciation_counts[p["pronunciation"]] += 1
-                pron = p["pronunciation"][:-1]
+            for p in word.pronunciations:
+                pronunciation_counts[p.pronunciation] += 1
+                pron = p.pronunciation[:-1]
                 while pron:
-                    subsequences.add(tuple(p))
+                    subsequences.add(tuple(p.pronunciation))
                     pron = pron[:-1]
         last_used = defaultdict(int)
         for w, prons in sorted(self.words.items()):
@@ -342,15 +334,15 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 continue
             for p in prons:
                 if (
-                    pronunciation_counts[p["pronunciation"]] == 1
-                    and not p["pronunciation"] in subsequences
+                    pronunciation_counts[p.pronunciation] == 1
+                    and p.pronunciation not in subsequences
                 ):
                     disambig = None
                 else:
-                    pron = p["pronunciation"]
+                    pron = p.pronunciation
                     last_used[pron] += 1
                     disambig = last_used[pron]
-                p["disambiguation"] = disambig
+                p.disambiguation = disambig
         if last_used:
             self.max_disambiguation_symbol = max(
                 self.max_disambiguation_symbol, max(last_used.values())
@@ -414,7 +406,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             return split
         return [sanitized]
 
-    def to_int(self, item: str) -> List[int]:
+    def to_int(self, item: str, normalized=False) -> List[int]:
         """
         Convert a given word into integer IDs
 
@@ -430,6 +422,11 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         if item == "":
             return []
+        if normalized:
+            if item in self.words_mapping:
+                return [self.words_mapping[item]]
+            else:
+                return [self.oov_int]
         if item in self._to_int_cache:
             return self._to_int_cache[item]
         sanitized = self.lookup(item)
@@ -618,15 +615,12 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         with open(path, "w", encoding="utf8") as f:
             for w in sorted(self.words.keys()):
-                for p in sorted(
-                    self.words[w],
-                    key=lambda x: (x["pronunciation"], x["probability"], x["disambiguation"]),
-                ):
-                    phones = " ".join(p["pronunciation"])
-                    if write_disambiguation and p["disambiguation"] is not None:
-                        phones += f" #{p['disambiguation']}"
+                for p in sorted(self.words[w].pronunciations):
+                    phones = " ".join(p.pronunciation)
+                    if write_disambiguation and p.disambiguation is not None:
+                        phones += f" #{p.disambiguation}"
                     if probability:
-                        f.write(f"{w}\t{p['probability']}\t{phones}\n")
+                        f.write(f"{w}\t{p.probability}\t{phones}\n")
                     else:
                         f.write(f"{w}\t{phones}\n")
 
@@ -787,12 +781,9 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             for w in sorted(self.words.keys()):
                 if self.exclude_for_alignment(w):
                     continue
-                for pron in sorted(
-                    self.words[w],
-                    key=lambda x: (x["pronunciation"], x["probability"], x["disambiguation"]),
-                ):
-                    phones = list(pron["pronunciation"])
-                    prob = pron["probability"]
+                for pron in sorted(self.words[w].pronunciations):
+                    phones = list(pron.pronunciation)
+                    prob = pron.probability
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"
@@ -886,13 +877,10 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             for w in sorted(self.words.keys()):
                 if self.exclude_for_alignment(w):
                     continue
-                for pron in sorted(
-                    self.words[w],
-                    key=lambda x: (x["pronunciation"], x["probability"], x["disambiguation"]),
-                ):
-                    phones = list(pron["pronunciation"])
-                    prob = pron["probability"]
-                    disambig_symbol = pron["disambiguation"]
+                for pron in sorted(self.words[w].pronunciations):
+                    phones = list(pron.pronunciation)
+                    prob = pron.probability
+                    disambig_symbol = pron.disambiguation
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"

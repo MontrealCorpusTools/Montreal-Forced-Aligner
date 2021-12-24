@@ -18,10 +18,10 @@ from typing import Any, Dict, List, NamedTuple, Optional, Set
 import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin, Word
 from montreal_forced_aligner.exceptions import PyniniAlignmentError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
-from montreal_forced_aligner.helper import score
+from montreal_forced_aligner.helper import score_g2p
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Counter, Stopped
 
@@ -199,7 +199,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
     def __init__(
         self,
         validation_proportion: float = 0.1,
-        num_pronunciations: int = 1,
+        num_pronunciations: int = 0,
         evaluate: bool = False,
         **kwargs,
     ):
@@ -215,7 +215,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self.g2p_validation_phones = set()
 
 
-class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker):
+class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
     """
     Top-level G2P trainer that uses Pynini functionality
 
@@ -278,6 +278,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         fst_default_cache_gc_limit="",
         **kwargs,
     ):
+        self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
         super().__init__(**kwargs)
         self.order = order
         self.random_starts = random_starts
@@ -300,14 +301,14 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         self.afst_path = os.path.join(self.working_directory, "afst.far")
 
     @property
-    def data_source_identifier(self) -> str:
-        """Dictionary name"""
-        return self.dictionary_model.name
-
-    @property
     def data_directory(self) -> str:
         """Data directory for trainer"""
         return self.working_directory
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Dictionary name"""
+        return self._data_source
 
     @property
     def workflow_identifier(self) -> str:
@@ -330,7 +331,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         if self.initialized:
             return
         os.makedirs(self.working_log_directory, exist_ok=True)
-        self.g2p_training_dictionary = self.actual_words
+        self.g2p_training_dictionary: Dict[str, Word] = self.actual_words
         self.initialize_training()
         self.initialized = True
 
@@ -383,9 +384,9 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
                     continue
                 self.g2p_training_graphemes.update(word)
                 for v2 in v:
-                    self.g2p_training_phones.update(v2["pronunciation"])
-                    f2.write(f"{word}\t{' '.join(v2['pronunciation'])}\n")
-                    phonef.write(f"{' '.join(v2['pronunciation'])}\n")
+                    self.g2p_training_phones.update(v2.pronunciation)
+                    f2.write(f"{word}\t{' '.join(v2.pronunciation)}\n")
+                    phonef.write(f"{' '.join(v2.pronunciation)}\n")
         subprocess.call(["ngramsymbols", phones_path, self.sym_path])
         if not self.debug:
             os.remove(phones_path)
@@ -395,7 +396,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
             for k, v in self.g2p_validation_dictionary.items():
                 self.g2p_validation_graphemes.update(k)
                 for v2 in v:
-                    self.g2p_validation_phones.update(v2["pronunciation"])
+                    self.g2p_validation_phones.update(v2.pronunciation)
             self.logger.debug(
                 f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
             )
@@ -720,9 +721,8 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
                     time.sleep(sleep_increment)
                     if stopped.stop_check():
                         break
-                    for i, sig in enumerate(finished_signals):
+                    for sig in finished_signals:
                         if not sig.stop_check():
-                            self.log_debug(f"Waiting on job {i}")
                             break
                     else:
                         break
@@ -837,7 +837,7 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
 
     def compute_validation_errors(
         self,
-        hypothesis_values: Dict[str, List[str]],
+        hypothesis_values: Dict[str, Word],
     ):
         """
         Computes validation errors
@@ -859,14 +859,19 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
         self.logger.debug(f"Processing results for {len(hypothesis_values)} hypotheses")
         with mp.Pool(self.num_jobs) as pool:
             to_comp = []
+            hyp_pron_count = 0
+            gold_pron_count = 0
             for word, hyp in hypothesis_values.items():
-                g = self.g2p_validation_dictionary[word][0]["pronunciation"]
-                hyp = [h.split(" ") for h in hyp]
-                to_comp.append((g, hyp, True))  # Multiple hypotheses to compare
-                self.logger.debug(
-                    f"For the word {word}: gold is /{g}/, hypothesized are: {', '.join('/'+ ' '.join(x)+'/' for x in hyp)}"
-                )
-            gen = pool.starmap(score, to_comp)
+                g = self.g2p_validation_dictionary[word]
+                to_comp.append((g, hyp))  # Multiple hypotheses to compare
+                self.logger.debug(f"For the word {word}: gold is {g}, hypothesized are: {hyp}")
+                hyp_pron_count += len(hyp)
+                gold_pron_count += len(g)
+            self.logger.debug(
+                f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
+                f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
+            )
+            gen = pool.starmap(score_g2p, to_comp)
             for (edits, length) in gen:
                 if edits == 0:
                     correct += 1
@@ -877,9 +882,12 @@ class PyniniTrainer(G2PTrainer, PronunciationDictionaryMixin, TopLevelMfaWorker)
             for w, gold in self.g2p_validation_dictionary.items():
                 if w not in hypothesis_values:
                     incorrect += 1
-                    gold = gold[0]["pronunciation"]
-                    total_edits += len(gold)
-                    total_length += len(gold)
+                    gold_length = 0
+                    for g in gold.pronunciations:
+                        gold_length = len(g)
+                        break
+                    total_edits += gold_length
+                    total_length += gold_length
         wer = 100 * incorrect / (correct + incorrect)
         ler = 100 * total_edits / total_length
         self.logger.info(f"WER:\t{wer:.2f}")

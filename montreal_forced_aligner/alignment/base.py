@@ -59,7 +59,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmArguments`]
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmArguments`]
             Arguments for processing
         """
         return [
@@ -123,20 +123,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Multiprocessing helper class for processing CTM files
         :meth:`.CorpusAligner.phone_ctm_arguments`
             Job method for generating arguments for PhoneCtmProcessWorker
-        :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`
-            Multiprocessing helper class for processing CTM files
-        :meth:`.CorpusAligner.cleanup_word_ctm_arguments`
-            Job method for generating arguments for CleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`
-            Multiprocessing helper class for processing CTM files
-        :meth:`.CorpusAligner.no_cleanup_word_ctm_arguments`
-            Job method for generating arguments for NoCleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`
-            Multiprocessing helper class for combining word and phone alignments
-        :meth:`.CorpusAligner.combine_ctm_arguments`
-            Job method for generating arguments for NoCleanupWordCtmProcessWorker
-        :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportPreparationProcessWorker`
-            Multiprocessing helper class for generating TextGrid tiers
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmProcessWorker`
+            Multiprocessing helper class for processing word CTM files
+        :meth:`.CorpusAligner.word_ctm_arguments`
+            Job method for generating arguments for WordCtmProcessWorker
         :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
             Multiprocessing helper class for exporting TextGrid files
         :meth:`.CorpusAligner.export_textgrid_arguments`

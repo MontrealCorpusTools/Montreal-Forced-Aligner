@@ -21,12 +21,20 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CtmErrorDict, MetaDict
 
 __all__ = [
+    "WordCtmProcessWorker",
     "PhoneCtmProcessWorker",
     "ExportTextGridProcessWorker",
+    "WordCtmArguments",
+    "PhoneCtmArguments",
+    "ExportTextGridArguments",
     "align_func",
+    "AlignArguments",
     "ali_to_ctm_func",
+    "AliToCtmArguments",
     "compile_information_func",
+    "CompileInformationArguments",
     "compile_train_graphs_func",
+    "CompileTrainGraphsArguments",
 ]
 
 
@@ -432,7 +440,7 @@ class WordCtmProcessWorker(mp.Process):
         Stop check for processing
     error_catching: dict[tuple[str, int], str]
         Dictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmArguments`
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 

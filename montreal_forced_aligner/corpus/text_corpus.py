@@ -44,16 +44,19 @@ class TextCorpusMixin(CorpusMixin):
         return_dict["decode_error_files"] = manager.list()
         return_dict["textgrid_read_errors"] = manager.dict()
         finished_adding = Stopped()
+        finished_signals = [Stopped() for _ in range(self.num_jobs)]
         procs = []
-        for _ in range(self.num_jobs):
+        for i in range(self.num_jobs):
             p = CorpusProcessWorker(
+                i,
                 job_queue,
                 return_dict,
                 return_queue,
                 self.stopped,
                 finished_adding,
-                sanitize_function,
+                finished_signals[i],
                 self.speaker_characters,
+                sanitize_function,
             )
             procs.append(p)
             p.start()
@@ -94,7 +97,12 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for sig in finished_signals:
+                        if not sig.stop_check():
+                            break
+                    else:
+                        break
+                    continue
 
                 self.add_file(File.load_from_mp_data(file))
 
@@ -129,9 +137,17 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for sig in finished_signals:
+                        if not sig.stop_check():
+                            break
+                    else:
+                        break
         finally:
 
+            finished_adding.stop()
+            job_queue.join()
+            for p in procs:
+                p.join()
             if self.stopped.stop_check():
                 self.log_info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
                 if self.stopped.source():

@@ -144,16 +144,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         super().__init__(**kwargs)
 
     @property
-    def base_phone_regex(self) -> Optional[str]:
-        """Regex pattern for extracting a base phone for the phone set"""
-        return self.acoustic_model.meta["base_phone_regex"]
-
-    @property
-    def phone_set_type(self) -> str:
-        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
-        return self.acoustic_model.meta["phone_set_type"]
-
-    @property
     def working_directory(self) -> str:
         """Working directory"""
         return self.workflow_directory
@@ -421,24 +411,24 @@ class DictionaryTrainer(PretrainedAligner):
             for word, prons in dictionary.actual_words.items():
                 if word not in counts:
                     for p in prons:
-                        p["probability"] = 1
+                        p.probability = 1
                 else:
                     total = 0
                     best_pron = 0
                     best_count = 0
                     for p in prons:
-                        p["probability"] = self.min_count
-                        if p["pronunciation"] in counts[word]:
-                            p["probability"] += counts[word][p["pronunciation"]]
-                        total += p["probability"]
-                        if p["probability"] > best_count:
-                            best_pron = p["pronunciation"]
-                            best_count = p["probability"]
+                        p.probability = self.min_count
+                        if p.pronunciation in counts[word]:
+                            p.probability += counts[word][p.pronunciation]
+                        total += p.probability
+                        if p.probability > best_count:
+                            best_pron = p.pronunciation
+                            best_count = p.probability
                     for p in prons:
-                        if p["pronunciation"] == best_pron:
-                            p["probability"] = 1
+                        if p.pronunciation == best_pron:
+                            p.probability = 1
                         else:
-                            p["probability"] /= total
+                            p.probability /= total
                     dictionary.words[word] = prons
             output_path = os.path.join(output_directory, dict_name + ".txt")
             dictionary.export_lexicon(output_path, probability=True)

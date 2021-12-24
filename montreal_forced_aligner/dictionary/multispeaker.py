@@ -4,17 +4,66 @@ from __future__ import annotations
 
 import abc
 import os
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Tuple, Union
 
-from montreal_forced_aligner.dictionary.mixins import TemporaryDictionaryMixin
+from montreal_forced_aligner.dictionary.mixins import (
+    SanitizeFunction,
+    SplitWordsFunction,
+    TemporaryDictionaryMixin,
+)
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
-from montreal_forced_aligner.models import DictionaryModel
+from montreal_forced_aligner.exceptions import DictionaryError
+from montreal_forced_aligner.models import DictionaryModel, PhoneSetType
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import Speaker
 
 
 __all__ = ["MultispeakerDictionaryMixin", "MultispeakerDictionary"]
+
+
+@dataclass
+class MultispeakerSanitizationFunction:
+    """
+    Function for sanitizing text based on a multispeaker dictionary
+
+    Parameters
+    ----------
+    speaker_mapping: dict[str, str]
+        Mapping of speakers to dictionary names
+    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
+        Function to use for stripping punctuation
+    split_functions: dict[str, :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`]
+        Mapping of dictionary names to functions for splitting compounds and clitics into separate words
+    """
+
+    speaker_mapping: Dict[str, str]
+    sanitize_function: SanitizeFunction
+    split_functions: Dict[str, SplitWordsFunction]
+
+    def get_functions_for_speaker(
+        self, speaker_name: str
+    ) -> Tuple[SanitizeFunction, SplitWordsFunction]:
+        """
+        Look up functions based on speaker name
+
+        Parameters
+        ----------
+        speaker_name
+            Speaker to get functions for
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
+            Function for sanitizing text
+        :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
+            Function for splitting up words
+        """
+        if speaker_name not in self.speaker_mapping:
+            speaker_name = "default"
+        dict_name = self.speaker_mapping[speaker_name]
+        return self.sanitize_function, self.split_functions[dict_name]
 
 
 class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMeta):
@@ -48,9 +97,29 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
     def __init__(self, dictionary_path: str = None, **kwargs):
         super().__init__(**kwargs)
-        self.dictionary_model = DictionaryModel(dictionary_path)
+        self.dictionary_model = DictionaryModel(
+            dictionary_path, phone_set_type=self.phone_set_type
+        )
         self.speaker_mapping = {}
         self.dictionary_mapping: Dict[str, PronunciationDictionary] = {}
+
+    @property
+    def sanitize_function(self) -> MultispeakerSanitizationFunction:
+        """Sanitization function for the dictionary"""
+        sanitize_function = SanitizeFunction(
+            self.punctuation, self.clitic_markers, self.compound_markers, self.brackets
+        )
+        split_functions = {}
+        for dictionary_name, dictionary in self.dictionary_mapping.items():
+            split_functions[dictionary_name] = SplitWordsFunction(
+                self.clitic_markers,
+                self.compound_markers,
+                dictionary.clitic_set,
+                dictionary.lexicon_word_set,
+            )
+        return MultispeakerSanitizationFunction(
+            self.speaker_mapping, sanitize_function, split_functions
+        )
 
     @property
     def base_phone_regex(self) -> Optional[str]:
@@ -58,32 +127,35 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         return self.dictionary_model.base_phone_regex
 
     @property
-    def phone_set_type(self) -> str:
-        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
-        return self.dictionary_model.phone_set_type
-
-    @property
     def extra_short_phones(self) -> Set[str]:
+        """Set of extra short phones"""
         return self.dictionary_model.extra_short_phones
 
     @property
     def affricate_phones(self) -> Set[str]:
+        """Set of affricates"""
         return self.dictionary_model.affricate_phones
 
     @property
     def stop_phones(self) -> Set[str]:
+        """Set of stops"""
         return self.dictionary_model.stop_phones
 
     @property
     def diphthong_phones(self) -> Set[str]:
+        """Set of diphthongs"""
         return self.dictionary_model.diphthong_phones
 
     @property
     def extra_questions(self) -> Dict[str, Set[str]]:
+        """Extra questions for triphone tree clustering"""
         return self.dictionary_model.extra_questions
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""
+        auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
+        if not isinstance(self.phone_set_type, PhoneSetType):
+            self.phone_set_type = PhoneSetType[self.phone_set_type]
         for speaker, dictionary in self.dictionary_model.load_dictionary_paths().items():
             self.speaker_mapping[speaker] = dictionary.name
             if dictionary.name not in self.dictionary_mapping:
@@ -93,6 +165,17 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     root_dictionary=self,
                     **self.dictionary_options,
                 )
+                if self.phone_set_type not in auto_set:
+                    if (
+                        self.phone_set_type
+                        != self.dictionary_mapping[dictionary.name].phone_set_type
+                    ):
+                        raise DictionaryError(
+                            f"Mismatch found in phone sets: {self.phone_set_type} vs {self.dictionary_mapping[dictionary.name].phone_set_type}"
+                        )
+                else:
+                    self.phone_set_type = self.dictionary_mapping[dictionary.name].phone_set_type
+
                 self.non_silence_phones.update(
                     self.dictionary_mapping[dictionary.name].non_silence_phones
                 )

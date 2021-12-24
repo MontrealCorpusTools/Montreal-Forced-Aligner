@@ -4,18 +4,17 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import soundfile
 
-from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
 from montreal_forced_aligner.exceptions import SoxError
 
 SoundFileInfoDict = Dict[str, Union[int, float, str]]
 
 supported_audio_extensions = [".flac", ".ogg", ".aiff", ".mp3"]
 
-__all__ = ["load_text", "parse_transcription", "find_exts", "get_wav_info"]
+__all__ = ["load_text", "find_exts", "get_wav_info"]
 
 
 def load_text(path: str) -> str:
@@ -35,33 +34,6 @@ def load_text(path: str) -> str:
     with open(path, "r", encoding="utf8") as f:
         text = f.read().strip().lower()
     return text
-
-
-def parse_transcription(text: str, sanitize_function=Optional[SanitizeFunction]) -> List[str]:
-    """
-    Parse an orthographic transcription given punctuation and clitic markers
-
-    Parameters
-    ----------
-    text: str
-        Orthographic text to parse
-    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`, optional
-        Function to sanitize words and strip punctuation
-
-    Returns
-    -------
-    List
-        Parsed orthographic transcript
-    """
-    if sanitize_function is not None:
-        words = [
-            sanitize_function(w)
-            for w in text.split()
-            if w not in sanitize_function.clitic_markers + sanitize_function.compound_markers
-        ]
-    else:
-        words = text.split()
-    return words
 
 
 def find_exts(
@@ -155,7 +127,7 @@ def get_wav_info(file_path: str) -> Dict[str, Any]:
         return_dict["bit_depth"] = int(stdout.strip())
         use_sox = True
     else:
-        with soundfile.SoundFile(file_path, "r") as inf:
+        with soundfile.SoundFile(file_path) as inf:
             subtype = inf.subtype
             if subtype == "FLOAT":
                 bit_depth = 32
@@ -164,14 +136,15 @@ def get_wav_info(file_path: str) -> Dict[str, Any]:
             frames = inf.frames
             sr = inf.samplerate
             duration = frames / sr
-            return_dict = {
-                "num_channels": inf.channels,
-                "type": inf.subtype,
-                "bit_depth": bit_depth,
-                "sample_rate": sr,
-                "duration": duration,
-                "format": inf.format,
-            }
+            channels = inf.channels
+            format = inf.format
+        return_dict = {
+            "num_channels": channels,
+            "bit_depth": bit_depth,
+            "sample_rate": sr,
+            "duration": duration,
+            "format": format,
+        }
         use_sox = False
         if bit_depth != 16:
             use_sox = True

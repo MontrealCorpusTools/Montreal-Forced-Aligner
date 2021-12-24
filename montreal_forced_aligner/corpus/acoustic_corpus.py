@@ -11,6 +11,8 @@ from abc import ABCMeta
 from queue import Empty
 from typing import Dict, List, Optional
 
+import tqdm
+
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import File
@@ -107,6 +109,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.create_corpus_split()
 
     def create_corpus_split(self) -> None:
+        """Create the split directory for the corpus"""
         if self.features_generated:
             super().create_corpus_split()
         else:
@@ -485,7 +488,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         Load a corpus using multiprocessing
         """
-        begin_time = time.time()
+        begin_time = time.process_time()
         manager = mp.Manager()
         job_queue = manager.Queue()
         return_queue = manager.Queue()
@@ -495,19 +498,23 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return_dict["textgrid_read_errors"] = manager.dict()
         finished_adding = Stopped()
         stopped = Stopped()
-        sanitize_function = None
-        if hasattr(self, "construct_sanitize_function"):
-            sanitize_function = self.construct_sanitize_function()
+        try:
+            sanitize_function = self.sanitize_function
+        except AttributeError:
+            sanitize_function = None
         procs = []
-        for _ in range(self.num_jobs):
+        finished_signals = [Stopped() for _ in range(self.num_jobs)]
+        for i in range(self.num_jobs):
             p = CorpusProcessWorker(
+                i,
                 job_queue,
                 return_dict,
                 return_queue,
                 stopped,
                 finished_adding,
-                sanitize_function,
+                finished_signals[i],
                 self.speaker_characters,
+                sanitize_function,
             )
             procs.append(p)
             p.start()
@@ -531,7 +538,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     }
                     all_sound_files.update(other_audio_files)
                     all_sound_files.update(wav_files)
-
+            file_counts = 0
+            begin = time.process_time()
+            self.log_debug(f"Walking through {self.corpus_directory}...")
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                 identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(
                     files
@@ -540,6 +549,12 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
                 if self.stopped.stop_check():
                     break
+                self.log_debug(f"Inside relative root {relative_path}:")
+                self.log_debug(f"    Found {len(identifiers)} identifiers")
+                self.log_debug(f"    Found {len(wav_files)} .wav files")
+                self.log_debug(f"    Found {len(other_audio_files)} other audio files")
+                self.log_debug(f"    Found {len(lab_files)} .lab files")
+                self.log_debug(f"    Found {len(textgrid_files)} .TextGrid files")
                 if not use_audio_directory:
                     all_sound_files = {}
                     wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
@@ -570,24 +585,28 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     if transcription_path is None:
                         self.no_transcription_files.append(wav_path)
                     job_queue.put((file_name, wav_path, transcription_path, relative_path))
+                    file_counts += 1
+            self.log_debug(f"Time to walk directory: {time.process_time() - begin}")
 
             finished_adding.stop()
             self.log_debug("Finished adding jobs!")
-            job_queue.join()
 
-            self.log_debug("Waiting for workers to finish...")
-            for p in procs:
-                p.join()
-
-            while True:
-                try:
-                    file = return_queue.get(timeout=1)
-                    if self.stopped.stop_check():
+            with tqdm.tqdm(total=file_counts) as pbar:
+                while True:
+                    try:
+                        file = return_queue.get(timeout=1)
+                        if self.stopped.stop_check():
+                            continue
+                    except Empty:
+                        for sig in finished_signals:
+                            if not sig.stop_check():
+                                break
+                        else:
+                            break
                         continue
-                except Empty:
-                    break
-
-                self.add_file(File.load_from_mp_data(file))
+                    self.add_file(File.load_from_mp_data(file))
+                    pbar.update(1)
+            self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
 
             if "error" in return_dict:
                 raise return_dict["error"][1]
@@ -620,16 +639,26 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for sig in finished_signals:
+                        if not sig.stop_check():
+                            break
+                    else:
+                        break
         finally:
 
+            finished_adding.stop()
+            job_queue.join()
+            for p in procs:
+                p.join()
             if self.stopped.stop_check():
-                self.log_info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
+                self.log_info(
+                    f"Stopped parsing early ({time.process_time() - begin_time} seconds)"
+                )
                 if self.stopped.source():
                     sys.exit(0)
             else:
                 self.log_debug(
-                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.time() - begin_time} seconds"
+                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.process_time() - begin_time} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:
@@ -638,8 +667,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         begin_time = time.time()
         sanitize_function = None
-        if hasattr(self, "construct_sanitize_function"):
-            sanitize_function = self.construct_sanitize_function()
+        if hasattr(self, "sanitize_function"):
+            sanitize_function = self.sanitize_function
 
         all_sound_files = {}
         use_audio_directory = False
@@ -753,6 +782,7 @@ class AcousticCorpusPronunciationMixin(
         """
         all_begin = time.time()
         self.dictionary_setup()
+        self.log_debug(f"Using {self.phone_set_type}")
         self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
         begin = time.time()
