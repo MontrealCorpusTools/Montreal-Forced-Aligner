@@ -21,6 +21,7 @@ Mixins
    :toctree: generated/
 
    DictionaryMixin
+   TemporaryDictionaryMixin
 
 .. currentmodule:: montreal_forced_aligner.dictionary.pronunciation
 

@@ -949,14 +949,14 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 begin = time.time()
                 self.generate_features()
                 self.log_debug(f"Generated features in {time.time() - begin}")
+                if self.test_transcriptions:
+                    begin = time.time()
+                    self.initialize_utt_fsts()
+                    self.log_debug(f"Initialized utterance FSTs in {time.time() - begin}")
                 begin = time.time()
                 self.calculate_oovs_found()
                 self.log_debug(f"Calculated OOVs in {time.time() - begin}")
 
-            if self.test_transcriptions:
-                begin = time.time()
-                self.initialize_utt_fsts()
-                self.log_debug(f"Initialized utterance FSTs in {time.time() - begin}")
             self.initialized = True
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
@@ -1028,29 +1028,29 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             self.dictionary_setup()
             self._load_corpus()
             self.set_lexicon_word_set(self.corpus_word_set)
-            self.write_lexicon_information()
 
             for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
-            self.initialize_jobs()
-            self.write_corpus_information()
-            self.create_corpus_split()
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
-            self.acoustic_model.validate(self)
-            self.acoustic_model.export_model(self.working_directory)
-            self.acoustic_model.log_details(self.logger)
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
+
+            self.calculate_oovs_found()
+
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
+                self.write_lexicon_information()
+                self.initialize_jobs()
+                self.write_corpus_information()
+                self.create_corpus_split()
+                if self.test_transcriptions:
+                    self.write_lexicon_information(write_disambiguation=True)
                 self.generate_features()
-            self.calculate_oovs_found()
-            if not self.ignore_acoustics and self.test_transcriptions:
-                self.initialize_utt_fsts()
-            else:
-                self.logger.info("Skipping transcription testing")
+                if self.test_transcriptions:
+                    self.initialize_utt_fsts()
+                else:
+                    self.logger.info("Skipping transcription testing")
+            self.acoustic_model.validate(self)
+            self.acoustic_model.export_model(self.working_directory)
+            self.acoustic_model.log_details(self.logger)
 
             self.initialized = True
             self.logger.info("Finished initializing!")

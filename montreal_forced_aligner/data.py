@@ -5,9 +5,10 @@ Data classes
 """
 from __future__ import annotations
 
+import dataclasses
 import enum
+import re
 import typing
-from dataclasses import dataclass
 
 from praatio.utilities.constants import Interval
 
@@ -52,8 +53,343 @@ class PhoneSetType(enum.Enum):
         """Name of phone set"""
         return self.name
 
+    @property
+    def regex_detect(self) -> typing.Optional[re.Pattern]:
+        if self is PhoneSetType.ARPA:
+            return re.compile(r" [A-Z]{2}[012]? ")
+        elif self is PhoneSetType.PINYIN:
+            return re.compile(r" [a-z]{1,3}[12345]? ")
+        elif self is PhoneSetType.IPA:
+            return re.compile(r" [əɚʊɤʁ˥˩ɹɔɛʉɒʃɕŋʰ̚ʲɾ] ")
+        return None
 
-@dataclass
+    @property
+    def base_phone_regex(self) -> typing.Optional[re.Pattern]:
+        if self is PhoneSetType.ARPA:
+            return re.compile(r"([A-Z]{2})[012]")
+        elif self is PhoneSetType.PINYIN:
+            return re.compile(r"([a-z]{1,3})[12345]")
+        elif self is PhoneSetType.IPA:
+            return re.compile(r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
+        return None
+
+    @property
+    def extra_short_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.ARPA:
+            return {"AH0", "IH0", "ER0", "UH0"}
+        elif self is PhoneSetType.IPA:
+            return {"ʔ", "ə", "ɚ", "ɾ", "p̚", "t̚", "k̚"}
+        return set()
+
+    @property
+    def affricate_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.ARPA:
+            return {"CH", "JH"}
+        if self is PhoneSetType.IPA:
+            return {
+                "ts",
+                "dz",
+                "tʃ",
+                "dʒ",
+                "tɕ",
+                "dʑ",
+                "tʂ",
+                "ʈʂ",
+                "dʐ",
+                "ɖʐ",
+                "cç",
+                "ɟʝ",
+                "kx",
+                "ɡɣ",
+                "tç",
+                "dʝ",
+            }
+        return set()
+
+    @property
+    def stop_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.ARPA:
+            return {"B", "D", "G"}
+        if self is PhoneSetType.IPA:
+            return {"p", "b", "t", "d", "ʈ", "ɖ", "c", "ɟ", "k", "ɡ", "q", "ɢ"}
+        return set()
+
+    @property
+    def diphthong_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.ARPA:
+            return {
+                "AY0",
+                "AY1",
+                "AY2",
+                "AW0",
+                "AW1",
+                "AW2",
+                "OY0",
+                "OY1",
+                "OY2",
+                "EY0",
+                "EY1",
+                "EY2",
+                "OW0",
+                "OW1",
+                "OW2",
+            }
+        if self is PhoneSetType.IPA:
+            return {"əw", "eɪ", "aʊ", "oʊ", "aɪ", "ɔɪ"}
+        return set()
+
+    @property
+    def extra_questions(self) -> typing.Dict[str, typing.Set[str]]:
+        extra_questions = {}
+        if self is PhoneSetType.ARPA:
+            extra_questions["bilabial_variation"] = {"P", "B"}
+            extra_questions["dental_lenition"] = {"D", "DH"}
+            extra_questions["flapping"] = {"T", "D"}
+            extra_questions["nasal_variation"] = {"M", "N", "NG"}
+            extra_questions["voiceless_sibilant_variation"] = {"CH", "SH", "S"}
+            extra_questions["voiceless_sibilant_variation"] = {"JH", "ZH", "Z"}
+            extra_questions["voiceless_fricative_variation"] = {"F", "TH", "HH", "K"}
+            extra_questions["voiced_fricative_variation"] = {"V", "DH", "HH", "G"}
+            extra_questions["dorsal_variation"] = {"HH", "K", "G"}
+            extra_questions["rhotic_variation"] = {"ER0", "ER1", "ER2", "R"}
+
+            extra_questions["low_back_variation"] = {
+                "AO0",
+                "AO1",
+                "AO2",
+                "AA0",
+                "AA1",
+                "AA2",
+            }
+            extra_questions["central_variation"] = {
+                "ER0",
+                "ER1",
+                "ER2",
+                "AH0",
+                "AH1",
+                "AH2",
+                "UH0",
+                "UH1",
+                "UH2",
+                "IH0",
+                "IH1",
+                "IH2",
+            }
+            extra_questions["high_back_variation"] = {
+                "UW1",
+                "UW2",
+                "UW0",
+                "UH1",
+                "UH2",
+                "UH0",
+            }
+
+            # extra stress questions
+            vowels = [
+                "AA",
+                "AE",
+                "AH",
+                "AO",
+                "AW",
+                "AY",
+                "EH",
+                "ER",
+                "EY",
+                "IH",
+                "IY",
+                "OW",
+                "OY",
+                "UH",
+                "UW",
+            ]
+            for i in range(3):
+                extra_questions[f"stress_{i}"] = {f"{x}{i}" for x in vowels}
+        elif self is PhoneSetType.IPA:
+            extra_questions["dental_lenition"] = {"ð", "d"}
+            extra_questions["flapping"] = {"d", "t", "ɾ"}
+            extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
+            extra_questions["labial_lenition"] = {"β", "b"}
+            extra_questions["velar_lenition"] = {"ɣ", "ɡ"}
+            extra_questions["nasal_variation"] = {
+                "m",
+                "n",
+                "ɲ",
+                "ŋ",
+                "ɴ",
+                "ɳ",
+                "ɱ",
+                "ɴ",
+                "ɾ",
+                "ɰ̃",
+            }
+            extra_questions["trill_variation"] = {"r", "ʁ", "ɾ", "ɽ", "ɽr", "ɢ̆", "ʀ", "ɺ", "ɭ"}
+            extra_questions["syllabic_rhotic_variation"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
+            extra_questions["uvular_variation"] = {"ʁ", "x", "χ", "h", "ɣ", "ɰ", "ʀ"}
+            extra_questions["lateral_variation"] = {"l", "ɫ", "ʎ", "ʟ", "ɭ"}
+
+            extra_questions["dorsal_stop_variation"] = {
+                "kʰ",
+                "k",
+                "kʼ",
+                "k͈",
+                "k̚",
+                "kʲ",
+                "ɡ",
+                "ɡʲ",
+                "ɠ",
+                "ɟ",
+                "cʰ",
+                "c",
+                "cʼ",
+                "q",
+                "qʼ",
+                "qʰ",
+                "ɢ",
+            }
+            extra_questions["bilabial_stop_variation"] = {"pʰ", "b", "ɓ", "p", "pʼ", "p͈", "p̚"}
+            extra_questions["alveolar_stop_variation"] = {
+                "tʰ",
+                "t",
+                "tʼ",
+                "d",
+                "ʈʼ" "ɗ",
+                "t͈",
+                "t̚",
+            }
+            extra_questions["voiceless_fricative_variation"] = {
+                "θ",
+                "θʼ",
+                "f",
+                "fʼ",
+                "ɸ",
+                "ɸʼ",
+                "ç",
+                "çʼ",
+                "x",
+                "xʼ",
+                "χ",
+                "χʼ",
+                "h",
+            }
+            extra_questions["voiced_fricative_variation"] = {"v", "ð", "β", "ʋ"}
+            extra_questions["voiceless_affricate_variation"] = {
+                "ɕ",
+                "ɕʼ",
+                "ʂ",
+                "ʂʼ",
+                "s",
+                "sʼ",
+                "ʃ",
+                "ʃʼ",
+                "tɕ",
+                "tɕʼ",
+                "tɕʰ",
+                "tɕ͈",
+                "ʈʂ",
+                "ʈʂʼ",
+                "ʈʂʰ",
+                "ts",
+                "tsʼ",
+                "tsʰ",
+                "tʃ",
+                "tʃʼ",
+                "tʃʰ",
+            }
+            extra_questions["voiced_affricate_variation"] = {
+                "ʐ",
+                "ʑ",
+                "z",
+                "ʒ",
+                "ɖʐ",
+                "dʑ",
+                "dz",
+                "dʒ",
+            }
+
+            extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ", "ɔ"}
+            extra_questions["mid_back_vowel_variation"] = {"oʊ", "ɤ", "o", "ɔ"}
+            extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e", "œ", "ø"}
+            extra_questions["high_front_variation"] = {"i", "y", "ɪ", "ʏ", "ɨ", "ʉ"}
+            extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ", "ʉ"}
+            extra_questions["central_variation"] = {
+                "ə",
+                "ɤ",
+                "ɚ",
+                "ʌ",
+                "ʊ",
+                "ɵ",
+                "ɐ",
+                "ɞ",
+                "ɘ",
+                "ɝ",
+            }
+        return extra_questions
+
+
+@dataclasses.dataclass
+class SoundFileInformation:
+    """
+    Data class for sound file information with format, duration, number of channels, bit depth, and
+        sox_string for use in Kaldi feature extraction if necessary
+
+    Parameters
+    ----------
+    format: str
+        Format of the sound file
+    sample_rate: int
+        Sample rate
+    duration: float
+        Duration
+    sample_rate: int
+        Sample rate
+    bit_depth: int
+        Bit depth
+    sox_string: str
+        String to use for loading with sox
+    """
+
+    __slots__ = ["format", "sample_rate", "duration", "num_channels", "bit_depth", "sox_string"]
+    format: str
+    sample_rate: int
+    duration: float
+    num_channels: int
+    bit_depth: int
+    sox_string: str
+
+    @property
+    def meta(self) -> typing.Dict[str, typing.Any]:
+        return dataclasses.asdict(self)
+
+
+@dataclasses.dataclass
+class FileExtensions:
+    """
+    Data class for information about the current directory
+
+    Parameters
+    ----------
+    identifiers: list[str]
+        List of identifiers
+    lab_files: dict[str, str]
+        Mapping of identifiers to lab files
+    textgrid_files: dict[str, str]
+        Mapping of identifiers to TextGrid files
+    wav_files: dict[str, str]
+        Mapping of identifiers to wav files
+    other_audio_files: dict[str, str]
+        Mapping of identifiers to other audio files
+    """
+
+    __slots__ = ["identifiers", "lab_files", "textgrid_files", "wav_files", "other_audio_files"]
+
+    identifiers: typing.List[str]
+    lab_files: typing.Dict[str, str]
+    textgrid_files: typing.Dict[str, str]
+    wav_files: typing.Dict[str, str]
+    other_audio_files: typing.Dict[str, str]
+
+
+@dataclasses.dataclass
 class Pronunciation:
     """
     Data class for information about a pronunciation string
@@ -95,8 +431,11 @@ class Pronunciation:
     def __repr__(self):
         return f"<Pronunciation /{' '.join(self.pronunciation)}/>"
 
+    def __bool__(self) -> bool:
+        return bool(self.pronunciation)
+
     def __str__(self):
-        return f"/{' '.join(self.pronunciation)}/"
+        return f"{' '.join(self.pronunciation)}"
 
     def __eq__(self, other: Pronunciation):
         return self.pronunciation == other.pronunciation
@@ -108,7 +447,7 @@ class Pronunciation:
         return self.pronunciation > other.pronunciation
 
 
-@dataclass
+@dataclasses.dataclass
 class Word:
     """
     Data class for information about a word and its pronunciations
@@ -117,7 +456,7 @@ class Word:
     ----------
     orthography: str
         Orthographic string for the word
-    pronunciations: set[:class:`~montreal_forced_aligner.dictionary.pronunciation.Pronunciation`]
+    pronunciations: set[:class:`~montreal_forced_aligner.data.Pronunciation`]
         Set of pronunciations for the word
     """
 
@@ -145,7 +484,7 @@ class Word:
             yield p
 
 
-@dataclass(order=True, frozen=True)
+@dataclasses.dataclass
 class UtteranceData:
     """
     Data class for utterance information
@@ -189,17 +528,8 @@ class UtteranceData:
     normalized_text: typing.List[str]
     oovs: typing.Set[str]
 
-    def __getstate__(self) -> typing.Dict[str, typing.Any]:
-        """For pickling"""
-        return dict((slot, getattr(self, slot)) for slot in self.__slots__ if hasattr(self, slot))
 
-    def __setstate__(self, state) -> None:
-        """For pickling"""
-        for slot, value in state.items():
-            object.__setattr__(self, slot, value)  # <- use object.__setattr__
-
-
-@dataclass(order=True, frozen=True)
+@dataclasses.dataclass
 class FileData:
     """
     Data class for file information
@@ -235,21 +565,12 @@ class FileData:
     wav_path: typing.Optional[str]
     text_path: typing.Optional[str]
     relative_path: str
-    wav_info: typing.Dict[str, typing.Any]
+    wav_info: SoundFileInformation
     speaker_ordering: typing.List[str]
     utterances: typing.List[UtteranceData]
 
-    def __getstate__(self) -> typing.Dict[str, typing.Any]:
-        """For pickling"""
-        return dict((slot, getattr(self, slot)) for slot in self.__slots__ if hasattr(self, slot))
 
-    def __setstate__(self, state) -> None:
-        """For pickling"""
-        for slot, value in state.items():
-            object.__setattr__(self, slot, value)  # <- use object.__setattr__
-
-
-@dataclass
+@dataclasses.dataclass
 class CtmInterval:
     """
     Data class for intervals derived from CTM files
@@ -285,6 +606,9 @@ class CtmInterval:
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
 
+    def __add__(self, o: str):
+        return self.label + o
+
     def shift_times(self, offset: float):
         """
         Shift times of the interval based on some offset (i.e., segments in Kaldi)
@@ -308,4 +632,4 @@ class CtmInterval:
         """
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
-        return Interval(self.begin, self.end, self.label)
+        return Interval(round(self.begin, 4), round(self.end, 4), self.label)

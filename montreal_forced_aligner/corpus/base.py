@@ -20,6 +20,7 @@ from montreal_forced_aligner.corpus.classes import (
     UtteranceCollection,
 )
 from montreal_forced_aligner.corpus.multiprocessing import Job
+from montreal_forced_aligner.data import SoundFileInformation
 from montreal_forced_aligner.exceptions import CorpusError
 from montreal_forced_aligner.helper import output_mapping
 from montreal_forced_aligner.utils import Stopped
@@ -225,6 +226,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         if utterance.file not in self.files:
             self.files.add_file(utterance.file)
         file = self.files[utterance.file.name]
+        utterance.file = file
         file.add_utterance(utterance)
         utterance.file = file
 
@@ -436,7 +438,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.files[entry["name"]].speaker_ordering = [
                 self.speakers[x] for x in entry["speaker_ordering"]
             ]
-            self.files[entry["name"]].wav_info = entry["wav_info"]
+            self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
 
         with open(utterances_path, "r", encoding="utf8") as f:
             utterances_data = yaml.safe_load(f)
@@ -456,6 +458,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.utterances[u.name] = u
             if u.text:
                 self.word_counts.update(u.text.split())
+            if u.normalized_text:
+                self.word_counts.update(u.normalized_text)
+            if entry.get("word_error_rate", None) is not None:
+                u.word_error_rate = entry["word_error_rate"]
+                u.transcription_text = entry["transcription_text"]
             self.utterances[u.name].features = entry["features"]
             self.utterances[u.name].ignored = entry["ignored"]
             self.add_utterance(u)

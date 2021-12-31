@@ -6,11 +6,14 @@ Textgrid utilities
 from __future__ import annotations
 
 import os
+import re
+import typing
 from typing import Dict, List
 
 from praatio import textgrid as tgio
 
-from .data import CtmInterval
+from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.exceptions import TextGridParseError
 
 __all__ = [
     "process_ctm_line",
@@ -71,6 +74,42 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[st
         with open(error_log, "a", encoding="utf8") as f:
             f.write(f"{file_name}:\n")
             f.write(f"{result}\n\n")
+
+
+def parse_aligned_textgrid(
+    path: str, root_speaker: typing.Optional[str] = None
+) -> Dict[str, List[CtmInterval]]:
+    tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
+    data = {}
+    num_tiers = len(tg.tierNameList)
+    if num_tiers == 0:
+        raise TextGridParseError(path, "Number of tiers parsed was zero")
+    phone_tier_pattern = re.compile(r"(.*) ?- ?phones")
+    for tier_name in tg.tierNameList:
+        ti = tg.tierDict[tier_name]
+        if not isinstance(ti, tgio.IntervalTier):
+            continue
+        if "phones" not in tier_name:
+            continue
+        m = phone_tier_pattern.match(tier_name)
+        if m:
+            speaker_name = m.groups()[0]
+        elif root_speaker:
+            speaker_name = root_speaker
+        else:
+            speaker_name = ""
+        if speaker_name not in data:
+            data[speaker_name] = []
+        for begin, end, text in ti.entryList:
+            text = text.lower().strip()
+            if not text:
+                continue
+            begin, end = round(begin, 4), round(end, 4)
+            if end - begin < 0.01:
+                continue
+            interval = CtmInterval(begin, end, text, speaker_name)
+            data[speaker_name].append(interval)
+    return data
 
 
 def export_textgrid(

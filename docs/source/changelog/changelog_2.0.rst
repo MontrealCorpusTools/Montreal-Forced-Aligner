@@ -18,8 +18,10 @@ Beta releases
 - Added better progress bars for corpus loading and G2P training
 - Changed the default behavior of G2P generation to use a threshold system rather than returning a single top pronunciation.  The threshold defaults to 0.99, but can be specified through ``--g2p_threshold``.  Specifying number of pronunciations will override this behavior.
 - Changed the behavior of G2P evaluation to check whether the generated hypothesis is in the golden pronunciation set, so languages with pronunciation variation will be less penalized in evaluation
-- Added :class:`~montreal_forced_aligner.dictionary.pronunciation.Word` and :class:`~montreal_forced_aligner.dictionary.pronunciation.Pronunciation` data classes
+- Added :class:`~montreal_forced_aligner.data.Word` and :class:`~montreal_forced_aligner.data.Pronunciation` data classes
 - Refactored and simplified TextGrid export process
+- Removed the ``multilingual_ipa`` mode in favor of a more general approach to better modeling phones
+- Added functionality to evaluate alignments against golden alignment set
 
 2.0.0b10
 --------
@@ -133,7 +135,7 @@ Beta release!
 
 - Add support for aligning mp3 files
 - Fix for log error in 0 probability entries in probabilistic lexicons
-- Add support for multilingual IPA mode (see :ref:`multilingual_ipa` for more details)
+- Add support for multilingual IPA mode
 - Add support for specifying per-speaker pronunciation dictionaries (see :ref:`speaker_dictionaries` for more details)
 - Fixed cases where TextGrid parsing errors were misattributed to sound file issues, and these should be properly detected
   by the validator now

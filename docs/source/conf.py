@@ -135,7 +135,6 @@ autodoc_type_aliases = {
     "MultispeakerDictionary": "montreal_forced_aligner.dictionary.MultispeakerDictionary",
     "Trainer": "montreal_forced_aligner.abc.Trainer",
     "Aligner": "montreal_forced_aligner.abc.Aligner",
-    "DictionaryData": "montreal_forced_aligner.dictionary.DictionaryData",
     "Utterance": "montreal_forced_aligner.corpus.classes.Utterance",
     "File": "montreal_forced_aligner.corpus.classes.File",
     "FeatureConfig": "montreal_forced_aligner.config.FeatureConfig",

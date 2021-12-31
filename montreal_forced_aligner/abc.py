@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import time
+import typing
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -73,6 +74,20 @@ CorpusMappingType: Union[OneToOneMappingType, OneToManyMappingType]
 ScpType: Union[List[Tuple[str, str]], List[Tuple[str, List[Any]]]]
 
 
+class KaldiFunction(metaclass=abc.ABCMeta):
+    """
+    Abstract class for running Kaldi functions
+    """
+
+    @abc.abstractmethod
+    def __init__(self, args: typing.NamedTuple):
+        ...
+
+    @abc.abstractmethod
+    def run(self):
+        ...
+
+
 class MfaCorpusClass(metaclass=abc.ABCMeta):
     """
     Abstract class for MFA corpus classes
@@ -105,6 +120,9 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
 
             temporary_directory = get_temporary_directory()
         self.temporary_directory = temporary_directory
+        self._corpus_output_directory = None
+        self._dictionary_output_directory = None
+        self._language_model_output_directory = None
 
     @property
     @abc.abstractmethod
@@ -127,12 +145,35 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
     @property
     def corpus_output_directory(self) -> str:
         """Temporary directory containing all corpus information"""
+        if self._corpus_output_directory:
+            return self._corpus_output_directory
         return os.path.join(self.output_directory, f"{self.data_source_identifier}")
+
+    @corpus_output_directory.setter
+    def corpus_output_directory(self, directory: str) -> None:
+        self._corpus_output_director = directory
 
     @property
     def dictionary_output_directory(self) -> str:
         """Temporary directory containing all dictionary information"""
+        if self._dictionary_output_directory:
+            return self._dictionary_output_directory
         return os.path.join(self.output_directory, "dictionary")
+
+    @dictionary_output_directory.setter
+    def dictionary_output_directory(self, directory: str) -> None:
+        self._dictionary_output_directory = directory
+
+    @property
+    def language_model_output_directory(self) -> str:
+        """Temporary directory containing all dictionary information"""
+        if self._language_model_output_directory:
+            return self._language_model_output_directory
+        return os.path.join(self.output_directory, "language_model")
+
+    @language_model_output_directory.setter
+    def language_model_output_directory(self, directory: str) -> None:
+        self._language_model_output_directory = directory
 
 
 class MfaWorker(metaclass=abc.ABCMeta):

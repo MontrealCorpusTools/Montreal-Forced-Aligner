@@ -4,13 +4,14 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Any, Dict, List, Tuple, Union
+import typing
 
 import soundfile
 
+from montreal_forced_aligner.data import FileExtensions, SoundFileInformation
 from montreal_forced_aligner.exceptions import SoxError
 
-SoundFileInfoDict = Dict[str, Union[int, float, str]]
+SoundFileInfoDict = typing.Dict[str, typing.Union[int, float, str]]
 
 supported_audio_extensions = [".flac", ".ogg", ".aiff", ".mp3"]
 
@@ -36,9 +37,7 @@ def load_text(path: str) -> str:
     return text
 
 
-def find_exts(
-    files: List[str],
-) -> Tuple[List[str], Dict[str, str], Dict[str, str], Dict[str, str], Dict[str, str]]:
+def find_exts(files: typing.List[str]) -> FileExtensions:
     """
     Find and group sound file extensions and transcription file extensions
 
@@ -49,43 +48,31 @@ def find_exts(
 
     Returns
     -------
-    list[str]
-        File name identifiers
-    dict[str, str]
-        Wav files
-    dict[str, str]
-        Lab and text files
-    dict[str, str]
-        TextGrid files
-    dict[str, str]
-        Other audio files (flac, mp3, etc)
+    :class:`~montreal_forced_aligner.data.FileExtensions`
+        Data class for files found
     """
-    wav_files = {}
-    other_audio_files = {}
-    lab_files = {}
-    textgrid_files = {}
-    identifiers = []
+    exts = FileExtensions([], {}, {}, {}, {})
     for full_filename in files:
         filename, fext = os.path.splitext(full_filename)
         fext = fext.lower()
         if fext == ".wav":
-            wav_files[filename] = full_filename
+            exts.wav_files[filename] = full_filename
         elif fext == ".lab":
-            lab_files[filename] = full_filename
+            exts.lab_files[filename] = full_filename
         elif (
-            fext == ".txt" and filename not in lab_files
+            fext == ".txt" and filename not in exts.lab_files
         ):  # .lab files have higher priority than .txt files
-            lab_files[filename] = full_filename
+            exts.lab_files[filename] = full_filename
         elif fext == ".textgrid":
-            textgrid_files[filename] = full_filename
+            exts.textgrid_files[filename] = full_filename
         elif fext in supported_audio_extensions and shutil.which("sox") is not None:
-            other_audio_files[filename] = full_filename
-        if filename not in identifiers:
-            identifiers.append(filename)
-    return identifiers, wav_files, lab_files, textgrid_files, other_audio_files
+            exts.other_audio_files[filename] = full_filename
+        if filename not in exts.identifiers:
+            exts.identifiers.append(filename)
+    return exts
 
 
-def get_wav_info(file_path: str) -> Dict[str, Any]:
+def get_wav_info(file_path: str) -> SoundFileInformation:
     """
     Get sound file information
 
@@ -96,7 +83,7 @@ def get_wav_info(file_path: str) -> Dict[str, Any]:
 
     Returns
     -------
-    dict[str, Any]
+    :class:`~montreal_forced_aligner.data.SoundFileInformation`
         Sound information for format, duration, number of channels, bit depth, and
         sox_string for use in Kaldi feature extraction if necessary
     """
@@ -109,22 +96,23 @@ def get_wav_info(file_path: str) -> Dict[str, Any]:
         stdout, stderr = sox_proc.communicate()
         if stderr.startswith("soxi FAIL formats"):
             raise SoxError("No support for mp3 in sox")
-        return_dict = {"duration": float(stdout.strip()), "format": "MP3"}
+        duration = float(stdout.strip())
+        format = "MP3"
         sox_proc = subprocess.Popen(
             ["soxi", "-r", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         )
         stdout, stderr = sox_proc.communicate()
-        return_dict["sample_rate"] = int(stdout.strip())
+        sample_rate = int(stdout.strip())
         sox_proc = subprocess.Popen(
             ["soxi", "-c", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         )
         stdout, stderr = sox_proc.communicate()
-        return_dict["num_channels"] = int(stdout.strip())
+        num_channels = int(stdout.strip())
         sox_proc = subprocess.Popen(
             ["soxi", "-p", file_path], stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         )
         stdout, stderr = sox_proc.communicate()
-        return_dict["bit_depth"] = int(stdout.strip())
+        bit_depth = int(stdout.strip())
         use_sox = True
     else:
         with soundfile.SoundFile(file_path) as inf:
@@ -134,25 +122,19 @@ def get_wav_info(file_path: str) -> Dict[str, Any]:
             else:
                 bit_depth = int(subtype.split("_")[-1])
             frames = inf.frames
-            sr = inf.samplerate
-            duration = frames / sr
-            channels = inf.channels
+            sample_rate = inf.samplerate
+            duration = frames / sample_rate
+            num_channels = inf.channels
             format = inf.format
-        return_dict = {
-            "num_channels": channels,
-            "bit_depth": bit_depth,
-            "sample_rate": sr,
-            "duration": duration,
-            "format": format,
-        }
         use_sox = False
         if bit_depth != 16:
             use_sox = True
-        if return_dict["format"] != "WAV":
+        if format != "WAV":
             use_sox = True
         if not subtype.startswith("PCM"):
             use_sox = True
-    return_dict["sox_string"] = ""
+    sox_string = ""
     if use_sox:
-        return_dict["sox_string"] = f"sox {file_path} -t wav -b 16 - |"
-    return return_dict
+        sox_string = f"sox {file_path} -t wav -b 16 - |"
+
+    return SoundFileInformation(format, sample_rate, duration, num_channels, bit_depth, sox_string)

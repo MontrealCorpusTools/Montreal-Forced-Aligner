@@ -270,7 +270,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 [thirdparty_binary("gmm-info"), "--print-args=false", self.model_path],
                 stderr=log_file,
                 stdout=subprocess.PIPE,
-                text=True,
+                encoding="utf8",
             )
             stdout, stderr = proc.communicate()
             matches = re.search(r"gaussians (\d+)", stdout)

@@ -6,9 +6,10 @@ Helper functions
 from __future__ import annotations
 
 import functools
+import itertools
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 import numpy
 from colorama import Fore, Style
@@ -674,15 +675,14 @@ def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
             return 0, len(h)
     edits = 100000
     best_length = 100000
-    for g in gold.pronunciations:
-        for h in hypo.pronunciations:
-            e = edit_distance(g.pronunciation, h.pronunciation)
-            if e < edits:
-                edits = e
-                best_length = len(g)
-            if not edits:
-                best_length = len(g)
-                break
+    for (g, h) in itertools.product(gold.pronunciations, hypo.pronunciations):
+        e = edit_distance(g.pronunciation, h.pronunciation)
+        if e < edits:
+            edits = e
+            best_length = len(g)
+        if not edits:
+            best_length = len(g)
+            break
     return edits, best_length
 
 
@@ -719,7 +719,9 @@ def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, i
     return edits, len(gold)
 
 
-def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None) -> int:
+def compare_labels(
+    ref: str, test: str, silence_phone: str, mapping: Optional[Dict[str, str]] = None
+) -> int:
     """
 
     Parameters
@@ -735,8 +737,14 @@ def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None
     """
     if ref == test:
         return 0
-    if mapping is not None and test in mapping and mapping[test] == ref:
-        return 0
+    if ref == silence_phone or test == silence_phone:
+        return 10
+    if mapping is not None and test in mapping:
+        if isinstance(mapping[test], str):
+            if mapping[test] == ref:
+                return 0
+        elif ref in mapping[test]:
+            return 0
     ref = ref.lower()
     test = test.lower()
     if ref == test:
@@ -747,6 +755,7 @@ def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None
 def overlap_scoring(
     first_element: CtmInterval,
     second_element: CtmInterval,
+    silence_phone: str,
     mapping: Optional[Dict[str, str]] = None,
 ) -> float:
     r"""
@@ -766,9 +775,9 @@ def overlap_scoring(
 
     Parameters
     ----------
-    first_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+    first_element: :class:`~montreal_forced_aligner.data.CtmInterval`
         First CTM interval to compare
-    second_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+    second_element: :class:`~montreal_forced_aligner.data.CtmInterval`
         Second CTM interval
     mapping: Optional[dict[str, str]]
         Optional mapping of phones to treat as matches even if they have different symbols
@@ -781,14 +790,14 @@ def overlap_scoring(
     """
     begin_diff = abs(first_element.begin - second_element.begin)
     end_diff = abs(first_element.end - second_element.end)
-    label_diff = compare_labels(first_element.label, second_element.label, mapping)
+    label_diff = compare_labels(first_element.label, second_element.label, silence_phone, mapping)
     return -1 * (begin_diff + end_diff + label_diff)
 
 
 def align_phones(
     ref: List[CtmInterval],
     test: List[CtmInterval],
-    silence_phones: Set[str],
+    silence_phone: str,
     custom_mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[float], Optional[int], Optional[int]]:
     """
@@ -797,9 +806,9 @@ def align_phones(
 
     Parameters
     ----------
-    ref: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+    ref: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of CTM intervals as reference
-    test: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+    test: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of CTM intervals to compare to reference
     silence_phones: set[str]
         Set of silence phones (these are ignored in the final calculation)
@@ -815,14 +824,14 @@ def align_phones(
     int
         Number of deletions
     """
-    try:
-        from Bio import pairwise2
-    except ImportError:
-        return None, None, None
+    from Bio import pairwise2
+
     if custom_mapping is None:
-        score_func = overlap_scoring
+        score_func = functools.partial(overlap_scoring, silence_phone=silence_phone)
     else:
-        score_func = functools.partial(overlap_scoring, mapping=custom_mapping)
+        score_func = functools.partial(
+            overlap_scoring, silence_phone=silence_phone, mapping=custom_mapping
+        )
     alignments = pairwise2.align.globalcs(
         ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
     )
@@ -834,16 +843,20 @@ def align_phones(
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
             if sa == "-":
-                if sb.label not in silence_phones:
+                if sb.label != silence_phone:
                     num_insertions += 1
                 else:
                     continue
             elif sb == "-":
-                if sa.label not in silence_phones:
+                if sa.label != silence_phone:
                     num_deletions += 1
                 else:
                     continue
             else:
                 overlap_sum += abs(sa.begin - sb.begin) + abs(sa.end - sb.end)
                 overlap_count += 1
-    return overlap_sum / overlap_count, num_insertions, num_deletions
+    if overlap_count:
+        score = overlap_sum / overlap_count
+    else:
+        score = None
+    return score, num_insertions, num_deletions

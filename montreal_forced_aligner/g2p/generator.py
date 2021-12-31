@@ -130,7 +130,7 @@ class Rewriter:
     def __call__(self, i: str) -> List[Tuple[str, ...]]:  # pragma: no cover
         """Call the rewrite function"""
         hypotheses = self.rewrite(i)
-        return [tuple(self.split_pattern.split(x)) for x in hypotheses]
+        return [tuple(y for y in self.split_pattern.split(x) if y) for x in hypotheses]
 
 
 class RewriterWorker(mp.Process):
@@ -146,7 +146,6 @@ class RewriterWorker(mp.Process):
         rewriter: Rewriter,
         counter: Counter,
         stopped: Stopped,
-        finished_signal: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_q = job_q
@@ -155,7 +154,7 @@ class RewriterWorker(mp.Process):
         self.rewriter = rewriter
         self.counter = counter
         self.stopped = stopped
-        self.finished_signal = finished_signal
+        self.finished_signal = Stopped()
 
     def run(self) -> None:
         """Run the rewriting function"""
@@ -219,19 +218,19 @@ class OrthographyGenerator(G2PTopLevelMixin):
         For top level G2P generation parameters
     """
 
-    def generate_pronunciations(self) -> Dict[str, List[str]]:
+    def generate_pronunciations(self) -> Dict[str, Word]:
         """
         Generate pronunciations for the word set
 
         Returns
         -------
-        dict[str, list[str]]
+        dict[str, Word]
             Mapping of words to their "pronunciation"
         """
         pronunciations = {}
         for word in self.words_to_g2p:
-            pronunciation = list(word)
-            pronunciations[word] = pronunciation
+            pronunciation = Pronunciation(tuple(word), 1, None, None, None)
+            pronunciations[word] = Word(word, {pronunciation})
         return pronunciations
 
 
@@ -312,7 +311,9 @@ class PyniniGenerator(G2PTopLevelMixin):
                     pron = rewriter(w)
                 except rewrite.Error:
                     continue
-                to_return[word] = Word(w, {Pronunciation(p, 1, None, None, None) for p in pron})
+                to_return[word] = Word(
+                    w, {Pronunciation(p, 1, None, None, None) for p in pron if p}
+                )
             self.log_debug(
                 f"Skipping {skipped_words} words for containing the following graphemes: "
                 f"{comma_join(sorted(missing_graphemes))}"
@@ -339,8 +340,7 @@ class PyniniGenerator(G2PTopLevelMixin):
             return_dict = manager.dict()
             procs = []
             counter = Counter()
-            finished_signals = [Stopped() for _ in range(self.num_jobs)]
-            for i in range(self.num_jobs):
+            for _ in range(self.num_jobs):
                 p = RewriterWorker(
                     job_queue,
                     return_dict,
@@ -348,7 +348,6 @@ class PyniniGenerator(G2PTopLevelMixin):
                     rewriter,
                     counter,
                     stopped,
-                    finished_signals[i],
                 )
                 procs.append(p)
                 p.start()
@@ -367,8 +366,8 @@ class PyniniGenerator(G2PTopLevelMixin):
                     if value != last_value:
                         pbar.update(value - last_value)
                         last_value = value
-                        for sig in finished_signals:
-                            if not sig.stop_check():
+                        for proc in procs:
+                            if not proc.finished_signal.stop_check():
                                 break
                         else:
                             break
@@ -380,7 +379,7 @@ class PyniniGenerator(G2PTopLevelMixin):
             for w in self.words_to_g2p:
                 if w in return_dict:
                     to_return[w] = Word(
-                        w, {Pronunciation(p, 1, None, None, None) for p in return_dict[w]}
+                        w, {Pronunciation(p, 1, None, None, None) for p in return_dict[w] if p}
                     )
         self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return
@@ -413,14 +412,14 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         return self.word_list
 
     @property
+    def data_source_identifier(self) -> str:
+        """Data directory"""
+        return ""
+
+    @property
     def data_directory(self) -> str:
         """Data directory"""
         return self.working_directory
-
-    @property
-    def data_source_identifier(self) -> str:
-        """Name of the word list file"""
-        return "validation"
 
     def setup(self) -> None:
         """Set up the G2P generator"""

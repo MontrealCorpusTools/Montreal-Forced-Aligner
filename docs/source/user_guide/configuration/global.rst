@@ -59,8 +59,6 @@ Dictionary and text parsing options
 
 This sections details configuration options related to how MFA normalizes text and performs dictionary look up.  Punctuation is stripped from all words, so if a character is part of a language's orthography, modifying the :code:`punctuation` parameter to exclude that character would keep that character in the words. See more examples of how these :code:`punctuation`, :code:`clitic_markers`, and :code:`compound_markers` are used in :ref:`text_normalization`.
 
-The :code:`multilingual_ipa`, :code:`strip_diacritics`, and :code:`digraphs` are all used as part of :ref:`multilingual_ipa`.
-
 .. csv-table::
    :header: "Parameter", "Default value", "Notes"
    :escape: '
@@ -77,7 +75,4 @@ The :code:`multilingual_ipa`, :code:`strip_diacritics`, and :code:`digraphs` are
    "punctuation", "、。।，@<>'"'(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=", "Characters to treat as punctuation and strip from around words"
    "clitic_markers", "'''’", "Characters to treat as clitic markers, will be collapsed to the first character in the string"
    "compound_markers", "\-", "Characters to treat as marker in compound words (i.e., doesn't need to be preserved like for clitics)"
-   "multilingual_ipa", False, "Flag for enabling multilingual IPA mode, see :ref:`multilingual_ipa` for more details"
-   "strip_diacritics", "/iː/ /iˑ/ /ĭ/ /i̯/  /t͡s/ /t‿s/ /t͜s/ /n̩/", "IPA diacritics to strip in multilingual IPA mode (phone symbols for proper display, when specifying them just have the diacritic)"
-   "digraphs", "[dt][szʒʃʐʑʂɕç], [aoɔe][ʊɪ]", "Digraphs to split up in multilingual IPA mode"
    "brackets", "('[', ']'), ('{', '}'), ('<', '>'), ('(', ')')", "Punctuation to keep as bracketing a whole word, i.e., a restart, disfluency, etc"

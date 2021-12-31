@@ -21,6 +21,7 @@ from montreal_forced_aligner.corpus.classes import (
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import output_mapping
+from montreal_forced_aligner.utils import Stopped
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
@@ -32,7 +33,6 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MappingType, ReversedMappingType, WordsType
     from montreal_forced_aligner.corpus.classes import Speaker
     from montreal_forced_aligner.dictionary import PronunciationDictionaryMixin
-    from montreal_forced_aligner.utils import Stopped
 
 
 __all__ = ["CorpusProcessWorker", "Job"]
@@ -64,7 +64,6 @@ class CorpusProcessWorker(mp.Process):
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
-        finished_processing: Stopped,
         speaker_characters: Union[int, str],
         sanitize_function: Optional[MultispeakerSanitizationFunction],
     ):
@@ -75,7 +74,7 @@ class CorpusProcessWorker(mp.Process):
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
-        self.finished_processing = finished_processing
+        self.finished_processing = Stopped()
         self.sanitize_function = sanitize_function
         self.speaker_characters = speaker_characters
 

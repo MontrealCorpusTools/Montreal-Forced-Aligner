@@ -14,13 +14,14 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Union
 
 import yaml
 
-from .abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
-from .corpus.acoustic_corpus import AcousticCorpusMixin
-from .corpus.classes import File, Speaker, Utterance
-from .corpus.features import VadConfigMixin
-from .exceptions import KaldiProcessingError
-from .helper import load_scp
-from .utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp
+from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
+from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.features import VadConfigMixin
+from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -127,7 +128,7 @@ def segment_vad_func(
     dictionaries: List[str],
     vad_paths: Dict[str, str],
     segmentation_options: MetaDict,
-) -> Dict[str, Utterance]:
+) -> Dict[str, List[Utterance]]:
     """
     Multiprocessing function to generate segments from VAD output.
 
@@ -162,15 +163,19 @@ def segment_vad_func(
             initial_segments = get_initial_segmentation(
                 frames, segmentation_options["frame_shift"]
             )
+
             merged = merge_segments(
                 initial_segments,
                 segmentation_options["min_pause_duration"],
                 segmentation_options["max_segment_length"],
                 segmentation_options["snap_boundary_threshold"],
             )
+
             for seg in merged:
-                utterances[recording] = Utterance(
-                    speaker, file, begin=seg["begin"], end=seg["end"], text="speech"
+                if recording not in utterances:
+                    utterances[recording] = []
+                utterances[recording].append(
+                    Utterance(speaker, file, begin=seg["begin"], end=seg["end"], text="speech")
                 )
     return utterances
 
@@ -286,25 +291,26 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """
 
         jobs = self.segment_vad_arguments()
+        old_utts = [x.name for x in self.utterances]
         if self.use_mp:
             segment_info = run_mp(segment_vad_func, jobs, self.features_log_directory, True)
         else:
             segment_info = run_non_mp(segment_vad_func, jobs, self.features_log_directory, True)
         for j in self.jobs:
-            for old_utt, utterance in segment_info[j.name].items():
-                old_utt = self.utterances[old_utt]
-                file = old_utt.file
-                if self.ignore_speakers:
-                    if utterance.speaker_name not in self.speakers:
-                        self.speakers[utterance.speaker_name] = Speaker(utterance.speaker_name)
-                    speaker = self.speakers[utterance.speaker_name]
-                else:
-                    speaker = old_utt.speaker
-                utterance.file = file
-                utterance.set_speaker(speaker)
-                self.add_utterance(utterance)
-        utterance_ids = [x.name for x in self.utterances if x.begin is None]
-        for u in utterance_ids:
+            for old_utt, new_utterances in segment_info[j.name].items():
+                for utterance in new_utterances:
+                    old_utt = self.utterances[old_utt]
+                    file = old_utt.file
+                    if self.ignore_speakers:
+                        if utterance.speaker_name not in self.speakers:
+                            self.speakers[utterance.speaker_name] = Speaker(utterance.speaker_name)
+                        speaker = self.speakers[utterance.speaker_name]
+                    else:
+                        speaker = old_utt.speaker
+                    utterance.file = file
+                    utterance.set_speaker(speaker)
+                    self.add_utterance(utterance)
+        for u in old_utts:
             self.delete_utterance(u)
 
     def setup(self) -> None:
@@ -367,4 +373,4 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             backup_output_directory = os.path.join(self.working_directory, "transcriptions")
             os.makedirs(backup_output_directory, exist_ok=True)
         for f in self.files:
-            f.save(output_directory, backup_output_directory)
+            f.save(output_directory, backup_output_directory, text_type=TextFileType.TEXTGRID)

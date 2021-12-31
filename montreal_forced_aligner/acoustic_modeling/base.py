@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 from tqdm import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
-from montreal_forced_aligner.alignment.base import AlignMixin
+from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -519,6 +519,11 @@ class AcousticModelTrainingMixin(
         """Directory of the corpus"""
         return self.worker.corpus_output_directory
 
+    @property
+    def num_utterances(self) -> int:
+        """Number of utterances of the corpus"""
+        return self.worker.num_utterances
+
     def initialize_training(self) -> None:
         """Initialize training"""
         self.compute_calculated_properties()
@@ -904,7 +909,7 @@ class AcousticModelTrainingMixin(
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_options,
-            "phone_set_type": self.phone_set_type,
+            "phone_set_type": str(self.phone_set_type),
         }
         return data
 

@@ -1,19 +1,22 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import subprocess
 import time
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
+import tqdm
 import yaml
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import parse_old_features
+from montreal_forced_aligner.helper import align_phones, parse_old_features
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
@@ -239,6 +242,102 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
     def workflow_identifier(self) -> str:
         """Aligner identifier"""
         return "pretrained_aligner"
+
+    def evaluate(
+        self,
+        reference_directory: str,
+        mapping: Optional[Dict[str, str]] = None,
+        output_directory: Optional[str] = None,
+    ) -> None:
+        # Set up
+        per_utterance_phone_intervals = {}
+        self.log_info("Evaluating alignments...")
+        self.log_debug(f"Mapping: {mapping}")
+        indices = []
+        jobs = []
+        self.log_info("Loading reference alignments...")
+        for root, _, files in os.walk(reference_directory, followlinks=True):
+            root_speaker = os.path.basename(root)
+            for f in files:
+                if f.endswith(".TextGrid"):
+                    file_name = f.replace(".TextGrid", "")
+                    if file_name not in self.files:
+                        continue
+                    if self.use_mp:
+                        indices.append(file_name)
+                        jobs.append((os.path.join(root, f), root_speaker))
+                    else:
+                        file = self.files[file_name]
+                        intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
+                        for u in file.utterances:
+                            if u.begin is None or u.end is None:
+                                for v in intervals.values():
+                                    per_utterance_phone_intervals[u.name] = v
+                            else:
+                                if u.speaker_name not in intervals:
+                                    continue
+                                utterance_name = u.name
+                                if utterance_name not in per_utterance_phone_intervals:
+                                    per_utterance_phone_intervals[utterance_name] = []
+                                for interval in intervals[u.speaker_name]:
+                                    if interval.begin >= u.begin and interval.end <= u.end:
+                                        per_utterance_phone_intervals[utterance_name].append(
+                                            interval
+                                        )
+        if self.use_mp:
+            with mp.Pool(self.num_jobs) as pool, tqdm.tqdm(total=len(jobs)) as pbar:
+                gen = pool.starmap(parse_aligned_textgrid, jobs)
+                for i, intervals in enumerate(gen):
+                    pbar.update(1)
+                    file_name = indices[i]
+                    file = self.files[file_name]
+                    for u in file.utterances:
+                        if u.begin is None or u.end is None:
+                            for v in intervals.values():
+                                per_utterance_phone_intervals[u.name] = v
+                        else:
+                            if u.speaker_name not in intervals:
+                                continue
+                            utterance_name = u.name
+                            if utterance_name not in per_utterance_phone_intervals:
+                                per_utterance_phone_intervals[utterance_name] = []
+                            for interval in intervals[u.speaker_name]:
+                                if interval.begin >= u.begin and interval.end <= u.end:
+                                    per_utterance_phone_intervals[utterance_name].append(interval)
+        score_count = 0
+        score_sum = 0
+        insertion_sum = 0
+        deletion_sum = 0
+        if output_directory:
+            csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
+        else:
+            csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
+        with open(csv_path, "w", encoding="utf8") as f:
+            f.write("Utterance,Score,Insertions,Deletions\n")
+            for utterance_name, intervals in per_utterance_phone_intervals.items():
+                if not intervals:
+                    continue
+                self.log_debug(utterance_name)
+                self.log_debug(f"REF: {intervals}")
+                self.log_debug(f"ALIGNED: {self.utterances[utterance_name].phone_labels}")
+                if not self.utterances[utterance_name].phone_labels:
+                    continue
+                score, insertions, deletions = align_phones(
+                    intervals,
+                    self.utterances[utterance_name].phone_labels,
+                    self.optional_silence_phone,
+                    mapping,
+                )
+                if score is None:
+                    continue
+                f.write(f"{utterance_name},{score},{insertions},{deletions}\n")
+                score_count += 1
+                score_sum += score
+                insertion_sum += insertions
+                deletion_sum += deletions
+        self.logger.info(f"Average overlap score: {score_sum/score_count}")
+        self.logger.info(f"Average number of insertions: {insertion_sum/score_count}")
+        self.logger.info(f"Average number of deletions: {deletion_sum/score_count}")
 
     def align(self) -> None:
         """Run the aligner"""

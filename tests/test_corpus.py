@@ -17,7 +17,7 @@ from montreal_forced_aligner.exceptions import SoxError
 def test_mp3(mp3_test_path):
     try:
         info = get_wav_info(mp3_test_path)
-        assert "sox_string" in info
+        assert info.sox_string
     except SoxError:
         pytest.skip()
 
@@ -32,7 +32,6 @@ def test_speaker_word_set(
     )
     corpus.load_corpus()
     speaker_one = corpus.speakers["speaker_one"]
-    assert "chad" in speaker_one.word_set()
     assert speaker_one.dictionary.lookup("chad-like") == ["chad", "like"]
     assert speaker_one.dictionary.oov_int not in speaker_one.dictionary.to_int("chad-like")
 
@@ -48,7 +47,11 @@ def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
     )
     corpus._load_corpus()
     new_speaker = Speaker("new_speaker")
-    new_file = File("new_file.wav", "new_file.txt")
+    new_file = File(
+        os.path.join(basic_corpus_dir, "michael", "acoustic_corpus.wav"),
+        os.path.join(basic_corpus_dir, "michael", "acoustic_corpus.lab"),
+        name="new_file",
+    )
     new_utterance = Utterance(new_speaker, new_file, text="blah blah")
     utterance_id = new_utterance.name
     assert utterance_id not in corpus.utterances
@@ -401,8 +404,8 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
         Pronunciation(("m",), 1, None, None, None)
         in corpus.default_dictionary.words["'m"].pronunciations
     )
-
-    assert corpus.utterances["weird-words-weird-words"].oovs == {
+    print(corpus.utterances)
+    assert corpus.utterances["weird-words-weird-words-0-26-72325"].oovs == {
         "ajfish",
         "asds-asda",
         "sdasd",
@@ -427,8 +430,9 @@ def test_punctuated(punctuated_dir, generated_dir, sick_dict_path):
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
+    print(corpus.utterances)
     assert (
-        corpus.utterances["punctuated-punctuated"].text
+        corpus.utterances["punctuated-punctuated-0-26-72325"].text
         == "oh yes they they you know they love her and so i mean"
     )
 
@@ -453,7 +457,7 @@ def test_alternate_punctuation(
     )
     corpus.load_corpus()
     assert (
-        corpus.utterances["punctuated-punctuated"].text
+        corpus.utterances["punctuated-punctuated-0-26-72325"].text
         == "oh yes, they they, you know, they love her and so i mean"
     )
 
@@ -478,6 +482,6 @@ def test_xsampa_corpus(
     )
     corpus.load_corpus()
     assert (
-        corpus.utterances["michael-xsampa"].text
+        corpus.utterances["michael-xsampa-0-26-72325"].text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
     )

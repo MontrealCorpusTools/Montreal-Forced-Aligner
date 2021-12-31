@@ -68,6 +68,10 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    @property
+    def workflow_identifier(self):
+        return "g2p"
+
     def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
@@ -78,11 +82,6 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
             Mappings of keys to their generated pronunciations
         """
         raise NotImplementedError
-
-    @property
-    def workflow_identifier(self) -> str:
-        """G2P identifier"""
-        return "g2p"
 
     def export_pronunciations(self, output_file_path: str) -> None:
         """
@@ -95,13 +94,10 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         """
         results = self.generate_pronunciations()
         with open(output_file_path, "w", encoding="utf8") as f:
-            for (word, pronunciation) in results.items():
-                if not pronunciation:
+            for (orthography, word) in results.items():
+                if not word.pronunciations:
                     continue
-                if isinstance(pronunciation, list):
-                    for p in pronunciation:
-                        if not p:
-                            continue
-                        f.write(f"{word}\t{p}\n")
-                else:
-                    f.write(f"{word}\t{pronunciation}\n")
+                for p in word.pronunciations:
+                    if not p:
+                        continue
+                    f.write(f"{orthography}\t{p}\n")

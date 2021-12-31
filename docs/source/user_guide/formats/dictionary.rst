@@ -180,41 +180,9 @@ The way to use this per-speaker dictionary is in place of where the dictionary a
 
    mfa align /path/to/corpus /path/to/speaker_dictionaries.yaml /path/to/acoustic_model.zip /path/to/output
 
+.. _phone_sets:
 
-.. _multilingual_ipa:
+Supported phone sets
+====================
 
-Multilingual IPA mode
-=====================
-
-For the purposes of training multilingual models with IPA, there is a flag for training that enables this mode
-:code:`--multilingual_ipa`. With this mode, it strips out certain diacritics that are not generally related to the quality
-of the vowel (i.e., diacritics related to length), and splits digraphs (affricates and diphthongs/triphthongs) into
-their component symbols.  The reasoning behind these are that length can be modelled through transition probabilities
-and the model can take advantage of a less confusable phone set, and for digraphs, we can model the components parts
-to account better for rarer sounds.  For example, in English /dʒ/ is more common than /ʒ/, so by modelling /dʒ/ as /d ʒ/,
-we have more data for the solo instances of /ʒ/.  The downside for this split is that that the minimum duration is increased
-to 6 frames (3 frames per phone), however in general, diphthongs and affricates should be longer than less complex sounds.
-
-The default configuration for multilingual IPA is as follows:
-
-.. code-block:: yaml
-
-   strip_diacritics:
-     - "ː"  # long, i.e. /ɑː/
-     - "ˑ"  # half long, i.e. /ɑˑ/
-     - "̆"  # extra short, i.e. /ĭ/
-     - "̯"   # non syllabic, i.e. /i̯/
-     - "͡"  # linking, i.e. /d͡ʒ/
-     - "‿"  # linking, i.e. /d‿ʒ/
-     - "͜"  # linking, i.e. /d͜ʒ/
-     - "̩"   # syllabic, i.e. /n̩/
-
-   digraphs:
-     - "[dt][szʒʃʐʑʂɕç]" # affricates
-     - "[aoɔe][ʊɪ]" # diphthongs
-
-.. note::
-   Digraphs are specified as a regular expression pattern, where the characters in first set of square brackets (i.e. ``[aoɔe]``)
-   is the the set of characters that matches the first element in the digraph, and the characters in second set of square
-   brackets (i.e. ``[ʊɪ]``) matches the second element.  Triphthongs or longer sequences can be specified with more
-   sets of square brackets, like ``[e][i][u]`` would match just a /eiu/ triphthong.
+In addition to the basic capabilities, specifying a phone set can aid in creating acoustic models that are better suited to the particular phones. For instance, phones like glottal stops, taps/flaps, and schwas can all be extremely short where the 30 ms minimum duration of the normal acoustic model may be too long and cause mis-alignments.

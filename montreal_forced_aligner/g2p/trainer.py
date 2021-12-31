@@ -81,7 +81,6 @@ class RandomStartWorker(mp.Process):
         error_dict: dict,
         counter: Counter,
         stopped: Stopped,
-        finished_signal: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
@@ -91,7 +90,7 @@ class RandomStartWorker(mp.Process):
         self.error_dict = error_dict
         self.counter = counter
         self.stopped = stopped
-        self.finished_signal = finished_signal
+        self.finished_signal = Stopped()
 
     def run(self) -> None:
         """Run the random start worker"""
@@ -299,6 +298,8 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
         self.c_path = os.path.join(self.working_directory, "c.fst")
         self.align_path = os.path.join(self.working_directory, "align.fst")
         self.afst_path = os.path.join(self.working_directory, "afst.far")
+        self.wer = None
+        self.ler = None
 
     @property
     def data_directory(self) -> str:
@@ -347,13 +348,18 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
 
         from ..utils import get_mfa_version
 
-        return {
+        m = {
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "phones": sorted(self.non_silence_phones),
             "graphemes": self.graphemes,
+            "evaluation": {},
         }
+        if self.wer is not None:
+            m["evaluation"]["word_error_rate"] = self.wer
+            m["evaluation"]["phone_error_rate"] = self.ler
+        return m
 
     @property
     def input_path(self) -> str:
@@ -362,6 +368,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
 
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
+        random.seed(self.seed)
         if self.evaluate:
             word_dict = self.g2p_training_dictionary
             words = sorted(word_dict.keys())
@@ -695,7 +702,6 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                 return_dict = manager.dict()
                 procs = []
                 counter = Counter()
-                finished_signals = [Stopped() for _ in range(cores)]
                 for i in range(cores):
                     log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
                     p = RandomStartWorker(
@@ -706,7 +712,6 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                         error_dict,
                         counter,
                         stopped,
-                        finished_signals[i],
                     )
                     procs.append(p)
                     p.start()
@@ -721,8 +726,8 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                     time.sleep(sleep_increment)
                     if stopped.stop_check():
                         break
-                    for sig in finished_signals:
-                        if not sig.stop_check():
+                    for proc in procs:
+                        if not proc.finished_signal.stop_check():
                             break
                     else:
                         break
@@ -888,10 +893,10 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                         break
                     total_edits += gold_length
                     total_length += gold_length
-        wer = 100 * incorrect / (correct + incorrect)
-        ler = 100 * total_edits / total_length
-        self.logger.info(f"WER:\t{wer:.2f}")
-        self.logger.info(f"LER:\t{ler:.2f}")
+        self.wer = 100 * incorrect / (correct + incorrect)
+        self.ler = 100 * total_edits / total_length
+        self.logger.info(f"WER:\t{self.wer:.2f}")
+        self.logger.info(f"LER:\t{self.ler:.2f}")
         self.logger.debug(
             f"Computation of errors for {len(self.g2p_validation_dictionary)} words took {time.time() - begin} seconds"
         )

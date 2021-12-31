@@ -64,7 +64,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     def __init__(
         self,
         training_configuration: List[Tuple[str, Dict[str, Any]]] = None,
-        phone_set: str = None,
+        phone_set_type: str = None,
         **kwargs,
     ):
         self.param_dict = {
@@ -80,9 +80,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.current_trainer = None
         self.current_acoustic_model: Optional[AcousticModel] = None
         super().__init__(**kwargs)
-        if phone_set and phone_set != "UNKNOWN":
+        if phone_set_type and phone_set_type != "UNKNOWN":
             self.dictionary_model = DictionaryModel(
-                self.dictionary_model.path, phone_set=phone_set
+                self.dictionary_model.path, phone_set_type=phone_set_type
             )
         os.makedirs(self.output_directory, exist_ok=True)
         self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}

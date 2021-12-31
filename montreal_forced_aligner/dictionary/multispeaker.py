@@ -124,32 +124,35 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     @property
     def base_phone_regex(self) -> Optional[str]:
         """Regex pattern for extracting a base phone for the phone set"""
-        return self.dictionary_model.base_phone_regex
+        try:
+            return self.phone_set_type.base_phone_regex
+        except AttributeError:
+            return None
 
     @property
     def extra_short_phones(self) -> Set[str]:
         """Set of extra short phones"""
-        return self.dictionary_model.extra_short_phones
+        return self.phone_set_type.extra_short_phones
 
     @property
     def affricate_phones(self) -> Set[str]:
         """Set of affricates"""
-        return self.dictionary_model.affricate_phones
+        return self.phone_set_type.affricate_phones
 
     @property
     def stop_phones(self) -> Set[str]:
         """Set of stops"""
-        return self.dictionary_model.stop_phones
+        return self.phone_set_type.stop_phones
 
     @property
     def diphthong_phones(self) -> Set[str]:
         """Set of diphthongs"""
-        return self.dictionary_model.diphthong_phones
+        return self.phone_set_type.diphthong_phones
 
     @property
     def extra_questions(self) -> Dict[str, Set[str]]:
         """Extra questions for triphone tree clustering"""
-        return self.dictionary_model.extra_questions
+        return self.phone_set_type.extra_questions
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""

@@ -5,6 +5,7 @@
 
        TextFileType
        SoundFileType
+       SoundFileInformation
        PhoneSetType
        Word
        Pronunciation

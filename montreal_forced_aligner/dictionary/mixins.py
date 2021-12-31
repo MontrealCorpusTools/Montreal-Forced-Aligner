@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import os
 import re
+import typing
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
@@ -14,11 +15,11 @@ from montreal_forced_aligner.data import PhoneSetType
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-DEFAULT_PUNCTUATION = list(r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
+DEFAULT_PUNCTUATION = list(r'、。।，？@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
 DEFAULT_CLITIC_MARKERS = list("'’")
 DEFAULT_COMPOUND_MARKERS = list("-/")
-DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")")]
+DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")"), ("＜", "＞")]
 
 __all__ = ["SanitizeFunction", "DictionaryMixin"]
 
@@ -269,7 +270,7 @@ class DictionaryMixin:
         disambiguation_symbols: Set[str] = None,
         clitic_set: Set[str] = None,
         max_disambiguation_symbol: int = 0,
-        phone_set_type: str = "UNKNOWN",
+        phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -311,37 +312,9 @@ class DictionaryMixin:
         if clitic_set is None:
             clitic_set = set()
         self.clitic_set = clitic_set
+        if not isinstance(phone_set_type, PhoneSetType):
+            phone_set_type = PhoneSetType[phone_set_type]
         self.phone_set_type = phone_set_type
-
-    @property
-    def base_phone_regex(self) -> Optional[str]:
-        """Regex pattern for extracting a base phone for the phone set"""
-        return None
-
-    @property
-    def extra_short_phones(self) -> Set[str]:
-        """Set of extra short phones"""
-        return set()
-
-    @property
-    def affricate_phones(self) -> Set[str]:
-        """Set of affricates"""
-        return set()
-
-    @property
-    def stop_phones(self) -> Set[str]:
-        """Set of stops"""
-        return set()
-
-    @property
-    def diphthong_phones(self) -> Set[str]:
-        """Set of diphthongs"""
-        return set()
-
-    @property
-    def extra_questions(self) -> Dict[str, Set[str]]:
-        """Extra questions for triphone tree clustering"""
-        return {}
 
     @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
@@ -352,10 +325,10 @@ class DictionaryMixin:
             mapping["silence_question"].append(p)
             if self.position_dependent_phones:
                 mapping["silence_question"].extend([p + x for x in self.positions])
-        for k, v in self.extra_questions.items():
+        for k, v in self.phone_set_type.extra_questions.items():
             if k not in mapping:
                 mapping[k] = []
-            if self.phone_set_type == PhoneSetType.ARPA:
+            if self.phone_set_type is PhoneSetType.ARPA:
                 if self.position_dependent_phones:
                     for x in sorted(v):
                         mapping[k].extend([x + pos for pos in self.positions])
@@ -364,7 +337,7 @@ class DictionaryMixin:
             elif self.phone_set_type == PhoneSetType.IPA:
                 filtered_v = set()
                 for x in self.non_silence_phones:
-                    m = re.match(self.base_phone_regex, x)
+                    m = re.match(self.phone_set_type.base_phone_regex, x)
                     if m:
                         base_phone = m.groups()[0]
                         if base_phone in v:
@@ -478,15 +451,14 @@ class DictionaryMixin:
         """
         positional_phones = []
         for p in sorted(phones):
-            if self.base_phone_regex is not None:
-                m = re.match(self.base_phone_regex, p)
+            if p not in self.non_silence_phones:
+                continue
+            if self.phone_set_type.base_phone_regex is not None:
+                m = re.match(self.phone_set_type.base_phone_regex, p)
                 if m:
                     base_phone = m.groups()[0]
                 else:
                     base_phone = p
-                if self.phone_set_type == "ARPA":
-                    if p in self.extra_short_phones:
-                        base_phone = "AH0"
                 for pos in self.positions:
                     pos_p = base_phone + pos
                     if pos_p not in positional_phones:
@@ -512,9 +484,11 @@ class DictionaryMixin:
             List of non-positional phones, sorted by base phone
         """
         base_phones = set()
-        if self.base_phone_regex is not None:
+        if self.phone_set_type.base_phone_regex is not None:
             for p in phones:
-                m = re.match(self.base_phone_regex, p)
+                if p not in self.non_silence_phones:
+                    continue
+                m = re.match(self.phone_set_type.base_phone_regex, p)
                 if m:
                     base_phone = m.groups()[0]
                     base_phones.add(base_phone)
@@ -551,56 +525,56 @@ class DictionaryMixin:
         """
         List of non-silence phones with positions
         """
-        return self._generate_positional_list(self.extra_short_phones)
+        return self._generate_positional_list(self.phone_set_type.extra_short_phones)
 
     @property
     def positional_stop_phones(self) -> List[str]:
         """
         List of non-silence phones with positions
         """
-        return self._generate_positional_list(self.stop_phones)
+        return self._generate_positional_list(self.phone_set_type.stop_phones)
 
     @property
     def positional_affricate_phones(self) -> List[str]:
         """
         List of non-silence phones with positions
         """
-        return self._generate_positional_list(self.affricate_phones)
+        return self._generate_positional_list(self.phone_set_type.affricate_phones)
 
     @property
     def positional_diphthong_phones(self) -> List[str]:
         """
         List of non-silence phones with positions
         """
-        return self._generate_positional_list(self.diphthong_phones)
+        return self._generate_positional_list(self.phone_set_type.diphthong_phones)
 
     @property
     def kaldi_extra_short_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_extra_short_phones
-        return self._generate_non_positional_list(self.extra_short_phones)
+        return self._generate_non_positional_list(self.phone_set_type.extra_short_phones)
 
     @property
     def kaldi_diphthong_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_diphthong_phones
-        return self._generate_non_positional_list(self.diphthong_phones)
+        return self._generate_non_positional_list(self.phone_set_type.diphthong_phones)
 
     @property
     def kaldi_stop_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_stop_phones
-        return self._generate_non_positional_list(self.stop_phones)
+        return self._generate_non_positional_list(self.phone_set_type.stop_phones)
 
     @property
     def kaldi_affricate_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_affricate_phones
-        return self._generate_non_positional_list(self.affricate_phones)
+        return self._generate_non_positional_list(self.phone_set_type.affricate_phones)
 
     @property
     def kaldi_non_silence_phones(self):
@@ -614,25 +588,33 @@ class DictionaryMixin:
         """Mappings of phones for generating topo file"""
         mapping = {}
         for p in sorted(self.non_silence_phones):
-            if p in self.extra_short_phones:
+            base_phone = p
+            if self.phone_set_type is PhoneSetType.IPA:
+                m = self.phone_set_type.base_phone_regex.match(p)
+                if m:
+                    base_phone = re.sub(r"[ʱʼʰʲʷ]", "", m.groups()[0])
+            query_set = {p, base_phone}
+            if any(x in self.phone_set_type.extra_short_phones for x in query_set):
                 num_states = 1  # One state for extra short sounds
-            elif p in self.diphthong_phones:
+            elif any(x in self.phone_set_type.diphthong_phones for x in query_set):
                 num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
                 # transition to next target, steady state, offset of second target)
-            elif p in self.affricate_phones:
+            elif any(x in self.phone_set_type.affricate_phones for x in query_set):
                 num_states = 4  # 4 states for affricates (closure, burst, onset of frication, offset of frication)
-            elif p in self.stop_phones:
+            elif any(x in self.phone_set_type.stop_phones for x in query_set):
                 num_states = 2  # Two states for stops (closure, burst), extra states added below for aspirated, ejectives
             else:
                 num_states = self.num_non_silence_states
-            if self.phone_set_type == "IPA":
-                if re.match(r"^.*[ʱʼʰʲʷ]$", p):
+            if self.phone_set_type is PhoneSetType.IPA:
+                if re.match(r"^.*[ʱʼʰʲʷ][ː]?$", p):
                     num_states += 1
             if num_states not in mapping:
                 mapping[num_states] = []
             mapping[num_states].extend(
                 [x for x in self._generate_phone_list({p}) if x not in mapping[num_states]]
             )
+        if self.phone_set_type is PhoneSetType.ARPA:
+            mapping[1] = [x for x in mapping[1] if "0" in x]
         return mapping
 
     @property
@@ -640,8 +622,8 @@ class DictionaryMixin:
         """Non silence phones in Kaldi format"""
         groups = {}
         for p in sorted(self.non_silence_phones):
-            if self.phone_set_type in ["ARPA", "IPA"]:
-                m = re.match(self.base_phone_regex, p)
+            if self.phone_set_type in [PhoneSetType.ARPA, PhoneSetType.IPA]:
+                m = re.match(self.phone_set_type.base_phone_regex, p)
                 if m:
                     base_phone = m.groups()[0]
                     if base_phone not in groups:
@@ -829,8 +811,8 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
         silence_topo_string = "\n".join(silence_lines)
 
         topo_sections = [silence_topo_string]
-
-        for num_states, phone_list in self.kaldi_phones_for_topo.items():
+        topo_phones = self.kaldi_phones_for_topo
+        for num_states, phone_list in topo_phones.items():
             non_silence_lines = [
                 "<TopologyEntry>",
                 "<ForPhones>",

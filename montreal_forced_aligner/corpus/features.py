@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Union
 
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
@@ -14,7 +16,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FeatureConfigMixin",
-    "mfcc_func",
     "calc_fmllr_func",
     "compute_vad_func",
     "VadArguments",
@@ -78,13 +79,7 @@ def make_safe(value: Any) -> str:
     return str(value)
 
 
-def mfcc_func(
-    log_path: str,
-    wav_path: str,
-    segment_path: str,
-    feats_scp_path: str,
-    mfcc_options: MetaDict,
-) -> None:
+class MfccFunction(KaldiFunction):
     """
     Multiprocessing function for generating MFCC features
 
@@ -116,48 +111,64 @@ def mfcc_func(
     mfcc_options: dict[str, Any]
         Options for MFCC generation
     """
-    with open(log_path, "w") as log_file:
-        mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
-        raw_ark_path = feats_scp_path.replace(".scp", ".ark")
-        for k, v in mfcc_options.items():
-            mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-        if os.path.exists(segment_path):
-            mfcc_base_command += ["ark:-", "ark:-"]
-            seg_proc = subprocess.Popen(
+
+    progress_pattern = re.compile(r"^LOG.* Copied (?P<num_utterances>\d+) feature matrices.")
+
+    def __init__(self, args: MfccArguments):
+        self.log_path = args.log_path
+        self.wav_path = args.wav_path
+        self.segment_path = args.segment_path
+        self.feats_scp_path = args.feats_scp_path
+        self.mfcc_options = args.mfcc_options
+
+    def run(self):
+        with open(self.log_path, "w") as log_file:
+            mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
+            raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")
+            for k, v in self.mfcc_options.items():
+                mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
+            if os.path.exists(self.segment_path):
+                mfcc_base_command += ["ark:-", "ark:-"]
+                seg_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("extract-segments"),
+                        f"scp,p:{self.wav_path}",
+                        self.segment_path,
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                comp_proc = subprocess.Popen(
+                    mfcc_base_command,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    stdin=seg_proc.stdout,
+                    env=os.environ,
+                )
+            else:
+                mfcc_base_command += [f"scp,p:{self.wav_path}", "ark:-"]
+                comp_proc = subprocess.Popen(
+                    mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
+                )
+            copy_proc = subprocess.Popen(
                 [
-                    thirdparty_binary("extract-segments"),
-                    f"scp,p:{wav_path}",
-                    segment_path,
+                    thirdparty_binary("copy-feats"),
+                    "--verbose=2",
+                    "--compress=true",
                     "ark:-",
+                    f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
                 ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
+                stdin=comp_proc.stdout,
+                stderr=subprocess.PIPE,
                 env=os.environ,
+                encoding="utf8",
             )
-            comp_proc = subprocess.Popen(
-                mfcc_base_command,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                stdin=seg_proc.stdout,
-                env=os.environ,
-            )
-        else:
-            mfcc_base_command += [f"scp,p:{wav_path}", "ark:-"]
-            comp_proc = subprocess.Popen(
-                mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
-            )
-        copy_proc = subprocess.Popen(
-            [
-                thirdparty_binary("copy-feats"),
-                "--compress=true",
-                "ark:-",
-                f"ark,scp:{raw_ark_path},{feats_scp_path}",
-            ],
-            stdin=comp_proc.stdout,
-            stderr=log_file,
-            env=os.environ,
-        )
-        copy_proc.communicate()
+            for line in copy_proc.stderr:
+                m = self.progress_pattern.match(line.strip())
+                if m:
+                    yield int(m.group("num_utterances"))
 
 
 def compute_vad_func(

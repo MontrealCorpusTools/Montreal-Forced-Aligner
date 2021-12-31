@@ -16,13 +16,13 @@ from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import (
     AliToCtmArguments,
+    AliToCtmFunction,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
     PhoneCtmArguments,
     PhoneCtmProcessWorker,
     WordCtmArguments,
     WordCtmProcessWorker,
-    ali_to_ctm_func,
 )
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.exceptions import AlignmentExportError
@@ -31,7 +31,7 @@ from montreal_forced_aligner.textgrid import (
     output_textgrid_writing_errors,
     process_ctm_line,
 )
-from montreal_forced_aligner.utils import Stopped, run_mp, run_non_mp
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
 
 __all__ = ["CorpusAligner"]
 
@@ -55,7 +55,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def word_ctm_arguments(self) -> List[WordCtmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmProcessWorker`
 
         Returns
         -------
@@ -146,8 +146,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         self.logger.debug("Beginning to process ctm files...")
         word_procs = []
         phone_procs = []
-        word_finished_signals = [Stopped() for _ in range(self.num_jobs)]
-        phone_finished_signals = [Stopped() for _ in range(self.num_jobs)]
         finished_processing = Stopped()
         to_process_queue = mp.JoinableQueue()
         for_write_queue = mp.JoinableQueue()
@@ -162,7 +160,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 stopped,
                 error_catching,
                 word_ctm_args[j.name],
-                word_finished_signals[j.name],
             )
 
             word_procs.append(word_p)
@@ -174,7 +171,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 stopped,
                 error_catching,
                 phone_ctm_args[j.name],
-                phone_finished_signals[j.name],
             )
             phone_p.start()
             phone_procs.append(phone_p)
@@ -196,11 +192,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     try:
                         w_p, intervals = to_process_queue.get(timeout=1)
                     except Empty:
-                        for sig in word_finished_signals:
-                            if not sig.stop_check():
+                        for proc in word_procs:
+                            if not proc.finished_signal.stop_check():
                                 break
-                        for sig in phone_finished_signals:
-                            if not sig.stop_check():
+                        for proc in phone_procs:
+                            if not proc.finished_signal.stop_check():
                                 break
                         else:
                             break
@@ -214,6 +210,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     dictionary = self.get_dictionary(utt.speaker_name)
                     if w_p == "word":
                         for interval in intervals:
+
                             label = dictionary.reversed_word_mapping[int(interval.label)]
                             interval.label = label
                         utt.add_word_intervals(intervals)
@@ -242,11 +239,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 try:
                     _ = to_process_queue.get(timeout=1)
                 except Empty:
-                    for sig in word_finished_signals:
-                        if not sig.stop_check():
+                    for proc in word_procs:
+                        if not proc.finished_signal.stop_check():
                             break
-                    for sig in phone_finished_signals:
-                        if not sig.stop_check():
+                    for proc in phone_procs:
+                        if not proc.finished_signal.stop_check():
                             break
                     else:
                         break
@@ -283,6 +280,54 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             )
         output_textgrid_writing_errors(self.textgrid_output, textgrid_errors)
 
+    def ali_to_ctm(self, word_mode=True):
+        if word_mode:
+            self.logger.info("Generating word CTM files from alignment lattices...")
+            jobs = self.ali_to_word_ctm_arguments()  # Word CTM jobs
+        else:
+            self.logger.info("Generating phone CTM files from alignment lattices...")
+            jobs = self.ali_to_phone_ctm_arguments()  # Phone CTM jobs
+        sum_errors = 0
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(jobs):
+                    function = AliToCtmFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, errors = return_queue.get(timeout=1)
+                        sum_errors += errors
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in jobs:
+                    function = AliToCtmFunction(args)
+                    for done, errors in function.run():
+                        sum_errors += errors
+                        pbar.update(done + errors)
+            if sum_errors:
+                self.logger.warning(f"{errors} utterances had errors during creating CTM files.")
+
     def convert_ali_to_textgrids(self) -> None:
         """
         Multiprocessing function that aligns based on the current model.
@@ -298,15 +343,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         :kaldi_steps:`get_train_ctm`
             Reference Kaldi script
         """
-        log_directory = self.working_log_directory
         os.makedirs(self.textgrid_output, exist_ok=True)
-        jobs = self.ali_to_word_ctm_arguments()  # Word CTM jobs
-        jobs += self.ali_to_phone_ctm_arguments()  # Phone CTM jobs
         self.logger.info("Generating CTMs from alignment...")
-        if self.use_mp:
-            run_mp(ali_to_ctm_func, jobs, log_directory)
-        else:
-            run_non_mp(ali_to_ctm_func, jobs, log_directory)
+        self.ali_to_ctm(True)
+        self.ali_to_ctm(False)
         self.logger.info("Finished generating CTMs!")
 
         self.logger.info("Exporting TextGrids from CTMs...")
@@ -340,6 +380,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         utt = self.utterances[interval.utterance]
                         dictionary = self.get_dictionary(utt.speaker_name)
                         label = dictionary.reversed_word_mapping[int(interval.label)]
+
                         interval.label = label
                         utt.add_word_intervals(interval)
 

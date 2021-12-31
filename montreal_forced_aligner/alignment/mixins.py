@@ -2,22 +2,25 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 import os
 import time
 from abc import abstractmethod
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
+
+import tqdm
 
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
+    AlignFunction,
     CompileInformationArguments,
     CompileTrainGraphsArguments,
-    align_func,
+    CompileTrainGraphsFunction,
     compile_information_func,
-    compile_train_graphs_func,
 )
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
-from montreal_forced_aligner.exceptions import AlignmentError
-from montreal_forced_aligner.utils import run_mp, run_non_mp
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -223,15 +226,52 @@ class AlignMixin(DictionaryMixin):
         :kaldi_steps:`align_fmllr`
             Reference Kaldi script
         """
-        self.logger.debug("Compiling training graphs...")
         begin = time.time()
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        jobs = self.compile_train_graphs_arguments()
-        if self.use_mp:
-            run_mp(compile_train_graphs_func, jobs, log_directory)
-        else:
-            run_non_mp(compile_train_graphs_func, jobs, log_directory)
+        self.logger.info("Compiling training graphs...")
+        error_sum = 0
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.compile_train_graphs_arguments()):
+                    function = CompileTrainGraphsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + errors)
+                    error_sum += errors
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.compile_train_graphs_arguments():
+                    function = CompileTrainGraphsFunction(args)
+                    for done, errors in function.run():
+                        pbar.update(done + errors)
+                        error_sum += errors
+        if error_sum:
+            self.logger.warning(
+                f"Compilation of training graphs failed for {error_sum} utterances."
+            )
         self.logger.debug(f"Compiling training graphs took {time.time() - begin}")
 
     def align_utterances(self) -> None:
@@ -250,25 +290,45 @@ class AlignMixin(DictionaryMixin):
             Reference Kaldi script
         """
         begin = time.time()
-        log_directory = self.working_log_directory
 
-        arguments = self.align_arguments()
-        if self.use_mp:
-            run_mp(align_func, arguments, log_directory)
-        else:
-            run_non_mp(align_func, arguments, log_directory)
+        self.logger.info("Generating alignments...")
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.align_arguments()):
+                    function = AlignFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        _ = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.align_arguments():
+                    function = AlignFunction(args)
+                    for _ in function.run():
+                        pbar.update(1)
 
         self.compile_information()
-        error_logs = []
-        for j in arguments:
-
-            with open(j.log_path, "r", encoding="utf8") as f:
-                for line in f:
-                    if line.strip().startswith("ERROR"):
-                        error_logs.append(j.log_path)
-                        break
-        if error_logs:
-            raise AlignmentError(error_logs)
         self.logger.debug(f"Alignment round took {time.time() - begin}")
 
     def compile_information(self):

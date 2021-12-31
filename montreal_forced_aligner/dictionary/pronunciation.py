@@ -149,44 +149,32 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
     @property
     def base_phone_regex(self) -> Optional[str]:
         """Regex pattern for extracting a base phone for the phone set"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.base_phone_regex
-        return self.root_dictionary.base_phone_regex
+        return self.phone_set_type.base_phone_regex
 
     @property
     def extra_short_phones(self) -> Set[str]:
         """Set of extra short phones"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.extra_short_phones
-        return self.root_dictionary.extra_short_phones
+        return self.phone_set_type.extra_short_phones
 
     @property
     def affricate_phones(self) -> Set[str]:
         """Set of affricates"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.affricate_phones
-        return self.root_dictionary.affricate_phones
+        return self.phone_set_type.affricate_phones
 
     @property
     def stop_phones(self) -> Set[str]:
         """Set of stops"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.stop_phones
-        return self.root_dictionary.stop_phones
+        return self.phone_set_type.stop_phones
 
     @property
     def diphthong_phones(self) -> Set[str]:
         """Set of diphthongs"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.diphthong_phones
-        return self.root_dictionary.diphthong_phones
+        return self.phone_set_type.diphthong_phones
 
     @property
     def extra_questions(self) -> Dict[str, Set[str]]:
         """Extra questions for triphone tree clustering"""
-        if self.root_dictionary is None:
-            return self.dictionary_model.extra_questions
-        return self.root_dictionary.extra_questions
+        return self.phone_set_type.extra_questions
 
     @property
     def name(self) -> str:
@@ -430,6 +418,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         if item in self._to_int_cache:
             return self._to_int_cache[item]
         sanitized = self.lookup(item)
+        print(sanitized)
         text_int = []
         for item in sanitized:
             if not item:

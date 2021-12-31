@@ -140,6 +140,44 @@ def test_english_clitics(english_dictionary, generated_dir):
     assert all(x.endswith("0") for x in d.extra_questions_mapping["stress_0"])
     assert all(x.endswith("1") for x in d.extra_questions_mapping["stress_1"])
     assert all(x.endswith("2") for x in d.extra_questions_mapping["stress_2"])
+    assert "voiceless_fricative_variation" in d.extra_questions_mapping
+    voiceless_fricatives = ["F", "HH", "K", "TH"]
+    assert all(
+        x in d.extra_questions_mapping["voiceless_fricative_variation"]
+        for x in voiceless_fricatives
+    )
+    assert set(d.extra_questions_mapping["high_back_variation"]) == {
+        "UH0",
+        "UH1",
+        "UH2",
+        "UW0",
+        "UW1",
+        "UW2",
+    }
+    assert set(d.extra_questions_mapping["central_variation"]) == {
+        "ER0",
+        "ER1",
+        "ER2",
+        "AH0",
+        "AH1",
+        "AH2",
+        "UH0",
+        "UH1",
+        "UH2",
+        "IH0",
+        "IH1",
+        "IH2",
+    }
+
+    topos = d.kaldi_phones_for_topo
+    print(topos)
+    assert 1 in topos
+    assert 2 in topos
+    assert "AY1" in topos[5]
+    assert "JH" in topos[4]
+    assert "B" in topos[2]
+    assert "NG" in topos[3]
+    assert set(topos[1]) == {"AH0", "ER0", "UH0", "IH0"}
     assert d.split_clitics("l'orme's") == ["l'", "orme", "'s"]
 
     assert d.to_int("l'orme's") == [
@@ -147,6 +185,55 @@ def test_english_clitics(english_dictionary, generated_dir):
         d.words_mapping["orme"],
         d.words_mapping["'s"],
     ]
+
+
+def test_english_ipa(english_us_ipa_dictionary, generated_dir):
+    output_directory = os.path.join(generated_dir, "dictionary_tests")
+    dictionary = MultispeakerDictionary(
+        dictionary_path=english_us_ipa_dictionary,
+        position_dependent_phones=False,
+        temporary_directory=output_directory,
+        phone_set_type="AUTO",
+    )
+    dictionary.dictionary_setup()
+    dictionary.write_lexicon_information()
+    d = dictionary.default_dictionary
+    assert dictionary.phone_set_type.name == "IPA"
+    assert d.extra_questions_mapping
+    assert d.phone_set_type.name == "IPA"
+    for k, v in d.extra_questions_mapping.items():
+        print(k)
+        print(v)
+        assert len(v) == len(set(v))
+    assert "voiceless_fricative_variation" in d.extra_questions_mapping
+    voiceless_fricatives = [
+        "θ",
+        "f",
+        "h",
+    ]
+    assert all(
+        x in d.extra_questions_mapping["voiceless_fricative_variation"]
+        for x in voiceless_fricatives
+    )
+    assert set(d.extra_questions_mapping["high_back_variation"]) == {"ʊ", "u", "uː"}
+    assert set(d.extra_questions_mapping["central_variation"]) == {
+        "ə",
+        "ɚ",
+        "ʌ",
+        "ʊ",
+        "ɝ",
+        "ɝː",
+    }
+
+    topos = d.kaldi_phones_for_topo
+    print(topos)
+    assert 1 in topos
+    assert 2 in topos
+    assert "aɪ" in topos[5]
+    assert "dʒ" in topos[4]
+    assert "b" in topos[2]
+    assert "ŋ" in topos[3]
+    assert set(topos[1]) == {"ə", "ɚ", "ʔ"}
 
 
 def test_devanagari(english_dictionary, generated_dir):

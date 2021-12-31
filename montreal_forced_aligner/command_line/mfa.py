@@ -263,6 +263,18 @@ def create_parser() -> ArgumentParser:
         default="",
         help="Audio directory root to use for finding audio files",
     )
+    align_parser.add_argument(
+        "--reference_directory",
+        type=str,
+        default="",
+        help="Directory containing gold standard alignments to evaluate",
+    )
+    align_parser.add_argument(
+        "--custom_mapping_path",
+        type=str,
+        default="",
+        help="YAML file for mapping phones across phone sets in evaluations",
+    )
     add_global_options(align_parser, textgrid_output=True)
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
@@ -713,6 +725,7 @@ def create_parser() -> ArgumentParser:
     transcribe_parser.add_argument(
         "-e",
         "--evaluate",
+        dest="evaluation_mode",
         help="Evaluate the transcription against golden texts",
         action="store_true",
     )
