@@ -12,6 +12,7 @@ dependencies:
   - sox
   - pynini
   - openfst
+  - baumwelch
   - ngram
   - praatio
   - biopython

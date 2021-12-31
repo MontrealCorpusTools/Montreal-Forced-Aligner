@@ -52,6 +52,7 @@ class CreateHclgArguments(NamedTuple):
 
     @property
     def hclg_path(self) -> str:
+        """Path to HCLG FST file"""
         return self.path_template.format(file_name="HCLG")
 
 
@@ -550,7 +551,7 @@ class CreateHclgFunction(KaldiFunction):
         self.words_mapping = args.words_mapping
 
     def run(self):
-
+        """Run the function"""
         hclg_path = self.path_template.format(file_name="HCLG")
         small_g_path = self.path_template.format(file_name="G.small")
         medium_g_path = self.path_template.format(file_name="G.med")
@@ -678,6 +679,7 @@ class DecodeFunction(KaldiFunction):
         self.model_path = args.model_path
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]
@@ -763,6 +765,7 @@ class ScoreFunction(KaldiFunction):
         self.tra_paths = args.tra_paths
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 language_model_weight = self.score_options["language_model_weight"]
@@ -855,6 +858,7 @@ class LmRescoreFunction(KaldiFunction):
         self.lm_rescore_options = args.lm_rescore_options
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 lat_path = self.lat_paths[dict_name]
@@ -931,6 +935,7 @@ class CarpaLmRescoreFunction(KaldiFunction):
         self.new_g_paths = args.new_g_paths
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "a", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 if sys.platform == "win32":
@@ -1022,6 +1027,7 @@ class InitialFmllrFunction(KaldiFunction):
         self.spk2utt_paths = args.spk2utt_paths
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 lat_path = self.lat_paths[dict_name]
@@ -1126,6 +1132,7 @@ class LatGenFmllrFunction(KaldiFunction):
         self.model_path = args.model_path
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]
@@ -1201,6 +1208,7 @@ class FinalFmllrFunction(KaldiFunction):
         self.spk2utt_paths = args.spk2utt_paths
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]
@@ -1324,6 +1332,7 @@ class FmllrRescoreFunction(KaldiFunction):
         self.final_lat_paths = args.final_lat_paths
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]

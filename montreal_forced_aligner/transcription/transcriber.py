@@ -740,7 +740,17 @@ class Transcriber(
                 e.update_log_file(self.logger)
             raise
 
-    def score(self):
+    def score(self) -> None:
+        """
+        Score the decoded transcriptions
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreArguments`
+            Arguments for function
+        """
         with tqdm.tqdm(total=self.num_utterances) as pbar, open(
             os.path.join(self.evaluation_directory, "score_costs.csv"), "w", encoding="utf8"
         ) as log_file:
@@ -804,7 +814,7 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
             Multiprocessing helper function for each job
         :meth:`.Transcriber.score_arguments`
             Job method for generating arguments for this function
@@ -850,6 +860,16 @@ class Transcriber(
             self.score()
 
     def calc_initial_fmllr(self):
+        """
+        Calculate initial fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.initial_fmllr_arguments`
+            Arguments for function
+        """
         self.logger.info("Calculating initial fMLLR transforms...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances) as pbar:
@@ -893,6 +913,16 @@ class Transcriber(
                 self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
     def lat_gen_fmllr(self):
+        """
+        Generate lattice with fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.lat_gen_fmllr_arguments`
+            Arguments for function
+        """
         self.logger.info("Regenerating lattices with fMLLR transforms...")
         with tqdm.tqdm(total=self.num_utterances) as pbar, open(
             os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
@@ -938,6 +968,16 @@ class Transcriber(
                         pbar.update(1)
 
     def calc_final_fmllr(self):
+        """
+        Calculate final fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.final_fmllr_arguments`
+            Arguments for function
+        """
         self.logger.info("Calculating final fMLLR transforms...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances) as pbar:
@@ -981,6 +1021,16 @@ class Transcriber(
                 self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
     def fmllr_rescore(self):
+        """
+        Rescore lattices with final fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.fmllr_rescore_arguments`
+            Arguments for function
+        """
         self.logger.info("Rescoring fMLLR lattices with final transform...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances) as pbar:
@@ -1058,6 +1108,16 @@ class Transcriber(
         self.carpa_lm_rescore()
 
     def decode(self):
+        """
+        Generate lattices
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.decode_arguments`
+            Arguments for function
+        """
         self.logger.info("Generating lattices...")
         with tqdm.tqdm(total=self.num_utterances) as pbar, open(
             os.path.join(self.working_log_directory, "decode_log_like.csv"), "w", encoding="utf8"
@@ -1101,6 +1161,16 @@ class Transcriber(
                         pbar.update(1)
 
     def lm_rescore(self):
+        """
+        Rescore lattices with bigger language model
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.lm_rescore_arguments`
+            Arguments for function
+        """
         self.logger.info("Rescoring lattices with medium G.fst...")
         if self.use_mp:
             manager = mp.Manager()
@@ -1145,6 +1215,16 @@ class Transcriber(
                         pbar.update(succeeded + failed)
 
     def carpa_lm_rescore(self):
+        """
+        Rescore lattices with CARPA language model
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcriber.Transcriber.carpa_lm_rescore_arguments`
+            Arguments for function
+        """
         self.logger.info("Rescoring lattices with large G.carpa...")
         if self.use_mp:
             manager = mp.Manager()
