@@ -318,14 +318,14 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                                     per_utterance_phone_intervals[utterance_name].append(interval)
         score_count = 0
         score_sum = 0
-        insertion_sum = 0
-        deletion_sum = 0
+        phone_edit_sum = 0
+        phone_length_sum = 0
         if output_directory:
             csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
         else:
             csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
         with open(csv_path, "w", encoding="utf8") as f:
-            f.write("Utterance,Score,Insertions,Deletions\n")
+            f.write("utterance,score,phone_error_rate\n")
             for utterance_name, intervals in per_utterance_phone_intervals.items():
                 if not intervals:
                     continue
@@ -334,7 +334,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 self.log_debug(f"ALIGNED: {self.utterances[utterance_name].phone_labels}")
                 if not self.utterances[utterance_name].phone_labels:
                     continue
-                score, insertions, deletions = align_phones(
+                score, phone_error_rate = align_phones(
                     intervals,
                     self.utterances[utterance_name].phone_labels,
                     self.optional_silence_phone,
@@ -342,14 +342,13 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 )
                 if score is None:
                     continue
-                f.write(f"{utterance_name},{score},{insertions},{deletions}\n")
+                f.write(f"{utterance_name},{score},{phone_error_rate}\n")
                 score_count += 1
                 score_sum += score
-                insertion_sum += insertions
-                deletion_sum += deletions
+                phone_edit_sum += int(phone_error_rate * len(intervals))
+                phone_length_sum += len(intervals)
         self.logger.info(f"Average overlap score: {score_sum/score_count}")
-        self.logger.info(f"Average number of insertions: {insertion_sum/score_count}")
-        self.logger.info(f"Average number of deletions: {deletion_sum/score_count}")
+        self.logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
 
     def align(self) -> None:
         """Run the aligner"""

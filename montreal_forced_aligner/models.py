@@ -5,6 +5,7 @@ Model classes
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import typing
@@ -26,10 +27,8 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.dictionary.pronunciation import (
-        DictionaryMixin,
-        PronunciationDictionaryMixin,
-    )
+    from montreal_forced_aligner.dictionary.pronunciation import DictionaryMixin
+    from montreal_forced_aligner.g2p.trainer import G2PTrainer
 
 
 # default format for output
@@ -571,44 +570,40 @@ class G2PModel(Archive):
 
         super().__init__(source, root_directory)
 
-    def add_meta_file(
-        self, dictionary: PronunciationDictionaryMixin, architecture: Optional[str] = None
-    ) -> None:
+    def add_meta_file(self, g2p_trainer: G2PTrainer) -> None:
         """
-        Construct meta data information for the G2P model from the dictionary it was trained from
+        Construct metadata information for the G2P model from the dictionary it was trained from
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
-            Pronunciation dictionary that was the training data for the G2P model
-        architecture: str, optional
-            Architecture of the G2P model, defaults to "pynini"
+        g2p_trainer: :class:`~montreal_forced_aligner.g2p.trainer.G2PTrainer`
+            Trainer for the G2P model
         """
-        from .utils import get_mfa_version
 
-        if architecture is None:
-            architecture = "pynini"
-        with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
-            meta = {
-                "phones": sorted(dictionary.non_silence_phones),
-                "graphemes": sorted(dictionary.graphemes),
-                "architecture": architecture,
-                "version": get_mfa_version(),
-            }
-            yaml.dump(meta, f)
+        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+            json.dump(g2p_trainer.meta, f)
 
     @property
     def meta(self) -> dict:
         """Metadata for the G2P model"""
         if not self._meta:
-            meta_path = os.path.join(self.dirname, "meta.yaml")
+            meta_path = os.path.join(self.dirname, "meta.json")
+            format = "json"
+            if not os.path.exists(meta_path):
+                meta_path = os.path.join(self.dirname, "meta.yaml")
+                format = "yaml"
             if not os.path.exists(meta_path):
                 self._meta = {"version": "0.9.0", "architecture": "phonetisaurus"}
             else:
                 with open(meta_path, "r", encoding="utf8") as f:
-                    self._meta = yaml.safe_load(f)
+                    if format == "json":
+                        self._meta = json.load(f)
+                    else:
+                        self._meta = yaml.safe_load(f)
             self._meta["phones"] = set(self._meta.get("phones", []))
             self._meta["graphemes"] = set(self._meta.get("graphemes", []))
+            self._meta["evaluation"] = self._meta.get("evaluation", [])
+            self._meta["training"] = self._meta.get("training", [])
         return self._meta
 
     @property

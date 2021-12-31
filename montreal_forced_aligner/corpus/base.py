@@ -1,6 +1,7 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
+import json
 import os
 import random
 import time
@@ -26,6 +27,13 @@ from montreal_forced_aligner.helper import output_mapping
 from montreal_forced_aligner.utils import Stopped
 
 __all__ = ["CorpusMixin"]
+
+
+def set_default(obj):
+    """JSON serialization"""
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError
 
 
 class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
@@ -138,33 +146,27 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def _write_speakers(self):
         """Write speaker information for speeding up future runs"""
-        to_save = []
-        for speaker in self.speakers:
-            to_save.append(speaker.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "speakers.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "speakers.json"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            for speaker in self.speakers:
+                json.dump(speaker.meta, f, default=set_default)
 
     def _write_files(self):
         """Write file information for speeding up future runs"""
-        to_save = []
-        for file in self.files:
-            to_save.append(file.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "files.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "files.json"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            for file in self.files:
+                json.dump(file.meta, f, default=set_default)
 
     def _write_utterances(self):
         """Write utterance information for speeding up future runs"""
-        to_save = []
-        for utterance in self.utterances:
-            to_save.append(utterance.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "utterances.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "utterances.json"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            for utterance in self.utterances:
+                json.dump(utterance.meta, f, default=set_default)
 
     def create_corpus_split(self) -> None:
         """Create split directory and output information from Jobs"""
@@ -325,6 +327,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         """Number of utterances in the corpus"""
         return len(self.utterances)
 
+    @property
+    def num_speakers(self) -> int:
+        """Number of speakers in the corpus"""
+        return len(self.speakers)
+
     def subset_directory(self, subset: Optional[int]) -> str:
         """
         Construct a subset directory for the corpus
@@ -402,9 +409,15 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                         f"with --clean."
                     )
                     self.num_jobs = old_num_jobs
-        speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
-        files_path = os.path.join(self.corpus_output_directory, "files.yaml")
-        utterances_path = os.path.join(self.corpus_output_directory, "utterances.yaml")
+        format = "json"
+        speakers_path = os.path.join(self.corpus_output_directory, "speakers.json")
+        files_path = os.path.join(self.corpus_output_directory, "files.json")
+        utterances_path = os.path.join(self.corpus_output_directory, "utterances.json")
+        if not os.path.exists(speakers_path):
+            format = "yaml"
+            speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
+            files_path = os.path.join(self.corpus_output_directory, "files.yaml")
+            utterances_path = os.path.join(self.corpus_output_directory, "utterances.yaml")
 
         if not os.path.exists(speakers_path):
             self.log_debug(f"Could not find {speakers_path}, cannot load from temp")
@@ -418,14 +431,20 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.log_debug("Loading from temporary files...")
 
         with open(speakers_path, "r", encoding="utf8") as f:
-            speaker_data = yaml.safe_load(f)
+            if format == "json":
+                speaker_data = json.load(f)
+            else:
+                speaker_data = yaml.safe_load(f)
 
         for entry in speaker_data:
             self.speakers.add_speaker(Speaker(entry["name"]))
             self.speakers[entry["name"]].cmvn = entry["cmvn"]
 
         with open(files_path, "r", encoding="utf8") as f:
-            files_data = yaml.safe_load(f)
+            if format == "json":
+                files_data = json.load(f)
+            else:
+                files_data = yaml.safe_load(f)
         for entry in files_data:
             self.files.add_file(
                 File(
@@ -441,7 +460,10 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
 
         with open(utterances_path, "r", encoding="utf8") as f:
-            utterances_data = yaml.safe_load(f)
+            if format == "json":
+                utterances_data = json.load(f)
+            else:
+                utterances_data = yaml.safe_load(f)
         for entry in utterances_data:
             s = self.speakers[entry["speaker"]]
             f = self.files[entry["file"]]

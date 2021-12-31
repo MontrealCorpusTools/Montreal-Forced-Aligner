@@ -799,7 +799,7 @@ def align_phones(
     test: List[CtmInterval],
     silence_phone: str,
     custom_mapping: Optional[Dict[str, str]] = None,
-) -> Tuple[Optional[float], Optional[int], Optional[int]]:
+) -> Tuple[float, float]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone
@@ -813,16 +813,14 @@ def align_phones(
     silence_phones: set[str]
         Set of silence phones (these are ignored in the final calculation)
     custom_mapping: dict[str, str], optional
-        Optional mapping of phones to treat as matches even if they have different symbols
+        Mapping of phones to treat as matches even if they have different symbols
 
     Returns
     -------
     float
         Score based on the average amount of overlap in phone intervals
-    int
-        Number of insertions
-    int
-        Number of deletions
+    float
+        Phone error rate
     """
     from Bio import pairwise2
 
@@ -839,6 +837,7 @@ def align_phones(
     overlap_sum = 0
     num_insertions = 0
     num_deletions = 0
+    num_substitutions = 0
     for a in alignments:
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
@@ -855,8 +854,11 @@ def align_phones(
             else:
                 overlap_sum += abs(sa.begin - sb.begin) + abs(sa.end - sb.end)
                 overlap_count += 1
+                if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
+                    num_substitutions += 1
     if overlap_count:
         score = overlap_sum / overlap_count
     else:
         score = None
-    return score, num_insertions, num_deletions
+    phone_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
+    return score, phone_error_rate

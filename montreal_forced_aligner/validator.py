@@ -923,13 +923,13 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
 
             self.calculate_oovs_found()
 
+            begin = time.time()
+            self.write_lexicon_information()
+            self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
-
-                begin = time.time()
-                self.write_lexicon_information()
-                self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 
                 begin = time.time()
                 self.initialize_jobs()

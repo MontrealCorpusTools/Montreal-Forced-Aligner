@@ -18,25 +18,19 @@ from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import File
 from montreal_forced_aligner.corpus.features import (
     CalcFmllrArguments,
+    CalcFmllrFunction,
+    ComputeVadFunction,
     FeatureConfigMixin,
     MfccArguments,
     MfccFunction,
     VadArguments,
-    calc_fmllr_func,
-    compute_vad_func,
 )
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import load_scp
-from montreal_forced_aligner.utils import (
-    KaldiProcessWorker,
-    Stopped,
-    run_mp,
-    run_non_mp,
-    thirdparty_binary,
-)
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
 
 __all__ = [
     "AcousticCorpusMixin",
@@ -265,9 +259,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             VadArguments(
                 os.path.join(self.split_directory, "log", f"compute_vad.{j.name}.log"),
-                j.current_dictionary_names,
-                j.construct_path_dictionary(self.split_directory, "feats", "scp"),
-                j.construct_path_dictionary(self.split_directory, "vad", "scp"),
+                j.construct_path(self.split_directory, "feats", "scp"),
+                j.construct_path(self.split_directory, "vad", "scp"),
                 self.vad_options,
             )
             for j in self.jobs
@@ -334,45 +327,44 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Reference Kaldi script
         """
         self.log_info("Generating MFCCs...")
-        if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
-            stopped = Stopped()
-            procs = []
-            for i, args in enumerate(self.mfcc_arguments()):
-                function = MfccFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
-                procs.append(p)
-                p.start()
-            with tqdm.tqdm(total=self.num_utterances) as pbar:
-                while True:
-                    try:
-                        num_utterances = return_queue.get(timeout=1)
-                        # print(utterance)
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    pbar.update(num_utterances)
-            for p in procs:
-                p.join()
-            if error_dict:
-                for v in error_dict.values():
-                    raise v
-        else:
-            for args in self.mfcc_arguments():
-                function = MfccFunction(args)
-                with tqdm.tqdm(total=self.num_utterances) as pbar:
-                    for num_utterances in function.run():
-                        pbar.update(num_utterances)
         log_directory = os.path.join(self.split_directory, "log")
         os.makedirs(log_directory, exist_ok=True)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.mfcc_arguments()):
+                    function = MfccFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                    while True:
+                        try:
+                            num_utterances = return_queue.get(timeout=1)
+                            # print(utterance)
+                            if stopped.stop_check():
+                                continue
+                        except Empty:
+                            for proc in procs:
+                                if not proc.finished.stop_check():
+                                    break
+                            else:
+                                break
+                            continue
+                        pbar.update(num_utterances)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.mfcc_arguments():
+                    function = MfccFunction(args)
+                    for num_utterances in function.run():
+                        pbar.update(num_utterances)
 
     def calc_cmvn(self) -> None:
         """
@@ -423,13 +415,43 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Reference Kaldi script
         """
         begin = time.time()
-        log_directory = self.working_log_directory
 
-        jobs = self.calc_fmllr_arguments()
-        if self.use_mp:
-            run_mp(calc_fmllr_func, jobs, log_directory)
-        else:
-            run_non_mp(calc_fmllr_func, jobs, log_directory)
+        arguments = self.calc_fmllr_arguments()
+        with tqdm.tqdm(total=self.num_speakers) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = CalcFmllrFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        _ = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = CalcFmllrFunction(args)
+                    for _ in function.run():
+                        pbar.update(1)
         self.speaker_independent = False
         self.log_debug(f"Fmllr calculation took {time.time() - begin}")
 
@@ -447,14 +469,46 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if os.path.exists(os.path.join(self.split_directory, "vad.0.scp")):
             self.log_info("VAD already computed, skipping!")
             return
+        begin = time.time()
         self.log_info("Computing VAD...")
-        log_directory = os.path.join(self.split_directory, "log")
-        os.makedirs(log_directory, exist_ok=True)
-        jobs = self.compute_vad_arguments()
-        if self.use_mp:
-            run_mp(compute_vad_func, jobs, log_directory)
-        else:
-            run_non_mp(compute_vad_func, jobs, log_directory)
+
+        arguments = self.compute_vad_arguments()
+        with tqdm.tqdm(total=self.num_speakers) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = ComputeVadFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, no_feats, unvoiced = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + no_feats + unvoiced)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = ComputeVadFunction(args)
+                    for done, no_feats, unvoiced in function.run():
+                        pbar.update(done + no_feats + unvoiced)
+        self.log_debug(f"VAD computation took {time.time() - begin}")
 
     def combine_feats(self) -> None:
         """

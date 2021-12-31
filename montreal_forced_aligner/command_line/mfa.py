@@ -464,7 +464,7 @@ def create_parser() -> ArgumentParser:
     train_g2p_parser.add_argument(
         "--evaluate",
         "--validate",
-        dest="evaluate",
+        dest="evaluate_mode",
         action="store_true",
         help="Perform an analysis of accuracy training on "
         "most of the data and validating on an unseen subset",

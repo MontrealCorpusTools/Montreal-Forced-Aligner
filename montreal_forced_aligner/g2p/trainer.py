@@ -199,11 +199,11 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self,
         validation_proportion: float = 0.1,
         num_pronunciations: int = 0,
-        evaluate: bool = False,
+        evaluate_mode: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.evaluate = evaluate
+        self.evaluate_mode = evaluate_mode
         self.validation_proportion = validation_proportion
         self.num_pronunciations = num_pronunciations
         self.g2p_training_dictionary = {}
@@ -355,8 +355,15 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
             "phones": sorted(self.non_silence_phones),
             "graphemes": self.graphemes,
             "evaluation": {},
+            "training": {
+                "num_words": len(self.g2p_training_dictionary),
+                "num_graphemes": len(self.graphemes),
+                "num_phones": len(self.non_silence_phones),
+            },
         }
-        if self.wer is not None:
+
+        if self.evaluate_mode:
+            m["evaluation"]["num_words"] = len(self.g2p_validation_dictionary)
             m["evaluation"]["word_error_rate"] = self.wer
             m["evaluation"]["phone_error_rate"] = self.ler
         return m
@@ -381,22 +388,31 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
             self.g2p_validation_dictionary = {
                 k: v for k, v in word_dict.items() if k in validation_words
             }
-        phones_path = os.path.join(self.working_directory, "phones_only.txt")
+            if self.debug:
+                with open(
+                    os.path.join(self.working_directory, "validation_set.txt"),
+                    "w",
+                    encoding="utf8",
+                ) as f:
+                    for word in self.g2p_validation_dictionary:
+                        f.write(word + "\n")
 
-        with open(self.input_path, "w", encoding="utf8") as f2, open(
-            phones_path, "w", encoding="utf8"
-        ) as phonef:
-            for word, v in self.g2p_training_dictionary.items():
-                if re.match(r"\W", word) is not None:
-                    continue
-                self.g2p_training_graphemes.update(word)
-                for v2 in v:
-                    self.g2p_training_phones.update(v2.pronunciation)
-                    f2.write(f"{word}\t{' '.join(v2.pronunciation)}\n")
-                    phonef.write(f"{' '.join(v2.pronunciation)}\n")
-        subprocess.call(["ngramsymbols", phones_path, self.sym_path])
-        if not self.debug:
-            os.remove(phones_path)
+        if not os.path.exists(self.sym_path):
+            phones_path = os.path.join(self.working_directory, "phones_only.txt")
+            with open(self.input_path, "w", encoding="utf8") as f2, open(
+                phones_path, "w", encoding="utf8"
+            ) as phonef:
+                for word, v in self.g2p_training_dictionary.items():
+                    if re.match(r"\W", word) is not None:
+                        continue
+                    self.g2p_training_graphemes.update(word)
+                    for v2 in v:
+                        self.g2p_training_phones.update(v2.pronunciation)
+                        f2.write(f"{word}\t{' '.join(v2.pronunciation)}\n")
+                        phonef.write(f"{' '.join(v2.pronunciation)}\n")
+            subprocess.call(["ngramsymbols", phones_path, self.sym_path])
+            if not self.debug:
+                os.remove(phones_path)
         self.logger.debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
         self.logger.debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
         if self.evaluate:
@@ -437,6 +453,9 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
         Generate an ngram G2P model from FAR strings
         """
         assert os.path.exists(self.far_path)
+        if os.path.exists(self.fst_path):
+            self.log_info("Model building already done, skipping!")
+            return
         with open(
             os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
         ) as logf:
