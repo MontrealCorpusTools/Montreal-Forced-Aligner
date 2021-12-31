@@ -11,5 +11,7 @@ dependencies:
   - kaldi
   - sox
   - pynini
+  - openfst
+  - ngram
   - praatio
   - biopython
