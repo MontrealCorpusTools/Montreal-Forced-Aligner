@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import itertools
+import json
 import sys
 import textwrap
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
@@ -792,6 +793,17 @@ def overlap_scoring(
     end_diff = abs(first_element.end - second_element.end)
     label_diff = compare_labels(first_element.label, second_element.label, silence_phone, mapping)
     return -1 * (begin_diff + end_diff + label_diff)
+
+
+def set_default(obj):
+    """JSON serialization"""
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError
+
+
+def jsonl_encoder(obj):
+    return json.dumps(obj, default=set_default)
 
 
 def align_phones(

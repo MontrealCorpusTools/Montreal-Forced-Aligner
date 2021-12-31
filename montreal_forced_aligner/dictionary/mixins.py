@@ -600,14 +600,17 @@ class DictionaryMixin:
         for p in sorted(self.non_silence_phones):
             base_phone = p
             if self.phone_set_type is PhoneSetType.IPA:
-                m = self.phone_set_type.base_phone_regex.match(p)
-                if m:
-                    base_phone = re.sub(r"[ʱʼʰʲʷ]", "", m.groups()[0])
+                base_phone = re.sub(
+                    r"[̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣ʱʼʰʲʷⁿˠ]", "", p
+                )
             query_set = {p, base_phone}
             if any(x in self.phone_set_type.extra_short_phones for x in query_set):
                 num_states = 1  # One state for extra short sounds
             elif any(x in self.phone_set_type.diphthong_phones for x in query_set):
                 num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif any(x in self.phone_set_type.tiphthong_phones for x in query_set):
+                num_states = 6  # 5 states for diphthongs (onset of first target, steady state,
                 # transition to next target, steady state, offset of second target)
             elif any(x in self.phone_set_type.affricate_phones for x in query_set):
                 num_states = 4  # 4 states for affricates (closure, burst, onset of frication, offset of frication)
@@ -616,7 +619,7 @@ class DictionaryMixin:
             else:
                 num_states = self.num_non_silence_states
             if self.phone_set_type is PhoneSetType.IPA:
-                if re.match(r"^.*[ʱʼʰʲʷ][ː]?$", p):
+                if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
                     num_states += 1
             if num_states not in mapping:
                 mapping[num_states] = []

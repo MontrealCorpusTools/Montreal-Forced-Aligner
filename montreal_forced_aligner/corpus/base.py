@@ -1,7 +1,6 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
-import json
 import os
 import random
 import time
@@ -24,21 +23,10 @@ from montreal_forced_aligner.corpus.classes import (
 from montreal_forced_aligner.corpus.multiprocessing import Job
 from montreal_forced_aligner.data import SoundFileInformation
 from montreal_forced_aligner.exceptions import CorpusError
-from montreal_forced_aligner.helper import output_mapping
+from montreal_forced_aligner.helper import jsonl_encoder, output_mapping
 from montreal_forced_aligner.utils import Stopped
 
 __all__ = ["CorpusMixin"]
-
-
-def set_default(obj):
-    """JSON serialization"""
-    if isinstance(obj, set):
-        return list(obj)
-    raise TypeError
-
-
-def jsonl_encoder(obj):
-    return json.dumps(obj, default=set_default)
 
 
 class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):

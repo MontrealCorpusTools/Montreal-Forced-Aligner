@@ -21,7 +21,7 @@ from montreal_forced_aligner.exceptions import (
     ModelLoadError,
     PronunciationAcousticMismatchError,
 )
-from montreal_forced_aligner.helper import TerminalPrinter
+from montreal_forced_aligner.helper import TerminalPrinter, set_default
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -581,7 +581,7 @@ class G2PModel(Archive):
         """
 
         with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
-            json.dump(g2p_trainer.meta, f)
+            json.dump(g2p_trainer.meta, f, default=set_default)
 
     @property
     def meta(self) -> dict:

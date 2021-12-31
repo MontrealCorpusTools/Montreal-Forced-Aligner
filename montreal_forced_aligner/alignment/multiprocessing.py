@@ -240,6 +240,12 @@ class AlignFunction(KaldiFunction):
                 )
                 for line in align_proc.stderr:
                     log_file.write(line)
+                    if "Overall" in line:
+                        continue
+                    if "Retried" in line:
+                        continue
+                    if "Done" in line:
+                        continue
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield m.group("utterance")

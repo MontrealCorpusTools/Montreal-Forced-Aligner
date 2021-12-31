@@ -90,7 +90,9 @@ class AccStatsFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.* Processed (?P<utterances>.*) utterances;.*$")
+    progress_pattern = re.compile(
+        r"^LOG.* Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
+    )
 
     def __init__(self, args: AccStatsArguments):
         self.log_path = args.log_path
@@ -120,7 +122,7 @@ class AccStatsFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield int(m.group("utterances"))
+                        yield int(m.group("utterances")), int(m.group("errors"))
 
 
 def compute_alignment_improvement_func(
@@ -665,7 +667,7 @@ class AcousticModelTrainingMixin(
                     p.start()
                 while True:
                     try:
-                        num_utterances = return_queue.get(timeout=1)
+                        num_utterances, errors = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -675,7 +677,7 @@ class AcousticModelTrainingMixin(
                         else:
                             break
                         continue
-                    pbar.update(num_utterances)
+                    pbar.update(num_utterances + errors)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -684,8 +686,8 @@ class AcousticModelTrainingMixin(
             else:
                 for args in arguments:
                     function = AccStatsFunction(args)
-                    for num_utterances in function.run():
-                        pbar.update(num_utterances)
+                    for num_utterances, errors in function.run():
+                        pbar.update(num_utterances + errors)
 
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
         with open(log_path, "w") as log_file:

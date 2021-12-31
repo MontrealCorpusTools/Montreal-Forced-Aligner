@@ -173,7 +173,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         Proportion of words to use as the validation set, defaults to 0.1, only used if ``evaluate`` is True
     num_pronunciations: int
         Number of pronunciations to generate
-    evaluate: bool
+    evaluation_mode: bool
         Flag for whether to evaluate the model performance on an validation set
 
     See Also
@@ -199,11 +199,11 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self,
         validation_proportion: float = 0.1,
         num_pronunciations: int = 0,
-        evaluate_mode: bool = False,
+        evaluation_mode: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.evaluate_mode = evaluate_mode
+        self.evaluation_mode = evaluation_mode
         self.validation_proportion = validation_proportion
         self.num_pronunciations = num_pronunciations
         self.g2p_training_dictionary = {}
@@ -362,7 +362,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
             },
         }
 
-        if self.evaluate_mode:
+        if self.evaluation_mode:
             m["evaluation"]["num_words"] = len(self.g2p_validation_dictionary)
             m["evaluation"]["word_error_rate"] = self.wer
             m["evaluation"]["phone_error_rate"] = self.ler
@@ -376,7 +376,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
         random.seed(self.seed)
-        if self.evaluate:
+        if self.evaluation_mode:
             word_dict = self.g2p_training_dictionary
             words = sorted(word_dict.keys())
             total_items = len(words)
@@ -415,7 +415,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                 os.remove(phones_path)
         self.logger.debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
         self.logger.debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
-        if self.evaluate:
+        if self.evaluation_mode:
             for k, v in self.g2p_validation_dictionary.items():
                 self.g2p_validation_graphemes.update(k)
                 for v2 in v:
@@ -839,7 +839,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
 
     def finalize_training(self) -> None:
         """Finalize training"""
-        if self.evaluate:
+        if self.evaluation_mode:
             self.evaluate_g2p_model()
 
     def evaluate_g2p_model(self) -> None:

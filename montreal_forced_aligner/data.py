@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import itertools
 import re
 import typing
 
@@ -87,6 +88,7 @@ class PhoneSetType(enum.Enum):
             return {"CH", "JH"}
         if self is PhoneSetType.IPA:
             return {
+                "pf",
                 "ts",
                 "dz",
                 "tʃ",
@@ -135,7 +137,97 @@ class PhoneSetType(enum.Enum):
                 "OW2",
             }
         if self is PhoneSetType.IPA:
-            return {"əw", "eɪ", "aʊ", "oʊ", "aɪ", "ɔɪ"}
+            return {x + y for x, y in itertools.product(self.vowels, self.vowels)}
+        return set()
+
+    @property
+    def vowels(self):
+        if self is PhoneSetType.IPA:
+            base_vowels = {
+                "i",
+                "u",
+                "e",
+                "ə",
+                "a",
+                "o",
+                "y",
+                "ɔ",
+                "j",
+                "w",
+                "ɪ",
+                "ʊ",
+                "w",
+                "ʏ",
+                "ɯ",
+                "ɤ",
+                "ɑ",
+                "æ",
+                "ɐ",
+                "ɚ",
+                "ɵ",
+                "ɘ",
+                "ɛ",
+                "ɜ",
+                "ɝ",
+                "ɛ̃",
+                "ɞ",
+                "ɑ̃",
+                "ɨ",
+                "ɪ̈",
+                "œ",
+                "ɒ",
+                "ɔ̃",
+                "ɶ",
+                "ø",
+                "ʉ",
+                "ʌ",
+            }
+            base_vowels |= {x + "̃" for x in base_vowels}  # Add nasals
+            return {
+                "i",
+                "u",
+                "e",
+                "ə",
+                "a",
+                "o",
+                "y",
+                "ɔ",
+                "j",
+                "w",
+                "ɪ",
+                "ʊ",
+                "w",
+                "ʏ",
+                "ɯ",
+                "ɤ",
+                "ɑ",
+                "æ",
+                "ɐ",
+                "ɚ",
+                "ɵ",
+                "ɘ",
+                "ɛ",
+                "ɜ",
+                "ɝ",
+                "ɞ",
+                "ɨ",
+                "ɪ̈",
+                "œ",
+                "ɒ",
+                "ɶ",
+                "ø",
+                "ʉ",
+                "ʌ",
+            }
+        return set()
+
+    @property
+    def tiphthong_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.IPA:
+            return {
+                x + y + z for x, y, z in itertools.product(self.vowels, self.vowels, self.vowels)
+            }
+
         return set()
 
     @property
@@ -205,112 +297,201 @@ class PhoneSetType(enum.Enum):
             for i in range(3):
                 extra_questions[f"stress_{i}"] = {f"{x}{i}" for x in vowels}
         elif self is PhoneSetType.IPA:
-            extra_questions["dental_lenition"] = {"ð", "d"}
+
+            def voiceless_variants(base_phone):
+                return {base_phone + d for d in ["", "ʱ", "ʼ", "ʰ", "ʲ", "ʷ", "ˠ", "ˀ", "̚", "͈"]}
+
+            def voiced_variants(base_phone):
+                return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
+                    d + base_phone for d in ["ⁿ"]
+                }
+
+            extra_questions["dental_lenition"] = voiced_variants("ð") | voiced_variants("d")
             extra_questions["flapping"] = {"d", "t", "ɾ"}
             extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
-            extra_questions["labial_lenition"] = {"β", "b"}
-            extra_questions["velar_lenition"] = {"ɣ", "ɡ"}
-            extra_questions["nasal_variation"] = {
-                "m",
-                "n",
-                "ɲ",
-                "ŋ",
-                "ɴ",
-                "ɳ",
-                "ɱ",
-                "ɴ",
-                "ɾ",
-                "ɰ̃",
-            }
-            extra_questions["trill_variation"] = {"r", "ʁ", "ɾ", "ɽ", "ɽr", "ɢ̆", "ʀ", "ɺ", "ɭ"}
-            extra_questions["syllabic_rhotic_variation"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
-            extra_questions["uvular_variation"] = {"ʁ", "x", "χ", "h", "ɣ", "ɰ", "ʀ"}
-            extra_questions["lateral_variation"] = {"l", "ɫ", "ʎ", "ʟ", "ɭ"}
+            extra_questions["glottal_variation"] = self.vowels | {"ʔ"}
+            extra_questions["labial_lenition"] = voiced_variants("β") | voiced_variants("b")
+            extra_questions["velar_lenition"] = voiced_variants("ɣ") | voiced_variants("ɡ")
 
-            extra_questions["dorsal_stop_variation"] = {
-                "kʰ",
-                "k",
-                "kʼ",
-                "k͈",
-                "k̚",
-                "kʲ",
-                "ɡ",
-                "ɡʲ",
-                "ɠ",
-                "ɟ",
-                "cʰ",
-                "c",
-                "cʼ",
-                "q",
-                "qʼ",
-                "qʰ",
-                "ɢ",
-            }
-            extra_questions["bilabial_stop_variation"] = {"pʰ", "b", "ɓ", "p", "pʼ", "p͈", "p̚"}
-            extra_questions["alveolar_stop_variation"] = {
-                "tʰ",
-                "t",
-                "tʼ",
-                "d",
-                "ʈʼ" "ɗ",
-                "t͈",
-                "t̚",
-            }
-            extra_questions["voiceless_fricative_variation"] = {
-                "θ",
-                "θʼ",
-                "f",
-                "fʼ",
-                "ɸ",
-                "ɸʼ",
-                "ç",
-                "çʼ",
-                "x",
-                "xʼ",
-                "χ",
-                "χʼ",
-                "h",
-            }
-            extra_questions["voiced_fricative_variation"] = {"v", "ð", "β", "ʋ"}
-            extra_questions["voiceless_affricate_variation"] = {
-                "ɕ",
-                "ɕʼ",
-                "ʂ",
-                "ʂʼ",
-                "s",
-                "sʼ",
-                "ʃ",
-                "ʃʼ",
-                "tɕ",
-                "tɕʼ",
-                "tɕʰ",
-                "tɕ͈",
-                "ʈʂ",
-                "ʈʂʼ",
-                "ʈʂʰ",
-                "ts",
-                "tsʼ",
-                "tsʰ",
-                "tʃ",
-                "tʃʼ",
-                "tʃʰ",
-            }
-            extra_questions["voiced_affricate_variation"] = {
-                "ʐ",
-                "ʑ",
-                "z",
-                "ʒ",
-                "ɖʐ",
-                "dʑ",
-                "dz",
-                "dʒ",
-            }
+            nasal_variation = (
+                voiced_variants("m")
+                | voiced_variants("n")
+                | voiced_variants("ɲ")
+                | voiced_variants("ŋ")
+            )
+            nasal_variation |= voiced_variants("ɴ") | voiced_variants("ɳ") | voiced_variants("ɱ")
+            nasal_variation |= voiced_variants("ɰ̃") | voiced_variants("ɾ")
+            extra_questions["nasal_variation"] = nasal_variation
+
+            approximant_variation = (
+                voiced_variants("w")
+                | voiced_variants("ʍ")
+                | voiced_variants("ɰ")
+                | voiced_variants("ɥ")
+            )
+            approximant_variation |= (
+                voiced_variants("l")
+                | voiced_variants("ɭ")
+                | voiced_variants("ɹ")
+                | voiced_variants("ɫ")
+            )
+            approximant_variation |= (
+                voiced_variants("ɻ") | voiced_variants("ʋ") | voiced_variants("j")
+            )
+            extra_questions["approximant_variation"] = approximant_variation
+
+            front_glide_variation = {"j", "i", "ɪ", "ɥ", "ʏ", "y"}
+            front_glide_variation |= {x + "̃" for x in front_glide_variation}
+            extra_questions["front_glide_variation"] = front_glide_variation
+
+            back_glide_variation = {"w", "u", "ʊ", "ɰ", "ɯ", "ʍ"}
+            back_glide_variation |= {x + "̃" for x in back_glide_variation}
+            extra_questions["back_glide_variation"] = back_glide_variation
+
+            trill_variation = (
+                voiced_variants("r")
+                | voiced_variants("ɾ")
+                | voiced_variants("ɽ")
+                | voiced_variants("ɽr")
+            )
+            trill_variation |= voiced_variants("ʁ") | voiced_variants("ʀ") | voiced_variants("ɢ̆")
+            trill_variation |= voiced_variants("ɺ") | voiced_variants("ɭ")
+            extra_questions["trill_variation"] = trill_variation
+
+            extra_questions["syllabic_rhotic_variation"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
+            uvular_variation = (
+                voiced_variants("ʁ") | voiceless_variants("x") | voiceless_variants("χ")
+            )
+            uvular_variation |= (
+                voiced_variants("ɣ")
+                | voiceless_variants("h")
+                | voiced_variants("ɰ")
+                | voiced_variants("ʀ")
+            )
+            extra_questions["uvular_variation"] = uvular_variation
+
+            lateral_variation = voiced_variants("l") | voiced_variants("ɫ") | voiced_variants("ʎ")
+            lateral_variation |= (
+                voiced_variants("ʟ")
+                | voiced_variants("ɭ")
+                | voiced_variants("ɮ")
+                | voiceless_variants("ɬ")
+            )
+            extra_questions["lateral_variation"] = lateral_variation
+
+            dorsal_stops = voiceless_variants("k") | voiced_variants("ɡ") | voiced_variants("ɠ")
+            dorsal_stops |= voiceless_variants("c") | voiced_variants("ɟ") | voiced_variants("ʄ")
+            dorsal_stops |= voiceless_variants("q") | voiced_variants("ɢ") | voiced_variants("ʛ")
+            extra_questions["dorsal_stop_variation"] = dorsal_stops
+
+            bilabial_stops = (
+                voiceless_variants("p")
+                | voiced_variants("b")
+                | voiced_variants("ɓ")
+                | voiced_variants("ʙ")
+                | voiced_variants("ⱱ")
+            )
+            extra_questions["bilabial_stop_variation"] = bilabial_stops
+
+            alveolar_stops = voiceless_variants("t") | voiceless_variants("ʈ")
+            alveolar_stops |= (
+                voiced_variants("d")
+                | voiced_variants("ɗ")
+                | voiced_variants("ɖ")
+                | voiced_variants("ᶑ")
+            )
+            extra_questions["alveolar_stop_variation"] = alveolar_stops
+
+            voiceless_fricatives = (
+                voiceless_variants("θ")
+                | voiceless_variants("f")
+                | voiceless_variants("pf")
+                | voiceless_variants("ɸ")
+            )
+            voiceless_fricatives |= (
+                voiceless_variants("ç")
+                | voiceless_variants("x")
+                | voiceless_variants("kx")
+                | voiceless_variants("χ")
+                | voiceless_variants("h")
+            )
+            voiceless_fricatives |= (
+                voiceless_variants("cç")
+                | voiceless_variants("q")
+                | voiceless_variants("qχ")
+                | voiceless_variants("ɬ")
+            )
+            extra_questions["voiceless_fricative_variation"] = voiceless_fricatives
+            voiced_fricatives = voiced_variants("v") | voiced_variants("ð")
+            voiced_fricatives |= voiced_variants("β") | voiced_variants("ʋ") | voiced_variants("ɣ")
+            voiced_fricatives |= (
+                voiced_variants("ɟʝ") | voiced_variants("ʝ") | voiced_variants("ɮ")
+            )
+
+            extra_questions["voiced_fricative_variation"] = voiced_fricatives
+            voiceless_sibilants = (
+                voiceless_variants("s")
+                | voiceless_variants("ʃ")
+                | voiceless_variants("ɕ")
+                | voiceless_variants("ʂ")
+            )
+            voiceless_sibilants |= (
+                voiceless_variants("ts") | voiceless_variants("tʃ") | voiceless_variants("tɕ")
+            )
+            voiceless_sibilants |= voiceless_variants("ʈʂ") | voiceless_variants("tʂ")
+            extra_questions["voiceless_affricate_variation"] = voiceless_sibilants
+
+            voiced_sibilants = (
+                voiced_variants("z")
+                | voiced_variants("ʒ")
+                | voiced_variants("ʐ")
+                | voiced_variants("ʑ")
+            )
+            voiced_sibilants |= (
+                voiced_variants("dz")
+                | voiced_variants("dʒ")
+                | voiced_variants("dʐ")
+                | voiced_variants("ɖʐ")
+                | voiced_variants("dʑ")
+            )
+            extra_questions["voiced_affricate_variation"] = voiced_sibilants
 
             extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ", "ɔ"}
             extra_questions["mid_back_vowel_variation"] = {"oʊ", "ɤ", "o", "ɔ"}
             extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e", "œ", "ø"}
             extra_questions["high_front_variation"] = {"i", "y", "ɪ", "ʏ", "ɨ", "ʉ"}
             extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ", "ʉ"}
+            back_diphthong_variation = {"aʊ", "au", "aw", "ɐw"}
+            back_diphthong_variation |= {x + "̃" for x in back_diphthong_variation}
+            extra_questions["back_diphthong_variation"] = back_diphthong_variation
+
+            front_diphthong_variation = {"aɪ", "ai", "aj", "ɐj"}
+            front_diphthong_variation |= {x + "̃" for x in front_diphthong_variation}
+            extra_questions["front_diphthong_variation"] = front_diphthong_variation
+
+            mid_front_diphthong_variation = {
+                "eɪ",
+                "ei",
+                "ej",
+                "ɛɪ",
+                "ɛi",
+                "ɛj",
+            }
+            mid_front_diphthong_variation |= {x + "̃" for x in mid_front_diphthong_variation}
+            extra_questions["mid_front_diphthong_variation"] = mid_front_diphthong_variation
+
+            mid_back_diphthong_variation = {"ow", "ou", "oʊ"}
+            mid_back_diphthong_variation |= {x + "̃" for x in mid_back_diphthong_variation}
+            extra_questions["mid_front_diphthong_variation"] = mid_back_diphthong_variation
+
+            mid_back_front_diphthong_variation = {"oj", "oi", "oɪ", "ɔʏ", "ɔɪ", "ɔj", "ɔi"}
+            mid_back_front_diphthong_variation |= {
+                x + "̃" for x in mid_back_front_diphthong_variation
+            }
+            extra_questions[
+                "mid_back_front_diphthong_variation"
+            ] = mid_back_front_diphthong_variation
+
             extra_questions["central_variation"] = {
                 "ə",
                 "ɤ",
