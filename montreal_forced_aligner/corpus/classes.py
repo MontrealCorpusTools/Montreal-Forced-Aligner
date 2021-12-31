@@ -246,7 +246,10 @@ class File(MfaCorpusClass):
             self.sound_type = SoundFileType.NONE
 
     @property
-    def multiprocessing_data(self):
+    def multiprocessing_data(self) -> FileData:
+        """
+        Data object for the file
+        """
         return FileData(
             self.name,
             self.wav_path,
@@ -259,7 +262,19 @@ class File(MfaCorpusClass):
 
     @classmethod
     def load_from_mp_data(cls, file_data: FileData) -> File:
+        """
+        Construct a File from a multiprocessing file data class
 
+        Parameters
+        ----------
+        file_data: :class:`~montreal_forced_aligner.data.file_data`
+            Data for the loaded file
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.classes.File`
+            Loaded file
+        """
         file = File(
             file_data.wav_path,
             file_data.text_path,
@@ -360,22 +375,16 @@ class File(MfaCorpusClass):
 
     @property
     def name(self) -> str:
+        """Name of the file"""
         return self._name
 
     @property
     def is_fully_aligned(self) -> bool:
+        """
+        Check if all utterances have been aligned
+        """
         for u in self.utterances:
             if u.ignored:
-                continue
-            if u.word_labels is None:
-                return False
-            if u.phone_labels is None:
-                return False
-        return True
-
-    def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
-        for u in self.utterances:
-            if u.speaker != speaker:
                 continue
             if u.word_labels is None:
                 return False
@@ -394,7 +403,9 @@ class File(MfaCorpusClass):
         text_type: Optional[TextFileType] = None,
     ) -> None:
         """
-        Output File to TextGrid or lab
+        Output File to TextGrid or lab.  If ``text_type`` is not specified, the original file type will be used,
+        but if there was no text file for the file, it will guess lab format if there is only one utterance, otherwise
+        it will output a TextGrid file.
 
         Parameters
         ----------
@@ -403,6 +414,8 @@ class File(MfaCorpusClass):
         backup_output_directory: str, optional
             If specified, then it will check whether it would overwrite an existing file and
             instead use this directory
+        text_type: TextFileType, optional
+            Text type to save as, if not provided, it will use either the original file type or guess the file type
         """
         utterance_count = len(self.utterances)
         if text_type is None:
@@ -488,6 +501,14 @@ class File(MfaCorpusClass):
 
     @property
     def aligned_data(self) -> Dict[str, Dict[str, List[CtmInterval]]]:
+        """
+        Word and phone alignments for the file
+
+        Returns
+        -------
+        dict[str, dict[str, list[CtmInterval]]]
+            Dictionary of word and phone intervals for each speaker in the file
+        """
         data = {}
         for s in self.speaker_ordering:
             if s.name not in data:
@@ -499,7 +520,10 @@ class File(MfaCorpusClass):
             data[u.speaker_name]["phones"].extend(u.phone_labels)
         return data
 
-    def clean_up(self):
+    def clean_up(self) -> None:
+        """
+        Recombine words that were split up as part of initial text processing
+        """
         for u in self.utterances:
             if not u.word_labels:
                 continue
@@ -726,6 +750,9 @@ class File(MfaCorpusClass):
         return self.wav_info.sox_string
 
     def load_wav_data(self) -> None:
+        """
+        Load the sound file into memory as a numpy array
+        """
         self.waveform, _ = librosa.load(self.wav_path, sr=None, mono=False)
 
     def normalized_waveform(
@@ -1020,7 +1047,15 @@ class Utterance(MfaCorpusClass):
                 count += 1
         return count
 
-    def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]):
+    def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
+        """
+        Add aligned word intervals for the utterance
+
+        Parameters
+        ----------
+        intervals: Union[CtmInterval, list[CtmInterval]]
+            Intervals to add
+        """
         if not isinstance(intervals, list):
             intervals = [intervals]
         if self.word_labels is None:
@@ -1030,7 +1065,15 @@ class Utterance(MfaCorpusClass):
                 interval.shift_times(self.begin)
         self.word_labels.extend(intervals)
 
-    def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]):
+    def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
+        """
+        Add aligned phone intervals for the utterance
+
+        Parameters
+        ----------
+        intervals: Union[CtmInterval, list[CtmInterval]]
+            Intervals to add
+        """
         if not isinstance(intervals, list):
             intervals = [intervals]
         if self.phone_labels is None:

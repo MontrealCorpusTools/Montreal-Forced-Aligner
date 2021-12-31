@@ -13,7 +13,7 @@ from montreal_forced_aligner.abc import TemporaryDirectoryMixin
 from montreal_forced_aligner.data import PhoneSetType
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict, ReversedMappingType
 
 DEFAULT_PUNCTUATION = list(r'、。।，？@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
@@ -422,6 +422,16 @@ class DictionaryMixin:
             i += 1
             phone_mapping[p] = i
         return phone_mapping
+
+    @property
+    def reversed_phone_mapping(self) -> ReversedMappingType:
+        """
+        A mapping of integer ids to phones
+        """
+        mapping = {}
+        for k, v in self.phone_mapping.items():
+            mapping[v] = k
+        return mapping
 
     @property
     def positional_silence_phones(self) -> List[str]:

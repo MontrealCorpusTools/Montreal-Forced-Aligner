@@ -70,6 +70,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
 
     @property
     def workflow_identifier(self):
+        """G2P workflow identifier"""
         return "g2p"
 
     def generate_pronunciations(self) -> Dict[str, List[str]]:

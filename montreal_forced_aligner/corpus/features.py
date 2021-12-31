@@ -122,6 +122,7 @@ class MfccFunction(KaldiFunction):
         self.mfcc_options = args.mfcc_options
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w") as log_file:
             mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
             raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")

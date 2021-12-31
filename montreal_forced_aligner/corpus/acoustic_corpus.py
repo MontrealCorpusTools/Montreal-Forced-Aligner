@@ -38,6 +38,13 @@ from montreal_forced_aligner.utils import (
     thirdparty_binary,
 )
 
+__all__ = [
+    "AcousticCorpusMixin",
+    "AcousticCorpus",
+    "AcousticCorpusWithPronunciations",
+    "AcousticCorpusPronunciationMixin",
+]
+
 
 class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     """

@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     FileInfoDict = Dict[
         str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
     ]
-    from montreal_forced_aligner.abc import MappingType, ReversedMappingType, WordsType
     from montreal_forced_aligner.corpus.classes import Speaker
     from montreal_forced_aligner.dictionary import PronunciationDictionaryMixin
 
@@ -82,7 +81,6 @@ class CorpusProcessWorker(mp.Process):
         """
         Run the corpus loading job
         """
-        from ..corpus.classes import File
 
         while True:
             try:
@@ -450,11 +448,6 @@ class Job:
             for u in s.utterances.subset(self.subset_utts):
                 yield u
 
-    @property
-    def current_files(self) -> Generator[File]:
-        """Current dictionary names depending on whether a subset is being used"""
-        return self.files.subset(self.subset_files)
-
     def word_boundary_int_files(self) -> Dict[str, str]:
         """
         Generate mapping for dictionaries to word boundary int files
@@ -469,175 +462,15 @@ class Job:
             data[dictionary.name] = os.path.join(dictionary.phones_dir, "word_boundary.int")
         return data
 
-    def reversed_phone_mappings(self) -> Dict[str, ReversedMappingType]:
-        """
-        Generate mapping for dictionaries to reversed phone mapping
-
-        Returns
-        -------
-        dict[str, ReversedMappingType]
-            Per dictionary reversed phone mapping
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.reversed_phone_mapping
-        return data
-
-    def reversed_word_mappings(self) -> Dict[str, ReversedMappingType]:
-        """
-        Generate mapping for dictionaries to reversed word mapping
-
-        Returns
-        -------
-        dict[str, ReversedMappingType]
-            Per dictionary reversed word mapping
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.reversed_word_mapping
-        return data
-
-    def words_mappings(self) -> Dict[str, MappingType]:
-        """
-        Generate mapping for dictionaries to word mapping
-
-        Returns
-        -------
-        dict[str, MappingType]
-            Per dictionary word mapping
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.words_mapping
-        return data
-
-    def words(self) -> Dict[str, WordsType]:
-        """
-        Generate mapping for dictionaries to words
-
-        Returns
-        -------
-        dict[str, WordsType]
-            Per dictionary words
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.words
-        return data
-
-    def punctuation(self):
-        """
-        Generate mapping for dictionaries to punctuation
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary punctuation
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.punctuation
-        return data
-
-    def clitic_set(self) -> Dict[str, Set[str]]:
-        """
-        Generate mapping for dictionaries to clitic sets
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary clitic sets
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.clitic_set
-        return data
-
-    def clitic_markers(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to clitic markers
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary clitic markers
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.clitic_markers
-        return data
-
-    def compound_markers(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to compound markers
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary compound markers
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.compound_markers
-        return data
-
-    def oov_codes(self) -> Dict[str, str]:
-        """
-        Generate mapping for dictionaries to oov symbols
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary oov symbols
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.oov_word
-        return data
-
-    def oov_ints(self) -> Dict[str, int]:
-        """
-        Generate mapping for dictionaries to oov ints
-
-        Returns
-        -------
-        dict[str, int]
-            Per dictionary oov ints
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.oov_int
-        return data
-
-    def positions(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to positions
-
-        Returns
-        -------
-        dict[str, list[str]]
-            Per dictionary positions
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.positions
-        return data
-
-    def silences(self) -> Dict[str, Set[str]]:
-        """
-        Generate mapping for dictionaries to silence symbols
-
-        Returns
-        -------
-        dict[str, set[str]]
-            Per dictionary silence symbols
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.silences
-        return data
-
     def output_for_features(self, split_directory: str) -> None:
+        """
+        Output the necessary files for Kaldi to generate features
+
+        Parameters
+        ----------
+        split_directory: str
+            Split directory for the corpus
+        """
         wav_scp_path = self.construct_path(split_directory, "wav", "scp")
         if not os.path.exists(wav_scp_path):
             wav_scp = self.wav_scp_data()

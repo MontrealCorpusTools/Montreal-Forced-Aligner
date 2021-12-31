@@ -477,16 +477,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return super().phone_mapping
 
     @property
-    def reversed_phone_mapping(self) -> ReversedMappingType:
-        """
-        A mapping of integer ids to phones
-        """
-        mapping = {}
-        for k, v in self.phone_mapping.items():
-            mapping[v] = k
-        return mapping
-
-    @property
     def oov_int(self) -> int:
         """
         The integer id for out of vocabulary items

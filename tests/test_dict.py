@@ -233,7 +233,7 @@ def test_english_ipa(english_us_ipa_dictionary, generated_dir):
     assert "dʒ" in topos[4]
     assert "b" in topos[2]
     assert "ŋ" in topos[3]
-    assert set(topos[1]) == {"ə", "ɚ", "ʔ"}
+    assert set(topos[1]) == {"ə", "ɚ", "ɾ", "ʔ"}
 
 
 def test_devanagari(english_dictionary, generated_dir):

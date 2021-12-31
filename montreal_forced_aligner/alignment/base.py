@@ -281,6 +281,23 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         output_textgrid_writing_errors(self.textgrid_output, textgrid_errors)
 
     def ali_to_ctm(self, word_mode=True):
+        """
+        Convert alignment archives to CTM format
+
+        Parameters
+        ----------
+        word_mode: bool
+            Flag for generating word or phone CTMs
+
+        See Also
+        --------
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.alignment.base.CorpusAligner.ali_to_word_ctm_arguments`
+            Arguments for word CTMS
+        :class:`~montreal_forced_aligner.alignment.base.CorpusAligner.ali_to_phone_ctm_arguments`
+            Arguments for phone CTMS
+        """
         if word_mode:
             self.logger.info("Generating word CTM files from alignment lattices...")
             jobs = self.ali_to_word_ctm_arguments()  # Word CTM jobs

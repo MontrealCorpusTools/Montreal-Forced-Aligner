@@ -48,8 +48,8 @@ class AlignmentImprovementArguments(NamedTuple):
     word_boundary_paths: Dict[str, str]
     ali_paths: Dict[str, str]
     frame_shift: int
-    reversed_phone_mappings: Dict[str, Dict[int, str]]
-    positions: Dict[str, List[str]]
+    reversed_phone_mappings: Dict[int, str]
+    positions: List[str]
     phone_ctm_paths: Dict[str, str]
 
 
@@ -126,8 +126,8 @@ def compute_alignment_improvement_func(
     word_boundary_paths: Dict[str, str],
     ali_paths: Dict[str, str],
     frame_shift: int,
-    reversed_phone_mappings: Dict[str, Dict[int, str]],
-    positions: Dict[str, List[str]],
+    reversed_phone_mappings: Dict[int, str],
+    positions: List[str],
     phone_ctm_paths: Dict[str, str],
 ) -> None:
     """
@@ -237,7 +237,7 @@ def compute_alignment_improvement_func(
                     env=os.environ,
                 )
                 nbest_proc.communicate()
-                mapping = reversed_phone_mappings[dict_name]
+                mapping = reversed_phone_mappings
                 actual_lines = []
                 with open(phone_ctm_path, "r", encoding="utf8") as f:
                     for line in f:
@@ -254,7 +254,7 @@ def compute_alignment_improvement_func(
                             label = mapping[int(label)]
                         except KeyError:
                             pass
-                        for p in positions[dict_name]:
+                        for p in positions:
                             if label.endswith(p):
                                 label = label[: -1 * len(p)]
                         actual_lines.append([utt, begin, end, label])
@@ -417,6 +417,8 @@ class AcousticModelTrainingMixin(
         list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AlignmentImprovementArguments`]
             Arguments for processing
         """
+        positions = self.positions
+        phone_mapping = self.reversed_phone_mapping
         return [
             AlignmentImprovementArguments(
                 os.path.join(self.working_log_directory, f"alignment_analysis.{j.name}.log"),
@@ -426,8 +428,8 @@ class AcousticModelTrainingMixin(
                 j.word_boundary_int_files(),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 self.frame_shift,
-                j.reversed_phone_mappings(),
-                j.positions(),
+                phone_mapping,
+                positions,
                 j.construct_path_dictionary(
                     self.working_directory, f"phone.{self.iteration}", "ctm"
                 ),

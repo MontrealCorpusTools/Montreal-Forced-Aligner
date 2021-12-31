@@ -479,10 +479,6 @@ def run_mp(
         job_queue.put(a)
     procs = []
     for i in range(len(argument_list)):
-        print(
-            "HELLO",
-            i,
-        )
         p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
         procs.append(p)
         p.start()

@@ -456,6 +456,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.remove_low_count_gaussians = remove_low_count_gaussians
 
     def compute_calculated_properties(self) -> None:
+        """Not implemented"""
         pass
 
     @property
@@ -713,6 +714,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.gaussian_min_count = gaussian_min_count
 
     def compute_calculated_properties(self) -> None:
+        """Not implemented"""
         pass
 
     @property

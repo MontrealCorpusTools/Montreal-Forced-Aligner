@@ -249,6 +249,18 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         mapping: Optional[Dict[str, str]] = None,
         output_directory: Optional[str] = None,
     ) -> None:
+        """
+        Evaluate alignments against a reference directory
+
+        Parameters
+        ----------
+        reference_directory: str
+            Directory containing reference TextGrid alignments
+        mapping: dict[str, Union[str, list[str]]], optional
+            Mapping between phones that should be considered equal across different phone set types
+        output_directory: str, optional
+            Directory to save results, if not specified, it will be saved in the log directory
+        """
         # Set up
         per_utterance_phone_intervals = {}
         self.log_info("Evaluating alignments...")

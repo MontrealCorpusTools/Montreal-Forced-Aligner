@@ -199,6 +199,7 @@ class AlignFunction(KaldiFunction):
         self.align_options = args.align_options
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]
@@ -342,6 +343,7 @@ class AliToCtmFunction(KaldiFunction):
         self.word_mode = args.word_mode
 
     def run(self):
+        """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
                 ali_path = self.ali_paths[dict_name]
@@ -464,7 +466,7 @@ class WordCtmProcessWorker(mp.Process):
 
     def run(self) -> None:
         """
-        Run the word processing with no clean up
+        Run the word processing
         """
         cur_utt = None
         intervals = []
