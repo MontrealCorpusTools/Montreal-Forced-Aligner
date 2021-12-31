@@ -84,6 +84,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             self.dictionary_model = DictionaryModel(
                 self.dictionary_model.path, phone_set_type=phone_set_type
             )
+        self.phone_set_type = self.dictionary_model.phone_set_type
         os.makedirs(self.output_directory, exist_ok=True)
         self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         if training_configuration is None:

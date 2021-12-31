@@ -341,20 +341,20 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                     procs.append(p)
                     p.start()
-                    while True:
-                        try:
-                            num_utterances = return_queue.get(timeout=1)
-                            # print(utterance)
-                            if stopped.stop_check():
-                                continue
-                        except Empty:
-                            for proc in procs:
-                                if not proc.finished.stop_check():
-                                    break
-                            else:
-                                break
+                while True:
+                    try:
+                        num_utterances = return_queue.get(timeout=1)
+                        # print(utterance)
+                        if stopped.stop_check():
                             continue
-                        pbar.update(num_utterances)
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances)
                 for p in procs:
                     p.join()
                 if error_dict:

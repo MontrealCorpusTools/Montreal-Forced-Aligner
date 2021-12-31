@@ -9,6 +9,7 @@ from abc import ABCMeta, abstractmethod
 from collections import Counter
 from typing import Dict, List, Optional, Union
 
+import jsonlines
 import yaml
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
@@ -34,6 +35,10 @@ def set_default(obj):
     if isinstance(obj, set):
         return list(obj)
     raise TypeError
+
+
+def jsonl_encoder(obj):
+    return json.dumps(obj, default=set_default)
 
 
 class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
@@ -147,26 +152,29 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
     def _write_speakers(self):
         """Write speaker information for speeding up future runs"""
         with open(
-            os.path.join(self.corpus_output_directory, "speakers.json"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "speakers.jsonl"), "w", encoding="utf8"
         ) as f:
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
             for speaker in self.speakers:
-                json.dump(speaker.meta, f, default=set_default)
+                writer.write(speaker.meta)
 
     def _write_files(self):
         """Write file information for speeding up future runs"""
         with open(
-            os.path.join(self.corpus_output_directory, "files.json"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "files.jsonl"), "w", encoding="utf8"
         ) as f:
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
             for file in self.files:
-                json.dump(file.meta, f, default=set_default)
+                writer.write(file.meta)
 
     def _write_utterances(self):
         """Write utterance information for speeding up future runs"""
         with open(
-            os.path.join(self.corpus_output_directory, "utterances.json"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "utterances.jsonl"), "w", encoding="utf8"
         ) as f:
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
             for utterance in self.utterances:
-                json.dump(utterance.meta, f, default=set_default)
+                writer.write(utterance.meta)
 
     def create_corpus_split(self) -> None:
         """Create split directory and output information from Jobs"""
@@ -409,10 +417,10 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                         f"with --clean."
                     )
                     self.num_jobs = old_num_jobs
-        format = "json"
-        speakers_path = os.path.join(self.corpus_output_directory, "speakers.json")
-        files_path = os.path.join(self.corpus_output_directory, "files.json")
-        utterances_path = os.path.join(self.corpus_output_directory, "utterances.json")
+        format = "jsonl"
+        speakers_path = os.path.join(self.corpus_output_directory, "speakers.jsonl")
+        files_path = os.path.join(self.corpus_output_directory, "files.jsonl")
+        utterances_path = os.path.join(self.corpus_output_directory, "utterances.jsonl")
         if not os.path.exists(speakers_path):
             format = "yaml"
             speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
@@ -431,63 +439,63 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.log_debug("Loading from temporary files...")
 
         with open(speakers_path, "r", encoding="utf8") as f:
-            if format == "json":
-                speaker_data = json.load(f)
+            if format == "jsonl":
+                speaker_data = jsonlines.Reader(f)
             else:
                 speaker_data = yaml.safe_load(f)
 
-        for entry in speaker_data:
-            self.speakers.add_speaker(Speaker(entry["name"]))
-            self.speakers[entry["name"]].cmvn = entry["cmvn"]
+            for entry in speaker_data:
+                self.speakers.add_speaker(Speaker(entry["name"]))
+                self.speakers[entry["name"]].cmvn = entry["cmvn"]
 
         with open(files_path, "r", encoding="utf8") as f:
-            if format == "json":
-                files_data = json.load(f)
+            if format == "jsonl":
+                files_data = jsonlines.Reader(f)
             else:
                 files_data = yaml.safe_load(f)
-        for entry in files_data:
-            self.files.add_file(
-                File(
-                    name=entry["name"],
-                    wav_path=entry["wav_path"],
-                    text_path=entry["text_path"],
-                    relative_path=entry["relative_path"],
+            for entry in files_data:
+                self.files.add_file(
+                    File(
+                        name=entry["name"],
+                        wav_path=entry["wav_path"],
+                        text_path=entry["text_path"],
+                        relative_path=entry["relative_path"],
+                    )
                 )
-            )
-            self.files[entry["name"]].speaker_ordering = [
-                self.speakers[x] for x in entry["speaker_ordering"]
-            ]
-            self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
+                self.files[entry["name"]].speaker_ordering = [
+                    self.speakers[x] for x in entry["speaker_ordering"]
+                ]
+                self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
 
         with open(utterances_path, "r", encoding="utf8") as f:
-            if format == "json":
-                utterances_data = json.load(f)
+            if format == "jsonl":
+                utterances_data = jsonlines.Reader(f)
             else:
                 utterances_data = yaml.safe_load(f)
-        for entry in utterances_data:
-            s = self.speakers[entry["speaker"]]
-            f = self.files[entry["file"]]
-            u = Utterance(
-                s,
-                f,
-                begin=entry["begin"],
-                end=entry["end"],
-                channel=entry["channel"],
-                text=entry["text"],
-            )
-            u.oovs = entry["oovs"]
-            u.normalized_text = entry["normalized_text"]
-            self.utterances[u.name] = u
-            if u.text:
-                self.word_counts.update(u.text.split())
-            if u.normalized_text:
-                self.word_counts.update(u.normalized_text)
-            if entry.get("word_error_rate", None) is not None:
-                u.word_error_rate = entry["word_error_rate"]
-                u.transcription_text = entry["transcription_text"]
-            self.utterances[u.name].features = entry["features"]
-            self.utterances[u.name].ignored = entry["ignored"]
-            self.add_utterance(u)
+            for entry in utterances_data:
+                s = self.speakers[entry["speaker"]]
+                f = self.files[entry["file"]]
+                u = Utterance(
+                    s,
+                    f,
+                    begin=entry["begin"],
+                    end=entry["end"],
+                    channel=entry["channel"],
+                    text=entry["text"],
+                )
+                u.oovs = entry["oovs"]
+                u.normalized_text = entry["normalized_text"]
+                self.utterances[u.name] = u
+                if u.text:
+                    self.word_counts.update(u.text.split())
+                if u.normalized_text:
+                    self.word_counts.update(u.normalized_text)
+                if entry.get("word_error_rate", None) is not None:
+                    u.word_error_rate = entry["word_error_rate"]
+                    u.transcription_text = entry["transcription_text"]
+                self.utterances[u.name].features = entry["features"]
+                self.utterances[u.name].ignored = entry["ignored"]
+                self.add_utterance(u)
 
         self.log_debug(
             f"Loaded from corpus_data temp directory in {time.time() - begin_time} seconds"

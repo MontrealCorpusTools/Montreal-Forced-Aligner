@@ -120,7 +120,7 @@ class AccStatsFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield m.group("utterances")
+                        yield int(m.group("utterances"))
 
 
 def compute_alignment_improvement_func(
@@ -307,7 +307,7 @@ def compare_alignments(
     for u in common_utts:
         one_alignment = alignments_one[u]
         two_alignment = alignments_two[u]
-        avg_overlap_diff, num_insertions, num_deletions = align_phones(
+        avg_overlap_diff, phone_error_rate = align_phones(
             one_alignment, two_alignment, silence_phone
         )
         if avg_overlap_diff is None:

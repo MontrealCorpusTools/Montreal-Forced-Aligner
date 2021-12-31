@@ -8,6 +8,7 @@ dependencies:
   - requests
   - colorama
   - pyyaml
+  - jsonlines
   - kaldi
   - sox
   - praatio
