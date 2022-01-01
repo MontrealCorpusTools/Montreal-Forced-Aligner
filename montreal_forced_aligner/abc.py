@@ -435,7 +435,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 if param_type == bool:
                     if unknown_dict[name].lower() == "false":
                         params[name] = False
-        if getattr(args, "disable_mp", "False"):
+        if getattr(args, "disable_mp", False):
             params["use_mp"] = False
         elif getattr(args, "disable_textgrid_cleanup", False):
             params["cleanup_textgrids"] = False

@@ -769,7 +769,6 @@ class AcousticModelTrainingMixin(
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
-            self.logger.info("Re-aligning...")
             self.align_utterances()
             self.logger.debug(
                 f"Analyzing information for alignment in iteration {self.iteration}..."
@@ -777,7 +776,6 @@ class AcousticModelTrainingMixin(
             self.compile_information()
             if self.debug:
                 self.compute_alignment_improvement()
-        self.logger.info("Accumulating statistics...")
         self.acc_stats()
 
         parse_logs(self.working_log_directory)
