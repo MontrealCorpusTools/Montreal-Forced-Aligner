@@ -439,7 +439,7 @@ class PhoneSetType(enum.Enum):
                 voiceless_variants("ts") | voiceless_variants("tʃ") | voiceless_variants("tɕ")
             )
             voiceless_sibilants |= voiceless_variants("ʈʂ") | voiceless_variants("tʂ")
-            extra_questions["voiceless_affricate_variation"] = voiceless_sibilants
+            extra_questions["voiceless_sibilant_variation"] = voiceless_sibilants
 
             voiced_sibilants = (
                 voiced_variants("z")
@@ -454,7 +454,7 @@ class PhoneSetType(enum.Enum):
                 | voiced_variants("ɖʐ")
                 | voiced_variants("dʑ")
             )
-            extra_questions["voiced_affricate_variation"] = voiced_sibilants
+            extra_questions["voiced_sibilant_variation"] = voiced_sibilants
 
             extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ", "ɔ"}
             extra_questions["mid_back_vowel_variation"] = {"oʊ", "ɤ", "o", "ɔ"}

@@ -418,7 +418,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         if item in self._to_int_cache:
             return self._to_int_cache[item]
         sanitized = self.lookup(item)
-        print(sanitized)
         text_int = []
         for item in sanitized:
             if not item:

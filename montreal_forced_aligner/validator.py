@@ -13,12 +13,18 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 
 import yaml
 
-from .acoustic_modeling.trainer import TrainableAligner
-from .alignment import CorpusAligner, PretrainedAligner
-from .alignment.multiprocessing import compile_information_func
-from .exceptions import ConfigError, KaldiProcessingError
-from .helper import TerminalPrinter, comma_join, edit_distance, load_scp, save_scp
-from .utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
+from montreal_forced_aligner.alignment import CorpusAligner, PretrainedAligner
+from montreal_forced_aligner.alignment.multiprocessing import compile_information_func
+from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
+from montreal_forced_aligner.helper import (
+    TerminalPrinter,
+    comma_join,
+    edit_distance,
+    load_scp,
+    save_scp,
+)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
     from argparse import Namespace
