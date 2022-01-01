@@ -61,7 +61,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
     def extract_ivectors_arguments(self) -> List[ExtractIvectorsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`
 
         Returns
         -------
@@ -87,7 +87,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`
+        :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`
             Multiprocessing helper function for each job
         :meth:`.IvectorCorpusMixin.extract_ivectors_arguments`
             Job method for generating arguments for helper function

@@ -471,7 +471,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                     channel=entry["channel"],
                     text=entry["text"],
                 )
-                u.oovs = entry["oovs"]
+                u.oovs = set(entry["oovs"])
                 u.normalized_text = entry["normalized_text"]
                 self.utterances[u.name] = u
                 if u.text:

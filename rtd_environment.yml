@@ -8,6 +8,7 @@ dependencies:
   - tqdm
   - requests
   - colorama
+  - jsonlines
   - pyyaml
   - praatio
   - pip

@@ -150,14 +150,6 @@ class Speaker(MfaCorpusClass):
         self.dictionary_name = dictionary.name
 
     @property
-    def files(self) -> Set["File"]:
-        """Files that the speaker is associated with"""
-        files = set()
-        for u in self.utterances:
-            files.add(u.file)
-        return files
-
-    @property
     def meta(self) -> Dict[str, str]:
         """Metadata for the speaker"""
         data = {
@@ -267,7 +259,7 @@ class File(MfaCorpusClass):
 
         Parameters
         ----------
-        file_data: :class:`~montreal_forced_aligner.data.file_data`
+        file_data: :class:`~montreal_forced_aligner.data.FileData`
             Data for the loaded file
 
         Returns
@@ -925,38 +917,6 @@ class Utterance(MfaCorpusClass):
             utterance.oovs = data.oovs
         return utterance
 
-    def __getstate__(self) -> Dict[str, Any]:
-        """Get the state of the object for pickling"""
-        return {
-            "file_name": self.file_name,
-            "speaker_name": self.speaker_name,
-            "begin": self.begin,
-            "end": self.end,
-            "channel": self.channel,
-            "text": self.text,
-            "transcription_text": self.transcription_text,
-            "oovs": self.oovs,
-            "ignored": self.ignored,
-            "features": self.features,
-            "phone_labels": self.phone_labels,
-            "word_labels": self.word_labels,
-        }
-
-    def __setstate__(self, state) -> None:
-        """Reconstruct the object following pickling"""
-        self.file_name = state["file_name"]
-        self.speaker_name = state["speaker_name"]
-        self.begin = state["begin"]
-        self.end = state["end"]
-        self.channel = state["channel"]
-        self.text = state["text"]
-        self.transcription_text = state["transcription_text"]
-        self.oovs = state["oovs"]
-        self.ignored = state["ignored"]
-        self.features = state["features"]
-        self.phone_labels = state["phone_labels"]
-        self.word_labels = state["word_labels"]
-
     def __str__(self) -> str:
         """String representation"""
         return self.name
@@ -966,7 +926,7 @@ class Utterance(MfaCorpusClass):
         return f'<Utterance "{self.name}">'
 
     def __eq__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is equal to another Utterance"""
+        """Check if an Utterance is equal to another Utterance"""
         if isinstance(other, Utterance):
             return other.name == self.name
         if isinstance(other, str):
@@ -974,7 +934,7 @@ class Utterance(MfaCorpusClass):
         raise TypeError("Utterances can only be compared to other utterances and strings.")
 
     def __lt__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is less than another Utterance"""
+        """Check if an Utterance is less than another Utterance"""
         if isinstance(other, Utterance):
             return other.name < self.name
         if isinstance(other, str):
@@ -982,7 +942,7 @@ class Utterance(MfaCorpusClass):
         raise TypeError("Utterances can only be compared to other utterances and strings.")
 
     def __gt__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is greater than another Utterance"""
+        """Check if an Utterance is greater than another Utterance"""
         if isinstance(other, Utterance):
             return other.name > self.name
         if isinstance(other, str):
@@ -1035,17 +995,6 @@ class Utterance(MfaCorpusClass):
     def is_segment(self) -> bool:
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
-
-    @property
-    def num_oovs(self):
-        """Number of unique OOV items in an utterance"""
-        count = 0
-        if self.speaker.dictionary is None:
-            return count
-        for w in set(self.text.split()):
-            if self.speaker.dictionary.check_word(w):
-                count += 1
-        return count
 
     def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
         """

@@ -17,6 +17,7 @@ import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
 from montreal_forced_aligner.alignment import AlignMixin
+from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -24,7 +25,6 @@ from montreal_forced_aligner.helper import align_phones
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.textgrid import process_ctm_line
 from montreal_forced_aligner.utils import (
-    KaldiFunction,
     KaldiProcessWorker,
     Stopped,
     log_kaldi_errors,
@@ -56,73 +56,6 @@ class AlignmentImprovementArguments(NamedTuple):
     reversed_phone_mappings: Dict[int, str]
     positions: List[str]
     phone_ctm_paths: Dict[str, str]
-
-
-class AccStatsArguments(NamedTuple):
-    """
-    Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
-    """
-
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
-    model_path: str
-
-
-class AccStatsFunction(KaldiFunction):
-    """
-    Multiprocessing function for accumulating stats in GMM training.
-
-    See Also
-    --------
-    :meth:`.AcousticModelTrainingMixin.acc_stats`
-        Main function that calls this function in parallel
-    :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`gmm-acc-stats-ali`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`
-        Arguments for the function
-    """
-
-    progress_pattern = re.compile(
-        r"^LOG.* Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
-    )
-
-    def __init__(self, args: AccStatsArguments):
-        self.log_path = args.log_path
-        self.dictionaries = args.dictionaries
-        self.feature_strings = args.feature_strings
-        self.model_path = args.model_path
-        self.ali_paths = args.ali_paths
-        self.acc_paths = args.acc_paths
-
-    def run(self):
-        """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                acc_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-acc-stats-ali"),
-                        self.model_path,
-                        self.feature_strings[dict_name],
-                        f"ark,s,cs:{self.ali_paths[dict_name]}",
-                        self.acc_paths[dict_name],
-                    ],
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    env=os.environ,
-                )
-                for line in acc_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield int(m.group("utterances")), int(m.group("errors"))
 
 
 def compute_alignment_improvement_func(
@@ -395,11 +328,11 @@ class AcousticModelTrainingMixin(
 
     def acc_stats_arguments(self) -> List[AccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AccStatsArguments`]
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -639,7 +572,7 @@ class AcousticModelTrainingMixin(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
             Job method for generating arguments for the helper function
@@ -652,6 +585,7 @@ class AcousticModelTrainingMixin(
         :kaldi_steps:`train_deltas`
             Reference Kaldi script
         """
+        self.logger.info("Accumulating statistics...")
         arguments = self.acc_stats_arguments()
         with tqdm.tqdm(total=self.num_utterances) as pbar:
             if self.use_mp:
@@ -835,6 +769,7 @@ class AcousticModelTrainingMixin(
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
+            self.logger.info("Re-aligning...")
             self.align_utterances()
             self.logger.debug(
                 f"Analyzing information for alignment in iteration {self.iteration}..."
@@ -842,6 +777,7 @@ class AcousticModelTrainingMixin(
             self.compile_information()
             if self.debug:
                 self.compute_alignment_improvement()
+        self.logger.info("Accumulating statistics...")
         self.acc_stats()
 
         parse_logs(self.working_log_directory)
@@ -867,7 +803,9 @@ class AcousticModelTrainingMixin(
             self.initialize_training()
             begin = time.time()
             for iteration in range(1, self.num_iterations + 1):
-                self.log_info(f"Iteration {iteration} of {self.num_iterations}")
+                self.log_info(
+                    f"{self.identifier} - Iteration {iteration} of {self.num_iterations}"
+                )
                 self.iteration = iteration
                 self.train_iteration()
             self.finalize_training()

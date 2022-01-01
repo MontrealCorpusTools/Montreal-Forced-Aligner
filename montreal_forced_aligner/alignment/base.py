@@ -66,6 +66,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             WordCtmArguments(
                 j.construct_path_dictionary(self.working_directory, "word", "ctm"),
                 j.current_dictionary_names,
+                {d.name: d.reversed_word_mapping for d in self.dictionary_mapping.values()},
+                j.text_scp_data(),
+                j.utt2spk_scp_data(),
+                self.sanitize_function,
+                self.cleanup_textgrids,
+                self.oov_word,
             )
             for j in self.jobs
         ]
@@ -83,6 +89,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             PhoneCtmArguments(
                 j.construct_path_dictionary(self.working_directory, "phone", "ctm"),
                 j.current_dictionary_names,
+                self.reversed_phone_mapping,
+                self.position_dependent_phones,
+                self.cleanup_textgrids,
+                self.optional_silence_phone,
             )
             for j in self.jobs
         ]
@@ -117,7 +127,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
             Multiprocessing helper function for converting ali archives to CTM format
         :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`
             Multiprocessing helper class for processing CTM files
@@ -149,7 +159,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         finished_processing = Stopped()
         to_process_queue = mp.JoinableQueue()
         for_write_queue = mp.JoinableQueue()
-        total_utterances = self.num_utterances
+        total_files = len(self.files)
         word_ctm_args = self.word_ctm_arguments()
         phone_ctm_args = self.phone_ctm_arguments()
         export_args = self.export_textgrid_arguments()
@@ -187,7 +197,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             export_proc.start()
             export_procs.append(export_proc)
         try:
-            with tqdm.tqdm(total=total_utterances * 2) as pbar:
+            with tqdm.tqdm(total=total_files) as pbar:
                 while True:
                     try:
                         w_p, intervals = to_process_queue.get(timeout=1)
@@ -205,34 +215,20 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     if self.stopped.stop_check():
                         self.logger.debug("Got stop check, exiting")
                         continue
-                    pbar.update(1)
                     utt = self.utterances[intervals[0].utterance]
-                    dictionary = self.get_dictionary(utt.speaker_name)
                     if w_p == "word":
-                        for interval in intervals:
-
-                            label = dictionary.reversed_word_mapping[int(interval.label)]
-                            interval.label = label
                         utt.add_word_intervals(intervals)
                     else:
-                        for interval in intervals:
-                            label = dictionary.reversed_phone_mapping[int(interval.label)]
-                            if self.position_dependent_phones:
-                                for p in dictionary.positions:
-                                    if label.endswith(p):
-                                        label = label[: -1 * len(p)]
-                            interval.label = label
                         utt.add_phone_intervals(intervals)
                     file = self.files[utt.file_name]
                     if file.is_fully_aligned:
-                        if self.cleanup_textgrids:
-                            file.clean_up()
                         tiers = file.aligned_data
                         output_path = file.construct_output_path(
                             self.textgrid_output, self.backup_output_directory
                         )
                         duration = file.duration
                         for_write_queue.put((tiers, output_path, duration))
+                        pbar.update(1)
         except Exception:
             stopped.stop()
             while True:
@@ -293,9 +289,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         --------
         :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.alignment.base.CorpusAligner.ali_to_word_ctm_arguments`
+        :meth:`.CorpusAligner.ali_to_word_ctm_arguments`
             Arguments for word CTMS
-        :class:`~montreal_forced_aligner.alignment.base.CorpusAligner.ali_to_phone_ctm_arguments`
+        :meth:`.CorpusAligner.ali_to_phone_ctm_arguments`
             Arguments for phone CTMS
         """
         if word_mode:
@@ -351,7 +347,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
             Multiprocessing helper function for each job
         :meth:`.CorpusAligner.ali_to_word_ctm_arguments`
             Job method for generating arguments for this function
@@ -377,7 +373,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         Parse CTM files to TextGrids without using multiprocessing
         """
-
+        self.log_debug("Not using multiprocessing for TextGrid export")
         export_errors = {}
         w_args = self.word_ctm_arguments()
         p_args = self.phone_ctm_arguments()
@@ -456,7 +452,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def ali_to_word_ctm_arguments(self) -> List[AliToCtmArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
 
         Returns
         -------
@@ -480,7 +476,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
     def ali_to_phone_ctm_arguments(self) -> List[AliToCtmArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`
 
         Returns
         -------

@@ -14,6 +14,8 @@ import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Union
 
+from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
 from montreal_forced_aligner.utils import KaldiFunction, Stopped, thirdparty_binary
 
@@ -39,7 +41,7 @@ __all__ = [
 
 
 class AliToCtmArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -57,6 +59,12 @@ class WordCtmArguments(NamedTuple):
 
     ctm_paths: Dict[str, str]
     dictionaries: List[str]
+    reversed_word_mappings: Dict[str, Dict[int, str]]
+    utterance_texts: Dict[str, Dict[str, str]]
+    utterance_speakers: Dict[str, Dict[str, str]]
+    sanitize_function: MultispeakerSanitizationFunction
+    cleanup_textgrids: bool
+    oov_word: str
 
 
 class PhoneCtmArguments(NamedTuple):
@@ -64,6 +72,10 @@ class PhoneCtmArguments(NamedTuple):
 
     ctm_paths: Dict[str, str]
     dictionaries: List[str]
+    reversed_phone_mapping: Dict[int, str]
+    position_dependent_phones: bool
+    cleanup_textgrids: bool
+    silence_phone: str
 
 
 class ExportTextGridArguments(NamedTuple):
@@ -82,7 +94,7 @@ class CompileInformationArguments(NamedTuple):
 
 
 class CompileTrainGraphsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -95,7 +107,7 @@ class CompileTrainGraphsArguments(NamedTuple):
 
 
 class AlignArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -104,6 +116,19 @@ class AlignArguments(NamedTuple):
     model_path: str
     ali_paths: Dict[str, str]
     align_options: MetaDict
+
+
+class AccStatsArguments(NamedTuple):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
+    """
+
+    log_path: str
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
+    model_path: str
 
 
 class CompileTrainGraphsFunction(KaldiFunction):
@@ -166,6 +191,74 @@ class CompileTrainGraphsFunction(KaldiFunction):
                         yield int(m.group("succeeded")), int(m.group("failed"))
 
 
+class AccStatsFunction(KaldiFunction):
+    """
+    Multiprocessing function for accumulating stats in GMM training.
+
+    See Also
+    --------
+    :meth:`.AcousticModelTrainingMixin.acc_stats`
+        Main function that calls this function in parallel
+    :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-acc-stats-ali`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG \(gmm-acc-stats-ali.* Processed (?P<utterances>\d+) utterances;.*"
+    )
+
+    done_pattern = re.compile(
+        r"^LOG \(gmm-acc-stats-ali.*Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
+    )
+
+    def __init__(self, args: AccStatsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.model_path = args.model_path
+        self.ali_paths = args.ali_paths
+        self.acc_paths = args.acc_paths
+
+    def run(self):
+        """Run the function"""
+        processed_count = 0
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                acc_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-acc-stats-ali"),
+                        self.model_path,
+                        self.feature_strings[dict_name],
+                        f"ark,s,cs:{self.ali_paths[dict_name]}",
+                        self.acc_paths[dict_name],
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in acc_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        now_processed = int(m.group("utterances"))
+                        progress_update = now_processed - processed_count
+                        processed_count = now_processed
+                        yield progress_update, 0
+                    else:
+                        m = self.done_pattern.match(line.strip())
+                        if m:
+                            now_processed = int(m.group("utterances"))
+                            progress_update = now_processed - processed_count
+                            yield progress_update, int(m.group("errors"))
+
+
 class AlignFunction(KaldiFunction):
     """
     Multiprocessing function for alignment.
@@ -187,7 +280,7 @@ class AlignFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.*(?P<utterance>.*)")
+    progress_pattern = re.compile(r"^LOG \(gmm-align-compiled.*(?P<utterance>.*)")
 
     def __init__(self, args: AlignArguments):
         self.log_path = args.log_path
@@ -470,6 +563,42 @@ class WordCtmProcessWorker(mp.Process):
 
         self.arguments = arguments
 
+    def cleanup_intervals(self, utterance_name: str, intervals: List[CtmInterval]):
+
+        speaker = None
+        for utt2spk in self.arguments.utterance_speakers.values():
+            if utterance_name in utt2spk:
+                speaker = utt2spk[utterance_name]
+                break
+        dict_name = self.arguments.sanitize_function.get_dict_name_for_speaker(speaker)
+        mapping = self.arguments.reversed_word_mappings[dict_name]
+        for interval in intervals:
+            interval.label = mapping[int(interval.label)]
+        if not self.arguments.cleanup_textgrids:
+            return intervals
+
+        text = self.arguments.utterance_texts[dict_name][utterance_name]
+        sanitize, split = self.arguments.sanitize_function.get_functions_for_speaker(speaker)
+        if split is None:
+            return intervals
+        cur_ind = 0
+        actual_labels = []
+        for word in text.split():
+            splits = split(word)
+            b = 1000000
+            e = -1
+            for w in splits:
+                cur = intervals[cur_ind]
+                if w == cur.label or cur.label == self.arguments.oov_word:
+                    if cur.begin < b:
+                        b = cur.begin
+                    if cur.end > e:
+                        e = cur.end
+                cur_ind += 1
+            lab = CtmInterval(b, e, word, utterance_name)
+            actual_labels.append(lab)
+        return actual_labels
+
     def run(self) -> None:
         """
         Run the word processing
@@ -489,12 +618,14 @@ class WordCtmProcessWorker(mp.Process):
                             cur_utt = interval.utterance
                         if cur_utt != interval.utterance:
 
-                            self.to_process_queue.put(("word", intervals))
+                            self.to_process_queue.put(
+                                ("word", self.cleanup_intervals(cur_utt, intervals))
+                            )
                             intervals = []
                             cur_utt = interval.utterance
                         intervals.append(interval)
                 if intervals:
-                    self.to_process_queue.put(("word", intervals))
+                    self.to_process_queue.put(("word", self.cleanup_intervals(cur_utt, intervals)))
 
         except Exception:
             self.stopped.stop()
@@ -539,20 +670,31 @@ class PhoneCtmProcessWorker(mp.Process):
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
-        self.dictionaries = arguments.dictionaries
-        self.ctm_paths = arguments.ctm_paths
+        self.arguments = arguments
         self.to_process_queue = to_process_queue
         self.stopped = stopped
         self.error_catching = error_catching
         self.finished_signal = Stopped()
+
+    def cleanup_intervals(self, intervals: List[CtmInterval]):
+        actual_labels = []
+        for interval in intervals:
+            label = self.arguments.reversed_phone_mapping[int(interval.label)]
+            if self.arguments.position_dependent_phones:
+                label = label[:-2]
+            interval.label = label
+            if self.arguments.cleanup_textgrids and interval.label == self.arguments.silence_phone:
+                continue
+            actual_labels.append(interval)
+        return actual_labels
 
     def run(self) -> None:
         """Run the phone processing"""
         cur_utt = None
         intervals = []
         try:
-            for dict_name in self.dictionaries:
-                ctm_path = self.ctm_paths[dict_name]
+            for dict_name in self.arguments.dictionaries:
+                ctm_path = self.arguments.ctm_paths[dict_name]
                 with open(ctm_path, "r") as word_file:
                     for line in word_file:
                         line = line.strip()
@@ -563,12 +705,12 @@ class PhoneCtmProcessWorker(mp.Process):
                             cur_utt = interval.utterance
                         if cur_utt != interval.utterance:
 
-                            self.to_process_queue.put(("phone", intervals))
+                            self.to_process_queue.put(("phone", self.cleanup_intervals(intervals)))
                             intervals = []
                             cur_utt = interval.utterance
                         intervals.append(interval)
                 if intervals:
-                    self.to_process_queue.put(("phone", intervals))
+                    self.to_process_queue.put(("phone", self.cleanup_intervals(intervals)))
 
         except Exception:
             self.stopped.stop()

@@ -249,7 +249,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def compute_vad_arguments(self) -> List[VadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`
 
         Returns
         -------
@@ -268,7 +268,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def calc_fmllr_arguments(self) -> List[CalcFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`
 
         Returns
         -------
@@ -293,7 +293,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def mfcc_arguments(self) -> List[MfccArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
 
         Returns
         -------
@@ -319,7 +319,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+        :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.mfcc_arguments`
             Job method for generating arguments for helper function
@@ -405,7 +405,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
+        :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.calc_fmllr_arguments`
             Job method for generating arguments for the helper function
@@ -415,6 +415,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Reference Kaldi script
         """
         begin = time.time()
+        self.log_info("Calculating fMLLR for speaker adaptation...")
 
         arguments = self.calc_fmllr_arguments()
         with tqdm.tqdm(total=self.num_speakers) as pbar:
@@ -461,7 +462,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
+        :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.compute_vad_arguments`
             Job method for generating arguments for helper function

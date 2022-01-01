@@ -49,7 +49,7 @@ class CorpusProcessWorker(mp.Process):
         Dictionary to catch errors
     return_q: :class:`~multiprocessing.Queue`
         Return queue for processed Files
-    stopped: :func:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for whether corpus loading should exit
     finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
         Signal that the main thread has stopped adding new files to be processed

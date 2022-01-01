@@ -1,89 +1,33 @@
 """Class definitions for adapting acoustic models"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import shutil
 import subprocess
 import time
-from typing import TYPE_CHECKING, Dict, List, NamedTuple
+from queue import Empty
+from typing import TYPE_CHECKING, List
+
+import tqdm
 
 from montreal_forced_aligner.abc import AdapterMixin
+from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.utils import (
+    KaldiProcessWorker,
+    Stopped,
+    log_kaldi_errors,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.models import MetaDict
 
 
 __all__ = ["AdaptingAligner"]
-
-
-class MapAccStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`"""
-
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    model_path: str
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
-
-
-def map_acc_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    model_path: str,
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
-) -> None:
-    """
-    Multiprocessing function for accumulating mapped stats for adapting acoustic models to new
-    domains
-
-    See Also
-    --------
-    :meth:`.AdaptingAligner.train_map`
-        Main function that calls this function in parallel
-    :meth:`.AdaptingAligner.map_acc_stats_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`gmm-acc-stats-ali`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
-    """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            acc_path = acc_paths[dict_name]
-            ali_path = ali_paths[dict_name]
-            acc_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-acc-stats-ali"),
-                    model_path,
-                    feature_string,
-                    f"ark,s,cs:{ali_path}",
-                    acc_path,
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            acc_proc.communicate()
 
 
 class AdaptingAligner(PretrainedAligner, AdapterMixin):
@@ -116,13 +60,13 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         self.initialized = False
         self.adaptation_done = False
 
-    def map_acc_stats_arguments(self, alignment=False) -> List[MapAccStatsArguments]:
+    def map_acc_stats_arguments(self, alignment=False) -> List[AccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.alignment.adapting.MapAccStatsArguments`]
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -131,16 +75,104 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         else:
             model_path = self.model_path
         return [
-            MapAccStatsArguments(
+            AccStatsArguments(
                 os.path.join(self.working_log_directory, f"map_acc_stats.{j.name}.log"),
                 j.current_dictionary_names,
                 feat_strings[j.name],
-                model_path,
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "map", "acc"),
+                model_path,
             )
             for j in self.jobs
         ]
+
+    def acc_stats(self, alignment=False):
+        arguments = self.map_acc_stats_arguments(alignment)
+        if alignment:
+            initial_mdl_path = os.path.join(self.working_directory, "0.alimdl")
+            final_mdl_path = os.path.join(self.working_directory, "0.alimdl")
+        else:
+            initial_mdl_path = os.path.join(self.working_directory, "0.mdl")
+            final_mdl_path = os.path.join(self.working_directory, "final.mdl")
+        if not os.path.exists(initial_mdl_path):
+            return
+        self.logger.info("Accumulating statistics...")
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = AccStatsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        num_utterances, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = AccStatsFunction(args)
+                    for num_utterances, errors in function.run():
+                        pbar.update(num_utterances + errors)
+        log_path = os.path.join(self.working_log_directory, "map_model_est.log")
+        occs_path = os.path.join(self.working_directory, "final.occs")
+        with open(log_path, "w", encoding="utf8") as log_file:
+            acc_files = []
+            for j in arguments:
+                acc_files.extend(j.acc_paths.values())
+            sum_proc = subprocess.Popen(
+                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
+                stderr=log_file,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+            )
+            ismooth_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("gmm-ismooth-stats"),
+                    "--smooth-from-model",
+                    f"--tau={self.mapping_tau}",
+                    initial_mdl_path,
+                    "-",
+                    "-",
+                ],
+                stderr=log_file,
+                stdin=sum_proc.stdout,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+            )
+            est_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("gmm-est"),
+                    "--update-flags=m",
+                    f"--write-occs={occs_path}",
+                    "--remove-low-count-gaussians=false",
+                    initial_mdl_path,
+                    "-",
+                    final_mdl_path,
+                ],
+                stdin=ismooth_proc.stdout,
+                stderr=log_file,
+                env=os.environ,
+            )
+            est_proc.communicate()
 
     @property
     def workflow_identifier(self) -> str:
@@ -183,7 +215,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.adapting.map_acc_stats_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.AdaptingAligner.map_acc_stats_arguments`
             Job method for generating arguments for the helper function
@@ -198,107 +230,12 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
 
         """
         begin = time.time()
-        initial_mdl_path = os.path.join(self.working_directory, "0.mdl")
-        final_mdl_path = os.path.join(self.working_directory, "final.mdl")
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
+        self.acc_stats(alignment=False)
 
-        jobs = self.map_acc_stats_arguments()
-        if self.use_mp:
-            run_mp(map_acc_stats_func, jobs, log_directory)
-        else:
-            run_non_mp(map_acc_stats_func, jobs, log_directory)
-        log_path = os.path.join(self.working_log_directory, "map_model_est.log")
-        occs_path = os.path.join(self.working_directory, "final.occs")
-        with open(log_path, "w", encoding="utf8") as log_file:
-            acc_files = []
-            for j in jobs:
-                acc_files.extend(j.acc_paths.values())
-            sum_proc = subprocess.Popen(
-                [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            ismooth_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-ismooth-stats"),
-                    "--smooth-from-model",
-                    f"--tau={self.mapping_tau}",
-                    initial_mdl_path,
-                    "-",
-                    "-",
-                ],
-                stderr=log_file,
-                stdin=sum_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            est_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-est"),
-                    "--update-flags=m",
-                    f"--write-occs={occs_path}",
-                    "--remove-low-count-gaussians=false",
-                    initial_mdl_path,
-                    "-",
-                    final_mdl_path,
-                ],
-                stdin=ismooth_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            est_proc.communicate()
         if self.uses_speaker_adaptation:
-            initial_alimdl_path = os.path.join(self.working_directory, "0.alimdl")
-            final_alimdl_path = os.path.join(self.working_directory, "0.alimdl")
-            if os.path.exists(initial_alimdl_path):
-                self.speaker_independent = True
-                jobs = self.map_acc_stats_arguments(alignment=True)
-                if self.use_mp:
-                    run_mp(map_acc_stats_func, jobs, log_directory)
-                else:
-                    run_non_mp(map_acc_stats_func, jobs, log_directory)
-
-                log_path = os.path.join(self.working_log_directory, "map_model_est.log")
-                with open(log_path, "w", encoding="utf8") as log_file:
-                    acc_files = []
-                for j in jobs:
-                    acc_files.extend(j.acc_paths)
-                    sum_proc = subprocess.Popen(
-                        [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
-                        stderr=log_file,
-                        stdout=subprocess.PIPE,
-                        env=os.environ,
-                    )
-                    ismooth_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-ismooth-stats"),
-                            "--smooth-from-model",
-                            f"--tau={self.mapping_tau}",
-                            initial_alimdl_path,
-                            "-",
-                            "-",
-                        ],
-                        stderr=log_file,
-                        stdin=sum_proc.stdout,
-                        stdout=subprocess.PIPE,
-                        env=os.environ,
-                    )
-                    est_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-est"),
-                            "--update-flags=m",
-                            "--remove-low-count-gaussians=false",
-                            initial_alimdl_path,
-                            "-",
-                            final_alimdl_path,
-                        ],
-                        stdin=ismooth_proc.stdout,
-                        stderr=log_file,
-                        env=os.environ,
-                    )
-                    est_proc.communicate()
+            self.acc_stats(alignment=True)
 
         self.logger.debug(f"Mapping models took {time.time() - begin}")
 
@@ -368,6 +305,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             "architecture": self.acoustic_model.meta["architecture"],
             "train_date": str(datetime.now()),
             "features": self.feature_options,
+            "phone_set_type": str(self.phone_set_type),
         }
         return data
 

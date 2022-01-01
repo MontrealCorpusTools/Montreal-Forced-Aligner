@@ -27,7 +27,7 @@ __all__ = [
 
 
 class VadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
     log_path: str
     feats_scp_path: str
@@ -37,7 +37,7 @@ class VadArguments(NamedTuple):
 
 class MfccArguments(NamedTuple):
     """
-    Arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+    Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
     log_path: str
@@ -48,7 +48,7 @@ class MfccArguments(NamedTuple):
 
 
 class CalcFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -674,7 +674,7 @@ class VadConfigMixin(FeatureConfigMixin):
 
 
 class ExtractIvectorsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
 
     log_path: str
     feature_string: str

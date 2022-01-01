@@ -53,6 +53,7 @@ __all__ = [
     "OneToManyMappingType",
     "CorpusMappingType",
     "ScpType",
+    "KaldiFunction",
 ]
 
 # Configuration types
@@ -632,6 +633,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             handler.setLevel(logging.INFO)
         handler.setFormatter(CustomFormatter())
         self.logger.addHandler(handler)
+        self.logger.debug(
+            f"Beginning run for {self.workflow_identifier} on {self.data_source_identifier}"
+        )
+        if self.use_mp:
+            self.logger.debug(f"Using multiprocessing with {self.num_jobs}")
+        else:
+            self.logger.debug(f"NOT using multiprocessing with {self.num_jobs}")
         self.logger.debug(f"Set up logger for MFA version: {current_version}")
         if self.clean:
             self.logger.debug("Cleaned previous run")

@@ -29,12 +29,15 @@ __all__ = [
     "InitialFmllrFunction",
     "LatGenFmllrFunction",
     "ScoreFunction",
+    "CarpaLmRescoreFunction",
+    "DecodeFunction",
+    "LmRescoreFunction",
     "CreateHclgFunction",
 ]
 
 
 class CreateHclgArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`"""
 
     log_path: str
     working_directory: str
@@ -57,7 +60,7 @@ class CreateHclgArguments(NamedTuple):
 
 
 class DecodeArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -70,7 +73,7 @@ class DecodeArguments(NamedTuple):
 
 
 class ScoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -83,7 +86,7 @@ class ScoreArguments(NamedTuple):
 
 
 class LmRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -95,7 +98,7 @@ class LmRescoreArguments(NamedTuple):
 
 
 class CarpaLmRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -106,7 +109,7 @@ class CarpaLmRescoreArguments(NamedTuple):
 
 
 class InitialFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -119,7 +122,7 @@ class InitialFmllrArguments(NamedTuple):
 
 
 class LatGenFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -132,7 +135,7 @@ class LatGenFmllrArguments(NamedTuple):
 
 
 class FinalFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -145,7 +148,7 @@ class FinalFmllrArguments(NamedTuple):
 
 
 class FmllrRescoreArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -733,7 +736,7 @@ class ScoreFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.score_transcriptions`
+    :meth:`~montreal_forced_aligner.transcription.Transcriber.score_transcriptions`
         Main function that calls this function in parallel
     :meth:`.Transcriber.score_arguments`
         Job method for generating arguments for this function

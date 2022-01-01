@@ -15,22 +15,16 @@ Mixins
 Multiprocessing workers and functions
 -------------------------------------
 
-.. currentmodule:: montreal_forced_aligner.alignment.adapting
-
-.. autosummary::
-   :toctree: generated/
-
-   map_acc_stats_func
-
 .. currentmodule:: montreal_forced_aligner.alignment.multiprocessing
 
 .. autosummary::
    :toctree: generated/
 
-   align_func
-   compile_train_graphs_func
+   AlignFunction
+   CompileTrainGraphsFunction
    compile_information_func
-   ali_to_ctm_func
+   AliToCtmFunction
+   AccStatsFunction
    WordCtmProcessWorker
    PhoneCtmProcessWorker
    ExportTextGridProcessWorker
@@ -39,19 +33,13 @@ Multiprocessing workers and functions
 Multiprocessing argument classes
 --------------------------------
 
-.. currentmodule:: montreal_forced_aligner.alignment.adapting
-
-.. autosummary::
-   :toctree: generated/
-
-   MapAccStatsArguments
-
 .. currentmodule:: montreal_forced_aligner.alignment.multiprocessing
 
 .. autosummary::
    :toctree: generated/
 
    AlignArguments
+   AccStatsArguments
    CompileTrainGraphsArguments
    CompileInformationArguments
    AliToCtmArguments

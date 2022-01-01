@@ -38,11 +38,11 @@ if TYPE_CHECKING:
 
 SegmentationType = List[Dict[str, float]]
 
-__all__ = ["Segmenter"]
+__all__ = ["Segmenter", "SegmentVadFunction", "SegmentVadArguments"]
 
 
 class SegmentVadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`"""
 
     vad_path: str
     segmentation_options: MetaDict
@@ -251,7 +251,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
     def segment_vad_arguments(self) -> List[SegmentVadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
 
         Returns
         -------
@@ -287,7 +287,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
         See Also
         --------
-        segment_vad_func
+        :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
             Multiprocessing helper function for each job
         segment_vad_arguments
             Job method for generating arguments for helper function

@@ -302,7 +302,7 @@ class Transcriber(
 
     def create_hclgs_arguments(self) -> Dict[str, CreateHclgArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
 
         Returns
         -------
@@ -330,7 +330,7 @@ class Transcriber(
 
     def decode_arguments(self) -> List[DecodeArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
 
         Returns
         -------
@@ -354,7 +354,7 @@ class Transcriber(
 
     def score_arguments(self) -> List[ScoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
 
         Returns
         -------
@@ -377,7 +377,7 @@ class Transcriber(
 
     def lm_rescore_arguments(self) -> List[LmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
 
         Returns
         -------
@@ -399,7 +399,7 @@ class Transcriber(
 
     def carpa_lm_rescore_arguments(self) -> List[CarpaLmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
 
         Returns
         -------
@@ -429,7 +429,7 @@ class Transcriber(
 
     def initial_fmllr_arguments(self) -> List[InitialFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
 
         Returns
         -------
@@ -453,7 +453,7 @@ class Transcriber(
 
     def lat_gen_fmllr_arguments(self) -> List[LatGenFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
 
         Returns
         -------
@@ -477,7 +477,7 @@ class Transcriber(
 
     def final_fmllr_arguments(self) -> List[FinalFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
 
         Returns
         -------
@@ -501,7 +501,7 @@ class Transcriber(
 
     def fmllr_rescore_arguments(self) -> List[FmllrRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
 
         Returns
         -------
@@ -867,7 +867,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.initial_fmllr_arguments`
+        :meth:`.Transcriber.initial_fmllr_arguments`
             Arguments for function
         """
         self.logger.info("Calculating initial fMLLR transforms...")
@@ -920,7 +920,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.lat_gen_fmllr_arguments`
+        :meth:`.Transcriber.lat_gen_fmllr_arguments`
             Arguments for function
         """
         self.logger.info("Regenerating lattices with fMLLR transforms...")
@@ -975,7 +975,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.final_fmllr_arguments`
+        :meth:`.Transcriber.final_fmllr_arguments`
             Arguments for function
         """
         self.logger.info("Calculating final fMLLR transforms...")
@@ -1028,7 +1028,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.fmllr_rescore_arguments`
+        :meth:`.Transcriber.fmllr_rescore_arguments`
             Arguments for function
         """
         self.logger.info("Rescoring fMLLR lattices with final transform...")
@@ -1079,17 +1079,17 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
             Multiprocessing helper function for each job
 
         """
@@ -1115,7 +1115,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.decode_arguments`
+        :meth:`.Transcriber.decode_arguments`
             Arguments for function
         """
         self.logger.info("Generating lattices...")
@@ -1168,7 +1168,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.lm_rescore_arguments`
+        :meth:`.Transcriber.lm_rescore_arguments`
             Arguments for function
         """
         self.logger.info("Rescoring lattices with medium G.fst...")
@@ -1222,7 +1222,7 @@ class Transcriber(
         -------
         :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
             Multiprocessing function
-        :class:`~montreal_forced_aligner.transcriber.Transcriber.carpa_lm_rescore_arguments`
+        :meth:`.Transcriber.carpa_lm_rescore_arguments`
             Arguments for function
         """
         self.logger.info("Rescoring lattices with large G.carpa...")
@@ -1274,11 +1274,11 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
             Multiprocessing helper function for each job
 
         Raises

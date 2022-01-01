@@ -277,6 +277,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         begin = time.time()
         for trainer in self.training_configs.values():
             self.current_subset = trainer.subset
+            print(trainer, trainer.subset)
             if previous is not None:
                 self.current_aligner = previous.identifier
                 os.makedirs(self.working_directory, exist_ok=True)
@@ -303,7 +304,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
             Multiprocessing helper function for each job
         :meth:`.AlignMixin.align_arguments`
             Job method for generating arguments for the helper function

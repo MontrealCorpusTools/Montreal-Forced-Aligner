@@ -1,23 +1,40 @@
 """Class definitions for LDA trainer"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import re
 import shutil
 import subprocess
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
+import tqdm
+
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
-from montreal_forced_aligner.utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.utils import (
+    KaldiProcessWorker,
+    Stopped,
+    parse_logs,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
 
-__all__ = ["LdaTrainer"]
+__all__ = [
+    "LdaTrainer",
+    "CalcLdaMlltFunction",
+    "CalcLdaMlltArguments",
+    "LdaAccStatsFunction",
+    "LdaAccStatsArguments",
+]
 
 
 class LdaAccStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -29,10 +46,9 @@ class LdaAccStatsArguments(NamedTuple):
 
 
 class CalcLdaMlltArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`"""
 
     log_path: str
-    """Log file to save stderr"""
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
@@ -41,15 +57,7 @@ class CalcLdaMlltArguments(NamedTuple):
     macc_paths: Dict[str, str]
 
 
-def lda_acc_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    model_path: str,
-    lda_options: MetaDict,
-    acc_paths: Dict[str, str],
-) -> None:
+class LdaAccStatsFunction(KaldiFunction):
     """
     Multiprocessing function to accumulate LDA stats
 
@@ -68,71 +76,70 @@ def lda_acc_stats_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    lda_options: dict[str, Any]
-        Options for LDA
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+    args: :class:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            feature_string = feature_strings[dict_name]
-            acc_path = acc_paths[dict_name]
-            ali_to_post_proc = subprocess.Popen(
-                [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            weight_silence_post_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("weight-silence-post"),
-                    f"{lda_options['boost_silence']}",
-                    lda_options["silence_csl"],
-                    model_path,
-                    "ark:-",
-                    "ark:-",
-                ],
-                stdin=ali_to_post_proc.stdout,
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            acc_lda_post_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("acc-lda"),
-                    f"--rand-prune={lda_options['random_prune']}",
-                    model_path,
-                    feature_string,
-                    "ark,s,cs:-",
-                    acc_path,
-                ],
-                stdin=weight_silence_post_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            acc_lda_post_proc.communicate()
+
+    progress_pattern = re.compile(r"^LOG.*Done (?P<done>\d+) files, failed for (?P<failed>\d+)$")
+
+    def __init__(self, args: LdaAccStatsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.ali_paths = args.ali_paths
+        self.model_path = args.model_path
+        self.acc_paths = args.acc_paths
+        self.lda_options = args.lda_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                ali_path = self.ali_paths[dict_name]
+                feature_string = self.feature_strings[dict_name]
+                acc_path = self.acc_paths[dict_name]
+                ali_to_post_proc = subprocess.Popen(
+                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                weight_silence_post_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("weight-silence-post"),
+                        f"{self.lda_options['boost_silence']}",
+                        self.lda_options["silence_csl"],
+                        self.model_path,
+                        "ark:-",
+                        "ark:-",
+                    ],
+                    stdin=ali_to_post_proc.stdout,
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                acc_lda_post_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("acc-lda"),
+                        f"--rand-prune={self.lda_options['random_prune']}",
+                        self.model_path,
+                        feature_string,
+                        "ark,s,cs:-",
+                        acc_path,
+                    ],
+                    stdin=weight_silence_post_proc.stdout,
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in acc_lda_post_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("done")), int(m.group("failed"))
 
 
-def calc_lda_mllt_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    model_path: str,
-    lda_options: MetaDict,
-    macc_paths: Dict[str, str],
-) -> None:
+class CalcLdaMlltFunction(KaldiFunction):
     """
     Multiprocessing function for estimating LDA with MLLT.
 
@@ -151,62 +158,69 @@ def calc_lda_mllt_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    lda_options: dict[str, Any]
-        Options for LDA
-    macc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+    args: :class:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltArguments`
+        Arguments for the function
     """
-    # Estimating MLLT
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            feature_string = feature_strings[dict_name]
-            macc_path = macc_paths[dict_name]
-            post_proc = subprocess.Popen(
-                [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
 
-            weight_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("weight-silence-post"),
-                    "0.0",
-                    lda_options["silence_csl"],
-                    model_path,
-                    "ark:-",
-                    "ark:-",
-                ],
-                stdin=post_proc.stdout,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            acc_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-acc-mllt"),
-                    f"--rand-prune={lda_options['random_prune']}",
-                    model_path,
-                    feature_string,
-                    "ark,s,cs:-",
-                    macc_path,
-                ],
-                stdin=weight_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            acc_proc.communicate()
+    progress_pattern = re.compile(r"^LOG.*Average like for this file.*$")
+
+    def __init__(self, args: CalcLdaMlltArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.ali_paths = args.ali_paths
+        self.model_path = args.model_path
+        self.macc_paths = args.macc_paths
+        self.lda_options = args.lda_options
+
+    def run(self):
+        """Run the function"""
+        # Estimating MLLT
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                ali_path = self.ali_paths[dict_name]
+                feature_string = self.feature_strings[dict_name]
+                macc_path = self.macc_paths[dict_name]
+                post_proc = subprocess.Popen(
+                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+
+                weight_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("weight-silence-post"),
+                        "0.0",
+                        self.lda_options["silence_csl"],
+                        self.model_path,
+                        "ark:-",
+                        "ark:-",
+                    ],
+                    stdin=post_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                acc_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-acc-mllt"),
+                        f"--rand-prune={self.lda_options['random_prune']}",
+                        self.model_path,
+                        feature_string,
+                        "ark,s,cs:-",
+                        macc_path,
+                    ],
+                    stdin=weight_proc.stdout,
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in acc_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield 1
 
 
 class LdaTrainer(TriphoneTrainer):
@@ -268,7 +282,7 @@ class LdaTrainer(TriphoneTrainer):
 
     def lda_acc_stats_arguments(self) -> List[LdaAccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`
 
         Returns
         -------
@@ -291,7 +305,7 @@ class LdaTrainer(TriphoneTrainer):
 
     def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`
 
         Returns
         -------
@@ -345,7 +359,7 @@ class LdaTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.lda.lda_acc_stats_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.LdaTrainer.lda_acc_stats_arguments`
             Job method for generating arguments for the helper function
@@ -360,11 +374,41 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
-
-        if self.use_mp:
-            run_mp(lda_acc_stats_func, arguments, self.working_log_directory)
-        else:
-            run_non_mp(lda_acc_stats_func, arguments, self.working_log_directory)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = LdaAccStatsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = LdaAccStatsFunction(args)
+                    for done, errors in function.run():
+                        pbar.update(done + errors)
 
         log_path = os.path.join(self.working_log_directory, "lda_est.log")
         acc_list = []
@@ -400,7 +444,7 @@ class LdaTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.lda.calc_lda_mllt_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`
             Multiprocessing helper function for each job
         :meth:`.LdaTrainer.calc_lda_mllt_arguments`
             Job method for generating arguments for the helper function
@@ -414,12 +458,43 @@ class LdaTrainer(TriphoneTrainer):
             Reference Kaldi script
 
         """
-        jobs = self.calc_lda_mllt_arguments()
-
-        if self.use_mp:
-            run_mp(calc_lda_mllt_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(calc_lda_mllt_func, jobs, self.working_log_directory)
+        self.logger.info("Re-calculating LDA...")
+        arguments = self.calc_lda_mllt_arguments()
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = CalcLdaMlltFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        _ = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = CalcLdaMlltFunction(args)
+                    for _ in function.run():
+                        pbar.update(1)
 
         log_path = os.path.join(
             self.working_log_directory, f"transform_means.{self.iteration}.log"
@@ -429,7 +504,7 @@ class LdaTrainer(TriphoneTrainer):
         composed_path = os.path.join(self.working_directory, "lda_composed.mat")
         with open(log_path, "a", encoding="utf8") as log_file:
             macc_list = []
-            for x in jobs:
+            for x in arguments:
                 macc_list.extend(x.macc_paths.values())
             subprocess.call(
                 [thirdparty_binary("est-mllt"), new_mat_path] + macc_list,
@@ -463,7 +538,7 @@ class LdaTrainer(TriphoneTrainer):
             else:
                 os.rename(new_mat_path, previous_mat_path)
 
-    def train_iteration(self):
+    def train_iteration(self) -> None:
         """
         Run a single LDA training iteration
         """

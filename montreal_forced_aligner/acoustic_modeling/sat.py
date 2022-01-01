@@ -1,27 +1,33 @@
 """Class definitions for Speaker Adapted Triphone trainer"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import re
 import shutil
 import subprocess
 import time
+from queue import Empty
 from typing import Dict, List, NamedTuple
+
+import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import (
+    KaldiFunction,
+    KaldiProcessWorker,
+    Stopped,
     log_kaldi_errors,
     parse_logs,
-    run_mp,
-    run_non_mp,
     thirdparty_binary,
 )
 
-__all__ = ["SatTrainer"]
+__all__ = ["SatTrainer", "AccStatsTwoFeatsFunction", "AccStatsTwoFeatsArguments"]
 
 
 class AccStatsTwoFeatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -32,15 +38,7 @@ class AccStatsTwoFeatsArguments(NamedTuple):
     si_feature_strings: Dict[str, str]
 
 
-def acc_stats_two_feats_func(
-    log_path: str,
-    dictionaries: List[str],
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
-    model_path: str,
-    feature_strings: Dict[str, str],
-    si_feature_strings: Dict[str, str],
-) -> None:
+class AccStatsTwoFeatsFunction(KaldiFunction):
     """
     Multiprocessing function for accumulating stats across speaker-independent and
     speaker-adapted features
@@ -58,47 +56,65 @@ def acc_stats_two_feats_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    si_feature_strings: dict[str, str]
-        Dictionary of speaker-independent feature strings per dictionary name
+    args: :class:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            acc_path = acc_paths[dict_name]
-            feature_string = feature_strings[dict_name]
-            si_feature_string = si_feature_strings[dict_name]
-            ali_to_post_proc = subprocess.Popen(
-                [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            acc_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-acc-stats-twofeats"),
-                    model_path,
-                    feature_string,
-                    si_feature_string,
-                    "ark,s,cs:-",
-                    acc_path,
-                ],
-                stderr=log_file,
-                stdin=ali_to_post_proc.stdout,
-                env=os.environ,
-            )
-            acc_proc.communicate()
+
+    progress_pattern = re.compile(r"^LOG \(gmm-acc-stats-twofeats.* Average like for this file.*")
+
+    done_pattern = re.compile(
+        r"^LOG \(gmm-acc-stats-twofeats.*Done (?P<utterances>\d+) files, (?P<no_posteriors>\d+) with no posteriors, (?P<no_second_features>\d+) with no second features, (?P<errors>\d+) with other errors.$"
+    )
+
+    def __init__(self, args: AccStatsTwoFeatsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.ali_paths = args.ali_paths
+        self.acc_paths = args.acc_paths
+        self.model_path = args.model_path
+        self.feature_strings = args.feature_strings
+        self.si_feature_strings = args.si_feature_strings
+
+    def run(self):
+        """Run the function"""
+
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                ali_path = self.ali_paths[dict_name]
+                acc_path = self.acc_paths[dict_name]
+                feature_string = self.feature_strings[dict_name]
+                si_feature_string = self.si_feature_strings[dict_name]
+                ali_to_post_proc = subprocess.Popen(
+                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                acc_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-acc-stats-twofeats"),
+                        self.model_path,
+                        feature_string,
+                        si_feature_string,
+                        "ark,s,cs:-",
+                        acc_path,
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    stdin=ali_to_post_proc.stdout,
+                    env=os.environ,
+                )
+                for line in acc_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield 1, 0, 0, 0
+                    else:
+                        m = self.done_pattern.match(line.strip())
+                        if m:
+                            yield int(m.group("utterances")), int(m.group("no_posteriors")), int(
+                                m.group("no_second_features")
+                            ), int(m.group("errors"))
 
 
 class SatTrainer(TriphoneTrainer):
@@ -144,7 +160,7 @@ class SatTrainer(TriphoneTrainer):
 
     def acc_stats_two_feats_arguments(self) -> List[AccStatsTwoFeatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`
 
         Returns
         -------
@@ -242,6 +258,7 @@ class SatTrainer(TriphoneTrainer):
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
+            self.logger.info("Re-aligning...")
             self.align_utterances()
             if self.debug:
                 self.compute_alignment_improvement()
@@ -269,7 +286,7 @@ class SatTrainer(TriphoneTrainer):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.sat.acc_stats_two_feats_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`
             Multiprocessing helper function for each job
         :meth:`.SatTrainer.acc_stats_two_feats_arguments`
             Job method for generating arguments for the helper function
@@ -282,13 +299,53 @@ class SatTrainer(TriphoneTrainer):
         """
         self.logger.info("Creating alignment model for speaker-independent features...")
         begin = time.time()
-        log_directory = self.working_log_directory
 
         arguments = self.acc_stats_two_feats_arguments()
-        if self.use_mp:
-            run_mp(acc_stats_two_feats_func, arguments, log_directory)
-        else:
-            run_non_mp(acc_stats_two_feats_func, arguments, log_directory)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = AccStatsTwoFeatsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        (
+                            num_utterances,
+                            no_posteriors,
+                            no_second_features,
+                            errors,
+                        ) = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances + no_posteriors + no_second_features + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = AccStatsTwoFeatsFunction(args)
+                    for (
+                        num_utterances,
+                        no_posteriors,
+                        no_second_features,
+                        errors,
+                    ) in function.run():
+                        pbar.update(num_utterances + no_posteriors + no_second_features + errors)
 
         log_path = os.path.join(self.working_log_directory, "align_model_est.log")
         with open(log_path, "w", encoding="utf8") as log_file:

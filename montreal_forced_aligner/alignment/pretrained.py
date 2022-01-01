@@ -368,7 +368,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             self.align_utterances()
             self.compile_information()
             if self.uses_speaker_adaptation:
-                self.logger.info("Calculating fMLLR for speaker adaptation...")
                 self.calc_fmllr()
 
                 self.speaker_independent = False

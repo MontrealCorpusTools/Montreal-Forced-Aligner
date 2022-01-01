@@ -20,7 +20,11 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import Speaker
 
 
-__all__ = ["MultispeakerDictionaryMixin", "MultispeakerDictionary"]
+__all__ = [
+    "MultispeakerDictionaryMixin",
+    "MultispeakerDictionary",
+    "MultispeakerSanitizationFunction",
+]
 
 
 @dataclass
@@ -42,6 +46,11 @@ class MultispeakerSanitizationFunction:
     sanitize_function: SanitizeFunction
     split_functions: Dict[str, SplitWordsFunction]
 
+    def get_dict_name_for_speaker(self, speaker_name):
+        if speaker_name not in self.speaker_mapping:
+            speaker_name = "default"
+        return self.speaker_mapping[speaker_name]
+
     def get_functions_for_speaker(
         self, speaker_name: str
     ) -> Tuple[SanitizeFunction, SplitWordsFunction]:
@@ -60,9 +69,7 @@ class MultispeakerSanitizationFunction:
         :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
             Function for splitting up words
         """
-        if speaker_name not in self.speaker_mapping:
-            speaker_name = "default"
-        dict_name = self.speaker_mapping[speaker_name]
+        dict_name = self.get_dict_name_for_speaker(speaker_name)
         return self.sanitize_function, self.split_functions[dict_name]
 
 
@@ -115,7 +122,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self.clitic_markers,
                 self.compound_markers,
                 dictionary.clitic_set,
-                dictionary.lexicon_word_set,
+                set(dictionary.words.keys()),
             )
         return MultispeakerSanitizationFunction(
             self.speaker_mapping, sanitize_function, split_functions

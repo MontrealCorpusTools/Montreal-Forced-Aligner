@@ -21,7 +21,6 @@ Multiprocessing workers and functions
 .. autosummary::
    :toctree: generated/
 
-   acc_stats_func
    compute_alignment_improvement_func
    compare_alignments
 
@@ -31,7 +30,7 @@ Multiprocessing workers and functions
 .. autosummary::
    :toctree: generated/
 
-   mono_align_equal_func
+   MonoAlignEqualFunction
 
 
 .. currentmodule:: montreal_forced_aligner.acoustic_modeling.triphone
@@ -40,7 +39,7 @@ Multiprocessing workers and functions
    :toctree: generated/
 
    tree_stats_func
-   convert_alignments_func
+   ConvertAlignmentsFunction
 
 
 .. currentmodule:: montreal_forced_aligner.acoustic_modeling.lda
@@ -48,8 +47,8 @@ Multiprocessing workers and functions
 .. autosummary::
    :toctree: generated/
 
-   lda_acc_stats_func
-   calc_lda_mllt_func
+   LdaAccStatsFunction
+   CalcLdaMlltFunction
 
 
 .. currentmodule:: montreal_forced_aligner.acoustic_modeling.sat
@@ -57,7 +56,7 @@ Multiprocessing workers and functions
 .. autosummary::
    :toctree: generated/
 
-   acc_stats_two_feats_func
+   AccStatsTwoFeatsFunction
 
 Multiprocessing argument classes
 --------------------------------
@@ -67,7 +66,6 @@ Multiprocessing argument classes
 .. autosummary::
    :toctree: generated/
 
-   AccStatsArguments
    AlignmentImprovementArguments
 
 

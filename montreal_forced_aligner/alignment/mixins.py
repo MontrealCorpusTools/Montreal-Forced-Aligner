@@ -104,7 +104,7 @@ class AlignMixin(DictionaryMixin):
 
     def compile_train_graphs_arguments(self) -> List[CompileTrainGraphsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`
 
         Returns
         -------
@@ -136,7 +136,7 @@ class AlignMixin(DictionaryMixin):
 
     def align_arguments(self) -> List[AlignArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
 
         Returns
         -------
@@ -217,7 +217,7 @@ class AlignMixin(DictionaryMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`
             Multiprocessing helper function for each job
         :meth:`.AlignMixin.compile_train_graphs_arguments`
             Job method for generating arguments for the helper function
@@ -263,6 +263,7 @@ class AlignMixin(DictionaryMixin):
                     for v in error_dict.values():
                         raise v
             else:
+                self.logger.debug("Not using multiprocessing...")
                 for args in self.compile_train_graphs_arguments():
                     function = CompileTrainGraphsFunction(args)
                     for done, errors in function.run():
@@ -280,7 +281,7 @@ class AlignMixin(DictionaryMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
             Multiprocessing helper function for each job
         :meth:`.AlignMixin.align_arguments`
             Job method for generating arguments for the helper function
@@ -323,6 +324,7 @@ class AlignMixin(DictionaryMixin):
                     for v in error_dict.values():
                         raise v
             else:
+                self.logger.debug("Not using multiprocessing...")
                 for args in self.align_arguments():
                     function = AlignFunction(args)
                     for _ in function.run():
