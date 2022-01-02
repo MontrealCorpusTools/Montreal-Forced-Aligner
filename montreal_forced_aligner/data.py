@@ -57,11 +57,13 @@ class PhoneSetType(enum.Enum):
     @property
     def regex_detect(self) -> typing.Optional[re.Pattern]:
         if self is PhoneSetType.ARPA:
-            return re.compile(r" [A-Z]{2}[012]? ")
+            return re.compile(r" [A-Z]{2}[012] ")
         elif self is PhoneSetType.PINYIN:
-            return re.compile(r" [a-z]{1,3}[12345]? ")
+            return re.compile(r" [a-z]{1,3}[12345] ")
         elif self is PhoneSetType.IPA:
-            return re.compile(r" [əɚʊɤʁ˥˩ɹɔɛʉɒʃɕŋʰ̚ʲɾ] ")
+            return re.compile(
+                r"[əɚʊɤʁɹɔɛʉɒʃɕŋʰʲɾ̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]"
+            )
         return None
 
     @property

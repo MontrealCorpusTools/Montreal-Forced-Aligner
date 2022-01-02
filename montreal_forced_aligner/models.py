@@ -765,7 +765,7 @@ class DictionaryModel(MfaModel):
     ----------
     path: str
         Path to the dictionary file
-    working_directory: str, optional
+    root_directory: str, optional
         Path to working directory (currently not needed, but present to maintain consistency with other MFA Models
     """
 
@@ -776,12 +776,18 @@ class DictionaryModel(MfaModel):
     def __init__(
         self,
         path: str,
-        working_directory: Optional[str] = None,
+        root_directory: Optional[str] = None,
         phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
     ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
+
+        if root_directory is None:
+            from montreal_forced_aligner.config import get_temporary_directory
+
+            root_directory = get_temporary_directory()
         self.path = path
+        self.dirname = os.path.join(root_directory, self.name)
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         if not isinstance(phone_set_type, PhoneSetType):
@@ -810,7 +816,6 @@ class DictionaryModel(MfaModel):
                 if not line:
                     continue
                 if detect_phone_set:
-                    phone_set = None
                     for phone_set, pattern in patterns.items():
                         if pattern.search(line):
                             counts[phone_set] += 1
@@ -820,7 +825,11 @@ class DictionaryModel(MfaModel):
                         counts[PhoneSetType.UNKNOWN] += 1
                         continue
                     if counts[phone_set] > 100:
-                        other_sets_max = max(counts[x] for x in counts if x != phone_set)
+                        other_sets_max = max(
+                            counts[x]
+                            for x in counts
+                            if x is not phone_set and x is not PhoneSetType.UNKNOWN
+                        )
                         if counts[phone_set] - other_sets_max >= 100:
                             break
                 else:
@@ -853,6 +862,7 @@ class DictionaryModel(MfaModel):
                     except ValueError:
                         self.silence_probabilities = False
         if detect_phone_set:
+            print(counts)
             self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
     @property
@@ -870,10 +880,22 @@ class DictionaryModel(MfaModel):
 
     def pretty_print(self):
         """
-        Pretty print the dictionary's meta data using TerminalPrinter
+        Pretty print the dictionary's metadata using TerminalPrinter
         """
+        from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+
         printer = TerminalPrinter()
         configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
+        dictionary = PronunciationDictionary(
+            self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
+        )
+        configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
+        if len(dictionary.graphemes) < 50:
+            configuration_data["Dictionary"]["data"]["graphemes"] = sorted(dictionary.graphemes)
+        else:
+            configuration_data["Dictionary"]["data"][
+                "graphemes"
+            ] = f"{len(dictionary.graphemes)} graphemes"
         printer.print_config(configuration_data)
 
     @classmethod

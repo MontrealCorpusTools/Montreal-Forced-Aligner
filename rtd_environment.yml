@@ -1,4 +1,3 @@
-name: mfa
 channels:
   - conda-forge
 dependencies:

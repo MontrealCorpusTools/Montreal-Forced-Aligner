@@ -299,7 +299,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         subset_directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
 
         larger_subset_num = subset * 10
-        if larger_subset_num < self.num_utterances:
+        if larger_subset_num < len(self.utterances):
             # Get all shorter utterances that are not one word long
             utts = sorted(
                 (utt for utt in self.utterances if " " in utt.text),
@@ -347,7 +347,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         str
             Path to subset directory
         """
-        if subset is None or subset >= self.num_utterances or subset <= 0:
+        if subset is None or subset >= len(self.utterances) or subset <= 0:
             for j in self.jobs:
                 j.set_subset(None)
             return self.split_directory

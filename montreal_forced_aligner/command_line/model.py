@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 import requests
 
 from montreal_forced_aligner.config import get_temporary_directory
+from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.exceptions import (
     FileArgumentNotFoundError,
     ModelLoadError,
@@ -135,7 +136,10 @@ def inspect_model(path: str) -> None:
     else:
         for model_class in MODEL_TYPES.values():
             if model_class.valid_extension(path):
-                model = model_class(path, working_dir)
+                if model_class == MODEL_TYPES["dictionary"]:
+                    model = model_class(path, working_dir, phone_set_type=PhoneSetType.AUTO)
+                else:
+                    model = model_class(path, working_dir)
     if not model:
         raise ModelLoadError(path)
     model.pretty_print()
