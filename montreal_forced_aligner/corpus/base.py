@@ -313,7 +313,10 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         if len(larger_subset) > subset:
             subset_utts.update(larger_subset)
         else:
-            subset_utts.update(random.sample(larger_subset, subset))
+            try:
+                subset_utts.update(random.sample(larger_subset, subset))
+            except ValueError:
+                print(subset, larger_subset_num, len(larger_subset))
         log_dir = os.path.join(subset_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -346,7 +349,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         str
             Path to subset directory
         """
-        if subset is None or subset > self.num_utterances or subset <= 0:
+        if subset is None or subset >= self.num_utterances - 100 or subset <= 0:
             for j in self.jobs:
                 j.set_subset(None)
             return self.split_directory
