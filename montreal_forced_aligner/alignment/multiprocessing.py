@@ -590,21 +590,32 @@ class WordCtmProcessWorker(mp.Process):
         if split is None:
             return intervals
         cur_ind = 0
-        actual_labels = []
-        for word in text.split():
-            splits = split(word)
-            b = 1000000
-            e = -1
-            for w in splits:
-                cur = intervals[cur_ind]
-                if w == cur.label or cur.label == self.arguments.oov_word:
-                    if cur.begin < b:
-                        b = cur.begin
-                    if cur.end > e:
-                        e = cur.end
-                cur_ind += 1
-            lab = CtmInterval(b, e, word, utterance_name)
-            actual_labels.append(lab)
+        try:
+            actual_labels = []
+            for word in text.split():
+                splits = split(word)
+                b = 1000000
+                e = -1
+                for w in splits:
+                    cur = intervals[cur_ind]
+                    if w == cur.label or cur.label == self.arguments.oov_word:
+                        if cur.begin < b:
+                            b = cur.begin
+                        if cur.end > e:
+                            e = cur.end
+                    cur_ind += 1
+                lab = CtmInterval(b, e, word, utterance_name)
+                actual_labels.append(lab)
+        except Exception:
+            print("Error parsing:")
+            print(text)
+            for word in text.split():
+                print(word)
+                splits = split(word)
+                for w in splits:
+                    print(w)
+
+            raise
         return actual_labels
 
     def run(self) -> None:

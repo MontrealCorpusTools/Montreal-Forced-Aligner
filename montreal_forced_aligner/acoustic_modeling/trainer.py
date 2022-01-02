@@ -297,6 +297,12 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             )
             self.align()
 
+    @property
+    def num_utterances(self) -> int:
+        if self.current_subset:
+            return self.current_subset
+        return super().num_utterances
+
     def align(self) -> None:
         """
         Multiprocessing function that aligns based on the current model.
