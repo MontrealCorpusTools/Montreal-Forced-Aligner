@@ -139,6 +139,12 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                     elif k == "features":
                         global_params.update(parse_old_features(v))
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
                 if not training_params:
                     raise ConfigError(f"No 'training' block found in {config_path}")

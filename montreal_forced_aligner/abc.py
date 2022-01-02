@@ -470,6 +470,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
                 for k, v in data.items():
+                    if v is None and k in {"punctuation", "compound_markers", "clitic_markers"}:
+                        v = []
                     global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params

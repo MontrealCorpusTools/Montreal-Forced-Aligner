@@ -886,6 +886,12 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                             del v["type"]
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
                 if not training_params:
                     raise ConfigError(f"No 'training' block found in {config_path}")

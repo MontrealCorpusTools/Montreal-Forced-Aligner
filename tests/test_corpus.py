@@ -462,6 +462,55 @@ def test_alternate_punctuation(
     )
 
 
+def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctuation_config_path):
+    from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
+
+    output_directory = os.path.join(generated_dir, "corpus_tests")
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
+        TrainableAligner.parse_parameters(no_punctuation_config_path)
+    )
+    params["use_mp"] = True
+    corpus = AcousticCorpusWithPronunciations(
+        corpus_directory=punctuated_dir,
+        dictionary_path=sick_dict_path,
+        temporary_directory=output_directory,
+        **params
+    )
+    assert not corpus.punctuation
+    assert not corpus.compound_markers
+    assert not corpus.clitic_markers
+    corpus.load_corpus()
+    punctuated = corpus.utterances["punctuated-punctuated-0-26-72325"]
+    assert punctuated.text == "oh yes, they - they, you know, they love her and so i mean..."
+    assert punctuated.normalized_text == [
+        "oh",
+        "yes,",
+        "they",
+        "-",
+        "they,",
+        "you",
+        "know,",
+        "they",
+        "love",
+        "her",
+        "and",
+        "so",
+        "i",
+        "mean...",
+    ]
+    weird_words = corpus.utterances["punctuated-weird-words-0-26-72325"]
+    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me"
+    assert weird_words.normalized_text == [
+        "i’m",
+        "talking-ajfish",
+        "me-really",
+        "asds-asda",
+        "sdasd-me",
+    ]
+
+
 def test_xsampa_corpus(
     xsampa_corpus_dir, xsampa_dict_path, generated_dir, different_punctuation_config_path
 ):

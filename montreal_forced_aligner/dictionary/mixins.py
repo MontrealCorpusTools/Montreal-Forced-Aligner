@@ -104,12 +104,14 @@ class SplitWordsFunction:
         if not word_set:
             word_set = None
         self.word_set = word_set
-        self.compound_pattern = re.compile(rf"[{re.escape(''.join(self.compound_markers))}]")
-        initial_clitics = sorted(x for x in self.clitic_set if x.endswith(self.clitic_markers[0]))
-        final_clitics = sorted(x for x in self.clitic_set if x.startswith(self.clitic_markers[0]))
+        self.compound_pattern = None
         self.clitic_pattern = None
         self.initial_clitic_pattern = None
         self.final_clitic_pattern = None
+        if self.compound_markers:
+            self.compound_pattern = re.compile(rf"[{re.escape(''.join(self.compound_markers))}]")
+        initial_clitics = sorted(x for x in self.clitic_set if x.endswith(self.clitic_markers[0]))
+        final_clitics = sorted(x for x in self.clitic_set if x.startswith(self.clitic_markers[0]))
         if initial_clitics:
             groups = f"({'|'.join(initial_clitics)})?" * 4
             self.initial_clitic_pattern = re.compile(rf"^{groups}$")
@@ -149,7 +151,10 @@ class SplitWordsFunction:
         if self.word_set is not None and item in self.word_set:
             return [item]
         split = []
-        s = re.split(self.compound_pattern, item)
+        if self.compound_pattern:
+            s = re.split(self.compound_pattern, item)
+        else:
+            s = [item]
         for seg in s:
             if self.clitic_pattern is None or self.clitic_markers[0] not in seg:
                 split.append(seg)

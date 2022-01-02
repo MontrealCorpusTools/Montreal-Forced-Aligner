@@ -1,0 +1,18 @@
+beam: 10
+retry_beam: 400
+use_mp: false
+punctuation:
+compound_markers:
+clitic_markers:
+
+features:
+  type: "mfcc"
+  use_energy: true
+  frame_shift: 10
+  pitch: false
+
+training:
+  - monophone:
+      num_iterations: 3
+      max_gaussians: 500
+      subset: 1000

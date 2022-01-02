@@ -1,8 +1,6 @@
 
 .. _`Conda forge`: https://conda-forge.org/
 
-.. _getting_started_ref:
-
 ***************
 Getting started
 ***************
@@ -45,7 +43,7 @@ Installation
 
     +++
 
-    .. link-button:: installation_ref
+    .. link-button:: installation
             :type: ref
             :text: To the installation guide
             :classes: btn-block btn-primary btn-navigation stretched-link

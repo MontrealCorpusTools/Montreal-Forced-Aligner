@@ -296,6 +296,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         subset: int
             Number of utterances to include in subset
         """
+        self.log_debug(f"Creating subset_{subset} directory...")
         subset_directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
 
         larger_subset_num = subset * 10

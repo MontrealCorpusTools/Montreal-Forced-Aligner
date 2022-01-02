@@ -94,9 +94,9 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config_path):
         temporary_directory=data_directory,
         disable_mp=False
     )
-    a.train()
     assert len(a.training_configs[a.final_identifier].realignment_iterations) > 0
     assert len(a.training_configs[a.final_identifier].fmllr_iterations) > 1
+    a.train()
     a.export_model(output_model_path)
 
     assert os.path.exists(output_model_path)

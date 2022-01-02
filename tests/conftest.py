@@ -331,6 +331,11 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
         os.path.join(wav_dir, "acoustic_corpus.wav"), os.path.join(path, name + ".wav")
     )
     shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    name = "weird_words"
+    shutil.copyfile(
+        os.path.join(wav_dir, "acoustic_corpus.wav"), os.path.join(path, name + ".wav")
+    )
+    shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
     return path
 
 
@@ -549,6 +554,11 @@ def basic_train_lm_config_path(config_directory):
 @pytest.fixture(scope="session")
 def different_punctuation_config_path(config_directory):
     return os.path.join(config_directory, "different_punctuation_config.yaml")
+
+
+@pytest.fixture(scope="session")
+def no_punctuation_config_path(config_directory):
+    return os.path.join(config_directory, "no_punctuation_config.yaml")
 
 
 @pytest.fixture(scope="session")

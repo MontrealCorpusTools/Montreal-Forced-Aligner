@@ -245,6 +245,12 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                             del v["type"]
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params

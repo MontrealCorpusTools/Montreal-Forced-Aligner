@@ -280,7 +280,9 @@ class AlignFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG \(gmm-align-compiled.*(?P<utterance>.*)")
+    progress_pattern = re.compile(
+        r"^LOG \(gmm-align-compiled.*gmm-align-compiled.cc:127\) (?P<utterance>.*)"
+    )
     error_pattern = re.compile(
         r"^WARNING \(gmm-align-compiled.*Did not successfully decode file (?P<utterance>.*),.*"
     )

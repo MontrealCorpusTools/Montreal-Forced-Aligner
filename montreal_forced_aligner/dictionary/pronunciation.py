@@ -131,7 +131,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
 
                 self.words[word].pronunciations.add(pronunciation)
                 # test whether a word is a clitic
-                if self.clitic_markers[0] not in word:
+                if not self.clitic_markers or self.clitic_markers[0] not in word:
                     continue
                 if word.startswith(self.clitic_markers[0]) or word.endswith(
                     self.clitic_markers[0]
