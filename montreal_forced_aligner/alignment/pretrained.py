@@ -329,9 +329,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             for utterance_name, intervals in per_utterance_phone_intervals.items():
                 if not intervals:
                     continue
-                self.log_debug(utterance_name)
-                self.log_debug(f"REF: {intervals}")
-                self.log_debug(f"ALIGNED: {self.utterances[utterance_name].phone_labels}")
                 if not self.utterances[utterance_name].phone_labels:
                     continue
                 score, phone_error_rate = align_phones(

@@ -281,6 +281,9 @@ class AlignFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(r"^LOG \(gmm-align-compiled.*(?P<utterance>.*)")
+    error_pattern = re.compile(
+        r"^WARNING \(gmm-align-compiled.*Did not successfully decode file (?P<utterance>.*),.*"
+    )
 
     def __init__(self, args: AlignArguments):
         self.log_path = args.log_path
@@ -333,15 +336,20 @@ class AlignFunction(KaldiFunction):
                 )
                 for line in align_proc.stderr:
                     log_file.write(line)
+                    line = line.strip()
                     if "Overall" in line:
                         continue
                     if "Retried" in line:
                         continue
                     if "Done" in line:
                         continue
-                    m = self.progress_pattern.match(line.strip())
+                    m = self.error_pattern.match(line)
                     if m:
-                        yield m.group("utterance")
+                        yield m.group("utterance"), False
+                    else:
+                        m = self.progress_pattern.match(line)
+                        if m:
+                            yield m.group("utterance"), True
 
 
 def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
@@ -680,7 +688,7 @@ class PhoneCtmProcessWorker(mp.Process):
         actual_labels = []
         for interval in intervals:
             label = self.arguments.reversed_phone_mapping[int(interval.label)]
-            if self.arguments.position_dependent_phones:
+            if self.arguments.position_dependent_phones and "_" in label:
                 label = label[:-2]
             interval.label = label
             if self.arguments.cleanup_textgrids and interval.label == self.arguments.silence_phone:

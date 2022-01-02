@@ -85,6 +85,7 @@ class AlignMixin(DictionaryMixin):
         self.retry_beam = retry_beam
         if self.retry_beam <= self.beam:
             self.retry_beam = self.beam * 4
+        self.unaligned_files = set()
 
     @property
     def tree_path(self):
@@ -291,7 +292,7 @@ class AlignMixin(DictionaryMixin):
             Reference Kaldi script
         """
         begin = time.time()
-
+        self.unaligned_files = set()
         self.logger.info("Generating alignments...")
         with tqdm.tqdm(total=self.num_utterances) as pbar:
             if self.use_mp:
@@ -307,7 +308,7 @@ class AlignMixin(DictionaryMixin):
                     p.start()
                 while True:
                     try:
-                        _ = return_queue.get(timeout=1)
+                        utterance, succeeded = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -317,7 +318,11 @@ class AlignMixin(DictionaryMixin):
                         else:
                             break
                         continue
-                    pbar.update(1)
+                    if not succeeded:
+                        self.utterances[utterance].phone_labels = []
+                        self.utterances[utterance].word_labels = []
+                    else:
+                        pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -327,8 +332,12 @@ class AlignMixin(DictionaryMixin):
                 self.logger.debug("Not using multiprocessing...")
                 for args in self.align_arguments():
                     function = AlignFunction(args)
-                    for _ in function.run():
-                        pbar.update(1)
+                    for utterance, succeeded in function.run():
+                        if not succeeded:
+                            self.utterances[utterance].phone_labels = []
+                            self.utterances[utterance].word_labels = []
+                        else:
+                            pbar.update(1)
 
         self.compile_information()
         self.logger.debug(f"Alignment round took {time.time() - begin}")

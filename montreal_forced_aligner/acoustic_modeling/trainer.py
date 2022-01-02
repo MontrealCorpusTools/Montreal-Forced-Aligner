@@ -277,7 +277,6 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         begin = time.time()
         for trainer in self.training_configs.values():
             self.current_subset = trainer.subset
-            print(trainer, trainer.subset)
             if previous is not None:
                 self.current_aligner = previous.identifier
                 os.makedirs(self.working_directory, exist_ok=True)

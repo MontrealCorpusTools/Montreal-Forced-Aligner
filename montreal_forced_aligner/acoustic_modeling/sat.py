@@ -258,7 +258,6 @@ class SatTrainer(TriphoneTrainer):
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
-            self.logger.info("Re-aligning...")
             self.align_utterances()
             if self.debug:
                 self.compute_alignment_improvement()
