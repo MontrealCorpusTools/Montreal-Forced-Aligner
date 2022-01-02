@@ -276,7 +276,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         previous = None
         begin = time.time()
         for trainer in self.training_configs.values():
-            if trainer.subset >= len(self.utterances):
+            if trainer.subset < len(self.utterances):
                 self.current_subset = trainer.subset
             else:
                 self.current_subset = 0
