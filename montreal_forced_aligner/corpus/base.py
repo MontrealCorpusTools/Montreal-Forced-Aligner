@@ -310,7 +310,10 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             larger_subset = sorted(self.utterances)
         random.seed(1234)  # make it deterministic sampling
         subset_utts = UtteranceCollection()
-        subset_utts.update(random.sample(larger_subset, subset))
+        if len(larger_subset) > subset:
+            subset_utts.update(larger_subset)
+        else:
+            subset_utts.update(random.sample(larger_subset, subset))
         log_dir = os.path.join(subset_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
 
