@@ -483,7 +483,7 @@ class AcousticModelTrainingMixin(
             return
         os.makedirs(self.working_directory, exist_ok=True)
         os.makedirs(self.working_log_directory, exist_ok=True)
-        if self.subset and self.subset >= self.worker.num_utterances:
+        if self.subset and self.subset >= len(self.worker.utterances):
             self.logger.warning(
                 "Subset specified is larger than the dataset, "
                 "using full corpus for this training block."
