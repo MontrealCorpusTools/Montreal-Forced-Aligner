@@ -318,7 +318,7 @@ class AlignMixin(DictionaryMixin):
                         else:
                             break
                         continue
-                    if not succeeded:
+                    if not succeeded and hasattr(self, "utterances"):
                         self.utterances[utterance].phone_labels = []
                         self.utterances[utterance].word_labels = []
                     else:
@@ -333,7 +333,7 @@ class AlignMixin(DictionaryMixin):
                 for args in self.align_arguments():
                     function = AlignFunction(args)
                     for utterance, succeeded in function.run():
-                        if not succeeded:
+                        if not succeeded and hasattr(self, "utterances"):
                             self.utterances[utterance].phone_labels = []
                             self.utterances[utterance].word_labels = []
                         else:
