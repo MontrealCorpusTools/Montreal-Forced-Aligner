@@ -9,9 +9,9 @@ import functools
 import itertools
 import json
 import sys
-import textwrap
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
+import ansiwrap
 import numpy
 from colorama import Fore, Style
 
@@ -240,7 +240,7 @@ class TerminalPrinter:
             lines = [lines]
 
         for i, line in enumerate(lines):
-            lines[i] = textwrap.fill(
+            lines[i] = ansiwrap.fill(
                 line,
                 initial_indent=self.indent_string,
                 subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
@@ -411,10 +411,15 @@ class TerminalPrinter:
         if key:
             key = f" {key}:"
             subsequent_indent += " " * (len(key))
-        wrapper = textwrap.TextWrapper(
-            initial_indent=indent, subsequent_indent=subsequent_indent, width=self.width
+
+        print(
+            ansiwrap.fill(
+                f"{self.colorize(key, key_color)} {value}",
+                width=self.width,
+                initial_indent=indent,
+                subsequent_indent=subsequent_indent,
+            )
         )
-        print(wrapper.fill(f"{self.colorize(key, key_color)} {value}"))
 
 
 def comma_join(sequence: List[Any]) -> str:

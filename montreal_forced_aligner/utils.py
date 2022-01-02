@@ -10,11 +10,11 @@ import multiprocessing as mp
 import os
 import shutil
 import sys
-import textwrap
 import traceback
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import ansiwrap
 from colorama import Fore, Style
 
 from montreal_forced_aligner.abc import KaldiFunction
@@ -189,7 +189,7 @@ class CustomFormatter(logging.Formatter):
             Formatted log message
         """
         log_fmt = self.FORMATS.get(record.levelno)
-        return textwrap.fill(
+        return ansiwrap.fill(
             record.getMessage(),
             initial_indent=log_fmt[0],
             subsequent_indent=" " * len(log_fmt[0]),

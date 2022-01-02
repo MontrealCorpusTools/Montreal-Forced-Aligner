@@ -825,11 +825,7 @@ class DictionaryModel(MfaModel):
                         counts[PhoneSetType.UNKNOWN] += 1
                         continue
                     if counts[phone_set] > 100:
-                        other_sets_max = max(
-                            counts[x]
-                            for x in counts
-                            if x is not phone_set and x is not PhoneSetType.UNKNOWN
-                        )
+                        other_sets_max = max(counts[x] for x in counts if x is not phone_set)
                         if counts[phone_set] - other_sets_max >= 100:
                             break
                 else:
@@ -862,7 +858,6 @@ class DictionaryModel(MfaModel):
                     except ValueError:
                         self.silence_probabilities = False
         if detect_phone_set:
-            print(counts)
             self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
     @property
@@ -890,6 +885,12 @@ class DictionaryModel(MfaModel):
             self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
         )
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
+        if self.phone_set_type.has_base_phone_regex:
+            configuration_data["Dictionary"]["data"]["base_phones"] = {
+                k: sorted(v) for k, v in sorted(dictionary.base_phones.items())
+            }
+        else:
+            configuration_data["Dictionary"]["data"]["base_phones"] = "None"
         if len(dictionary.graphemes) < 50:
             configuration_data["Dictionary"]["data"]["graphemes"] = sorted(dictionary.graphemes)
         else:

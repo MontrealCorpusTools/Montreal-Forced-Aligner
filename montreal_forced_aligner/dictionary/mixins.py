@@ -317,6 +317,17 @@ class DictionaryMixin:
         self.phone_set_type = phone_set_type
 
     @property
+    def base_phones(self) -> Dict[str, Set[str]]:
+        base_phones = {}
+        for p in self.non_silence_phones:
+            b = self.phone_set_type.get_base_phone(p)
+            if b not in base_phones:
+                base_phones[b] = set()
+            base_phones[b].add(p)
+
+        return base_phones
+
+    @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
         """Mapping of extra questions for the given phone set type"""
         mapping = {}
@@ -337,11 +348,9 @@ class DictionaryMixin:
             elif self.phone_set_type == PhoneSetType.IPA:
                 filtered_v = set()
                 for x in self.non_silence_phones:
-                    m = re.match(self.phone_set_type.base_phone_regex, x)
-                    if m:
-                        base_phone = m.groups()[0]
-                        if base_phone in v:
-                            filtered_v.add(x)
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v:
+                        filtered_v.add(x)
                 if len(filtered_v) < 2:
                     del mapping[k]
                     continue
@@ -353,11 +362,9 @@ class DictionaryMixin:
             elif self.phone_set_type is PhoneSetType.PINYIN:
                 filtered_v = set()
                 for x in self.non_silence_phones:
-                    m = re.match(self.phone_set_type.base_phone_regex, x)
-                    if m:
-                        base_phone = m.groups()[0]
-                        if base_phone in v or x in v:
-                            filtered_v.add(x)
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v or x in v:
+                        filtered_v.add(x)
                     elif x in v:
                         filtered_v.add(x)
                 if len(filtered_v) < 2:
@@ -481,16 +488,11 @@ class DictionaryMixin:
         for p in sorted(phones):
             if p not in self.non_silence_phones:
                 continue
-            if self.phone_set_type.base_phone_regex is not None:
-                m = re.match(self.phone_set_type.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                else:
-                    base_phone = p
-                for pos in self.positions:
-                    pos_p = base_phone + pos
-                    if pos_p not in positional_phones:
-                        positional_phones.append(pos_p)
+            base_phone = self.phone_set_type.get_base_phone(p)
+            for pos in self.positions:
+                pos_p = base_phone + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
             for pos in self.positions:
                 pos_p = p + pos
                 if pos_p not in positional_phones:
@@ -512,14 +514,9 @@ class DictionaryMixin:
             List of non-positional phones, sorted by base phone
         """
         base_phones = set()
-        if self.phone_set_type.base_phone_regex is not None:
-            for p in phones:
-                if p not in self.non_silence_phones:
-                    continue
-                m = re.match(self.phone_set_type.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                    base_phones.add(base_phone)
+        for p in phones:
+            base_phone = self.phone_set_type.get_base_phone(p)
+            base_phones.add(base_phone)
 
         return sorted(phones | base_phones)
 
@@ -656,22 +653,14 @@ class DictionaryMixin:
         """Non silence phones in Kaldi format"""
         groups = {}
         for p in sorted(self.non_silence_phones):
-            if self.phone_set_type in [PhoneSetType.ARPA, PhoneSetType.IPA]:
-                m = re.match(self.phone_set_type.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                    if base_phone not in groups:
-                        groups[base_phone] = []
-                        if self.position_dependent_phones:
-                            groups[base_phone] = [base_phone + pos for pos in self.positions]
-                        else:
-                            groups[base_phone] = [base_phone]
-                else:
-                    base_phone = p
-            else:
-                base_phone = p
+
+            base_phone = self.phone_set_type.get_base_phone(p)
             if base_phone not in groups:
-                groups[base_phone] = []
+                if self.position_dependent_phones:
+                    groups[base_phone] = [base_phone + pos for pos in self.positions]
+                else:
+                    groups[base_phone] = [base_phone]
+
             if self.position_dependent_phones:
                 groups[base_phone].extend(
                     [p + pos for pos in self.positions if p + pos not in groups[base_phone]]

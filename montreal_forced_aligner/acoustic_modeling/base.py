@@ -483,12 +483,13 @@ class AcousticModelTrainingMixin(
             return
         os.makedirs(self.working_directory, exist_ok=True)
         os.makedirs(self.working_log_directory, exist_ok=True)
-        if self.subset is not None and self.subset > self.worker.num_utterances:
+        if self.subset and self.subset >= self.worker.num_utterances:
             self.logger.warning(
                 "Subset specified is larger than the dataset, "
                 "using full corpus for this training block."
             )
-            self.subset = self.worker.num_utterances
+            self.subset = 0
+            self.worker.current_subset = 0
         try:
             self._trainer_initialization()
             parse_logs(self.working_log_directory)

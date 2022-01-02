@@ -5,7 +5,7 @@ from __future__ import annotations
 import abc
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Collection, Dict, Optional, Tuple, Union
 
 from montreal_forced_aligner.dictionary.mixins import (
     SanitizeFunction,
@@ -127,39 +127,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         return MultispeakerSanitizationFunction(
             self.speaker_mapping, sanitize_function, split_functions
         )
-
-    @property
-    def base_phone_regex(self) -> Optional[str]:
-        """Regex pattern for extracting a base phone for the phone set"""
-        try:
-            return self.phone_set_type.base_phone_regex
-        except AttributeError:
-            return None
-
-    @property
-    def extra_short_phones(self) -> Set[str]:
-        """Set of extra short phones"""
-        return self.phone_set_type.extra_short_phones
-
-    @property
-    def affricate_phones(self) -> Set[str]:
-        """Set of affricates"""
-        return self.phone_set_type.affricate_phones
-
-    @property
-    def stop_phones(self) -> Set[str]:
-        """Set of stops"""
-        return self.phone_set_type.stop_phones
-
-    @property
-    def diphthong_phones(self) -> Set[str]:
-        """Set of diphthongs"""
-        return self.phone_set_type.diphthong_phones
-
-    @property
-    def extra_questions(self) -> Dict[str, Set[str]]:
-        """Extra questions for triphone tree clustering"""
-        return self.phone_set_type.extra_questions
 
     def dictionary_setup(self):
         """Setup the dictionary for processing"""

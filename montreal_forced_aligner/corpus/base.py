@@ -352,7 +352,8 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 j.set_subset(None)
             return self.split_directory
         directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
-        self.create_subset(subset)
+        if not os.path.exists(directory):
+            self.create_subset(subset)
         return directory
 
     def _load_corpus(self) -> None:

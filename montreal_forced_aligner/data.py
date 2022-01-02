@@ -55,25 +55,34 @@ class PhoneSetType(enum.Enum):
         return self.name
 
     @property
+    def has_base_phone_regex(self):
+        return self is PhoneSetType.IPA or self is PhoneSetType.ARPA or self is PhoneSetType.PINYIN
+
+    @property
     def regex_detect(self) -> typing.Optional[re.Pattern]:
         if self is PhoneSetType.ARPA:
-            return re.compile(r" [A-Z]{2}[012] ")
+            return re.compile(r"[A-Z]{2}[012]")
         elif self is PhoneSetType.PINYIN:
-            return re.compile(r" [a-z]{1,3}[12345] ")
+            return re.compile(r"[a-z]{1,3}[12345]")
         elif self is PhoneSetType.IPA:
             return re.compile(
-                r"[əɚʊɤʁɹɔɛʉɒʃɕŋʰʲɾ̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]"
+                r"[əɚʊɡɤʁɹɔɛʉɒβɲɟʝŋʃɕʰʲɾ̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]"
             )
         return None
+
+    def get_base_phone(self, phone: str):
+        if self.has_base_phone_regex:
+            return self.base_phone_regex.sub("", phone)
+        return phone
 
     @property
     def base_phone_regex(self) -> typing.Optional[re.Pattern]:
         if self is PhoneSetType.ARPA:
-            return re.compile(r"([A-Z]{2})[012]")
+            return re.compile(r"[012]")
         elif self is PhoneSetType.PINYIN:
-            return re.compile(r"([a-z]{1,3})[12345]")
+            return re.compile(r"[12345]")
         elif self is PhoneSetType.IPA:
-            return re.compile(r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
+            return re.compile(r"([̚ː˩˨˧˦˥̪̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
         return None
 
     @property

@@ -276,7 +276,11 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         previous = None
         begin = time.time()
         for trainer in self.training_configs.values():
-            self.current_subset = trainer.subset
+            if trainer.subset >= len(self.utterances):
+                self.current_subset = trainer.subset
+            else:
+                self.current_subset = 0
+                trainer.subset = 0
             if previous is not None:
                 self.current_aligner = previous.identifier
                 os.makedirs(self.working_directory, exist_ok=True)
@@ -299,7 +303,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
 
     @property
     def num_utterances(self) -> int:
-        if self.current_subset:
+        if self.current_subset and self.current_subset < len(self.utterances):
             return self.current_subset
         return super().num_utterances
 
