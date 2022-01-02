@@ -36,7 +36,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     training_configuration : list[tuple[str, dict[str, Any]]]
         Training identifiers and parameters for training blocks
     detect_phone_set: bool
-        Flag for auto detecting phone sets for use in building triphone trees
+        Flag for auto-detecting phone sets for use in building triphone trees
 
     See Also
     --------
@@ -76,8 +76,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         }
         self.final_identifier = None
         self.current_subset: int = 0
-        self.current_aligner = None
-        self.current_trainer = None
+        self.current_aligner: Optional[AcousticModelTrainingMixin] = None
+        self.current_trainer: Optional[AcousticModelTrainingMixin] = None
         self.current_acoustic_model: Optional[AcousticModel] = None
         super().__init__(**kwargs)
         if phone_set_type and phone_set_type != "UNKNOWN":
@@ -282,7 +282,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 self.current_subset = 0
                 trainer.subset = 0
             if previous is not None:
-                self.current_aligner = previous.identifier
+                self.current_aligner = previous
                 os.makedirs(self.working_directory, exist_ok=True)
                 self.current_acoustic_model = AcousticModel(
                     previous.exported_model_path, self.working_directory
@@ -294,7 +294,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
 
         if generate_final_alignments:
             self.current_subset = None
-            self.current_aligner = previous.identifier
+            self.current_aligner = previous
             os.makedirs(self.working_log_directory, exist_ok=True)
             self.current_acoustic_model = AcousticModel(
                 previous.exported_model_path, self.working_directory
@@ -324,7 +324,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(done_path):
-            self.logger.debug(f"Skipping {self.current_aligner} alignments")
+            self.logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
             return
         try:
             self.current_acoustic_model.export_model(self.working_directory)
@@ -332,11 +332,11 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             self.align_utterances()
             if self.current_subset:
                 self.logger.debug(
-                    f"Analyzing alignment diagnostics for {self.current_aligner} on {self.current_subset} utterances"
+                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on {self.current_subset} utterances"
                 )
             else:
                 self.logger.debug(
-                    f"Analyzing alignment diagnostics for {self.current_aligner} on the full corpus"
+                    f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
                 )
             self.compile_information()
             with open(done_path, "w"):
@@ -374,7 +374,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             return self.current_trainer.working_directory
         if self.current_aligner is None:
             return None
-        return os.path.join(self.output_directory, f"{self.current_aligner}_ali")
+        return os.path.join(self.output_directory, f"{self.current_aligner.identifier}_ali")
 
     @property
     def working_log_directory(self) -> Optional[str]:

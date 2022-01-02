@@ -296,7 +296,7 @@ class AcousticModelTrainingMixin(
     Attributes
     ----------
     realignment_iterations : list
-        List of iterations to perform alignment
+        Iterations to perform alignment
     """
 
     architecture = "gmm-hmm"

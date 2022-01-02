@@ -597,6 +597,8 @@ class WordCtmProcessWorker(mp.Process):
                 b = 1000000
                 e = -1
                 for w in splits:
+                    if not w:
+                        continue
                     cur = intervals[cur_ind]
                     if w == cur.label or cur.label == self.arguments.oov_word:
                         if cur.begin < b:

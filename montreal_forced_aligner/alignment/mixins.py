@@ -232,6 +232,7 @@ class AlignMixin(DictionaryMixin):
         os.makedirs(log_directory, exist_ok=True)
         self.logger.info("Compiling training graphs...")
         error_sum = 0
+        arguments = self.compile_train_graphs_arguments()
         with tqdm.tqdm(total=self.num_utterances) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
@@ -239,7 +240,7 @@ class AlignMixin(DictionaryMixin):
                 return_queue = manager.Queue()
                 stopped = Stopped()
                 procs = []
-                for i, args in enumerate(self.compile_train_graphs_arguments()):
+                for i, args in enumerate(arguments):
                     function = CompileTrainGraphsFunction(args)
                     p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                     procs.append(p)
@@ -265,7 +266,7 @@ class AlignMixin(DictionaryMixin):
                         raise v
             else:
                 self.logger.debug("Not using multiprocessing...")
-                for args in self.compile_train_graphs_arguments():
+                for args in arguments:
                     function = CompileTrainGraphsFunction(args)
                     for done, errors in function.run():
                         pbar.update(done + errors)
