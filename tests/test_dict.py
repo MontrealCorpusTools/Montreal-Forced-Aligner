@@ -236,6 +236,53 @@ def test_english_ipa(english_us_ipa_dictionary, generated_dir):
     assert set(topos[1]) == {"ə", "ɚ", "ɾ", "ʔ"}
 
 
+def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
+    output_directory = os.path.join(generated_dir, "dictionary_tests")
+    dictionary = MultispeakerDictionary(
+        dictionary_path=pinyin_dictionary,
+        position_dependent_phones=False,
+        temporary_directory=output_directory,
+        phone_set_type="AUTO",
+    )
+    dictionary.dictionary_setup()
+    dictionary.write_lexicon_information()
+    d = dictionary.default_dictionary
+    assert dictionary.phone_set_type.name == "PINYIN"
+    assert d.extra_questions_mapping
+    assert d.phone_set_type.name == "PINYIN"
+    for k, v in d.extra_questions_mapping.items():
+        print(k)
+        print(v)
+        assert len(v) == len(set(v))
+    assert "voiceless_sibilant_variation" in d.extra_questions_mapping
+    voiceless_fricatives = ["z", "zh", "j", "c", "ch", "q", "s", "sh", "x"]
+    assert all(
+        x in d.extra_questions_mapping["voiceless_sibilant_variation"]
+        for x in voiceless_fricatives
+    )
+    assert set(d.extra_questions_mapping["rhotic_variation"]) == {
+        "e5",
+        "e1",
+        "sh",
+        "e4",
+        "e2",
+        "r",
+        "e3",
+    }
+    assert set(d.extra_questions_mapping["dorsal_variation"]) == {"h", "k", "g"}
+    assert "uai1" in d.extra_questions_mapping["tone_1"]
+
+    topos = d.kaldi_phones_for_topo
+    print(topos)
+    assert 2 in topos
+    assert 5 in topos
+    assert "ai" in topos[5]
+    assert "ch" in topos[5]
+    assert "z" in topos[4]
+    assert "b" in topos[2]
+    assert "p" in topos[3]
+
+
 def test_devanagari(english_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
     d = PronunciationDictionary(

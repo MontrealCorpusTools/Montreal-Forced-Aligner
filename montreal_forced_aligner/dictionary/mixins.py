@@ -350,6 +350,24 @@ class DictionaryMixin:
                         mapping[k].extend([x + pos for pos in self.positions])
                 else:
                     mapping[k] = sorted(filtered_v)
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    m = re.match(self.phone_set_type.base_phone_regex, x)
+                    if m:
+                        base_phone = m.groups()[0]
+                        if base_phone in v or x in v:
+                            filtered_v.add(x)
+                    elif x in v:
+                        filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    del mapping[k]
+                    continue
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
         if self.position_dependent_phones:
             phones = sorted(self.non_silence_phones)
             for pos in self.positions:
@@ -609,7 +627,7 @@ class DictionaryMixin:
             elif any(x in self.phone_set_type.diphthong_phones for x in query_set):
                 num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
                 # transition to next target, steady state, offset of second target)
-            elif any(x in self.phone_set_type.tiphthong_phones for x in query_set):
+            elif any(x in self.phone_set_type.triphthong_phones for x in query_set):
                 num_states = 6  # 5 states for diphthongs (onset of first target, steady state,
                 # transition to next target, steady state, offset of second target)
             elif any(x in self.phone_set_type.affricate_phones for x in query_set):
@@ -620,6 +638,9 @@ class DictionaryMixin:
                 num_states = self.num_non_silence_states
             if self.phone_set_type is PhoneSetType.IPA:
                 if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
+                    num_states += 1
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                if p in {"c", "ch", "q"}:
                     num_states += 1
             if num_states not in mapping:
                 mapping[num_states] = []

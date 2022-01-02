@@ -86,6 +86,8 @@ class PhoneSetType(enum.Enum):
     def affricate_phones(self) -> typing.Set[str]:
         if self is PhoneSetType.ARPA:
             return {"CH", "JH"}
+        if self is PhoneSetType.PINYIN:
+            return {"z", "zh", "j", "c", "ch", "q"}
         if self is PhoneSetType.IPA:
             return {
                 "pf",
@@ -112,6 +114,8 @@ class PhoneSetType(enum.Enum):
     def stop_phones(self) -> typing.Set[str]:
         if self is PhoneSetType.ARPA:
             return {"B", "D", "G"}
+        if self is PhoneSetType.PINYIN:
+            return {"b", "d", "g"}
         if self is PhoneSetType.IPA:
             return {"p", "b", "t", "d", "ʈ", "ɖ", "c", "ɟ", "k", "ɡ", "q", "ɢ"}
         return set()
@@ -138,10 +142,18 @@ class PhoneSetType(enum.Enum):
             }
         if self is PhoneSetType.IPA:
             return {x + y for x, y in itertools.product(self.vowels, self.vowels)}
+        if self is PhoneSetType.PINYIN:
+            return {
+                x + y + str(tone)
+                for x, y, tone in itertools.product(self.vowels, self.vowels, range(1, 6))
+            }
+
         return set()
 
     @property
     def vowels(self):
+        if self is PhoneSetType.PINYIN:
+            return {"i", "u", "y", "e", "w", "a", "o", "e", "ü"}
         if self is PhoneSetType.IPA:
             base_vowels = {
                 "i",
@@ -220,10 +232,17 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def tiphthong_phones(self) -> typing.Set[str]:
-        if self is PhoneSetType.IPA:
+    def triphthong_phones(self) -> typing.Set[str]:
+        if self is PhoneSetType.IPA or self is PhoneSetType.PINYIN:
             return {
                 x + y + z for x, y, z in itertools.product(self.vowels, self.vowels, self.vowels)
+            }
+        if self is PhoneSetType.PINYIN:
+            return {
+                x + y + z + str(tone)
+                for x, y, z, tone in itertools.product(
+                    self.vowels, self.vowels, self.vowels, range(1, 6)
+                )
             }
 
         return set()
@@ -273,6 +292,22 @@ class PhoneSetType(enum.Enum):
                 "UH2",
                 "UH0",
             }
+            extra_questions["high_front_variation"] = {
+                "IY1",
+                "IY2",
+                "IY0",
+                "IH0",
+                "IH1",
+                "IH2",
+            }
+            extra_questions["mid_front_variation"] = {
+                "EY1",
+                "EY2",
+                "EY0",
+                "EH0",
+                "EH1",
+                "EH2",
+            }
 
             # extra stress questions
             vowels = [
@@ -294,6 +329,29 @@ class PhoneSetType(enum.Enum):
             ]
             for i in range(3):
                 extra_questions[f"stress_{i}"] = {f"{x}{i}" for x in vowels}
+        elif self is PhoneSetType.PINYIN:
+            for i in range(1, 6):
+                extra_questions[f"tone_{i}"] = {f"{x}{i}" for x in self.vowels}
+                extra_questions[f"tone_{i}"] |= {f"{x}{i}" for x in self.diphthong_phones}
+                extra_questions[f"tone_{i}"] |= {f"{x}{i}" for x in self.triphthong_phones}
+            extra_questions["bilabial_variation"] = {"p", "b"}
+            extra_questions["nasal_variation"] = {"m", "n", "ng"}
+            extra_questions["voiceless_sibilant_variation"] = {
+                "z",
+                "zh",
+                "j",
+                "c",
+                "ch",
+                "q",
+                "s",
+                "sh",
+                "x",
+            }
+            extra_questions["dorsal_variation"] = {"h", "k", "g"}
+            extra_questions["alveolar_stop_variation"] = {"t", "d"}
+            extra_questions["approximant_variation"] = {"l", "r", "y", "w"}
+            extra_questions["rhotic_variation"] = {"r", "sh", "e"}
+
         elif self is PhoneSetType.IPA:
 
             def voiceless_variants(base_phone):

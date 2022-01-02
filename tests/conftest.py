@@ -107,6 +107,14 @@ def english_us_ipa_dictionary():
 
 
 @pytest.fixture(scope="session")
+def pinyin_dictionary():
+    from montreal_forced_aligner.command_line.model import download_model
+
+    download_model("dictionary", "mandarin_pinyin")
+    return "mandarin_pinyin"
+
+
+@pytest.fixture(scope="session")
 def english_uk_ipa_dictionary():
     from montreal_forced_aligner.command_line.model import download_model
 
