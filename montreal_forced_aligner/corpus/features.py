@@ -265,7 +265,6 @@ class CalcFmllrFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            log_file.writelines(f"{k}: {v}\n" for k, v in os.environ.items())
             for dict_name in self.dictionaries:
                 feature_string = self.feature_strings[dict_name]
                 ali_path = self.ali_paths[dict_name]
@@ -296,7 +295,7 @@ class CalcFmllrFunction(KaldiFunction):
                     env=os.environ,
                 )
 
-                temp_trans_path = self.trans_paths[dict_name] + ".tmp"
+                temp_trans_path = trans_path + ".tmp"
                 if self.ali_model_path != self.model_path:
                     post_gpost_proc = subprocess.Popen(
                         [
@@ -331,7 +330,7 @@ class CalcFmllrFunction(KaldiFunction):
                 else:
 
                     if not initial:
-                        temp_composed_trans_path = self.trans_paths[dict_name] + ".cmp.tmp"
+                        temp_composed_trans_path = trans_path + ".cmp.tmp"
                         est_proc = subprocess.Popen(
                             [
                                 thirdparty_binary("gmm-est-fmllr"),

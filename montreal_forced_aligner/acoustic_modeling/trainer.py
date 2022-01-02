@@ -354,6 +354,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     @property
     def model_path(self) -> str:
         """Current model path"""
+        if self.current_trainer is not None:
+            return self.current_trainer.model_path
         return os.path.join(self.working_directory, "final.mdl")
 
     @property

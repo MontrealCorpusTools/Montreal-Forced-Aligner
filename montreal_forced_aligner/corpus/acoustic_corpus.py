@@ -453,6 +453,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     function = CalcFmllrFunction(args)
                     for _ in function.run():
                         pbar.update(1)
+
         self.speaker_independent = False
         self.log_debug(f"Fmllr calculation took {time.time() - begin}")
 

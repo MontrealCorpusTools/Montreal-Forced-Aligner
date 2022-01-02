@@ -182,6 +182,9 @@ class SatTrainer(TriphoneTrainer):
             for j in self.jobs
         ]
 
+    def calc_fmllr(self) -> None:
+        self.worker.calc_fmllr()
+
     def compute_calculated_properties(self) -> None:
         """Generate realignment iterations, initial gaussians, and fMLLR iterations based on configuration"""
         super().compute_calculated_properties()
@@ -211,6 +214,7 @@ class SatTrainer(TriphoneTrainer):
         os.rename(self.model_path, self.next_model_path)
 
         self.iteration = 1
+        print(os.path.exists(os.path.join(self.previous_aligner.working_directory, "trans.0.ark")))
         if os.path.exists(os.path.join(self.previous_aligner.working_directory, "trans.0.ark")):
             for j in self.jobs:
                 for path in j.construct_path_dictionary(
@@ -223,9 +227,8 @@ class SatTrainer(TriphoneTrainer):
                         ),
                     )
         else:
-
+            self.worker.current_trainer = self
             self.calc_fmllr()
-        self.initial_fmllr = False
         parse_logs(self.working_log_directory)
 
     def finalize_training(self) -> None:

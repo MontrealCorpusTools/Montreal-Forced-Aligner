@@ -91,11 +91,15 @@ def test_sick_sat(sick_dict, sick_corpus, generated_dir, sat_train_config_path):
         **TrainableAligner.parse_parameters(sat_train_config_path, args=args),
         corpus_directory=sick_corpus,
         dictionary_path=sick_dict,
-        temporary_directory=data_directory
+        temporary_directory=data_directory,
+        disable_mp=False
     )
     a.train()
     assert len(a.training_configs[a.final_identifier].realignment_iterations) > 0
     assert len(a.training_configs[a.final_identifier].fmllr_iterations) > 1
     a.export_model(output_model_path)
 
-    assert os.path.exists
+    assert os.path.exists(output_model_path)
+    assert os.path.exists(
+        os.path.join(data_directory, "basic_train_acoustic_model", "sat", "trans.sick.0.ark")
+    )
