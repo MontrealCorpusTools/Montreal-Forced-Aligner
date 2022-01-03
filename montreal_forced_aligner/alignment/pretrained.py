@@ -337,6 +337,15 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     continue
                 if not self.utterances[utterance_name].phone_labels:
                     continue
+                if utterance_name == "s20-s2002a-381-047-381-894":
+
+                    score, phone_error_rate = align_phones(
+                        intervals,
+                        self.utterances[utterance_name].phone_labels,
+                        self.optional_silence_phone,
+                        mapping,
+                        debug=True,
+                    )
                 score, phone_error_rate = align_phones(
                     intervals,
                     self.utterances[utterance_name].phone_labels,

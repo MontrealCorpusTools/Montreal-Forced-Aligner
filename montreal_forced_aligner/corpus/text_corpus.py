@@ -69,7 +69,6 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         break
                     wav_path = None
-                    transcription_path = None
                     if file_name in exts.lab_files:
                         lab_name = exts.lab_files[file_name]
                         transcription_path = os.path.join(root, lab_name)
@@ -77,6 +76,8 @@ class TextCorpusMixin(CorpusMixin):
                     elif file_name in exts.textgrid_files:
                         tg_name = exts.textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
+                    else:
+                        continue
                     job_queue.put((file_name, wav_path, transcription_path, relative_path))
 
             finished_adding.stop()
@@ -171,14 +172,14 @@ class TextCorpusMixin(CorpusMixin):
             for file_name in exts.identifiers:
 
                 wav_path = None
-                transcription_path = None
                 if file_name in exts.lab_files:
                     lab_name = exts.lab_files[file_name]
                     transcription_path = os.path.join(root, lab_name)
                 elif file_name in exts.textgrid_files:
                     tg_name = exts.textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
-
+                else:
+                    continue
                 try:
                     file = File.parse_file(
                         file_name,
