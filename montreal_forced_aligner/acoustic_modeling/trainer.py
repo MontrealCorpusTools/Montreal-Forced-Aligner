@@ -124,6 +124,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         global_params = {}
         training_params = []
+        use_default = True
         if config_path:
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
@@ -146,9 +147,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                         }:
                             v = []
                         global_params[k] = v
-                if not training_params:
-                    raise ConfigError(f"No 'training' block found in {config_path}")
-        else:  # default training configuration
+                if training_params:
+                    use_default = False
+        if use_default:  # default training configuration
             training_params.append(("monophone", {}))
             training_params.append(("triphone", {}))
             training_params.append(("lda", {}))

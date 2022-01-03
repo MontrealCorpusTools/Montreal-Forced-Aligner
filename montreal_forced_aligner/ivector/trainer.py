@@ -1096,6 +1096,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         """
         global_params = {}
         training_params = []
+        use_default = True
         if config_path is not None:
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
@@ -1121,9 +1122,9 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
                         }:
                             v = []
                         global_params[k] = v
-                if not training_params:
-                    raise ConfigError(f"No 'training' block found in {config_path}")
-        else:  # default training configuration
+                if training_params:
+                    use_default = False
+        if use_default:  # default training configuration
             training_params.append(("dubm", {}))
             # training_params.append(("ubm", {}))
             training_params.append(("ivector", {}))

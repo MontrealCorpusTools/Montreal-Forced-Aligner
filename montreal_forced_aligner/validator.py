@@ -868,10 +868,10 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         """
         global_params = {}
         training_params = []
+        use_default = True
         if config_path:
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
-                training_params = []
                 for k, v in data.items():
                     if k == "training":
                         for t in v:
@@ -893,9 +893,9 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                         }:
                             v = []
                         global_params[k] = v
-                if not training_params:
-                    raise ConfigError(f"No 'training' block found in {config_path}")
-        else:  # default training configuration
+                if training_params:
+                    use_default = False
+        if use_default:  # default training configuration
             training_params.append(("monophone", {}))
         if training_params:
             if training_params[0][0] != "monophone":
