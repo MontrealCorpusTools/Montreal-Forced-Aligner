@@ -605,13 +605,13 @@ class DictionaryMixin:
                     groups[base_phone] = [base_phone + pos for pos in self.positions]
                 else:
                     groups[base_phone] = [base_phone]
-
             if self.position_dependent_phones:
                 groups[base_phone].extend(
                     [p + pos for pos in self.positions if p + pos not in groups[base_phone]]
                 )
             else:
-                groups[base_phone].append(p)
+                if p not in groups[base_phone]:
+                    groups[base_phone].append(p)
         return groups
 
     @property
