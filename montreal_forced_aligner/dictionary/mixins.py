@@ -551,62 +551,6 @@ class DictionaryMixin:
         return self._generate_positional_list(self.non_silence_phones)
 
     @property
-    def positional_extra_short_phones(self) -> List[str]:
-        """
-        List of non-silence phones with positions
-        """
-        return self._generate_positional_list(self.phone_set_type.extra_short_phones)
-
-    @property
-    def positional_stop_phones(self) -> List[str]:
-        """
-        List of non-silence phones with positions
-        """
-        return self._generate_positional_list(self.phone_set_type.stop_phones)
-
-    @property
-    def positional_affricate_phones(self) -> List[str]:
-        """
-        List of non-silence phones with positions
-        """
-        return self._generate_positional_list(self.phone_set_type.affricate_phones)
-
-    @property
-    def positional_diphthong_phones(self) -> List[str]:
-        """
-        List of non-silence phones with positions
-        """
-        return self._generate_positional_list(self.phone_set_type.diphthong_phones)
-
-    @property
-    def kaldi_extra_short_phones(self):
-        """Non silence phones in Kaldi format"""
-        if self.position_dependent_phones:
-            return self.positional_extra_short_phones
-        return self._generate_non_positional_list(self.phone_set_type.extra_short_phones)
-
-    @property
-    def kaldi_diphthong_phones(self):
-        """Non silence phones in Kaldi format"""
-        if self.position_dependent_phones:
-            return self.positional_diphthong_phones
-        return self._generate_non_positional_list(self.phone_set_type.diphthong_phones)
-
-    @property
-    def kaldi_stop_phones(self):
-        """Non silence phones in Kaldi format"""
-        if self.position_dependent_phones:
-            return self.positional_stop_phones
-        return self._generate_non_positional_list(self.phone_set_type.stop_phones)
-
-    @property
-    def kaldi_affricate_phones(self):
-        """Non silence phones in Kaldi format"""
-        if self.position_dependent_phones:
-            return self.positional_affricate_phones
-        return self._generate_non_positional_list(self.phone_set_type.affricate_phones)
-
-    @property
     def kaldi_non_silence_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
@@ -618,11 +562,7 @@ class DictionaryMixin:
         """Mappings of phones for generating topo file"""
         mapping = {}
         for p in sorted(self.non_silence_phones):
-            base_phone = p
-            if self.phone_set_type is PhoneSetType.IPA:
-                base_phone = re.sub(
-                    r"[̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣ʱʼʰʲʷⁿˠ]", "", p
-                )
+            base_phone = self.phone_set_type.get_base_phone(p)
             query_set = {p, base_phone}
             if any(x in self.phone_set_type.extra_short_phones for x in query_set):
                 num_states = 1  # One state for extra short sounds

@@ -41,6 +41,16 @@ class SoundFileType(enum.Enum):
     SOX = 2
 
 
+def voiceless_variants(base_phone):
+    return {base_phone + d for d in ["", "ʱ", "ʼ", "ʰ", "ʲ", "ʷ", "ˠ", "ˀ", "̚", "͈"]}
+
+
+def voiced_variants(base_phone):
+    return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
+        d + base_phone for d in ["ⁿ"]
+    }
+
+
 class PhoneSetType(enum.Enum):
     """Enum for types of phone sets"""
 
@@ -100,25 +110,31 @@ class PhoneSetType(enum.Enum):
         if self is PhoneSetType.PINYIN:
             return {"z", "zh", "j", "c", "ch", "q"}
         if self is PhoneSetType.IPA:
-            return {
+            affricates = set()
+            for p in {
                 "pf",
                 "ts",
-                "dz",
                 "tʃ",
-                "dʒ",
                 "tɕ",
-                "dʑ",
                 "tʂ",
                 "ʈʂ",
+                "cç",
+                "kx",
+                "tç",
+            }:
+                affricates |= voiceless_variants(p)
+            for p in {
+                "dz",
+                "dʒ",
+                "dʑ",
                 "dʐ",
                 "ɖʐ",
-                "cç",
                 "ɟʝ",
-                "kx",
                 "ɡɣ",
-                "tç",
                 "dʝ",
-            }
+            }:
+                affricates |= voiced_variants(p)
+            return affricates
         return set()
 
     @property
@@ -128,7 +144,12 @@ class PhoneSetType(enum.Enum):
         if self is PhoneSetType.PINYIN:
             return {"b", "d", "g"}
         if self is PhoneSetType.IPA:
-            return {"p", "b", "t", "d", "ʈ", "ɖ", "c", "ɟ", "k", "ɡ", "q", "ɢ"}
+            stops = set()
+            for p in {"p", "t", "ʈ", "c", "k", "q"}:
+                stops |= voiceless_variants(p)
+            for p in {"b", "d", "ɖ", "ɟ", "ɡ", "ɢ"}:
+                stops |= voiced_variants(p)
+            return stops
         return set()
 
     @property
@@ -151,13 +172,8 @@ class PhoneSetType(enum.Enum):
                 "OW1",
                 "OW2",
             }
-        if self is PhoneSetType.IPA:
+        if self is PhoneSetType.IPA or self is PhoneSetType.PINYIN:
             return {x + y for x, y in itertools.product(self.vowels, self.vowels)}
-        if self is PhoneSetType.PINYIN:
-            return {
-                x + y + str(tone)
-                for x, y, tone in itertools.product(self.vowels, self.vowels, range(1, 6))
-            }
 
         return set()
 
@@ -247,13 +263,6 @@ class PhoneSetType(enum.Enum):
         if self is PhoneSetType.IPA or self is PhoneSetType.PINYIN:
             return {
                 x + y + z for x, y, z in itertools.product(self.vowels, self.vowels, self.vowels)
-            }
-        if self is PhoneSetType.PINYIN:
-            return {
-                x + y + z + str(tone)
-                for x, y, z, tone in itertools.product(
-                    self.vowels, self.vowels, self.vowels, range(1, 6)
-                )
             }
 
         return set()
@@ -364,14 +373,6 @@ class PhoneSetType(enum.Enum):
             extra_questions["rhotic_variation"] = {"r", "sh", "e"}
 
         elif self is PhoneSetType.IPA:
-
-            def voiceless_variants(base_phone):
-                return {base_phone + d for d in ["", "ʱ", "ʼ", "ʰ", "ʲ", "ʷ", "ˠ", "ˀ", "̚", "͈"]}
-
-            def voiced_variants(base_phone):
-                return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
-                    d + base_phone for d in ["ⁿ"]
-                }
 
             extra_questions["dental_lenition"] = voiced_variants("ð") | voiced_variants("d")
             extra_questions["flapping"] = {"d", "t", "ɾ"}
