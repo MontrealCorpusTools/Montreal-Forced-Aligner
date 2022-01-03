@@ -263,6 +263,18 @@ def create_parser() -> ArgumentParser:
         default="",
         help="Audio directory root to use for finding audio files",
     )
+    align_parser.add_argument(
+        "--reference_directory",
+        type=str,
+        default="",
+        help="Directory containing gold standard alignments to evaluate",
+    )
+    align_parser.add_argument(
+        "--custom_mapping_path",
+        type=str,
+        default="",
+        help="YAML file for mapping phones across phone sets in evaluations",
+    )
     add_global_options(align_parser, textgrid_output=True)
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
@@ -348,10 +360,12 @@ def create_parser() -> ArgumentParser:
         help="Audio directory root to use for finding audio files",
     )
     train_parser.add_argument(
-        "--enable_detect_phone_set",
-        dest="detect_phone_set",
-        help="Enable auto-detecting phone sets from the dictionary during training",
-        action="store_true",
+        "--phone_set",
+        dest="phone_set_type",
+        type=str,
+        help="Enable extra decision tree modeling based on the phone set",
+        default="UNKNOWN",
+        choices=["AUTO", "IPA", "ARPA", "PINYIN"],
     )
     add_global_options(train_parser, textgrid_output=True)
 
@@ -400,6 +414,14 @@ def create_parser() -> ArgumentParser:
         default="",
         help="Audio directory root to use for finding audio files",
     )
+    validate_parser.add_argument(
+        "--phone_set",
+        dest="phone_set_type",
+        type=str,
+        help="Enable extra decision tree modeling based on the phone set",
+        default="UNKNOWN",
+        choices=["AUTO", "IPA", "ARPA", "PINYIN"],
+    )
     add_global_options(validate_parser)
 
     g2p_parser = subparsers.add_parser(
@@ -442,7 +464,7 @@ def create_parser() -> ArgumentParser:
     train_g2p_parser.add_argument(
         "--evaluate",
         "--validate",
-        dest="evaluate",
+        dest="evaluation_mode",
         action="store_true",
         help="Perform an analysis of accuracy training on "
         "most of the data and validating on an unseen subset",
@@ -703,6 +725,7 @@ def create_parser() -> ArgumentParser:
     transcribe_parser.add_argument(
         "-e",
         "--evaluate",
+        dest="evaluation_mode",
         help="Evaluate the transcription against golden texts",
         action="store_true",
     )
@@ -912,7 +935,7 @@ def main() -> None:
             run_train_dictionary(args, unknown)
         elif args.subcommand == "train_ivector":
             run_train_ivector_extractor(args, unknown)
-        elif args.subcommand == "classify_speakers":
+        elif args.subcommand == "classify_speakers":  # pragma: no cover
             run_classify_speakers(args, unknown)
         elif args.subcommand in ["annotator", "anchor"]:
             run_anchor()

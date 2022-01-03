@@ -17,7 +17,7 @@ def test_clean_up_word():
     original_word = "+abc"
     w, m = clean_up_word(original_word, {"a", "b", "c"})
     assert w == "abc"
-    assert m == ["+"]
+    assert m == {"+"}
 
 
 def test_check_bracketed(sick_dict):

@@ -1,19 +1,22 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import subprocess
 import time
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
+import tqdm
 import yaml
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import parse_old_features
+from montreal_forced_aligner.helper import align_phones, parse_old_features
 from montreal_forced_aligner.models import AcousticModel
+from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
@@ -144,16 +147,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         super().__init__(**kwargs)
 
     @property
-    def base_phone_regex(self) -> Optional[str]:
-        """Regex pattern for extracting a base phone for the phone set"""
-        return self.acoustic_model.meta["base_phone_regex"]
-
-    @property
-    def phone_set_type(self) -> str:
-        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
-        return self.acoustic_model.meta["phone_set_type"]
-
-    @property
     def working_directory(self) -> str:
         """Working directory"""
         return self.workflow_directory
@@ -223,6 +216,12 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     if k == "features":
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
@@ -250,6 +249,110 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         """Aligner identifier"""
         return "pretrained_aligner"
 
+    def evaluate(
+        self,
+        reference_directory: str,
+        mapping: Optional[Dict[str, str]] = None,
+        output_directory: Optional[str] = None,
+    ) -> None:
+        """
+        Evaluate alignments against a reference directory
+
+        Parameters
+        ----------
+        reference_directory: str
+            Directory containing reference TextGrid alignments
+        mapping: dict[str, Union[str, list[str]]], optional
+            Mapping between phones that should be considered equal across different phone set types
+        output_directory: str, optional
+            Directory to save results, if not specified, it will be saved in the log directory
+        """
+        # Set up
+        per_utterance_phone_intervals = {}
+        self.log_info("Evaluating alignments...")
+        self.log_debug(f"Mapping: {mapping}")
+        indices = []
+        jobs = []
+        self.log_info("Loading reference alignments...")
+        for root, _, files in os.walk(reference_directory, followlinks=True):
+            root_speaker = os.path.basename(root)
+            for f in files:
+                if f.endswith(".TextGrid"):
+                    file_name = f.replace(".TextGrid", "")
+                    if file_name not in self.files:
+                        continue
+                    if self.use_mp:
+                        indices.append(file_name)
+                        jobs.append((os.path.join(root, f), root_speaker))
+                    else:
+                        file = self.files[file_name]
+                        intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
+                        for u in file.utterances:
+                            if u.begin is None or u.end is None:
+                                for v in intervals.values():
+                                    per_utterance_phone_intervals[u.name] = v
+                            else:
+                                if u.speaker_name not in intervals:
+                                    continue
+                                utterance_name = u.name
+                                if utterance_name not in per_utterance_phone_intervals:
+                                    per_utterance_phone_intervals[utterance_name] = []
+                                for interval in intervals[u.speaker_name]:
+                                    if interval.begin >= u.begin and interval.end <= u.end:
+                                        per_utterance_phone_intervals[utterance_name].append(
+                                            interval
+                                        )
+        if self.use_mp:
+            with mp.Pool(self.num_jobs) as pool, tqdm.tqdm(total=len(jobs)) as pbar:
+                gen = pool.starmap(parse_aligned_textgrid, jobs)
+                for i, intervals in enumerate(gen):
+                    pbar.update(1)
+                    file_name = indices[i]
+                    file = self.files[file_name]
+                    for u in file.utterances:
+                        if u.begin is None or u.end is None:
+                            for v in intervals.values():
+                                per_utterance_phone_intervals[u.name] = v
+                        else:
+                            if u.speaker_name not in intervals:
+                                continue
+                            utterance_name = u.name
+                            if utterance_name not in per_utterance_phone_intervals:
+                                per_utterance_phone_intervals[utterance_name] = []
+                            for interval in intervals[u.speaker_name]:
+                                if interval.begin >= u.begin and interval.end <= u.end:
+                                    per_utterance_phone_intervals[utterance_name].append(interval)
+        score_count = 0
+        score_sum = 0
+        phone_edit_sum = 0
+        phone_length_sum = 0
+        if output_directory:
+            csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
+        else:
+            csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
+        with open(csv_path, "w", encoding="utf8") as f:
+            f.write("utterance,score,phone_error_rate\n")
+            for utterance_name, intervals in per_utterance_phone_intervals.items():
+                if not intervals:
+                    continue
+                if not self.utterances[utterance_name].phone_labels:
+                    continue
+                score, phone_error_rate = align_phones(
+                    intervals,
+                    self.utterances[utterance_name].phone_labels,
+                    self.optional_silence_phone,
+                    mapping,
+                )
+                if score is None:
+                    continue
+                f.write(f"{utterance_name},{score},{phone_error_rate}\n")
+                score_count += 1
+                score_sum += score
+                phone_edit_sum += int(phone_error_rate * len(intervals))
+                phone_length_sum += len(intervals)
+        self.logger.info(f"Average overlap score: {score_sum/score_count}")
+        self.logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
+
     def align(self) -> None:
         """Run the aligner"""
         self.setup()
@@ -268,7 +371,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             self.align_utterances()
             self.compile_information()
             if self.uses_speaker_adaptation:
-                self.logger.info("Calculating fMLLR for speaker adaptation...")
                 self.calc_fmllr()
 
                 self.speaker_independent = False
@@ -367,13 +469,10 @@ class DictionaryTrainer(PretrainedAligner):
         utt_mapping = {}
         for j in self.jobs:
             args = jobs[j.name]
-            dict_data = j.dictionary_data()
             for dict_name, pron_path in args.pron_paths.items():
                 if dict_name not in pron_counts:
                     pron_counts[dict_name] = defaultdict(Counter)
                     utt_mapping[dict_name] = {}
-                word_lookup = dict_data[dict_name].reversed_words_mapping
-                phone_lookup = self.dictionary_mapping[dict_name].reversed_phone_mapping
                 with open(pron_path, "r", encoding="utf8") as f:
                     last_utt = None
                     for line in f:
@@ -384,12 +483,15 @@ class DictionaryTrainer(PretrainedAligner):
                                 utt_mapping[dict_name][last_utt].append("</s>")
                             utt_mapping[dict_name][utt] = ["<s>"]
                             last_utt = utt
-
-                        word = word_lookup[int(line[3])]
+                        dictionary = self.get_dictionary(self.utterances[utt].speaker_name)
+                        word = dictionary.reversed_word_mapping[int(line[3])]
                         if word == "<eps>":
                             utt_mapping[dict_name][utt].append(word)
                         else:
-                            pron = tuple(phone_lookup[int(x)].split("_")[0] for x in line[4:])
+                            pron = tuple(
+                                dictionary.reversed_phone_mapping[int(x)].split("_")[0]
+                                for x in line[4:]
+                            )
                             pron_string = " ".join(pron)
                             utt_mapping[dict_name][utt].append(word + " " + pron_string)
                             pron_counts[dict_name][word][pron] += 1
@@ -421,24 +523,24 @@ class DictionaryTrainer(PretrainedAligner):
             for word, prons in dictionary.actual_words.items():
                 if word not in counts:
                     for p in prons:
-                        p["probability"] = 1
+                        p.probability = 1
                 else:
                     total = 0
                     best_pron = 0
                     best_count = 0
                     for p in prons:
-                        p["probability"] = self.min_count
-                        if p["pronunciation"] in counts[word]:
-                            p["probability"] += counts[word][p["pronunciation"]]
-                        total += p["probability"]
-                        if p["probability"] > best_count:
-                            best_pron = p["pronunciation"]
-                            best_count = p["probability"]
+                        p.probability = self.min_count
+                        if p.pronunciation in counts[word]:
+                            p.probability += counts[word][p.pronunciation]
+                        total += p.probability
+                        if p.probability > best_count:
+                            best_pron = p.pronunciation
+                            best_count = p.probability
                     for p in prons:
-                        if p["pronunciation"] == best_pron:
-                            p["probability"] = 1
+                        if p.pronunciation == best_pron:
+                            p.probability = 1
                         else:
-                            p["probability"] /= total
+                            p.probability /= total
                     dictionary.words[word] = prons
             output_path = os.path.join(output_directory, dict_name + ".txt")
             dictionary.export_lexicon(output_path, probability=True)

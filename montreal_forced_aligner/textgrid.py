@@ -6,26 +6,18 @@ Textgrid utilities
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional
+import re
+import typing
+from typing import Dict, List
 
 from praatio import textgrid as tgio
 
-from .data import CtmInterval
-
-if TYPE_CHECKING:
-    from .abc import ReversedMappingType
-    from .alignment.base import CorpusAligner
-    from .corpus.classes import File, Speaker
-    from .dictionary import DictionaryData
+from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.exceptions import TextGridParseError
 
 __all__ = [
     "process_ctm_line",
-    "parse_from_word",
-    "parse_from_phone",
-    "parse_from_word_no_cleanup",
-    "generate_tiers",
     "export_textgrid",
-    "ctm_to_textgrid",
     "output_textgrid_writing_errors",
 ]
 
@@ -59,104 +51,6 @@ def process_ctm_line(line: str) -> CtmInterval:
     return CtmInterval(begin, end, label, utt)
 
 
-def parse_from_word(
-    ctm_labels: List[CtmInterval], text: List[str], dictionary_data: DictionaryData
-) -> List[CtmInterval]:
-    """
-    Parse CTM intervals into the corresponding text for an utterance
-
-    Parameters
-    ----------
-    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        CTM intervals
-    text: list[str]
-        The original text that was to be aligned
-    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`
-        Dictionary data necessary for splitting subwords
-
-    Returns
-    -------
-    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        Correct intervals with subwords merged back into their original text
-    """
-    cur_ind = 0
-    actual_labels = []
-    utterance = None
-    for word in text:
-        ints = dictionary_data.to_int(word)
-        b = 1000000
-        e = -1
-        for i in ints:
-            cur = ctm_labels[cur_ind]
-            if utterance is None:
-                utterance = cur.utterance
-            if i == int(cur.label):
-                if cur.begin < b:
-                    b = cur.begin
-                if cur.end > e:
-                    e = cur.end
-            cur_ind += 1
-        lab = CtmInterval(b, e, word, utterance)
-        actual_labels.append(lab)
-    return actual_labels
-
-
-def parse_from_word_no_cleanup(
-    ctm_labels: List[CtmInterval], reversed_word_mapping: ReversedMappingType
-) -> List[CtmInterval]:
-    """
-    Assume that subwords in the CTM files are desired, so just does a reverse look up to get the sub word
-    text
-
-    Parameters
-    ----------
-    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_word_mapping: dict[int, str]
-        Look up for Kaldi word IDs to convert them back to text
-
-    Returns
-    -------
-    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        Parsed intervals with text rather than integer IDs
-    """
-    for ctm_interval in ctm_labels:
-        label = reversed_word_mapping[int(ctm_interval.label)]
-        ctm_interval.label = label
-    return ctm_labels
-
-
-def parse_from_phone(
-    ctm_labels: List[CtmInterval],
-    reversed_phone_mapping: ReversedMappingType,
-    positions: List[str],
-) -> List[CtmInterval]:
-    """
-    Parse CtmIntervals to original phone transcriptions
-
-    Parameters
-    ----------
-    ctm_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        List of :class:`~montreal_forced_aligner.data.CtmInterval` to convert
-    reversed_phone_mapping: dict[int, str]
-        Mapping to convert phone IDs to phone labels
-    positions: list[str]
-        List of word positions to account for
-
-    Returns
-    -------
-    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
-        Parsed intervals with phone labels rather than IDs
-    """
-    for ctm_interval in ctm_labels:
-        label = reversed_phone_mapping[int(ctm_interval.label)]
-        for p in positions:
-            if label.endswith(p):
-                label = label[: -1 * len(p)]
-        ctm_interval.label = label
-    return ctm_labels
-
-
 def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[str, str]) -> None:
     """
     Output any errors that were encountered in writing TextGrids
@@ -182,181 +76,109 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[st
             f.write(f"{result}\n\n")
 
 
-def generate_tiers(
-    file: File, cleanup_textgrids: Optional[bool] = True
-) -> Dict[Speaker, Dict[str, List[CtmInterval]]]:
-    """
-    Generate TextGrid tiers for a given File
-
-    Parameters
-    ----------
-    file: File
-        File to generate TextGrid tiers
-    cleanup_textgrids: bool, optional
-        Flag for whether the TextGrids should be cleaned up
-
-    Returns
-    -------
-    dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
-        Tier information per speaker, with :class:`~montreal_forced_aligner.data.CtmInterval` split by "phones" and "words"
-    """
-    output = {}
-
-    for u in file.utterances:
-        if not u.word_labels:
+def parse_aligned_textgrid(
+    path: str, root_speaker: typing.Optional[str] = None
+) -> Dict[str, List[CtmInterval]]:
+    tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
+    data = {}
+    num_tiers = len(tg.tierNameList)
+    if num_tiers == 0:
+        raise TextGridParseError(path, "Number of tiers parsed was zero")
+    phone_tier_pattern = re.compile(r"(.*) ?- ?phones")
+    for tier_name in tg.tierNameList:
+        ti = tg.tierDict[tier_name]
+        if not isinstance(ti, tgio.IntervalTier):
             continue
-        speaker = u.speaker
-        dictionary_data: DictionaryData = speaker.dictionary_data
-
-        words = []
-        phones = []
-        if dictionary_data.multilingual_ipa and cleanup_textgrids:
-            phone_ind = 0
-            for interval in u.word_labels:
-                end = interval.end
-                word = interval.label
-                subwords = dictionary_data.lookup(
-                    word,
-                )
-                subwords = [
-                    x if x in dictionary_data.words_mapping else dictionary_data.oov_word
-                    for x in subwords
-                ]
-                subprons = [dictionary_data.words[x] for x in subwords]
-                cur_phones = []
-                while u.phone_labels[phone_ind].end <= end:
-                    p = u.phone_labels[phone_ind]
-                    if p.label == dictionary_data.optional_silence_phone:
-                        phone_ind += 1
-                        continue
-                    cur_phones.append(p)
-                    phone_ind += 1
-                    if phone_ind > len(u.phone_labels) - 1:
-                        break
-                phones.extend(dictionary_data.map_to_original_pronunciation(cur_phones, subprons))
-                if not word:
-                    continue
-
-                words.append(interval)
+        if "phones" not in tier_name:
+            continue
+        m = phone_tier_pattern.match(tier_name)
+        if m:
+            speaker_name = m.groups()[0]
+        elif root_speaker:
+            speaker_name = root_speaker
         else:
-            for interval in u.word_labels:
-                words.append(interval)
-            for interval in u.phone_labels:
-                if interval.label == dictionary_data.optional_silence_phone and cleanup_textgrids:
-                    continue
-                phones.append(interval)
-        if speaker not in output:
-            output[speaker] = {"words": words, "phones": phones}
-        else:
-            output[speaker]["words"].extend(words)
-            output[speaker]["phones"].extend(phones)
-    return output
+            speaker_name = ""
+        if speaker_name not in data:
+            data[speaker_name] = []
+        for begin, end, text in ti.entryList:
+            text = text.lower().strip()
+            if not text:
+                continue
+            begin, end = round(begin, 4), round(end, 4)
+            if end - begin < 0.01:
+                continue
+            interval = CtmInterval(begin, end, text, speaker_name)
+            data[speaker_name].append(interval)
+    return data
 
 
 def export_textgrid(
-    file: File,
+    speaker_data: Dict[str, Dict[str, List[CtmInterval]]],
     output_path: str,
-    speaker_data: Dict[Speaker, Dict[str, List[CtmInterval]]],
+    duration: float,
     frame_shift: int,
-    first_file_write: Optional[bool] = True,
 ) -> None:
     """
     Export aligned file to TextGrid
 
     Parameters
     ----------
-    file: File
-        File object to export
-    output_path: str
-        Output path of the file
     speaker_data: dict[Speaker, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
         Per speaker, per word/phone :class:`~montreal_forced_aligner.data.CtmInterval`
+    output_path: str
+        Output path of the file
+    duration: float
+        Duration of the file
     frame_shift: int
         Frame shift of features, in ms
-    first_file_write: bool, optional
-        Flag for whether the file should be created from scratch or appended to if it
-        has been modified by another export process
     """
     if frame_shift > 1:
         frame_shift = round(frame_shift / 1000, 4)
-    if first_file_write:
-        # Create initial textgrid
-        tg = tgio.Textgrid()
-        tg.minTimestamp = 0
-        tg.maxTimestamp = file.duration
+    # Create initial textgrid
+    tg = tgio.Textgrid()
+    tg.minTimestamp = 0
+    tg.maxTimestamp = duration
 
-        if len(file.speaker_ordering) > 1:
-            for speaker in file.speaker_ordering:
-                word_tier_name = f"{speaker} - words"
-                phone_tier_name = f"{speaker} - phones"
+    if len(speaker_data) > 1:
+        for speaker in speaker_data:
+            word_tier_name = f"{speaker} - words"
+            phone_tier_name = f"{speaker} - phones"
 
-                word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=file.duration)
-                phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=file.duration)
-                tg.addTier(word_tier)
-                tg.addTier(phone_tier)
-        else:
-            word_tier_name = "words"
-            phone_tier_name = "phones"
-            word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=file.duration)
-            phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=file.duration)
+            word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=duration)
+            phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=duration)
             tg.addTier(word_tier)
             tg.addTier(phone_tier)
     else:
-        # Use existing
-        tg = tgio.openTextgrid(output_path, includeEmptyIntervals=False)
-
         word_tier_name = "words"
         phone_tier_name = "phones"
-        word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=file.duration)
-        phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=file.duration)
+        word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=duration)
+        phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=duration)
         tg.addTier(word_tier)
         tg.addTier(phone_tier)
+
     for speaker, data in speaker_data.items():
         words = data["words"]
         phones = data["phones"]
         tg_words = []
         tg_phones = []
         for w in words:
-            if file.duration - w.end < frame_shift:  # Fix rounding issues
-                w.end = file.duration
+            if duration - w.end < frame_shift:  # Fix rounding issues
+                w.end = duration
             tg_words.append(w.to_tg_interval())
         for p in phones:
-            if file.duration - p.end < frame_shift:  # Fix rounding issues
-                p.end = file.duration
+            if duration - p.end < frame_shift:  # Fix rounding issues
+                p.end = duration
             tg_phones.append(p.to_tg_interval())
 
-        if len(file.speaker_ordering) > 1:
+        if len(speaker_data) > 1:
             word_tier_name = f"{speaker} - words"
             phone_tier_name = f"{speaker} - phones"
         else:
             word_tier_name = "words"
             phone_tier_name = "phones"
-        word_tier = tgio.IntervalTier(word_tier_name, tg_words, minT=0, maxT=file.duration)
-        phone_tier = tgio.IntervalTier(phone_tier_name, tg_phones, minT=0, maxT=file.duration)
+        word_tier = tgio.IntervalTier(word_tier_name, tg_words, minT=0, maxT=duration)
+        phone_tier = tgio.IntervalTier(phone_tier_name, tg_phones, minT=0, maxT=duration)
         tg.replaceTier(word_tier_name, word_tier)
         tg.replaceTier(phone_tier_name, phone_tier)
 
     tg.save(output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error")
-
-
-def ctm_to_textgrid(file: File, aligner: CorpusAligner, first_file_write=True) -> None:
-    """
-    Export a File to TextGrid
-
-    Parameters
-    ----------
-    file: File
-        File to export
-    aligner: CorpusAligner
-        Aligner used to generate the alignments
-    first_file_write: bool, optional
-        Flag for whether this is the first time touching this file
-    """
-    data = generate_tiers(file, cleanup_textgrids=aligner.cleanup_textgrids)
-
-    backup_output_directory = None
-    if not aligner.overwrite:
-        backup_output_directory = aligner.backup_output_directory
-        os.makedirs(backup_output_directory, exist_ok=True)
-    output_path = file.construct_output_path(aligner.textgrid_output, backup_output_directory)
-    export_textgrid(file, output_path, data, aligner.frame_shift, first_file_write)

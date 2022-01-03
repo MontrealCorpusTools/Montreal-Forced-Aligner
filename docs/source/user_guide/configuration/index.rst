@@ -42,7 +42,7 @@ Supplying the above via:
 
 will also set the beam width to ``1000`` and retry beam width to ``4000`` as well.
 
-For simple settings, the command line argument approach can be good, but for more complex settings, the config yaml approach will allow you to specify things like aspects of training blocks or multilingual IPA flags:
+For simple settings, the command line argument approach can be good, but for more complex settings, the config yaml approach will allow you to specify things like aspects of training blocks or punctuation:
 
 .. code-block:: yaml
 
@@ -50,11 +50,6 @@ For simple settings, the command line argument approach can be good, but for mor
    retry_beam: 400
 
    punctuation: ":,."
-
-   multilingual_ipa: true
-   digraphs:
-     - "[dt][szʒʃʐʑʂɕç]"
-     - "[aoɔe][ʊɪ]"
 
    training:
      - monophone:

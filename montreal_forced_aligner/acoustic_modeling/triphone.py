@@ -1,18 +1,36 @@
 """Class definitions for TriphoneTrainer"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import re
 import subprocess
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
+import tqdm
+
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.utils import parse_logs, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.utils import (
+    KaldiFunction,
+    KaldiProcessWorker,
+    Stopped,
+    parse_logs,
+    run_mp,
+    run_non_mp,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
     from ..abc import MetaDict
 
 
-__all__ = ["TriphoneTrainer"]
+__all__ = [
+    "TriphoneTrainer",
+    "TreeStatsArguments",
+    "ConvertAlignmentsFunction",
+    "ConvertAlignmentsArguments",
+]
 
 
 class TreeStatsArguments(NamedTuple):
@@ -28,7 +46,7 @@ class TreeStatsArguments(NamedTuple):
 
 
 class ConvertAlignmentsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.convert_alignments_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -39,15 +57,7 @@ class ConvertAlignmentsArguments(NamedTuple):
     new_ali_paths: Dict[str, str]
 
 
-def convert_alignments_func(
-    log_path: str,
-    dictionaries: List[str],
-    model_path: str,
-    tree_path: str,
-    align_model_path: str,
-    ali_paths: Dict[str, str],
-    new_ali_paths: Dict[str, str],
-) -> None:
+class ConvertAlignmentsFunction(KaldiFunction):
     """
     Multiprocessing function for converting alignments from a previous trainer
 
@@ -62,36 +72,47 @@ def convert_alignments_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    model_path: str
-        Path to the acoustic model file
-    tree_path: str
-        Path to the acoustic model tree file
-    align_model_path: str
-        Path to the alignment acoustic model file
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    new_ali_paths: dict[str, str]
-        Dictionary of new alignment archives per dictionary name
+    args: :class:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            new_ali_path = new_ali_paths[dict_name]
-            subprocess.call(
-                [
-                    thirdparty_binary("convert-ali"),
-                    align_model_path,
-                    model_path,
-                    tree_path,
-                    f"ark:{ali_path}",
-                    f"ark:{new_ali_path}",
-                ],
-                stderr=log_file,
-            )
+
+    progress_pattern = re.compile(
+        r"^LOG.*Succeeded converting alignments for (?P<utterances>\d+) files, failed for (?P<failed>\d+)$"
+    )
+
+    def __init__(self, args: ConvertAlignmentsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.model_path = args.model_path
+        self.tree_path = args.tree_path
+        self.align_model_path = args.align_model_path
+        self.ali_paths = args.ali_paths
+        self.new_ali_paths = args.new_ali_paths
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                ali_path = self.ali_paths[dict_name]
+                new_ali_path = self.new_ali_paths[dict_name]
+                convert_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("convert-ali"),
+                        self.align_model_path,
+                        self.model_path,
+                        self.tree_path,
+                        f"ark:{ali_path}",
+                        f"ark:{new_ali_path}",
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in convert_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("utterances")), int(m.group("failed"))
 
 
 def tree_stats_func(
@@ -216,7 +237,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
 
     def convert_alignments_arguments(self) -> List[ConvertAlignmentsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.convert_alignments_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`
 
         Returns
         -------
@@ -242,7 +263,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.triphone.convert_alignments_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`
             Multiprocessing helper function for each job
         :meth:`.TriphoneTrainer.convert_alignments_arguments`
             Job method for generating arguments for the helper function
@@ -254,12 +275,43 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             Reference Kaldi script
 
         """
-
-        jobs = self.convert_alignments_arguments()
-        if self.use_mp:
-            run_mp(convert_alignments_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(convert_alignments_func, jobs, self.working_log_directory)
+        self.log_info("Converting alignments...")
+        arguments = self.convert_alignments_arguments()
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = ConvertAlignmentsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        num_utterances, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = ConvertAlignmentsFunction(args)
+                    for num_utterances, errors in function.run():
+                        pbar.update(num_utterances + errors)
 
     def acoustic_model_training_params(self) -> MetaDict:
         """Configuration parameters"""

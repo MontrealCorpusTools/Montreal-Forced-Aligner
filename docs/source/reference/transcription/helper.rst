@@ -19,7 +19,7 @@ Decoding graph
 .. autosummary::
    :toctree: generated/
 
-   create_hclg_func
+   CreateHclgFunction
    CreateHclgArguments
    compose_hclg
    compose_clg
@@ -36,13 +36,13 @@ Speaker-independent transcription
 .. autosummary::
    :toctree: generated/
 
-   decode_func
+   DecodeFunction
    DecodeArguments
-   lm_rescore_func
+   LmRescoreFunction
    LmRescoreArguments
-   carpa_lm_rescore_func
+   CarpaLmRescoreFunction
    CarpaLmRescoreArguments
-   score_func
+   ScoreFunction
    ScoreArguments
 
 Speaker-adapted transcription
@@ -53,11 +53,11 @@ Speaker-adapted transcription
 .. autosummary::
    :toctree: generated/
 
-   initial_fmllr_func
+   InitialFmllrFunction
    InitialFmllrArguments
-   lat_gen_fmllr_func
+   LatGenFmllrFunction
    LatGenFmllrArguments
-   fmllr_rescore_func
+   FmllrRescoreFunction
    FmllrRescoreArguments
-   final_fmllr_est_func
+   FinalFmllrFunction
    FinalFmllrArguments

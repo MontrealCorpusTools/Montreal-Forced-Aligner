@@ -1,14 +1,15 @@
-name: montreal-forced-aligner
 channels:
   - conda-forge
+  - defaults
 dependencies:
   - python>=3.8
-  - numpy
   - librosa
   - tqdm
   - requests
   - colorama
+  - ansiwrap
   - pyyaml
+  - jsonlines
   - kaldi
   - sox
   - praatio

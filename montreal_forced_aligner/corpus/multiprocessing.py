@@ -1,8 +1,6 @@
 """
 Corpus loading worker
 ---------------------
-
-
 """
 from __future__ import annotations
 
@@ -11,28 +9,29 @@ import os
 import sys
 import traceback
 from queue import Empty
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Collection, Dict, Generator, List, Optional, Set, Union
 
 from montreal_forced_aligner.corpus.classes import (
+    File,
     FileCollection,
     SpeakerCollection,
+    Utterance,
     UtteranceCollection,
 )
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import output_mapping
+from montreal_forced_aligner.utils import Stopped
 
 if TYPE_CHECKING:
-
     from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
     from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
 
     FileInfoDict = Dict[
         str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
     ]
-    from montreal_forced_aligner.abc import MappingType, ReversedMappingType, WordsType
     from montreal_forced_aligner.corpus.classes import Speaker
-    from montreal_forced_aligner.dictionary import DictionaryData, PronunciationDictionaryMixin
-    from montreal_forced_aligner.utils import Stopped
+    from montreal_forced_aligner.dictionary import PronunciationDictionaryMixin
 
 
 __all__ = ["CorpusProcessWorker", "Job"]
@@ -50,7 +49,7 @@ class CorpusProcessWorker(mp.Process):
         Dictionary to catch errors
     return_q: :class:`~multiprocessing.Queue`
         Return queue for processed Files
-    stopped: :func:`~montreal_forced_aligner.utils.Stopped`
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check for whether corpus loading should exit
     finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
         Signal that the main thread has stopped adding new files to be processed
@@ -58,28 +57,34 @@ class CorpusProcessWorker(mp.Process):
 
     def __init__(
         self,
+        name: int,
         job_q: mp.Queue,
         return_dict: dict,
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
+        speaker_characters: Union[int, str],
+        sanitize_function: Optional[MultispeakerSanitizationFunction],
     ):
         mp.Process.__init__(self)
+        self.name = str(name)
         self.job_q = job_q
         self.return_dict = return_dict
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
+        self.finished_processing = Stopped()
+        self.sanitize_function = sanitize_function
+        self.speaker_characters = speaker_characters
 
     def run(self) -> None:
         """
         Run the corpus loading job
         """
-        from ..corpus.classes import parse_file
 
         while True:
             try:
-                arguments = self.job_q.get(timeout=1)
+                file_name, wav_path, text_path, relative_path = self.job_q.get(timeout=1)
             except Empty:
                 if self.finished_adding.stop_check():
                     break
@@ -88,17 +93,26 @@ class CorpusProcessWorker(mp.Process):
             if self.stopped.stop_check():
                 continue
             try:
-                file = parse_file(*arguments, stop_check=self.stopped.stop_check)
-                self.return_q.put(file)
+                file = File.parse_file(
+                    file_name,
+                    wav_path,
+                    text_path,
+                    relative_path,
+                    self.speaker_characters,
+                    self.sanitize_function,
+                )
+
+                self.return_q.put(file.multiprocessing_data)
             except TextParseError as e:
                 self.return_dict["decode_error_files"].append(e)
             except TextGridParseError as e:
                 self.return_dict["textgrid_read_errors"][e.file_name] = e
             except Exception:
                 self.stopped.stop()
-                self.return_dict["error"] = arguments, Exception(
+                self.return_dict["error"] = file_name, Exception(
                     traceback.format_exception(*sys.exc_info())
                 )
+        self.finished_processing.stop()
         return
 
 
@@ -132,18 +146,17 @@ class Job:
 
     name: int
     speakers: SpeakerCollection
-    subset_utts: UtteranceCollection
-    subset_speakers: SpeakerCollection
     dictionaries: Set[PronunciationDictionaryMixin]
-    subset_dictionaries: Set[PronunciationDictionaryMixin]
 
     def __init__(self, name: int):
         self.name = name
         self.speakers = SpeakerCollection()
+        self.files = FileCollection()
         self.dictionaries = set()
 
-        self.subset_utts = UtteranceCollection()
-        self.subset_speakers = SpeakerCollection()
+        self.subset_utts = set()
+        self.subset_files = set()
+        self.subset_speakers = set()
         self.subset_dictionaries = set()
 
     def add_speaker(self, speaker: Speaker) -> None:
@@ -156,6 +169,8 @@ class Job:
             Speaker to add
         """
         self.speakers.add_speaker(speaker)
+        for u in speaker.utterances:
+            self.files.add_file(u.file)
         self.dictionaries.add(speaker.dictionary)
 
     def set_subset(self, subset_utts: Optional[UtteranceCollection]) -> None:
@@ -167,34 +182,36 @@ class Job:
         subset_utts: Collection[:class:`~montreal_forced_aligner.corpus.classes.Utterance`], optional
             Subset of utterances for this job to use
         """
-        self.subset_utts = UtteranceCollection()
-        self.subset_speakers = SpeakerCollection()
+        self.subset_utts = set()
+        self.subset_files = set()
+        self.subset_speakers = set()
         self.subset_dictionaries = set()
         if subset_utts:
             for u in subset_utts:
                 if u.speaker not in self.speakers:
                     continue
-                self.subset_utts.add_utterance(u)
-                self.subset_speakers.add_speaker(u.speaker)
-            self.subset_dictionaries = {s.dictionary for s in self.subset_speakers}
+                self.subset_utts.add(u.name)
+                self.subset_speakers.add(u.speaker_name)
+                self.subset_files.add(u.file_name)
+                dict_name = self.speakers[u.speaker_name].dictionary_name
+                if dict_name is not None:
+                    self.subset_dictionaries.add(dict_name)
 
-    def text_scp_data(self) -> Dict[str, Dict[str, List[str]]]:
+    def text_scp_data(self) -> Dict[str, Dict[str, str]]:
         """
         Generate the job's data for Kaldi's text scp files
 
         Returns
         -------
-        dict[str, dict[str, list[str]]]
+        dict[str, dict[str, str]]
             Text for each utterance, per dictionary name
         """
-        data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                if not utt.text:
-                    continue
-                data[dict_name][utt.name] = " ".join(map(str, utt.text_for_scp()))
+        data = {x: {} for x in self.current_dictionary_names}
+        for utt in self.current_utterances:
+            dict_name = utt.speaker.dictionary_name
+            if not utt.text:
+                continue
+            data[dict_name][utt.name] = utt.text
         return data
 
     def text_int_scp_data(self) -> Dict[str, Dict[str, str]]:
@@ -206,40 +223,33 @@ class Job:
         dict[str, dict[str, str]]
             Text converted to integer IDs for each utterance, per dictionary name
         """
-        data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                if utt.speaker.dictionary is None:
-                    continue
-                if not utt.text:
-                    continue
-                data[dict_name][utt.name] = " ".join(map(str, utt.text_int_for_scp()))
-                utt.speaker.dictionary.oovs_found.update(utt.oovs)
+        data = {x: {} for x in self.current_dictionary_names}
+        for utt in self.current_utterances:
+            dict_name = utt.speaker.dictionary_name
+            if dict_name is None:
+                continue
+            if not utt.text:
+                continue
+            data[dict_name][utt.name] = " ".join(map(str, utt.text_int_for_scp()))
+            utt.speaker.dictionary.oovs_found.update(utt.oovs)
         return data
 
-    def wav_scp_data(self) -> Dict[str, Dict[str, str]]:
+    def wav_scp_data(self) -> Dict[str, str]:
         """
         Generate the job's data for Kaldi's wav scp files
 
         Returns
         -------
-        dict[str, dict[str, str]]
+        dict[str, str]
             Wav scp strings for each file, per dictionary name
         """
         data = {}
-        done = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            done[dict_name] = set()
-            for utt in utt_data:
-                if not utt.is_segment:
-                    data[dict_name][utt.name] = utt.file.for_wav_scp()
-                elif utt.file.name not in done:
-                    data[dict_name][utt.file.name] = utt.file.for_wav_scp()
-                    done[dict_name].add(utt.file.name)
+        for file in self.files:
+            if any(u.is_segment for u in file.utterances):  # Segmented file
+                data[file.name] = file.for_wav_scp()
+            else:
+                for utt in file.utterances:
+                    data[utt.name] = file.for_wav_scp()
         return data
 
     def utt2spk_scp_data(self) -> Dict[str, Dict[str, str]]:
@@ -251,12 +261,10 @@ class Job:
         dict[str, dict[str, str]]
             Utterance to speaker mapping, per dictionary name
         """
-        data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                data[dict_name][utt.name] = utt.speaker_name
+        data = {x: {} for x in self.current_dictionary_names}
+        for utt in self.current_utterances:
+            dict_name = utt.speaker.dictionary_name
+            data[dict_name][utt.name] = utt.speaker_name
         return data
 
     def feat_scp_data(self) -> Dict[str, Dict[str, str]]:
@@ -268,14 +276,12 @@ class Job:
         dict[str, dict[str, str]]
             Utterance to feature archive ID mapping, per dictionary name
         """
-        data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                if not utt.features:
-                    continue
-                data[dict_name][utt.name] = utt.features
+        data = {x: {} for x in self.current_dictionary_names}
+        for utt in self.current_utterances:
+            if utt.features is None:
+                continue
+            dict_name = utt.speaker.dictionary_name
+            data[dict_name][utt.name] = utt.features
         return data
 
     def spk2utt_scp_data(self) -> Dict[str, Dict[str, List[str]]]:
@@ -287,14 +293,12 @@ class Job:
         dict[str, dict[str, list[str]]]
             Speaker to utterance mapping, per dictionary name
         """
-        data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                if utt.speaker.name not in data[dict_name]:
-                    data[dict_name][utt.speaker.name] = []
-                data[dict_name][utt.speaker.name].append(str(utt))
+        data = {x: {} for x in self.current_dictionary_names}
+        for utt in self.current_utterances:
+            dict_name = utt.speaker.dictionary_name
+            if utt.speaker_name not in data[dict_name]:
+                data[dict_name][utt.speaker_name] = []
+            data[dict_name][utt.speaker_name].append(str(utt))
         for k, v in data.items():
             for s, utts in v.items():
                 data[k][s] = sorted(utts)
@@ -309,37 +313,30 @@ class Job:
         dict[str, dict[str, str]]
             Speaker to CMVN mapping, per dictionary name
         """
-        data = {}
-        for s in self.speakers:
+        data = {x: {} for x in self.current_dictionary_names}
+        for s in self.current_speakers:
             if s.dictionary is None:
                 key = None
             else:
-                key = s.dictionary.name
-            if key not in data:
-                data[key] = {}
-            if self.subset_speakers and s not in self.subset_speakers:
-                continue
+                key = s.dictionary_name
             if s.cmvn:
                 data[key][s.name] = s.cmvn
         return data
 
-    def segments_scp_data(self) -> Dict[str, Dict[str, str]]:
+    def segments_scp_data(self) -> Dict[str, List[Any]]:
         """
         Generate the job's data for Kaldi's segments scp files
 
         Returns
         -------
-        dict[str, dict[str, str]]
+        dict[str, list[Any]]
             Utterance to segment mapping, per dictionary name
         """
         data = {}
-        utts = self.job_utts()
-        for dict_name, utt_data in utts.items():
-            data[dict_name] = {}
-            for utt in utt_data:
-                if not utt.is_segment:
-                    continue
-                data[dict_name][utt.name] = utt.segment_for_scp()
+        for utt in self.current_utterances:
+            if not utt.is_segment:
+                continue
+            data[utt.name] = utt.segment_for_scp()
         return data
 
     def construct_path_dictionary(
@@ -368,6 +365,26 @@ class Job:
                 directory, f"{identifier}.{dict_name}.{self.name}.{extension}"
             )
         return output
+
+    def construct_path(self, directory: str, identifier: str, extension: str) -> str:
+        """
+        Helper function for constructing dictionary-dependent paths for the Job
+
+        Parameters
+        ----------
+        directory: str
+            Directory to use as the root
+        identifier: str
+            Identifier for the path name, like ali or acc
+        extension: str
+            Extension of the path, like .scp or .ark
+
+        Returns
+        -------
+        str
+            Path
+        """
+        return os.path.join(directory, f"{identifier}.{self.name}.{extension}")
 
     def construct_dictionary_dependent_paths(
         self, directory: str, identifier: str, extension: str
@@ -406,17 +423,30 @@ class Job:
     def current_dictionaries(self) -> Collection[PronunciationDictionaryMixin]:
         """Current dictionaries depending on whether a subset is being used"""
         if self.subset_dictionaries:
-            return self.subset_dictionaries
+            return [x for x in self.dictionaries if x.name in self.subset_dictionaries]
         return self.dictionaries
 
     @property
     def current_dictionary_names(self) -> List[Optional[str]]:
         """Current dictionary names depending on whether a subset is being used"""
         if self.subset_dictionaries:
-            return sorted(x.name for x in self.subset_dictionaries)
+            return sorted(self.subset_dictionaries)
         if self.dictionaries == {None}:
             return [None]
         return sorted(x.name for x in self.dictionaries)
+
+    @property
+    def current_speakers(self) -> Generator[Speaker]:
+        """Current dictionary names depending on whether a subset is being used"""
+
+        return self.speakers.subset(self.subset_speakers)
+
+    @property
+    def current_utterances(self) -> Generator[Utterance]:
+        """Current dictionary names depending on whether a subset is being used"""
+        for s in self.current_speakers:
+            for u in s.utterances.subset(self.subset_utts):
+                yield u
 
     def word_boundary_int_files(self) -> Dict[str, str]:
         """
@@ -432,287 +462,24 @@ class Job:
             data[dictionary.name] = os.path.join(dictionary.phones_dir, "word_boundary.int")
         return data
 
-    def reversed_phone_mappings(self) -> Dict[str, ReversedMappingType]:
+    def output_for_features(self, split_directory: str) -> None:
         """
-        Generate mapping for dictionaries to reversed phone mapping
+        Output the necessary files for Kaldi to generate features
 
-        Returns
-        -------
-        dict[str, ReversedMappingType]
-            Per dictionary reversed phone mapping
+        Parameters
+        ----------
+        split_directory: str
+            Split directory for the corpus
         """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.reversed_phone_mapping
-        return data
+        wav_scp_path = self.construct_path(split_directory, "wav", "scp")
+        if not os.path.exists(wav_scp_path):
+            wav_scp = self.wav_scp_data()
+            output_mapping(wav_scp, wav_scp_path, skip_safe=True)
 
-    def reversed_word_mappings(self) -> Dict[str, ReversedMappingType]:
-        """
-        Generate mapping for dictionaries to reversed word mapping
-
-        Returns
-        -------
-        dict[str, ReversedMappingType]
-            Per dictionary reversed word mapping
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.reversed_word_mapping
-        return data
-
-    def words_mappings(self) -> Dict[str, MappingType]:
-        """
-        Generate mapping for dictionaries to word mapping
-
-        Returns
-        -------
-        dict[str, MappingType]
-            Per dictionary word mapping
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.words_mapping
-        return data
-
-    def words(self) -> Dict[str, WordsType]:
-        """
-        Generate mapping for dictionaries to words
-
-        Returns
-        -------
-        dict[str, WordsType]
-            Per dictionary words
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.words
-        return data
-
-    def punctuation(self):
-        """
-        Generate mapping for dictionaries to punctuation
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary punctuation
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.punctuation
-        return data
-
-    def clitic_set(self) -> Dict[str, Set[str]]:
-        """
-        Generate mapping for dictionaries to clitic sets
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary clitic sets
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.clitic_set
-        return data
-
-    def clitic_markers(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to clitic markers
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary clitic markers
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.clitic_markers
-        return data
-
-    def compound_markers(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to compound markers
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary compound markers
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.compound_markers
-        return data
-
-    def strip_diacritics(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to diacritics to strip
-
-        Returns
-        -------
-        dict[str, list[str]]
-            Per dictionary strip diacritics
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.strip_diacritics
-        return data
-
-    def oov_codes(self) -> Dict[str, str]:
-        """
-        Generate mapping for dictionaries to oov symbols
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary oov symbols
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.oov_word
-        return data
-
-    def oov_ints(self) -> Dict[str, int]:
-        """
-        Generate mapping for dictionaries to oov ints
-
-        Returns
-        -------
-        dict[str, int]
-            Per dictionary oov ints
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.oov_int
-        return data
-
-    def positions(self) -> Dict[str, List[str]]:
-        """
-        Generate mapping for dictionaries to positions
-
-        Returns
-        -------
-        dict[str, list[str]]
-            Per dictionary positions
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.positions
-        return data
-
-    def silences(self) -> Dict[str, Set[str]]:
-        """
-        Generate mapping for dictionaries to silence symbols
-
-        Returns
-        -------
-        dict[str, set[str]]
-            Per dictionary silence symbols
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.silences
-        return data
-
-    def multilingual_ipa(self) -> Dict[str, bool]:
-        """
-        Generate mapping for dictionaries to multilingual IPA flags
-
-        Returns
-        -------
-        dict[str, bool]
-            Per dictionary multilingual IPA flags
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.multilingual_ipa
-        return data
-
-    def job_utts(self) -> Dict[str, UtteranceCollection]:
-        """
-        Generate utterances by dictionary name for the Job
-
-        Returns
-        -------
-        dict[str, :class:`~montreal_forced_aligner.corpus.classes.UtteranceCollection`]
-            Mapping of dictionary name to Utterance mappings
-        """
-        data = {}
-        if self.subset_utts:
-            utterances = self.subset_utts
-        else:
-            utterances = UtteranceCollection()
-            for s in self.speakers:
-                utterances.update(s.utterances)
-        for u in utterances:
-            if u.ignored:
-                continue
-            dictionary = self.speakers[u.speaker.name].dictionary
-            if dictionary is None:
-                dict_name = None
-            else:
-                u.speaker.dictionary = dictionary
-                u.speaker.dictionary_name = dictionary.name
-                u.speaker.dictionary_data = self.speakers[u.speaker.name].dictionary_data
-                dict_name = dictionary.name
-            if dict_name not in data:
-                data[dict_name] = UtteranceCollection()
-            data[dict_name].add_utterance(u)
-        return data
-
-    def job_files(self) -> FileCollection:
-        """
-        Generate files for the Job
-
-        Returns
-        -------
-        :class:`~montreal_forced_aligner.corpus.classes.FileCollection`
-            Collection of files
-        """
-        data = FileCollection()
-        if self.subset_utts:
-            utterances = self.subset_utts
-        else:
-            utterances = set()
-            for s in self.speakers:
-                utterances.update(s.utterances)
-        for u in utterances:
-            if u.ignored:
-                continue
-            data.add_file(u.file)
-        return data
-
-    def job_speakers(self) -> SpeakerCollection:
-        """
-        Generate speakers for the Job
-
-        Returns
-        -------
-        :class:`~montreal_forced_aligner.corpus.classes.SpeakerCollection`
-            Collection of speakers
-        """
-        data = SpeakerCollection()
-        if self.subset_speakers:
-            speakers = self.subset_speakers
-        else:
-            speakers = self.speakers
-        for s in speakers:
-            data.add_speaker(s)
-        return data
-
-    def dictionary_data(self) -> Dict[str, DictionaryData]:
-        """
-        Generate dictionary data for the job
-
-        Returns
-        -------
-        dict[str, DictionaryData]
-            Mapping of dictionary name to dictionary data
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = dictionary.data()
-        return data
+        segments_scp_path = self.construct_path(split_directory, "segments", "scp")
+        if not os.path.exists(segments_scp_path):
+            segments = self.segments_scp_data()
+            output_mapping(segments, segments_scp_path)
 
     def output_to_directory(self, split_directory: str) -> None:
         """
@@ -723,16 +490,13 @@ class Job:
         split_directory: str
             Directory to output to
         """
-        wav = self.wav_scp_data()
-        for dict_name, scp in wav.items():
-            wav_scp_path = os.path.join(split_directory, f"wav.{dict_name}.{self.name}.scp")
-            output_mapping(scp, wav_scp_path, skip_safe=True)
 
         spk2utt = self.spk2utt_scp_data()
         for dict_name, scp in spk2utt.items():
             spk2utt_scp_path = os.path.join(
                 split_directory, f"spk2utt.{dict_name}.{self.name}.scp"
             )
+
             output_mapping(scp, spk2utt_scp_path)
 
         feats = self.feat_scp_data()
@@ -751,13 +515,6 @@ class Job:
                 split_directory, f"utt2spk.{dict_name}.{self.name}.scp"
             )
             output_mapping(scp, utt2spk_scp_path)
-
-        segments = self.segments_scp_data()
-        for dict_name, scp in segments.items():
-            segments_scp_path = os.path.join(
-                split_directory, f"segments.{dict_name}.{self.name}.scp"
-            )
-            output_mapping(scp, segments_scp_path)
 
         text_scp = self.text_scp_data()
         for dict_name, scp in text_scp.items():

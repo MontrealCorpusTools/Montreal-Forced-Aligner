@@ -14,47 +14,34 @@ import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Union
 
-from montreal_forced_aligner.textgrid import (
-    CtmInterval,
-    export_textgrid,
-    generate_tiers,
-    parse_from_phone,
-    parse_from_word,
-    parse_from_word_no_cleanup,
-    process_ctm_line,
-)
-from montreal_forced_aligner.utils import Stopped, thirdparty_binary
+from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
+from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
+from montreal_forced_aligner.utils import KaldiFunction, Stopped, thirdparty_binary
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import CtmErrorDict, MetaDict, ReversedMappingType
-    from montreal_forced_aligner.corpus.classes import (
-        File,
-        FileCollection,
-        SpeakerCollection,
-        Utterance,
-        UtteranceCollection,
-    )
-    from montreal_forced_aligner.dictionary import DictionaryData
-
-
-queue_polling_timeout = 1
+    from montreal_forced_aligner.abc import CtmErrorDict, MetaDict
 
 __all__ = [
+    "WordCtmProcessWorker",
     "PhoneCtmProcessWorker",
-    "CleanupWordCtmProcessWorker",
-    "NoCleanupWordCtmProcessWorker",
-    "CombineProcessWorker",
-    "ExportPreparationProcessWorker",
     "ExportTextGridProcessWorker",
-    "align_func",
-    "ali_to_ctm_func",
+    "WordCtmArguments",
+    "PhoneCtmArguments",
+    "ExportTextGridArguments",
+    "AlignFunction",
+    "AlignArguments",
+    "AliToCtmFunction",
+    "AliToCtmArguments",
     "compile_information_func",
-    "compile_train_graphs_func",
+    "CompileInformationArguments",
+    "CompileTrainGraphsFunction",
+    "CompileTrainGraphsArguments",
 ]
 
 
 class AliToCtmArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.ali_to_ctm_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -67,53 +54,34 @@ class AliToCtmArguments(NamedTuple):
     word_mode: bool
 
 
-class CleanupWordCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmProcessWorker`"""
+class WordCtmArguments(NamedTuple):
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmProcessWorker`"""
 
-    log_path: str
     ctm_paths: Dict[str, str]
     dictionaries: List[str]
-    utterances: Dict[str, UtteranceCollection]
-    dictionary_data: Dict[str, DictionaryData]
-
-
-class NoCleanupWordCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmProcessWorker`"""
-
-    log_path: str
-    ctm_paths: Dict[str, str]
-    dictionaries: List[str]
-    utterances: Dict[str, UtteranceCollection]
-    dictionary_data: Dict[str, DictionaryData]
+    reversed_word_mappings: Dict[str, Dict[int, str]]
+    utterance_texts: Dict[str, Dict[str, str]]
+    utterance_speakers: Dict[str, Dict[str, str]]
+    sanitize_function: MultispeakerSanitizationFunction
+    cleanup_textgrids: bool
+    oov_word: str
 
 
 class PhoneCtmArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneCtmProcessWorker`"""
 
-    log_path: str
     ctm_paths: Dict[str, str]
     dictionaries: List[str]
-    utterances: Dict[str, UtteranceCollection]
-    reversed_phone_mappings: Dict[str, ReversedMappingType]
-    positions: Dict[str, List[str]]
-
-
-class CombineCtmArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineProcessWorker`"""
-
-    log_path: str
-    dictionaries: List[str]
-    files: FileCollection
-    speakers: SpeakerCollection
-    dictionary_data: Dict[str, DictionaryData]
+    reversed_phone_mapping: Dict[int, str]
+    position_dependent_phones: bool
     cleanup_textgrids: bool
+    silence_phone: str
 
 
 class ExportTextGridArguments(NamedTuple):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`"""
 
     log_path: str
-    files: Dict[str, File]
     frame_shift: int
     output_directory: str
     backup_output_directory: str
@@ -126,20 +94,20 @@ class CompileInformationArguments(NamedTuple):
 
 
 class CompileTrainGraphsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_train_graphs_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`"""
 
     log_path: str
     dictionaries: List[str]
     tree_path: str
     model_path: str
     text_int_paths: Dict[str, str]
-    disambig_paths: Dict[str, str]
+    disambig_path: str
     lexicon_fst_paths: Dict[str, str]
     fst_scp_paths: Dict[str, str]
 
 
 class AlignArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.align_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -150,16 +118,20 @@ class AlignArguments(NamedTuple):
     align_options: MetaDict
 
 
-def compile_train_graphs_func(
-    log_path: str,
-    dictionaries: List[str],
-    tree_path: str,
-    model_path: str,
-    text_int_paths: Dict[str, str],
-    disambig_path: str,
-    lexicon_fst_paths: Dict[str, str],
-    fst_scp_paths: Dict[str, str],
-) -> None:
+class AccStatsArguments(NamedTuple):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
+    """
+
+    log_path: str
+    dictionaries: List[str]
+    feature_strings: Dict[str, str]
+    ali_paths: Dict[str, str]
+    acc_paths: Dict[str, str]
+    model_path: str
+
+
+class CompileTrainGraphsFunction(KaldiFunction):
     """
     Multiprocessing function to compile training graphs
 
@@ -174,55 +146,120 @@ def compile_train_graphs_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    tree_path: str
-        Path to the acoustic model tree file
-    model_path: str
-        Path to the acoustic model file
-    text_int_paths: dict[str, str]
-        Dictionary of text int files per dictionary name
-    disambig_path: str
-        Disambiguation symbol int file
-    lexicon_fst_paths: dict[str, str]
-        Dictionary of L.fst files per dictionary name
-    fst_scp_paths: dict[str, str]
-        Dictionary of utterance FST scp files per dictionary name
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            fst_scp_path = fst_scp_paths[dict_name]
-            fst_ark_path = fst_scp_path.replace(".scp", ".ark")
-            text_path = text_int_paths[dict_name]
-            log_file.write(f"{dict_name}\t{fst_scp_path}\t{fst_ark_path}\t{text_path}\n\n")
-            log_file.flush()
-            proc = subprocess.Popen(
-                [
-                    thirdparty_binary("compile-train-graphs"),
-                    f"--read-disambig-syms={disambig_path}",
-                    tree_path,
-                    model_path,
-                    lexicon_fst_paths[dict_name],
-                    f"ark:{text_path}",
-                    f"ark,scp:{fst_ark_path},{fst_scp_path}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            proc.communicate()
+
+    progress_pattern = re.compile(
+        r"^LOG.*succeeded for (?P<succeeded>\d+) graphs, failed for (?P<failed>\d+)"
+    )
+
+    def __init__(self, args: CompileTrainGraphsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.tree_path = args.tree_path
+        self.model_path = args.model_path
+        self.text_int_paths = args.text_int_paths
+        self.disambig_path = args.disambig_path
+        self.lexicon_fst_paths = args.lexicon_fst_paths
+        self.fst_scp_paths = args.fst_scp_paths
+
+    def run(self):
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                fst_scp_path = self.fst_scp_paths[dict_name]
+                fst_ark_path = fst_scp_path.replace(".scp", ".ark")
+                text_path = self.text_int_paths[dict_name]
+                proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("compile-train-graphs"),
+                        f"--read-disambig-syms={self.disambig_path}",
+                        self.tree_path,
+                        self.model_path,
+                        self.lexicon_fst_paths[dict_name],
+                        f"ark:{text_path}",
+                        f"ark,scp:{fst_ark_path},{fst_scp_path}",
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("succeeded")), int(m.group("failed"))
 
 
-def align_func(
-    log_path: str,
-    dictionaries: List[str],
-    fst_scp_paths: Dict[str, str],
-    feature_strings: Dict[str, str],
-    model_path: str,
-    ali_paths: Dict[str, str],
-    align_options: MetaDict,
-):
+class AccStatsFunction(KaldiFunction):
+    """
+    Multiprocessing function for accumulating stats in GMM training.
+
+    See Also
+    --------
+    :meth:`.AcousticModelTrainingMixin.acc_stats`
+        Main function that calls this function in parallel
+    :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-acc-stats-ali`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG \(gmm-acc-stats-ali.* Processed (?P<utterances>\d+) utterances;.*"
+    )
+
+    done_pattern = re.compile(
+        r"^LOG \(gmm-acc-stats-ali.*Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
+    )
+
+    def __init__(self, args: AccStatsArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.model_path = args.model_path
+        self.ali_paths = args.ali_paths
+        self.acc_paths = args.acc_paths
+
+    def run(self):
+        """Run the function"""
+        processed_count = 0
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                acc_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-acc-stats-ali"),
+                        self.model_path,
+                        self.feature_strings[dict_name],
+                        f"ark,s,cs:{self.ali_paths[dict_name]}",
+                        self.acc_paths[dict_name],
+                    ],
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in acc_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        now_processed = int(m.group("utterances"))
+                        progress_update = now_processed - processed_count
+                        processed_count = now_processed
+                        yield progress_update, 0
+                    else:
+                        m = self.done_pattern.match(line.strip())
+                        if m:
+                            now_processed = int(m.group("utterances"))
+                            progress_update = now_processed - processed_count
+                            yield progress_update, int(m.group("errors"))
+
+
+class AlignFunction(KaldiFunction):
     """
     Multiprocessing function for alignment.
 
@@ -239,56 +276,82 @@ def align_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    fst_scp_paths: dict[str, str]
-        Dictionary of FST scp file paths per dictionary name
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    align_options: dict[str, Any]
-        Options for alignment
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            fst_path = fst_scp_paths[dict_name]
-            ali_path = ali_paths[dict_name]
-            com = [
-                thirdparty_binary("gmm-align-compiled"),
-                f"--transition-scale={align_options['transition_scale']}",
-                f"--acoustic-scale={align_options['acoustic_scale']}",
-                f"--self-loop-scale={align_options['self_loop_scale']}",
-                f"--beam={align_options['beam']}",
-                f"--retry-beam={align_options['retry_beam']}",
-                "--careful=false",
-                "-",
-                f"scp:{fst_path}",
-                feature_string,
-                f"ark:{ali_path}",
-            ]
 
-            boost_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-boost-silence"),
-                    f"--boost={align_options['boost_silence']}",
-                    align_options["optional_silence_csl"],
-                    model_path,
+    progress_pattern = re.compile(
+        r"^LOG \(gmm-align-compiled.*gmm-align-compiled.cc:127\) (?P<utterance>.*)"
+    )
+    error_pattern = re.compile(
+        r"^WARNING \(gmm-align-compiled.*Did not successfully decode file (?P<utterance>.*),.*"
+    )
+
+    def __init__(self, args: AlignArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.fst_scp_paths = args.fst_scp_paths
+        self.feature_strings = args.feature_strings
+        self.model_path = args.model_path
+        self.ali_paths = args.ali_paths
+        self.align_options = args.align_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                feature_string = self.feature_strings[dict_name]
+                fst_path = self.fst_scp_paths[dict_name]
+                ali_path = self.ali_paths[dict_name]
+                com = [
+                    thirdparty_binary("gmm-align-compiled"),
+                    f"--transition-scale={self.align_options['transition_scale']}",
+                    f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                    f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                    f"--beam={self.align_options['beam']}",
+                    f"--retry-beam={self.align_options['retry_beam']}",
+                    "--careful=false",
                     "-",
-                ],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
-            align_proc = subprocess.Popen(
-                com, stderr=log_file, stdin=boost_proc.stdout, env=os.environ
-            )
-            align_proc.communicate()
+                    f"scp:{fst_path}",
+                    feature_string,
+                    f"ark:{ali_path}",
+                ]
+
+                boost_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-boost-silence"),
+                        f"--boost={self.align_options['boost_silence']}",
+                        self.align_options["optional_silence_csl"],
+                        self.model_path,
+                        "-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                align_proc = subprocess.Popen(
+                    com,
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    stdin=boost_proc.stdout,
+                    env=os.environ,
+                )
+                for line in align_proc.stderr:
+                    log_file.write(line)
+                    line = line.strip()
+                    if "Overall" in line:
+                        continue
+                    if "Retried" in line:
+                        continue
+                    if "Done" in line:
+                        continue
+                    m = self.error_pattern.match(line)
+                    if m:
+                        yield m.group("utterance"), False
+                    else:
+                        m = self.progress_pattern.match(line)
+                        if m:
+                            yield m.group("utterance"), True
 
 
 def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
@@ -343,17 +406,8 @@ def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], 
     return data
 
 
-def ali_to_ctm_func(
-    log_path: str,
-    dictionaries: List[str],
-    ali_paths: Dict[str, str],
-    text_int_paths: Dict[str, str],
-    word_boundary_int_paths: Dict[str, str],
-    frame_shift: float,
-    model_path: str,
-    ctm_paths: Dict[str, str],
-    word_mode: bool,
-) -> None:
+class AliToCtmFunction(KaldiFunction):
+
     """
     Multiprocessing function to convert alignment archives into CTM files
 
@@ -378,96 +432,108 @@ def ali_to_ctm_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    text_int_paths: dict[str, str]
-        Dictionary of text int files per dictionary name
-    word_boundary_int_paths: dict[str, str]
-        Dictionary of word boundary int files per dictionary name
-    frame_shift: float
-        Frame shift of feature generation in seconds
-    model_path: str
-        Path to the acoustic model file
-    ctm_paths: dict[str, str]
-        Dictionary of CTM files per dictionary name
-    word_mode: bool
-        Flag for whether to parse words or phones
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AliToCtmArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            text_int_path = text_int_paths[dict_name]
-            ctm_path = ctm_paths[dict_name]
-            word_boundary_int_path = word_boundary_int_paths[dict_name]
-            if os.path.exists(ctm_path):
-                return
-            lin_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("linear-to-nbest"),
-                    "ark:" + ali_path,
-                    "ark:" + text_int_path,
-                    "",
-                    "",
-                    "ark:-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            align_words_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("lattice-align-words"),
-                    word_boundary_int_path,
-                    model_path,
-                    "ark:-",
-                    "ark:-",
-                ],
-                stdin=lin_proc.stdout,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            if word_mode:
-                nbest_proc = subprocess.Popen(
+
+    progress_pattern = re.compile(
+        r"^LOG.* Converted (?P<done>\d+) linear lattices to ctm format; (?P<errors>\d+) had errors."
+    )
+
+    def __init__(self, args: AliToCtmArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.ali_paths = args.ali_paths
+        self.text_int_paths = args.text_int_paths
+        self.word_boundary_int_paths = args.word_boundary_int_paths
+        self.frame_shift = args.frame_shift
+        self.model_path = args.model_path
+        self.ctm_paths = args.ctm_paths
+        self.word_mode = args.word_mode
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                ali_path = self.ali_paths[dict_name]
+                text_int_path = self.text_int_paths[dict_name]
+                ctm_path = self.ctm_paths[dict_name]
+                word_boundary_int_path = self.word_boundary_int_paths[dict_name]
+                if os.path.exists(ctm_path):
+                    return
+                lin_proc = subprocess.Popen(
                     [
-                        thirdparty_binary("nbest-to-ctm"),
-                        f"--frame-shift={frame_shift}",
+                        thirdparty_binary("linear-to-nbest"),
+                        "ark:" + ali_path,
+                        "ark:" + text_int_path,
+                        "",
+                        "",
                         "ark:-",
-                        ctm_path,
                     ],
-                    stderr=log_file,
-                    stdin=align_words_proc.stdout,
-                    env=os.environ,
-                )
-            else:
-                phone_proc = subprocess.Popen(
-                    [thirdparty_binary("lattice-to-phone-lattice"), model_path, "ark:-", "ark:-"],
                     stdout=subprocess.PIPE,
-                    stdin=align_words_proc.stdout,
                     stderr=log_file,
                     env=os.environ,
                 )
-                nbest_proc = subprocess.Popen(
+                align_words_proc = subprocess.Popen(
                     [
-                        thirdparty_binary("nbest-to-ctm"),
-                        f"--frame-shift={frame_shift}",
+                        thirdparty_binary("lattice-align-words"),
+                        word_boundary_int_path,
+                        self.model_path,
                         "ark:-",
-                        ctm_path,
+                        "ark:-",
                     ],
-                    stdin=phone_proc.stdout,
+                    stdin=lin_proc.stdout,
+                    stdout=subprocess.PIPE,
                     stderr=log_file,
                     env=os.environ,
                 )
-            nbest_proc.communicate()
+                if self.word_mode:
+                    nbest_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("nbest-to-ctm"),
+                            f"--frame-shift={self.frame_shift}",
+                            "ark:-",
+                            ctm_path,
+                        ],
+                        stderr=subprocess.PIPE,
+                        stdin=align_words_proc.stdout,
+                        env=os.environ,
+                        encoding="utf8",
+                    )
+                else:
+                    phone_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("lattice-to-phone-lattice"),
+                            self.model_path,
+                            "ark:-",
+                            "ark:-",
+                        ],
+                        stdout=subprocess.PIPE,
+                        stdin=align_words_proc.stdout,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                    nbest_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("nbest-to-ctm"),
+                            f"--frame-shift={self.frame_shift}",
+                            "ark:-",
+                            ctm_path,
+                        ],
+                        stdin=phone_proc.stdout,
+                        stderr=subprocess.PIPE,
+                        env=os.environ,
+                        encoding="utf8",
+                    )
+                for line in nbest_proc.stderr:
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("done")), int(m.group("errors"))
 
 
-class NoCleanupWordCtmProcessWorker(mp.Process):
+class WordCtmProcessWorker(mp.Process):
     """
-    Multiprocessing worker for loading word CTM files without any clean up
+    Multiprocessing worker for loading word CTM files
 
     See Also
     --------
@@ -484,7 +550,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         Stop check for processing
     error_catching: dict[tuple[str, int], str]
         Dictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.NoCleanupWordCtmArguments`
+    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.WordCtmArguments`
         Arguments to pass to the CTM processing function
     """
 
@@ -494,7 +560,7 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         to_process_queue: mp.Queue,
         stopped: Stopped,
         error_catching: CtmErrorDict,
-        arguments: NoCleanupWordCtmArguments,
+        arguments: WordCtmArguments,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
@@ -503,201 +569,95 @@ class NoCleanupWordCtmProcessWorker(mp.Process):
         self.to_process_queue = to_process_queue
         self.stopped = stopped
         self.error_catching = error_catching
+        self.finished_signal = Stopped()
 
-        self.log_path = arguments.log_path
-        # Corpus information
-        self.utterances = arguments.utterances
+        self.arguments = arguments
 
-        # Dictionary information
-        self.dictionary_data = arguments.dictionary_data
+    def cleanup_intervals(self, utterance_name: str, intervals: List[CtmInterval]):
 
-    def run(self) -> None:
-        """
-        Run the word processing with no clean up
-        """
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            current_file_data = {}
+        speaker = None
+        for utt2spk in self.arguments.utterance_speakers.values():
+            if utterance_name in utt2spk:
+                speaker = utt2spk[utterance_name]
+                break
+        dict_name = self.arguments.sanitize_function.get_dict_name_for_speaker(speaker)
+        mapping = self.arguments.reversed_word_mappings[dict_name]
+        for interval in intervals:
+            interval.label = mapping[int(interval.label)]
+        if not self.arguments.cleanup_textgrids:
+            return intervals
 
-            def process_current(cur_utt: Utterance, current_labels: List[CtmInterval]):
-                """Process current stack of intervals"""
-                actual_labels = parse_from_word_no_cleanup(
-                    current_labels, self.dictionary_data[dict_name].reversed_words_mapping
-                )
-                current_file_data[cur_utt.name] = actual_labels
-                log_file.write(
-                    f"Parsed actual word labels ({len(actual_labels)}) for {cur_utt} (was {len(current_labels)})\n"
-                )
+        text = self.arguments.utterance_texts[dict_name][utterance_name]
+        sanitize, split = self.arguments.sanitize_function.get_functions_for_speaker(speaker)
+        if split is None:
+            return intervals
+        cur_ind = 0
+        try:
+            actual_labels = []
+            for word in text.split():
+                splits = split(word)
+                b = 1000000
+                e = -1
+                for w in splits:
+                    if not w:
+                        continue
+                    cur = intervals[cur_ind]
+                    if w == cur.label or cur.label == self.arguments.oov_word:
+                        if cur.begin < b:
+                            b = cur.begin
+                        if cur.end > e:
+                            e = cur.end
+                    cur_ind += 1
+                lab = CtmInterval(b, e, word, utterance_name)
+                actual_labels.append(lab)
+        except Exception:
+            print("Error parsing:")
+            print(text)
+            for word in text.split():
+                print(word)
+                splits = split(word)
+                for w in splits:
+                    print(w)
 
-            def process_current_file(cur_file: str):
-                """Process current file and add to return queue"""
-                self.to_process_queue.put(("word", cur_file, current_file_data))
-                log_file.write(f"Added word records for {cur_file} to queue\n")
-
-            cur_utt = None
-            cur_file = ""
-            utt_begin = 0
-            current_labels = []
-            try:
-                for dict_name in self.dictionaries:
-                    ctm_path = self.ctm_paths[dict_name]
-                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
-                    with open(ctm_path, "r") as word_file:
-                        for line in word_file:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            interval = process_ctm_line(line)
-                            utt = interval.utterance
-                            if cur_utt is None:
-                                cur_utt = self.utterances[dict_name][utt]
-                                utt_begin = cur_utt.begin
-                                cur_file = cur_utt.file_name
-                                log_file.write(
-                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
-                                )
-
-                            if utt != cur_utt:
-                                process_current(cur_utt, current_labels)
-                                cur_utt = self.utterances[dict_name][utt]
-                                file_name = cur_utt.file_name
-                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
-                                if file_name != cur_file:
-                                    log_file.write(f"Processing file: {cur_file}\n")
-                                    process_current_file(cur_file)
-                                    current_file_data = {}
-                                    cur_file = file_name
-                                current_labels = []
-                            if utt_begin:
-                                interval.shift_times(utt_begin)
-                            current_labels.append(interval)
-                    if current_labels:
-                        process_current(cur_utt, current_labels)
-                        process_current_file(cur_file)
-            except Exception:
-                self.stopped.stop()
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                self.error_catching[("word", self.job_name)] = "\n".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                )
-
-
-class CleanupWordCtmProcessWorker(mp.Process):
-    """
-    Multiprocessing worker for loading word CTM files with cleaning up MFA-internal modifications
-
-    See Also
-    --------
-    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
-        Main function that runs this worker in parallel
-
-    Parameters
-    ----------
-    job_name: int
-        Job name
-    to_process_queue: :class:`~multiprocessing.Queue`
-        Return queue of jobs for later workers to process
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
-        Stop check for processing
-    error_catching: dict[tuple[str, int], str]
-        Dictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.CleanupWordCtmArguments`
-        Arguments to pass to the CTM processing function
-    """
-
-    def __init__(
-        self,
-        job_name: int,
-        to_process_queue: mp.Queue,
-        stopped: Stopped,
-        error_catching: CtmErrorDict,
-        arguments: CleanupWordCtmArguments,
-    ):
-        mp.Process.__init__(self)
-        self.job_name = job_name
-        self.dictionaries = arguments.dictionaries
-        self.ctm_paths = arguments.ctm_paths
-        self.to_process_queue = to_process_queue
-        self.stopped = stopped
-        self.error_catching = error_catching
-
-        self.log_path = arguments.log_path
-        # Corpus information
-        self.utterances = arguments.utterances
-
-        # Dictionary information
-        self.dictionary_data = arguments.dictionary_data
+            raise
+        return actual_labels
 
     def run(self) -> None:
         """
-        Run the word processing with clean up
+        Run the word processing
         """
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            current_file_data = {}
+        cur_utt = None
+        intervals = []
+        try:
+            for dict_name in self.dictionaries:
+                ctm_path = self.ctm_paths[dict_name]
+                with open(ctm_path, "r") as word_file:
+                    for line in word_file:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        interval = process_ctm_line(line)
+                        if cur_utt is None:
+                            cur_utt = interval.utterance
+                        if cur_utt != interval.utterance:
 
-            def process_current(cur_utt: Utterance, current_labels: List[CtmInterval]) -> None:
-                """Process current stack of intervals"""
-                text = cur_utt.text.split()
-                actual_labels = parse_from_word(
-                    current_labels, text, self.dictionary_data[dict_name]
-                )
+                            self.to_process_queue.put(
+                                ("word", self.cleanup_intervals(cur_utt, intervals))
+                            )
+                            intervals = []
+                            cur_utt = interval.utterance
+                        intervals.append(interval)
+                if intervals:
+                    self.to_process_queue.put(("word", self.cleanup_intervals(cur_utt, intervals)))
 
-                current_file_data[cur_utt.name] = actual_labels
-                log_file.write(
-                    f"Parsed actual word labels ({len(actual_labels)} for {cur_utt} (was {len(current_labels)})\n"
-                )
-
-            def process_current_file(cur_file: str) -> None:
-                """Process current file and add to return queue"""
-                self.to_process_queue.put(("word", cur_file, current_file_data))
-                log_file.write(f"Added word records for {cur_file} to queue\n")
-
-            cur_utt = None
-            cur_file = ""
-            utt_begin = 0
-            current_labels = []
-            try:
-                for dict_name in self.dictionaries:
-                    ctm_path = self.ctm_paths[dict_name]
-                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
-                    with open(ctm_path, "r") as word_file:
-                        for line in word_file:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            interval = process_ctm_line(line)
-                            utt = interval.utterance
-                            if cur_utt is None:
-                                cur_utt = self.utterances[dict_name][utt]
-                                utt_begin = cur_utt.begin
-                                cur_file = cur_utt.file_name
-                                log_file.write(
-                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
-                                )
-
-                            if utt != cur_utt:
-                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
-                                process_current(cur_utt, current_labels)
-                                cur_utt = self.utterances[dict_name][utt]
-                                utt_begin = cur_utt.begin
-                                file_name = cur_utt.file_name
-                                if file_name != cur_file:
-                                    log_file.write(f"Processing file: {cur_file}\n")
-                                    process_current_file(cur_file)
-                                    current_file_data = {}
-                                    cur_file = file_name
-                                current_labels = []
-                            if utt_begin:
-                                interval.shift_times(utt_begin)
-                            current_labels.append(interval)
-                    if current_labels:
-                        process_current(cur_utt, current_labels)
-                        process_current_file(cur_file)
-            except Exception:
-                self.stopped.stop()
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                self.error_catching[("word", self.job_name)] = "\n".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                )
+        except Exception:
+            self.stopped.stop()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_catching[("word", self.job_name)] = "\n".join(
+                traceback.format_exception(exc_type, exc_value, exc_traceback)
+            )
+        finally:
+            self.finished_signal.stop()
 
 
 class PhoneCtmProcessWorker(mp.Process):
@@ -733,218 +693,56 @@ class PhoneCtmProcessWorker(mp.Process):
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
-        self.dictionaries = arguments.dictionaries
-        self.ctm_paths = arguments.ctm_paths
+        self.arguments = arguments
         self.to_process_queue = to_process_queue
         self.stopped = stopped
         self.error_catching = error_catching
+        self.finished_signal = Stopped()
 
-        self.log_path = arguments.log_path
-        self.utterances = arguments.utterances
-        self.reversed_phone_mappings = arguments.reversed_phone_mappings
-        self.positions = arguments.positions
+    def cleanup_intervals(self, intervals: List[CtmInterval]):
+        actual_labels = []
+        for interval in intervals:
+            label = self.arguments.reversed_phone_mapping[int(interval.label)]
+            if self.arguments.position_dependent_phones and "_" in label:
+                label = label[:-2]
+            interval.label = label
+            if self.arguments.cleanup_textgrids and interval.label == self.arguments.silence_phone:
+                continue
+            actual_labels.append(interval)
+        return actual_labels
 
     def run(self) -> None:
         """Run the phone processing"""
         cur_utt = None
-        cur_file = ""
-        utt_begin = 0
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            current_labels = []
-
-            current_file_data = {}
-
-            def process_current_utt(cur_utt: Utterance, current_labels: List[CtmInterval]) -> None:
-                """Process current stack of intervals"""
-                actual_labels = parse_from_phone(
-                    current_labels,
-                    self.reversed_phone_mappings[dict_name],
-                    self.positions[dict_name],
-                )
-                current_file_data[cur_utt.name] = actual_labels
-                log_file.write(f"Parsed actual phone labels ({len(actual_labels)} for {cur_utt}\n")
-
-            def process_current_file(cur_file: str) -> None:
-                """Process current file and add to return queue"""
-                self.to_process_queue.put(("phone", cur_file, current_file_data))
-                log_file.write(f"Added phone records for {cur_file} to queue\n")
-
-            try:
-                for dict_name in self.dictionaries:
-                    ctm_path = self.ctm_paths[dict_name]
-                    log_file.write(f"Processing dictionary {dict_name}: {ctm_path}\n")
-                    with open(ctm_path, "r") as word_file:
-                        for line in word_file:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            interval = process_ctm_line(line)
-                            utt = interval.utterance
-                            if cur_utt is None:
-                                cur_utt = self.utterances[dict_name][utt]
-                                cur_file = cur_utt.file_name
-                                utt_begin = cur_utt.begin
-                                log_file.write(
-                                    f"Current utt: {cur_utt}, current file: {cur_file}\n"
-                                )
-
-                            if utt != cur_utt:
-
-                                log_file.write(f"Processing utterance labels: {cur_utt}\n")
-                                process_current_utt(cur_utt, current_labels)
-
-                                cur_utt = self.utterances[dict_name][utt]
-                                file_name = cur_utt.file_name
-                                utt_begin = cur_utt.begin
-
-                                if file_name != cur_file:
-                                    log_file.write(f"Processing file: {cur_file}\n")
-                                    process_current_file(cur_file)
-                                    current_file_data = {}
-                                    cur_file = file_name
-                                current_labels = []
-                            if utt_begin:
-                                interval.shift_times(utt_begin)
-                            current_labels.append(interval)
-                    if current_labels:
-                        process_current_utt(cur_utt, current_labels)
-                        process_current_file(cur_file)
-            except Exception:
-                self.stopped.stop()
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                self.error_catching[("phone", self.job_name)] = (
-                    "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-                    + f"\n\n{len(self.utterances['english'])}\nCould not find: {utt}\n"
-                    + "\n".join(self.utterances["english"])
-                )
-
-
-class CombineProcessWorker(mp.Process):
-    """
-    Multiprocessing worker for loading phone CTM files
-
-    See Also
-    --------
-    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
-        Main function that runs this worker in parallel
-
-    Parameters
-    ----------
-    job_name: int
-        Job name
-    to_process_queue: :class:`~multiprocessing.Queue`
-        Input queue of phone and word ctms to combine
-    to_export_queue: :class:`~multiprocessing.Queue`
-        Export queue of combined CTMs
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
-        Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.utils.Stopped`
-        Signal that this worker has finished combining all CTMs
-    error_catching: dict[tuple[str, int], str]
-        Dictionary for storing errors encountered
-    arguments: :class:`~montreal_forced_aligner.alignment.multiprocessing.CombineCtmArguments`
-        Arguments to pass to the CTM combining function
-    """
-
-    def __init__(
-        self,
-        job_name: int,
-        to_process_queue: mp.Queue,
-        to_export_queue: mp.Queue,
-        stopped: Stopped,
-        finished_combining: Stopped,
-        error_catching: CtmErrorDict,
-        arguments: CombineCtmArguments,
-    ):
-        mp.Process.__init__(self)
-        self.job_name = job_name
-        self.to_process_queue = to_process_queue
-        self.to_export_queue = to_export_queue
-        self.stopped = stopped
-        self.finished_combining = finished_combining
-        self.error_catching = error_catching
-
-        self.log_path = arguments.log_path
-        self.files = arguments.files
-        self.speakers = arguments.speakers
-        self.dictionary_data = arguments.dictionary_data
-        self.cleanup_textgrids = arguments.cleanup_textgrids
-        for file in self.files:
-            for s in file.speaker_ordering:
-                if s.name not in self.speakers:
-                    continue
-                s.dictionary_data = self.dictionary_data[self.speakers[s.name].dictionary_name]
-
-    def run(self) -> None:
-        """Run the combination function"""
-        phone_data = {}
-        word_data = {}
-        count = 0
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            while True:
-                try:
-                    w_p, file_name, data = self.to_process_queue.get(timeout=queue_polling_timeout)
-                except Empty:
-                    if self.finished_combining.stop_check():
-                        break
-                    continue
-                log_file.write(f"Got {file_name}, {w_p}\n")
-                self.to_process_queue.task_done()
-                if self.stopped.stop_check():
-                    log_file.write("Got stop check, exiting\n")
-                    continue
-                if w_p == "phone":
-                    if file_name in word_data:
-                        word_ctm = word_data.pop(file_name)
-                        phone_ctm = data
-                    else:
-                        log_file.write(f"No word data yet for {file_name}, shelving\n")
-                        phone_data[file_name] = data
-                        continue
-                else:
-                    if file_name in phone_data:
-                        phone_ctm = phone_data.pop(file_name)
-                        word_ctm = data
-                    else:
-                        log_file.write(f"No phone data yet for {file_name}, shelving\n")
-                        word_data[file_name] = data
-                        continue
-                try:
-                    file = self.files[file_name]
-                    log_file.write(f"Generating tiers for {file}\n")
-                    for utterance in file.utterances:
-                        if utterance.name not in word_ctm:
-                            log_file.write(f"{utterance.name} not in word_ctm, skipping over\n")
+        intervals = []
+        try:
+            for dict_name in self.arguments.dictionaries:
+                ctm_path = self.arguments.ctm_paths[dict_name]
+                with open(ctm_path, "r") as word_file:
+                    for line in word_file:
+                        line = line.strip()
+                        if not line:
                             continue
-                        utterance.speaker.dictionary_data = self.dictionary_data[
-                            self.speakers[utterance.speaker_name].dictionary_name
-                        ]
-                        utterance.word_labels = word_ctm[utterance.name]
-                        utterance.phone_labels = phone_ctm[utterance.name]
-                    processed_check = True
-                    for s in file.speaker_ordering:
-                        if s.name not in self.speakers:
-                            continue
-                        if not file.has_fully_aligned_speaker(s):
+                        interval = process_ctm_line(line)
+                        if cur_utt is None:
+                            cur_utt = interval.utterance
+                        if cur_utt != interval.utterance:
 
-                            log_file.write(
-                                f"{file} is not fully aligned for speaker {s}, shelving\n"
-                            )
-                            processed_check = False
-                            break
-                    if not processed_check:
-                        continue
-                    log_file.write(f"Generating tiers for file {count} of {len(self.files)}\n")
-                    count += 1
-                    data = generate_tiers(file, cleanup_textgrids=self.cleanup_textgrids)
-                    self.to_export_queue.put((file_name, data))
-                    log_file.write(f"{file_name} put in export queue\n")
-                except Exception:
-                    self.stopped.stop()
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    self.error_catching[("combining", self.job_name)] = "\n".join(
-                        traceback.format_exception(exc_type, exc_value, exc_traceback)
-                    )
+                            self.to_process_queue.put(("phone", self.cleanup_intervals(intervals)))
+                            intervals = []
+                            cur_utt = interval.utterance
+                        intervals.append(interval)
+                if intervals:
+                    self.to_process_queue.put(("phone", self.cleanup_intervals(intervals)))
+
+        except Exception:
+            self.stopped.stop()
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_catching[("phone", self.job_name)] = traceback.format_exception(
+                exc_type, exc_value, exc_traceback
+            )
+        finally:
+            self.finished_signal.stop()
 
 
 class ExportTextGridProcessWorker(mp.Process):
@@ -984,112 +782,31 @@ class ExportTextGridProcessWorker(mp.Process):
         self.finished_processing = finished_processing
         self.textgrid_errors = textgrid_errors
 
-        self.log_path = arguments.log_path
-        self.files = arguments.files
         self.output_directory = arguments.output_directory
         self.backup_output_directory = arguments.backup_output_directory
 
         self.frame_shift = arguments.frame_shift
+        self.log_path = arguments.log_path
 
     def run(self) -> None:
         """Run the exporter function"""
-        count = 0
         with open(self.log_path, "w", encoding="utf8") as log_file:
             while True:
                 try:
-                    file_name, data = self.for_write_queue.get(timeout=queue_polling_timeout)
+                    data, output_path, duration = self.for_write_queue.get(timeout=1)
+                    log_file.write(f"Processing {output_path}...\n")
                 except Empty:
                     if self.finished_processing.stop_check():
                         break
                     continue
-                log_file.write(f"Got {file_name}\n")
                 self.for_write_queue.task_done()
                 if self.stopped.stop_check():
-                    log_file.write("Got stop check, exiting\n")
                     continue
                 try:
-                    overwrite = True
-                    file = self.files[file_name]
-                    output_path = file.construct_output_path(
-                        self.output_directory, self.backup_output_directory
-                    )
-                    log_file.write(f"Exporting file {count} of {len(self.files)}\n")
-                    count += 1
-                    export_textgrid(file, output_path, data, self.frame_shift, overwrite)
+                    export_textgrid(data, output_path, duration, self.frame_shift)
+                    log_file.write("Done!\n")
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
-                    self.textgrid_errors[file_name] = "\n".join(
+                    self.textgrid_errors[output_path] = "\n".join(
                         traceback.format_exception(exc_type, exc_value, exc_traceback)
                     )
-
-
-class ExportPreparationProcessWorker(mp.Process):
-    """
-    Multiprocessing worker for preparing CTMs for export
-
-    See Also
-    --------
-    :meth:`.CorpusAligner.ctms_to_textgrids_mp`
-        Main function that runs this worker in parallel
-
-    Parameters
-    ----------
-    to_export_queue: :class:`~multiprocessing.Queue`
-        Input queue of combined CTMs
-    for_write_queue: :class:`~multiprocessing.Queue`
-        Export queue of files to export
-    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
-        Stop check for processing
-    finished_combining: :class:`~montreal_forced_aligner.utils.Stopped`
-        Input signal that all CTMs have been combined
-    files: dict[str, File]
-        Files in corpus
-    """
-
-    def __init__(
-        self,
-        to_export_queue: mp.Queue,
-        for_write_queue: mp.Queue,
-        stopped: Stopped,
-        finished_combining: Stopped,
-        files: Dict[str, File],
-    ):
-        mp.Process.__init__(self)
-        self.to_export_queue = to_export_queue
-        self.for_write_queue = for_write_queue
-        self.stopped = stopped
-        self.finished_combining = finished_combining
-
-        self.files = files
-
-    def run(self) -> None:
-        """Run the export preparation worker"""
-        export_data = {}
-        try:
-            while True:
-                try:
-                    file_name, data = self.to_export_queue.get(timeout=queue_polling_timeout)
-                except Empty:
-                    if self.finished_combining.stop_check():
-                        break
-                    continue
-                self.to_export_queue.task_done()
-                if self.stopped.stop_check():
-                    continue
-                file = self.files[file_name]
-                if len(file.speaker_ordering) > 1:
-                    if file_name not in export_data:
-                        export_data[file_name] = data
-                    else:
-                        export_data[file_name].update(data)
-                    if len(export_data[file_name]) == len(file.speaker_ordering):
-                        data = export_data.pop(file_name)
-                        self.for_write_queue.put((file_name, data))
-                else:
-                    self.for_write_queue.put((file_name, data))
-
-            for k, v in export_data.items():
-                self.for_write_queue.put((k, v))
-        except Exception:
-            self.stopped.stop()
-            raise

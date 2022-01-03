@@ -96,14 +96,13 @@ Features
    :toctree: generated/
 
    FeatureConfigMixin
-   mfcc_func
+   MfccFunction
    MfccArguments
-   calc_fmllr_func
+   CalcFmllrFunction
    CalcFmllrArguments
    IvectorConfigMixin
    VadConfigMixin
-   compute_vad_func
-   VadArguments
+   ComputeVadFunction
    VadArguments
 
 Ivector
@@ -114,5 +113,5 @@ Ivector
 .. autosummary::
    :toctree: generated/
 
-   extract_ivectors_func
+   ExtractIvectorsFunction
    ExtractIvectorsArguments

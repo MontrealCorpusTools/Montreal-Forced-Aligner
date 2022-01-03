@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Union
 
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
@@ -14,41 +16,39 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FeatureConfigMixin",
-    "mfcc_func",
-    "calc_fmllr_func",
-    "compute_vad_func",
+    "CalcFmllrFunction",
+    "ComputeVadFunction",
     "VadArguments",
     "MfccArguments",
     "CalcFmllrArguments",
+    "ExtractIvectorsFunction",
+    "ExtractIvectorsArguments",
 ]
 
 
 class VadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
     log_path: str
-    dictionaries: List[str]
-    feats_scp_paths: Dict[str, str]
-    vad_scp_paths: Dict[str, str]
+    feats_scp_path: str
+    vad_scp_path: str
     vad_options: MetaDict
 
 
 class MfccArguments(NamedTuple):
     """
-    Arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+    Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
     log_path: str
-    dictionaries: List[str]
-    feats_scp_paths: Dict[str, str]
-    lengths_paths: Dict[str, str]
-    segment_paths: Dict[str, str]
-    wav_paths: Dict[str, str]
+    wav_path: str
+    segment_path: str
+    feats_scp_path: str
     mfcc_options: MetaDict
 
 
 class CalcFmllrArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -80,15 +80,7 @@ def make_safe(value: Any) -> str:
     return str(value)
 
 
-def mfcc_func(
-    log_path: str,
-    dictionaries: List[str],
-    feats_scp_paths: Dict[str, str],
-    lengths_paths: Dict[str, str],
-    segment_paths: Dict[str, str],
-    wav_paths: Dict[str, str],
-    mfcc_options: MetaDict,
-) -> None:
+class MfccFunction(KaldiFunction):
     """
     Multiprocessing function for generating MFCC features
 
@@ -109,34 +101,33 @@ def mfcc_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feats_scp_paths: dict[str, str]
-        Dictionary of feature scp files per dictionary name
-    lengths_paths: dict[str, str]
-        Dictionary of feature lengths files per dictionary name
-    segment_paths: dict[str, str]
-        Dictionary of segment scp files per dictionary name
-    wav_paths: dict[str, str]
-        Dictionary of sound file scp files per dictionary name
-    mfcc_options: dict[str, Any]
-        Options for MFCC generation
+    args: :class:`~montreal_forced_aligner.corpus.features.MfccArguments`
+        Arguments for the function
     """
-    with open(log_path, "w") as log_file:
-        for dict_name in dictionaries:
+
+    progress_pattern = re.compile(r"^LOG.* Copied (?P<num_utterances>\d+) feature matrices.")
+
+    def __init__(self, args: MfccArguments):
+        self.log_path = args.log_path
+        self.wav_path = args.wav_path
+        self.segment_path = args.segment_path
+        self.feats_scp_path = args.feats_scp_path
+        self.mfcc_options = args.mfcc_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w") as log_file:
             mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
-            raw_ark_path = feats_scp_paths[dict_name].replace(".scp", ".ark")
-            for k, v in mfcc_options.items():
+            raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")
+            for k, v in self.mfcc_options.items():
                 mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-            if os.path.exists(segment_paths[dict_name]):
+            if os.path.exists(self.segment_path):
                 mfcc_base_command += ["ark:-", "ark:-"]
                 seg_proc = subprocess.Popen(
                     [
                         thirdparty_binary("extract-segments"),
-                        f"scp,p:{wav_paths[dict_name]}",
-                        segment_paths[dict_name],
+                        f"scp,p:{self.wav_path}",
+                        self.segment_path,
                         "ark:-",
                     ],
                     stdout=subprocess.PIPE,
@@ -151,42 +142,30 @@ def mfcc_func(
                     env=os.environ,
                 )
             else:
-                mfcc_base_command += [f"scp,p:{wav_paths[dict_name]}", "ark:-"]
+                mfcc_base_command += [f"scp,p:{self.wav_path}", "ark:-"]
                 comp_proc = subprocess.Popen(
                     mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
                 )
             copy_proc = subprocess.Popen(
                 [
                     thirdparty_binary("copy-feats"),
+                    "--verbose=2",
                     "--compress=true",
                     "ark:-",
-                    f"ark,scp:{raw_ark_path},{feats_scp_paths[dict_name]}",
+                    f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
                 ],
                 stdin=comp_proc.stdout,
-                stderr=log_file,
+                stderr=subprocess.PIPE,
                 env=os.environ,
+                encoding="utf8",
             )
-            copy_proc.communicate()
-
-            utt_lengths_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("feat-to-len"),
-                    f"scp:{feats_scp_paths[dict_name]}",
-                    f"ark,t:{lengths_paths[dict_name]}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            utt_lengths_proc.communicate()
+            for line in copy_proc.stderr:
+                m = self.progress_pattern.match(line.strip())
+                if m:
+                    yield int(m.group("num_utterances"))
 
 
-def compute_vad_func(
-    log_path: str,
-    dictionaries: List[str],
-    feats_scp_paths: Dict[str, str],
-    vad_scp_paths: Dict[str, str],
-    vad_options: MetaDict,
-) -> None:
+class ComputeVadFunction(KaldiFunction):
     """
     Multiprocessing function to compute voice activity detection
 
@@ -201,46 +180,45 @@ def compute_vad_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feats_scp_paths: dict[str, str]
-        Dictionary of feature scp files per dictionary name
-    vad_scp_paths: dict[str, str]
-        Dictionary of vad scp files per dictionary name
-    vad_options: dict[str, Any]
-        Options for VAD
+    args: :class:`~montreal_forced_aligner.corpus.features.VadArguments`
+        Arguments for the function
     """
-    with open(log_path, "w") as log_file:
-        for dict_name in dictionaries:
-            feats_scp_path = feats_scp_paths[dict_name]
-            vad_scp_path = vad_scp_paths[dict_name]
+
+    progress_pattern = re.compile(
+        r"^LOG.*processed (?P<done>\d+) utterances.*(?P<no_feats>\d+) had.*(?P<unvoiced>\d+) were.*"
+    )
+
+    def __init__(self, args: VadArguments):
+        self.log_path = args.log_path
+        self.feats_scp_path = args.feats_scp_path
+        self.vad_scp_path = args.vad_scp_path
+        self.vad_options = args.vad_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w") as log_file:
+            feats_scp_path = self.feats_scp_path
+            vad_scp_path = self.vad_scp_path
             vad_proc = subprocess.Popen(
                 [
                     thirdparty_binary("compute-vad"),
-                    f"--vad-energy-mean-scale={vad_options['energy_mean_scale']}",
-                    f"--vad-energy-threshold={vad_options['energy_threshold']}",
+                    f"--vad-energy-mean-scale={self.vad_options['energy_mean_scale']}",
+                    f"--vad-energy-threshold={self.vad_options['energy_threshold']}",
                     f"scp:{feats_scp_path}",
                     f"ark,t:{vad_scp_path}",
                 ],
-                stderr=log_file,
+                stderr=subprocess.PIPE,
+                encoding="utf8",
                 env=os.environ,
             )
-            vad_proc.communicate()
+            for line in vad_proc.stderr:
+                log_file.write(line)
+                m = self.progress_pattern.match(line.strip())
+                if m:
+                    yield int(m.group("done")), int(m.group("no_feats")), int(m.group("unvoiced"))
 
 
-def calc_fmllr_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    ali_model_path: str,
-    model_path: str,
-    spk2utt_paths: Dict[str, str],
-    trans_paths: Dict[str, str],
-    fmllr_options: MetaDict,
-) -> None:
+class CalcFmllrFunction(KaldiFunction):
     """
     Multiprocessing function for calculating fMLLR transforms
 
@@ -267,96 +245,62 @@ def calc_fmllr_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    ali_model_path: str
-        Path to the alignment acoustic model file
-    model_path: str
-        Path to the acoustic model file
-    spk2utt_paths: dict[str, str]
-        Dictionary of spk2utt scps per dictionary name
-    trans_paths: dict[str, str]
-        Dictionary of fMLLR transform archives per dictionary name
-    fmllr_options: dict[str, Any]
-        Options for fMLLR estimation
+    args: :class:`~montreal_forced_aligner.corpus.features.CalcFmllrArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        log_file.writelines(f"{k}: {v}\n" for k, v in os.environ.items())
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            ali_path = ali_paths[dict_name]
-            spk2utt_path = spk2utt_paths[dict_name]
-            trans_path = trans_paths[dict_name]
-            post_proc = subprocess.Popen(
-                [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                stderr=log_file,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
 
-            weight_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("weight-silence-post"),
-                    "0.0",
-                    fmllr_options["silence_csl"],
-                    ali_model_path,
-                    "ark:-",
-                    "ark:-",
-                ],
-                stderr=log_file,
-                stdin=post_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
+    progress_pattern = re.compile(r"^LOG.*For speaker (?P<speaker>.*),.*$")
 
-            if ali_model_path != model_path:
-                post_gpost_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("gmm-post-to-gpost"),
-                        ali_model_path,
-                        feature_string,
-                        "ark:-",
-                        "ark:-",
-                    ],
+    def __init__(self, args: CalcFmllrArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.ali_paths = args.ali_paths
+        self.ali_model_path = args.ali_model_path
+        self.model_path = args.model_path
+        self.spk2utt_paths = args.spk2utt_paths
+        self.trans_paths = args.trans_paths
+        self.fmllr_options = args.fmllr_options
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                feature_string = self.feature_strings[dict_name]
+                ali_path = self.ali_paths[dict_name]
+                spk2utt_path = self.spk2utt_paths[dict_name]
+                trans_path = self.trans_paths[dict_name]
+                initial = True
+                if os.path.exists(trans_path):
+                    initial = False
+                post_proc = subprocess.Popen(
+                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
                     stderr=log_file,
-                    stdin=weight_proc.stdout,
                     stdout=subprocess.PIPE,
                     env=os.environ,
                 )
-                est_proc = subprocess.Popen(
+
+                weight_proc = subprocess.Popen(
                     [
-                        thirdparty_binary("gmm-est-fmllr-gpost"),
-                        "--verbose=4",
-                        f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                        f"--spk2utt=ark:{spk2utt_path}",
-                        model_path,
-                        feature_string,
-                        "ark,s,cs:-",
-                        f"ark:{trans_path}",
+                        thirdparty_binary("weight-silence-post"),
+                        "0.0",
+                        self.fmllr_options["silence_csl"],
+                        self.ali_model_path,
+                        "ark:-",
+                        "ark:-",
                     ],
                     stderr=log_file,
-                    stdin=post_gpost_proc.stdout,
+                    stdin=post_proc.stdout,
+                    stdout=subprocess.PIPE,
                     env=os.environ,
                 )
-                est_proc.communicate()
 
-            else:
-
-                if os.path.exists(trans_path):
-                    cmp_trans_path = trans_paths[dict_name] + ".tmp"
-                    est_proc = subprocess.Popen(
+                temp_trans_path = trans_path + ".tmp"
+                if self.ali_model_path != self.model_path:
+                    post_gpost_proc = subprocess.Popen(
                         [
-                            thirdparty_binary("gmm-est-fmllr"),
-                            "--verbose=4",
-                            f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                            f"--spk2utt=ark:{spk2utt_path}",
-                            model_path,
+                            thirdparty_binary("gmm-post-to-gpost"),
+                            self.ali_model_path,
                             feature_string,
                             "ark:-",
                             "ark:-",
@@ -366,39 +310,84 @@ def calc_fmllr_func(
                         stdout=subprocess.PIPE,
                         env=os.environ,
                     )
-                    comp_proc = subprocess.Popen(
+                    est_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("gmm-est-fmllr-gpost"),
+                            "--verbose=4",
+                            f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
+                            f"--spk2utt=ark:{spk2utt_path}",
+                            self.model_path,
+                            feature_string,
+                            "ark,s,cs:-",
+                            f"ark:{temp_trans_path}",
+                        ],
+                        stderr=subprocess.PIPE,
+                        encoding="utf8",
+                        stdin=post_gpost_proc.stdout,
+                        env=os.environ,
+                    )
+
+                else:
+
+                    if not initial:
+                        temp_composed_trans_path = trans_path + ".cmp.tmp"
+                        est_proc = subprocess.Popen(
+                            [
+                                thirdparty_binary("gmm-est-fmllr"),
+                                "--verbose=4",
+                                f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
+                                f"--spk2utt=ark:{spk2utt_path}",
+                                self.model_path,
+                                feature_string,
+                                "ark:-",
+                                f"ark:{temp_trans_path}",
+                            ],
+                            stderr=subprocess.PIPE,
+                            encoding="utf8",
+                            stdin=weight_proc.stdout,
+                            stdout=subprocess.PIPE,
+                            env=os.environ,
+                        )
+                    else:
+                        est_proc = subprocess.Popen(
+                            [
+                                thirdparty_binary("gmm-est-fmllr"),
+                                "--verbose=4",
+                                f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
+                                f"--spk2utt=ark:{spk2utt_path}",
+                                self.model_path,
+                                feature_string,
+                                "ark,s,cs:-",
+                                f"ark:{trans_path}",
+                            ],
+                            stderr=subprocess.PIPE,
+                            encoding="utf8",
+                            stdin=weight_proc.stdout,
+                            env=os.environ,
+                        )
+
+                for line in est_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield m.group("speaker")
+                if not initial:
+                    compose_proc = subprocess.Popen(
                         [
                             thirdparty_binary("compose-transforms"),
                             "--b-is-affine=true",
-                            "ark:-",
+                            f"ark:{temp_trans_path}",
                             f"ark:{trans_path}",
-                            f"ark:{cmp_trans_path}",
+                            f"ark:{temp_composed_trans_path}",
                         ],
                         stderr=log_file,
-                        stdin=est_proc.stdout,
                         env=os.environ,
                     )
-                    comp_proc.communicate()
+                    compose_proc.communicate()
 
                     os.remove(trans_path)
-                    os.rename(cmp_trans_path, trans_path)
-                else:
-                    est_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-est-fmllr"),
-                            "--verbose=4",
-                            f"--fmllr-update-type={fmllr_options['fmllr_update_type']}",
-                            f"--spk2utt=ark:{spk2utt_path}",
-                            model_path,
-                            feature_string,
-                            "ark,s,cs:-",
-                            f"ark:{trans_path}",
-                        ],
-                        stderr=log_file,
-                        stdin=weight_proc.stdout,
-                        env=os.environ,
-                    )
-                    est_proc.communicate()
+                    os.remove(temp_trans_path)
+                    os.rename(temp_composed_trans_path, trans_path)
 
 
 class FeatureConfigMixin:
@@ -684,32 +673,18 @@ class VadConfigMixin(FeatureConfigMixin):
 
 
 class ExtractIvectorsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
 
     log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    feature_string: str
     ivector_options: MetaDict
-    ali_paths: Dict[str, str]
     ie_path: str
-    ivector_paths: Dict[str, str]
-    weight_paths: Dict[str, str]
+    ivectors_path: str
     model_path: str
     dubm_path: str
 
 
-def extract_ivectors_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ivector_options: MetaDict,
-    ali_paths: Dict[str, str],
-    ie_path: str,
-    ivector_paths: Dict[str, str],
-    weight_paths: Dict[str, str],
-    model_path: str,
-    dubm_path: str,
-) -> None:
+class ExtractIvectorsFunction(KaldiFunction):
     """
     Multiprocessing function for extracting ivectors.
 
@@ -732,105 +707,56 @@ def extract_ivectors_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ivector_options: dict[str, Any]
-        Options for ivector extraction
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    ie_path: str
-        Path to the ivector extractor file
-    ivector_paths: dict[str, str]
-        Dictionary of ivector archives per dictionary name
-    weight_paths: dict[str, str]
-        Dictionary of weighted archives per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    dubm_path: str
-        Path to the DUBM file
+    args: :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            ali_path = ali_paths[dict_name]
-            weight_path = weight_paths[dict_name]
-            ivectors_path = ivector_paths[dict_name]
-            feature_string = feature_strings[dict_name]
-            use_align = os.path.exists(ali_path)
-            if use_align:
-                ali_to_post_proc = subprocess.Popen(
-                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-                weight_silence_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("weight-silence-post"),
-                        str(ivector_options["silence_weight"]),
-                        ivector_options["sil_phones"],
-                        model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stderr=log_file,
-                    stdin=ali_to_post_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-                post_to_weight_proc = subprocess.Popen(
-                    [thirdparty_binary("post-to-weights"), "ark:-", f"ark:{weight_path}"],
-                    stderr=log_file,
-                    stdin=weight_silence_proc.stdout,
-                    env=os.environ,
-                )
-                post_to_weight_proc.communicate()
+
+    progress_pattern = re.compile(r"^LOG.*Ivector norm for speaker (?P<speaker>.+) was.*")
+
+    def __init__(self, args: ExtractIvectorsArguments):
+        self.log_path = args.log_path
+        self.feature_string = args.feature_string
+        self.ivector_options = args.ivector_options
+        self.ie_path = args.ie_path
+        self.ivectors_path = args.ivectors_path
+        self.model_path = args.model_path
+        self.dubm_path = args.dubm_path
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
 
             gmm_global_get_post_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-get-post"),
-                    f"--n={ivector_options['num_gselect']}",
-                    f"--min-post={ivector_options['min_post']}",
-                    dubm_path,
-                    feature_string,
+                    f"--n={self.ivector_options['num_gselect']}",
+                    f"--min-post={self.ivector_options['min_post']}",
+                    self.dubm_path,
+                    self.feature_string,
                     "ark:-",
                 ],
                 stdout=subprocess.PIPE,
                 stderr=log_file,
                 env=os.environ,
             )
-            if use_align:
-                weight_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("weight-post"),
-                        "ark:-",
-                        f"ark,s,cs:{weight_path}",
-                        "ark:-",
-                    ],
-                    stdin=gmm_global_get_post_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                extract_in = weight_proc.stdout
-            else:
-                extract_in = gmm_global_get_post_proc.stdout
             extract_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ivector-extract"),
-                    f"--acoustic-weight={ivector_options['posterior_scale']}",
+                    f"--acoustic-weight={self.ivector_options['posterior_scale']}",
                     "--compute-objf-change=true",
-                    f"--max-count={ivector_options['max_count']}",
-                    ie_path,
-                    feature_string,
+                    f"--max-count={self.ivector_options['max_count']}",
+                    self.ie_path,
+                    self.feature_string,
                     "ark,s,cs:-",
-                    f"ark,t:{ivectors_path}",
+                    f"ark,t:{self.ivectors_path}",
                 ],
-                stderr=log_file,
-                stdin=extract_in,
+                stderr=subprocess.PIPE,
+                encoding="utf8",
+                stdin=gmm_global_get_post_proc.stdout,
                 env=os.environ,
             )
-            extract_proc.communicate()
+            for line in extract_proc.stderr:
+                log_file.write(line)
+                m = self.progress_pattern.match(line.strip())
+                if m:
+                    yield m.group("speaker")

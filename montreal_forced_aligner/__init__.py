@@ -1,5 +1,6 @@
 """Montreal Forced Aligner is a package for aligning speech corpora through the use of acoustic models and
             dictionaries using Kaldi functionality."""
+
 import montreal_forced_aligner.acoustic_modeling as acoustic_modeling
 import montreal_forced_aligner.alignment as alignment
 import montreal_forced_aligner.command_line as command_line

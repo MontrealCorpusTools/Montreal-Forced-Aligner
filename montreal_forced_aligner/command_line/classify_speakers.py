@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 __all__ = ["classify_speakers", "validate_args", "run_classify_speakers"]
 
 
-def classify_speakers(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+def classify_speakers(
+    args: Namespace, unknown_args: Optional[List[str]] = None
+) -> None:  # pragma: no cover
     """
     Run the speaker classification
 
@@ -43,7 +45,7 @@ def classify_speakers(args: Namespace, unknown_args: Optional[List[str]] = None)
         classifier.cleanup()
 
 
-def validate_args(args: Namespace) -> None:
+def validate_args(args: Namespace) -> None:  # pragma: no cover
     """
     Validate the command line arguments
 
@@ -74,7 +76,9 @@ def validate_args(args: Namespace) -> None:
     args.ivector_extractor_path = validate_model_arg(args.ivector_extractor_path, "ivector")
 
 
-def run_classify_speakers(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_classify_speakers(
+    args: Namespace, unknown: Optional[List[str]] = None
+) -> None:  # pragma: no cover
     """
     Wrapper function for running speaker classification
 

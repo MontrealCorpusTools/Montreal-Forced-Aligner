@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+import yaml
+
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
@@ -37,6 +39,14 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
     try:
         aligner.align()
         aligner.export_files(args.output_directory)
+        if getattr(args, "reference_directory", ""):
+            mapping = None
+            if getattr(args, "custom_mapping_path", ""):
+                with open(args.custom_mapping_path, "r", encoding="utf8") as f:
+                    mapping = yaml.safe_load(f)
+            aligner.evaluate(
+                args.reference_directory, mapping, output_directory=args.output_directory
+            )
     except Exception:
         aligner.dirty = True
         raise

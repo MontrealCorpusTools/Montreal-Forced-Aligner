@@ -1,14 +1,19 @@
 """Classes for corpora that use ivectors as features"""
+import multiprocessing as mp
 import os
+import time
+from queue import Empty
 from typing import List
+
+import tqdm
 
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsArguments,
+    ExtractIvectorsFunction,
     IvectorConfigMixin,
-    extract_ivectors_func,
 )
-from montreal_forced_aligner.utils import run_mp, run_non_mp
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
 
 __all__ = ["IvectorCorpusMixin"]
 
@@ -56,24 +61,20 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
     def extract_ivectors_arguments(self) -> List[ExtractIvectorsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`
 
         Returns
         -------
         list[ExtractIvectorsArguments]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
         return [
             ExtractIvectorsArguments(
                 os.path.join(self.working_log_directory, f"extract_ivectors.{j.name}.log"),
-                j.current_dictionary_names,
-                feat_strings[j.name],
+                j.construct_path(self.split_directory, "feats", "scp"),
                 self.ivector_options,
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 self.ie_path,
-                j.construct_path_dictionary(self.working_directory, "ivectors", "scp"),
-                j.construct_path_dictionary(self.working_directory, "weights", "ark"),
+                j.construct_path(self.split_directory, "ivectors", "scp"),
                 self.model_path,
                 self.dubm_path,
             )
@@ -86,19 +87,52 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.extract_ivectors_func`
+        :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`
             Multiprocessing helper function for each job
         :meth:`.IvectorCorpusMixin.extract_ivectors_arguments`
             Job method for generating arguments for helper function
         :kaldi_steps_sid:`extract_ivectors`
             Reference Kaldi script
         """
+        begin = time.time()
 
         log_dir = self.working_log_directory
         os.makedirs(log_dir, exist_ok=True)
 
-        jobs = self.extract_ivectors_arguments()
-        if self.use_mp:
-            run_mp(extract_ivectors_func, jobs, log_dir)
-        else:
-            run_non_mp(extract_ivectors_func, jobs, log_dir)
+        arguments = self.extract_ivectors_arguments()
+        with tqdm.tqdm(total=self.num_speakers) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = ExtractIvectorsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        _ = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = ExtractIvectorsFunction(args)
+                    for _ in function.run():
+                        pbar.update(1)
+        self.log_debug(f"Ivector extraction took {time.time() - begin}")

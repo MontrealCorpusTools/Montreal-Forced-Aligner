@@ -9,7 +9,7 @@ from queue import Empty
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
-from montreal_forced_aligner.corpus.classes import parse_file
+from montreal_forced_aligner.corpus.classes import File
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -33,6 +33,9 @@ class TextCorpusMixin(CorpusMixin):
         """
         if self.stopped is None:
             self.stopped = Stopped()
+        sanitize_function = None
+        if hasattr(self, "construct_sanitize_function"):
+            sanitize_function = self.construct_sanitize_function()
         begin_time = time.time()
         manager = mp.Manager()
         job_queue = manager.Queue()
@@ -42,43 +45,39 @@ class TextCorpusMixin(CorpusMixin):
         return_dict["textgrid_read_errors"] = manager.dict()
         finished_adding = Stopped()
         procs = []
-        for _ in range(self.num_jobs):
+        for i in range(self.num_jobs):
             p = CorpusProcessWorker(
-                job_queue, return_dict, return_queue, self.stopped, finished_adding
+                i,
+                job_queue,
+                return_dict,
+                return_queue,
+                self.stopped,
+                finished_adding,
+                self.speaker_characters,
+                sanitize_function,
             )
             procs.append(p)
             p.start()
         try:
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
-                identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(
-                    files
-                )
+                exts = find_exts(files)
                 relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
 
                 if self.stopped.stop_check():
                     break
-                for file_name in identifiers:
+                for file_name in exts.identifiers:
                     if self.stopped.stop_check():
                         break
                     wav_path = None
                     transcription_path = None
-                    if file_name in lab_files:
-                        lab_name = lab_files[file_name]
+                    if file_name in exts.lab_files:
+                        lab_name = exts.lab_files[file_name]
                         transcription_path = os.path.join(root, lab_name)
 
-                    elif file_name in textgrid_files:
-                        tg_name = textgrid_files[file_name]
+                    elif file_name in exts.textgrid_files:
+                        tg_name = exts.textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
-                    job_queue.put(
-                        (
-                            file_name,
-                            wav_path,
-                            transcription_path,
-                            relative_path,
-                            self.speaker_characters,
-                            self.construct_sanitize_function(),
-                        )
-                    )
+                    job_queue.put((file_name, wav_path, transcription_path, relative_path))
 
             finished_adding.stop()
             self.log_debug("Finished adding jobs!")
@@ -94,9 +93,14 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for proc in procs:
+                        if not proc.finished_processing.stop_check():
+                            break
+                    else:
+                        break
+                    continue
 
-                self.add_file(file)
+                self.add_file(File.load_from_mp_data(file))
 
             if "error" in return_dict:
                 raise return_dict["error"][1]
@@ -129,9 +133,17 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for proc in procs:
+                        if not proc.finished_processing.stop_check():
+                            break
+                    else:
+                        break
         finally:
 
+            finished_adding.stop()
+            job_queue.join()
+            for p in procs:
+                p.join()
             if self.stopped.stop_check():
                 self.log_info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
                 if self.stopped.source():
@@ -148,30 +160,33 @@ class TextCorpusMixin(CorpusMixin):
         begin_time = time.time()
         self.stopped = False
 
+        sanitize_function = None
+        if hasattr(self, "construct_sanitize_function"):
+            sanitize_function = self.construct_sanitize_function()
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
-            identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+            exts = find_exts(files)
             relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
             if self.stopped:
                 return
-            for file_name in identifiers:
+            for file_name in exts.identifiers:
 
                 wav_path = None
                 transcription_path = None
-                if file_name in lab_files:
-                    lab_name = lab_files[file_name]
+                if file_name in exts.lab_files:
+                    lab_name = exts.lab_files[file_name]
                     transcription_path = os.path.join(root, lab_name)
-                elif file_name in textgrid_files:
-                    tg_name = textgrid_files[file_name]
+                elif file_name in exts.textgrid_files:
+                    tg_name = exts.textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
 
                 try:
-                    file = parse_file(
+                    file = File.parse_file(
                         file_name,
                         wav_path,
                         transcription_path,
                         relative_path,
                         self.speaker_characters,
-                        self.construct_sanitize_function(),
+                        sanitize_function,
                     )
                     self.add_file(file)
                 except TextParseError as e:

@@ -7,7 +7,7 @@ Helper functions
 .. autosummary::
    :toctree: generated/
 
-   segment_vad_func
+   SegmentVadFunction
    SegmentVadArguments
    get_initial_segmentation
    merge_segments

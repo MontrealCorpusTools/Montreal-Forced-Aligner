@@ -13,12 +13,18 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 
 import yaml
 
-from .acoustic_modeling.trainer import TrainableAligner
-from .alignment import CorpusAligner, PretrainedAligner
-from .alignment.multiprocessing import compile_information_func
-from .exceptions import ConfigError, KaldiProcessingError
-from .helper import TerminalPrinter, comma_join, edit_distance, load_scp, save_scp
-from .utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
+from montreal_forced_aligner.alignment import CorpusAligner, PretrainedAligner
+from montreal_forced_aligner.alignment.multiprocessing import compile_information_func
+from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
+from montreal_forced_aligner.helper import (
+    TerminalPrinter,
+    comma_join,
+    edit_distance,
+    load_scp,
+    save_scp,
+)
+from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -233,11 +239,6 @@ class ValidationMixin(CorpusAligner):
         self.test_transcriptions = test_transcriptions
         self.printer = TerminalPrinter()
 
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for validation"""
-        return "validation"
-
     def utt2fst_scp_data(
         self, num_frequent_words: int = 10
     ) -> List[Dict[str, List[Tuple[str, str]]]]:
@@ -257,32 +258,28 @@ class ValidationMixin(CorpusAligner):
         job_data = []
         most_frequent = {}
         for j in self.jobs:
-            data = {}
-            utts = j.job_utts()
-            for dict_name, utt_data in utts.items():
-                data[dict_name] = []
-                for utterance in utt_data:
-                    new_text = []
-                    dictionary = utterance.speaker.dictionary
-                    if dict_name not in most_frequent:
-                        word_frequencies = self.get_word_frequency()
-                        most_frequent[dict_name] = sorted(
-                            word_frequencies.items(), key=lambda x: -x[1]
-                        )[:num_frequent_words]
+            data = {x: [] for x in j.current_dictionary_names}
+            for utterance in j.current_utterances:
+                new_text = []
+                dictionary = utterance.speaker.dictionary
+                dict_name = utterance.speaker.dictionary_name
+                if dict_name not in most_frequent:
+                    word_frequencies = self.get_word_frequency()
+                    most_frequent[dict_name] = sorted(
+                        word_frequencies.items(), key=lambda x: -x[1]
+                    )[:num_frequent_words]
 
-                    for t in utterance.text:
-                        lookup = utterance.speaker.dictionary.split_clitics(t)
-                        if lookup is None:
-                            continue
-                        new_text.extend(x for x in lookup if x != "")
-                    data[dict_name].append(
-                        (
-                            utterance.name,
-                            dictionary.create_utterance_fst(
-                                new_text, most_frequent[dictionary.name]
-                            ),
-                        )
+                for t in utterance.text:
+                    lookup = utterance.speaker.dictionary.split_clitics(t)
+                    if lookup is None:
+                        continue
+                    new_text.extend(x for x in lookup if x != "")
+                data[dict_name].append(
+                    (
+                        utterance.name,
+                        dictionary.create_utterance_fst(new_text, most_frequent[dictionary.name]),
                     )
+                )
             job_data.append(data)
         return job_data
 
@@ -399,21 +396,22 @@ class ValidationMixin(CorpusAligner):
         """
         Analyzes the set up process and outputs info to the console
         """
+        begin = time.time()
         total_duration = sum(x.duration for x in self.files)
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
+        self.log_debug(f"Duration calculation took {time.time() - begin}")
 
+        begin = time.time()
         ignored_count = len(self.no_transcription_files)
         ignored_count += len(self.textgrid_read_errors)
         ignored_count += len(self.decode_error_files)
-        num_sound_files = sum(1 for x in self.files if x.wav_path is not None)
-        num_lab_files = sum(1 for x in self.files if x.text_type == "lab")
-        num_textgrid_files = sum(1 for x in self.files if x.text_type == "textgrid")
+        self.log_debug(f"Ignored count calculation took {time.time() - begin}")
 
         self.printer.print_header("Corpus")
 
-        self.printer.print_green_stat(num_sound_files, "sound files")
-        self.printer.print_green_stat(num_lab_files, "lab files")
-        self.printer.print_green_stat(num_textgrid_files, "textgrid files")
+        self.printer.print_green_stat(self.files.sound_file_count, "sound files")
+        self.printer.print_green_stat(self.files.lab_count, "lab files")
+        self.printer.print_green_stat(self.files.textgrid_count, "textgrid files")
         if len(self.no_transcription_files):
             self.printer.print_yellow_stat(
                 len(self.no_transcription_files),
@@ -435,14 +433,13 @@ class ValidationMixin(CorpusAligner):
         self.analyze_files_with_no_transcription()
         self.analyze_transcriptions_with_no_wavs()
 
-        if len(self.decode_error_files) or num_lab_files:
+        if len(self.decode_error_files) or self.files.lab_count:
             self.analyze_unreadable_text_files()
-        if len(self.textgrid_read_errors) or num_textgrid_files:
+        if len(self.textgrid_read_errors) or self.files.textgrid_count:
             self.analyze_textgrid_read_errors()
 
         self.printer.print_header("Dictionary")
         self.analyze_oovs()
-        self.analyze_missing_phones()
 
     def analyze_oovs(self) -> None:
         """
@@ -451,16 +448,20 @@ class ValidationMixin(CorpusAligner):
         self.printer.print_sub_header("Out of vocabulary words")
         output_dir = self.output_directory
         oov_types = self.oovs_found
+        calculate_frequency = not oov_types
         oov_path = os.path.join(output_dir, "oovs_found.txt")
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
-        if oov_types:
-            total_instances = 0
-            with open(utterance_oov_path, "w", encoding="utf8") as f:
-                for utterance in sorted(self.utterances):
-                    if not utterance.oovs:
-                        continue
-                    total_instances += len(utterance.oovs)
-                    f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
+
+        total_instances = 0
+        with open(utterance_oov_path, "w", encoding="utf8") as f:
+            for utterance in self.utterances:
+                if not utterance.oovs:
+                    continue
+                total_instances += len(utterance.oovs)
+                f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
+                if calculate_frequency:
+                    self.oovs_found.update(utterance.oovs)
+        if self.oovs_found:
             self.save_oovs_found(output_dir)
             self.printer.print_yellow_stat(len(oov_types), "OOV word types")
             self.printer.print_yellow_stat(total_instances, "total OOV tokens")
@@ -481,32 +482,6 @@ class ValidationMixin(CorpusAligner):
                 f"There were {self.printer.colorize('no', 'yellow')} missing words from the dictionary. If you plan on using the a model trained "
                 "on this dataset to align other datasets in the future, it is recommended that there be at "
                 "least some missing words."
-            )
-        self.printer.print_end_section()
-
-    def analyze_missing_phones(self) -> None:
-        """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
-        self.printer.print_sub_header("Acoustic model compatibility")
-        if self.excluded_pronunciation_count:
-            self.printer.print_yellow_stat(
-                len(self.excluded_phones), "phones not in acoustic model"
-            )
-            self.printer.print_yellow_stat(
-                self.excluded_pronunciation_count, "ignored pronunciations"
-            )
-
-            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
-            self.printer.print_info_lines(
-                [
-                    "",
-                    "Phones missing acoustic models:",
-                    "",
-                    self.printer.indent_string + comma_join(phone_string),
-                ]
-            )
-        else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
             )
         self.printer.print_end_section()
 
@@ -861,6 +836,11 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         self.training_configs = {}
         self.add_config("monophone", {})
 
+    @property
+    def workflow_identifier(self) -> str:
+        """Identifier for validation"""
+        return "validate_training"
+
     @classmethod
     def parse_parameters(
         cls,
@@ -888,10 +868,10 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         """
         global_params = {}
         training_params = []
+        use_default = True
         if config_path:
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
-                training_params = []
                 for k, v in data.items():
                     if k == "training":
                         for t in v:
@@ -906,10 +886,16 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                             del v["type"]
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
-                if not training_params:
-                    raise ConfigError(f"No 'training' block found in {config_path}")
-        else:  # default training configuration
+                if training_params:
+                    use_default = False
+        if use_default:  # default training configuration
             training_params.append(("monophone", {}))
         if training_params:
             if training_params[0][0] != "monophone":
@@ -930,26 +916,59 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         if self.initialized:
             return
         try:
+            all_begin = time.time()
             self.dictionary_setup()
-            self._load_corpus()
-            self.set_lexicon_word_set(self.corpus_word_set)
-            self.write_lexicon_information()
+            self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
+            begin = time.time()
+            self._load_corpus()
+            self.log_debug(f"Loaded corpus in {time.time() - begin}")
+
+            begin = time.time()
+            self.set_lexicon_word_set(self.corpus_word_set)
+            self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
+
+            begin = time.time()
             for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
-            self.initialize_jobs()
-            self.write_corpus_information()
-            self.create_corpus_split()
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
+            self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
+
+            self.calculate_oovs_found()
+
+            begin = time.time()
+            self.write_lexicon_information()
+            self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
-                self.generate_features()
-            self.calculate_oovs_found()
 
-            if self.test_transcriptions:
-                self.initialize_utt_fsts()
+                begin = time.time()
+                self.initialize_jobs()
+                self.log_debug(f"Initialized jobs in {time.time() - begin}")
+
+                begin = time.time()
+                self.write_corpus_information()
+                self.log_debug(f"Wrote corpus information in {time.time() - begin}")
+
+                begin = time.time()
+                self.create_corpus_split()
+                self.log_debug(f"Created corpus split directory in {time.time() - begin}")
+                if self.test_transcriptions:
+                    begin = time.time()
+                    self.write_lexicon_information(write_disambiguation=True)
+                    self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+                begin = time.time()
+                self.generate_features()
+                self.log_debug(f"Generated features in {time.time() - begin}")
+                if self.test_transcriptions:
+                    begin = time.time()
+                    self.initialize_utt_fsts()
+                    self.log_debug(f"Initialized utterance FSTs in {time.time() - begin}")
+                begin = time.time()
+                self.calculate_oovs_found()
+                self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+
             self.initialized = True
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
@@ -957,12 +976,24 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 e.update_log_file(self.logger)
             raise
 
+    def calculate_oovs_found(self) -> None:
+        """Sum the counts of oovs found in pronunciation dictionaries"""
+        begin = time.time()
+        self.logger.info("Calculating OOVs...")
+        for u in self.utterances:
+            self.oovs_found.update(u.oovs)
+        self.save_oovs_found(self.output_directory)
+        self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+
     def validate(self):
         """
         Performs validation of the corpus
         """
+        begin = time.time()
+        self.log_debug(f"Setup took {time.time() - begin}")
         self.setup()
         self.analyze_setup()
+        self.log_debug(f"Setup took {time.time() - begin}")
         if self.ignore_acoustics:
             self.printer.print_info_lines("Skipping test alignments.")
             return
@@ -989,6 +1020,11 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    @property
+    def workflow_identifier(self) -> str:
+        """Identifier for validation"""
+        return "validate_pretrained"
+
     def setup(self):
         """
         Set up the corpus and validator
@@ -1004,29 +1040,29 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             self.dictionary_setup()
             self._load_corpus()
             self.set_lexicon_word_set(self.corpus_word_set)
-            self.write_lexicon_information()
 
             for speaker in self.speakers:
                 speaker.set_dictionary(self.get_dictionary(speaker.name))
-            self.initialize_jobs()
-            self.write_corpus_information()
-            self.create_corpus_split()
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
-            self.acoustic_model.validate(self)
-            self.acoustic_model.export_model(self.working_directory)
-            self.acoustic_model.log_details(self.logger)
-            if self.test_transcriptions:
-                self.write_lexicon_information(write_disambiguation=True)
+
+            self.calculate_oovs_found()
+
             if self.ignore_acoustics:
                 self.logger.info("Skipping acoustic feature generation")
             else:
+                self.write_lexicon_information()
+                self.initialize_jobs()
+                self.write_corpus_information()
+                self.create_corpus_split()
+                if self.test_transcriptions:
+                    self.write_lexicon_information(write_disambiguation=True)
                 self.generate_features()
-            self.calculate_oovs_found()
-            if not self.ignore_acoustics and self.test_transcriptions:
-                self.initialize_utt_fsts()
-            else:
-                self.logger.info("Skipping transcription testing")
+                if self.test_transcriptions:
+                    self.initialize_utt_fsts()
+                else:
+                    self.logger.info("Skipping transcription testing")
+            self.acoustic_model.validate(self)
+            self.acoustic_model.export_model(self.working_directory)
+            self.acoustic_model.log_details(self.logger)
 
             self.initialized = True
             self.logger.info("Finished initializing!")
@@ -1078,8 +1114,9 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         """
         self.setup()
         self.analyze_setup()
+        self.analyze_missing_phones()
         if self.ignore_acoustics:
-            print("Skipping test alignments.")
+            self.log_info("Skipping test alignments.")
             return
         self.printer.print_header("Alignment")
         self.align()
@@ -1087,3 +1124,29 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         if self.test_transcriptions:
             self.printer.print_header("Test transcriptions")
             self.test_utterance_transcriptions()
+
+    def analyze_missing_phones(self) -> None:
+        """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""
+        self.printer.print_sub_header("Acoustic model compatibility")
+        if self.excluded_pronunciation_count:
+            self.printer.print_yellow_stat(
+                len(self.excluded_phones), "phones not in acoustic model"
+            )
+            self.printer.print_yellow_stat(
+                self.excluded_pronunciation_count, "ignored pronunciations"
+            )
+
+            phone_string = [self.printer.colorize(x, "red") for x in sorted(self.excluded_phones)]
+            self.printer.print_info_lines(
+                [
+                    "",
+                    "Phones missing acoustic models:",
+                    "",
+                    self.printer.indent_string + comma_join(phone_string),
+                ]
+            )
+        else:
+            self.printer.print_info_lines(
+                f"There were {self.printer.colorize('no', 'green')} phones in the dictionary without acoustic models."
+            )
+        self.printer.print_end_section()

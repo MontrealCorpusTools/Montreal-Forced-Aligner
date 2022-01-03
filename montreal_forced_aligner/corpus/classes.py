@@ -1,15 +1,14 @@
 """Class definitions for Speakers, Files, Utterances and Jobs"""
 from __future__ import annotations
 
-import abc
 import os
+import re
 import sys
 import traceback
 from collections import Counter
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Dict,
     Generator,
@@ -26,83 +25,24 @@ import numpy as np
 from praatio import textgrid
 from praatio.utilities.constants import Interval
 
-from montreal_forced_aligner.corpus.helper import get_wav_info, load_text, parse_transcription
+from montreal_forced_aligner.abc import MfaCorpusClass
+from montreal_forced_aligner.corpus.helper import get_wav_info, load_text
+from montreal_forced_aligner.data import (
+    CtmInterval,
+    FileData,
+    SoundFileInformation,
+    SoundFileType,
+    TextFileType,
+    UtteranceData,
+)
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import CorpusError, TextGridParseError, TextParseError
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.dictionary import DictionaryData
-    from montreal_forced_aligner.dictionary.mixins import SanitizeFunction
     from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
-    from montreal_forced_aligner.textgrid import CtmInterval
 
 
-__all__ = ["parse_file", "File", "Speaker", "Utterance"]
-
-
-def parse_file(
-    file_name: str,
-    wav_path: Optional[str],
-    text_path: Optional[str],
-    relative_path: str,
-    speaker_characters: Union[int, str],
-    sanitize_function: Optional[Callable] = None,
-    stop_check: Optional[Callable] = None,
-) -> File:
-    """
-    Parse a collection of sound file and transcription file into a File
-
-    Parameters
-    ----------
-    file_name: str
-        File identifier
-    wav_path: str
-        Full sound file path
-    text_path: str
-        Full transcription path
-    relative_path: str
-        Relative path from the corpus directory root
-    speaker_characters: int, optional
-        Number of characters in the file name to specify the speaker
-    sanitize_function: Callable, optional
-        Function to sanitize words and strip punctuation
-    stop_check: Callable
-        Check whether to stop parsing early
-
-    Returns
-    -------
-    :class:`~montreal_forced_aligner.corpus.classes.File`
-        Parsed file
-    """
-    file = File(wav_path, text_path, relative_path=relative_path)
-    if file.has_sound_file:
-        root = os.path.dirname(wav_path)
-        file.wav_info = get_wav_info(wav_path)
-    else:
-        root = os.path.dirname(text_path)
-    if not speaker_characters:
-        speaker_name = os.path.basename(root)
-    elif isinstance(speaker_characters, int):
-        speaker_name = file_name[:speaker_characters]
-    elif speaker_characters == "prosodylab":
-        speaker_name = file_name.split("_")[1]
-    else:
-        speaker_name = file_name
-    root_speaker = None
-    if speaker_characters or file.text_type != "textgrid":
-        root_speaker = Speaker(speaker_name)
-    file.load_text(
-        root_speaker=root_speaker,
-        sanitize_function=sanitize_function,
-        stop_check=stop_check,
-    )
-    return file
-
-
-class MfaCorpusClass(metaclass=abc.ABCMeta):
-    @property
-    @abc.abstractmethod
-    def name(self) -> str:
-        ...
+__all__ = ["File", "Speaker", "Utterance"]
 
 
 class Speaker(MfaCorpusClass):
@@ -122,8 +62,6 @@ class Speaker(MfaCorpusClass):
         String pointing to any CMVN that has been calculated for this speaker
     dictionary: :class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`, optional
         Pronunciation dictionary that the speaker is associated with
-    dictionary_data: :class:`~montreal_forced_aligner.dictionary.DictionaryData`, optional
-        Dictionary data from the speaker's dictionary
     """
 
     def __init__(self, name):
@@ -131,24 +69,13 @@ class Speaker(MfaCorpusClass):
         self.utterances = UtteranceCollection()
         self.cmvn = None
         self.dictionary: Optional[PronunciationDictionaryMixin] = None
-        self.dictionary_data: Optional[DictionaryData] = None
         self.dictionary_name: Optional[str] = None
         self.word_counts = Counter()
 
     @property
     def name(self) -> str:
+        """Speaker name"""
         return self._name
-
-    def __getstate__(self) -> Dict[str, str]:
-        """Get dictionary for pickling"""
-        data = {"name": self.name, "cmvn": self.cmvn, "dictionary_name": self.dictionary_name}
-        return data
-
-    def __setstate__(self, state) -> None:
-        """Recreate object following pickling"""
-        self._name = state["name"]
-        self.cmvn = state["cmvn"]
-        self.dictionary_name = state["dictionary_name"]
 
     def __str__(self) -> str:
         """Return Speaker's name"""
@@ -170,28 +97,12 @@ class Speaker(MfaCorpusClass):
             return self.name < other
         raise TypeError("Speakers can only be compared to other speakers and strings.")
 
-    def __lte__(self, other: Union[Speaker, str]) -> bool:
-        """Check if a Speaker is less than or equal to another Speaker"""
-        if isinstance(other, Speaker):
-            return other.name <= self.name
-        if isinstance(other, str):
-            return self.name <= other
-        raise TypeError("Speakers can only be compared to other speakers and strings.")
-
     def __gt__(self, other: Union[Speaker, str]) -> bool:
         """Check if a Speaker is greater than another Speaker"""
         if isinstance(other, Speaker):
             return other.name > self.name
         if isinstance(other, str):
             return self.name > other
-        raise TypeError("Speakers can only be compared to other speakers and strings.")
-
-    def __gte__(self, other: Union[Speaker, str]) -> bool:
-        """Check if a Speaker is greater than or equal to another Speaker"""
-        if isinstance(other, Speaker):
-            return other.name >= self.name
-        if isinstance(other, str):
-            return self.name >= other
         raise TypeError("Speakers can only be compared to other speakers and strings.")
 
     def __hash__(self) -> hash:
@@ -226,32 +137,6 @@ class Speaker(MfaCorpusClass):
         identifier = utterance.name
         del self.utterances[identifier]
 
-    def word_set(self) -> Set[str]:
-        """
-        Generate the word set of all the words in a speaker's utterances
-
-        Returns
-        -------
-        set[str]
-            Speaker's word set
-        """
-        words = set()
-        if self.dictionary is not None:
-            words.update(self.dictionary.specials_set)
-            words.update(self.dictionary.clitic_set)
-        self.word_counts = Counter()
-        for u in self.utterances:
-            if not u.text:
-                continue
-            self.word_counts.update(u.text.split())
-        for word in self.word_counts:
-            if self.dictionary is not None:
-                word = self.dictionary._lookup(word)
-                words.update(word)
-            else:
-                words.add(word)
-        return words
-
     def set_dictionary(self, dictionary: PronunciationDictionaryMixin) -> None:
         """
         Set the dictionary for the speaker
@@ -263,15 +148,6 @@ class Speaker(MfaCorpusClass):
         """
         self.dictionary = dictionary
         self.dictionary_name = dictionary.name
-        self.dictionary_data = dictionary.data(self.word_set())
-
-    @property
-    def files(self) -> Set["File"]:
-        """Files that the speaker is associated with"""
-        files = set()
-        for u in self.utterances:
-            files.add(u.file)
-        return files
 
     @property
     def meta(self) -> Dict[str, str]:
@@ -304,9 +180,9 @@ class File(MfaCorpusClass):
         Utterances in the file
     speaker_ordering: list[Speaker]
         Ordering of speakers in the transcription file
-    wav_info: dict[str, Any]
+    wav_info: :class:`~montreal_forced_aligner.data.SoundFileInformation`
         Information about sound file
-    waveform: np.array
+    waveform: numpy.array
         Audio samples
     aligned: bool
         Flag for whether a file has alignments
@@ -317,26 +193,149 @@ class File(MfaCorpusClass):
         If both wav_path and text_path are None
     """
 
+    textgrid_regex = re.compile(r"\.textgrid$", flags=re.IGNORECASE)
+    wav_regex = re.compile(r"\.wav$", flags=re.IGNORECASE)
+
     def __init__(
         self,
         wav_path: Optional[str] = None,
         text_path: Optional[str] = None,
         relative_path: Optional[str] = None,
+        name: Optional[str] = None,
     ):
         self.wav_path = wav_path
         self.text_path = text_path
-        if self.wav_path is not None:
-            self._name = os.path.splitext(os.path.basename(self.wav_path))[0]
-        elif self.text_path is not None:
-            self._name = os.path.splitext(os.path.basename(self.text_path))[0]
-        else:
-            raise CorpusError("File objects must have either a wav_path or text_path")
+        wav_check = self.wav_path is not None
+        text_check = self.text_path is not None
+        self._name = name
+        if not self._name:
+            if wav_check:
+                self._name = os.path.splitext(os.path.basename(self.wav_path))[0]
+            elif text_check:
+                self._name = os.path.splitext(os.path.basename(self.text_path))[0]
+            else:
+                raise CorpusError("File objects must have either a wav_path or text_path")
         self.relative_path = relative_path
-        self.wav_info = None
+        self.wav_info: Optional[SoundFileInformation] = None
         self.waveform = None
         self.speaker_ordering: List[Speaker] = []
         self.utterances = UtteranceCollection()
         self.aligned = False
+        if text_check:
+            if self.text_path.lower().endswith(".textgrid"):
+                self.text_type = TextFileType.TEXTGRID
+            else:
+                self.text_type = TextFileType.LAB
+        else:
+            self.text_type = TextFileType.NONE
+        if wav_check:
+
+            if self.wav_path.lower().endswith(".wav"):
+                self.sound_type = SoundFileType.WAV
+            else:
+                self.sound_type = SoundFileType.SOX
+        else:
+            self.sound_type = SoundFileType.NONE
+
+    @property
+    def multiprocessing_data(self) -> FileData:
+        """
+        Data object for the file
+        """
+        return FileData(
+            self.name,
+            self.wav_path,
+            self.text_path,
+            self.relative_path,
+            self.wav_info,
+            [s.name for s in self.speaker_ordering],
+            [u.multiprocessing_data for u in self.utterances],
+        )
+
+    @classmethod
+    def load_from_mp_data(cls, file_data: FileData) -> File:
+        """
+        Construct a File from a multiprocessing file data class
+
+        Parameters
+        ----------
+        file_data: :class:`~montreal_forced_aligner.data.FileData`
+            Data for the loaded file
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.classes.File`
+            Loaded file
+        """
+        file = File(
+            file_data.wav_path,
+            file_data.text_path,
+            relative_path=file_data.relative_path,
+            name=file_data.name,
+        )
+        file.wav_info = file_data.wav_info
+        for s in file_data.speaker_ordering:
+            file.add_speaker(Speaker(s))
+        for u in file_data.utterances:
+            u = Utterance.load_from_mp_data(u, file)
+            file.utterances.add_utterance(u)
+        return file
+
+    @classmethod
+    def parse_file(
+        cls,
+        file_name: str,
+        wav_path: Optional[str],
+        text_path: Optional[str],
+        relative_path: str,
+        speaker_characters: Union[int, str],
+        sanitize_function: Optional[MultispeakerSanitizationFunction] = None,
+    ):
+        """
+        Parse a collection of sound file and transcription file into a File
+
+        Parameters
+        ----------
+        file_name: str
+            File identifier
+        wav_path: str
+            Full sound file path
+        text_path: str
+            Full transcription path
+        relative_path: str
+            Relative path from the corpus directory root
+        speaker_characters: int, optional
+            Number of characters in the file name to specify the speaker
+        sanitize_function: Callable, optional
+            Function to sanitize words and strip punctuation
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.corpus.classes.File`
+            Parsed file
+        """
+        file = File(wav_path, text_path, relative_path=relative_path, name=file_name)
+        if file.has_sound_file:
+            root = os.path.dirname(wav_path)
+            file.wav_info = get_wav_info(wav_path)
+        else:
+            root = os.path.dirname(text_path)
+        if not speaker_characters:
+            speaker_name = os.path.basename(root)
+        elif isinstance(speaker_characters, int):
+            speaker_name = file_name[:speaker_characters]
+        elif speaker_characters == "prosodylab":
+            speaker_name = file_name.split("_")[1]
+        else:
+            speaker_name = file_name
+        root_speaker = None
+        if speaker_characters or file.text_type != TextFileType.TEXTGRID:
+            root_speaker = Speaker(speaker_name)
+        file.load_text(
+            root_speaker=root_speaker,
+            sanitize_function=sanitize_function,
+        )
+        return file
 
     def __eq__(self, other: Union[File, str]) -> bool:
         """Check if a File is equal to another File"""
@@ -354,14 +353,6 @@ class File(MfaCorpusClass):
             return self.name < other
         raise TypeError("Files can only be compared to other files and strings.")
 
-    def __lte__(self, other: Union[File, str]) -> bool:
-        """Check if a File is less than or equal to another File"""
-        if isinstance(other, File):
-            return other.name <= self.name
-        if isinstance(other, str):
-            return self.name <= other
-        raise TypeError("Files can only be compared to other files and strings.")
-
     def __gt__(self, other: Union[File, str]) -> bool:
         """Check if a File is greater than another File"""
         if isinstance(other, File):
@@ -370,25 +361,22 @@ class File(MfaCorpusClass):
             return self.name > other
         raise TypeError("Files can only be compared to other files and strings.")
 
-    def __gte__(self, other: Union[File, str]) -> bool:
-        """Check if a File is greater than or equal to another File"""
-        if isinstance(other, File):
-            return other.name >= self.name
-        if isinstance(other, str):
-            return self.name >= other
-        raise TypeError("Files can only be compared to other files and strings.")
-
     def __hash__(self) -> hash:
         """Get the hash of the file"""
         return hash(self.name)
 
     @property
     def name(self) -> str:
+        """Name of the file"""
         return self._name
 
-    def has_fully_aligned_speaker(self, speaker: Speaker) -> bool:
+    @property
+    def is_fully_aligned(self) -> bool:
+        """
+        Check if all utterances have been aligned
+        """
         for u in self.utterances:
-            if u.speaker != speaker:
+            if u.ignored:
                 continue
             if u.word_labels is None:
                 return False
@@ -400,47 +388,16 @@ class File(MfaCorpusClass):
         """Representation of File objects"""
         return f'<File {self.name} Sound path="{self.wav_path}" Text path="{self.text_path}">'
 
-    def __getstate__(self) -> Dict[str, Any]:
-        """Create dictionary for pickle"""
-        return {
-            "name": self.name,
-            "wav_path": self.wav_path,
-            "text_path": self.text_path,
-            "relative_path": self.relative_path,
-            "aligned": self.aligned,
-            "wav_info": self.wav_info,
-            "waveform": self.waveform,
-            "speaker_ordering": [x.__getstate__() for x in self.speaker_ordering],
-            "utterances": self.utterances,
-        }
-
-    def __setstate__(self, state) -> None:
-        """Update object following pickling"""
-        self._name = state["name"]
-        self.wav_path = state["wav_path"]
-        self.text_path = state["text_path"]
-        self.relative_path = state["relative_path"]
-        self.wav_info = state["wav_info"]
-        self.waveform = state["waveform"]
-        self.aligned = state["aligned"]
-        self.speaker_ordering = state["speaker_ordering"]
-        self.utterances = UtteranceCollection()
-        for i, s in enumerate(self.speaker_ordering):
-            self.speaker_ordering[i] = Speaker("")
-            self.speaker_ordering[i].__setstate__(s)
-        for u in state["utterances"]:
-            u.file = self
-            for s in self.speaker_ordering:
-                if s.name == u.speaker_name:
-                    u.speaker = s
-                    s.add_utterance(u)
-            self.add_utterance(u)
-
     def save(
-        self, output_directory: Optional[str] = None, backup_output_directory: Optional[str] = None
+        self,
+        output_directory: Optional[str] = None,
+        backup_output_directory: Optional[str] = None,
+        text_type: Optional[TextFileType] = None,
     ) -> None:
         """
-        Output File to TextGrid or lab
+        Output File to TextGrid or lab.  If ``text_type`` is not specified, the original file type will be used,
+        but if there was no text file for the file, it will guess lab format if there is only one utterance, otherwise
+        it will output a TextGrid file.
 
         Parameters
         ----------
@@ -449,54 +406,68 @@ class File(MfaCorpusClass):
         backup_output_directory: str, optional
             If specified, then it will check whether it would overwrite an existing file and
             instead use this directory
+        text_type: TextFileType, optional
+            Text type to save as, if not provided, it will use either the original file type or guess the file type
         """
         utterance_count = len(self.utterances)
-        if utterance_count == 1:
-            utterance = next(iter(self.utterances))
-            if utterance.begin is None and not utterance.phone_labels:
-                output_path = self.construct_output_path(
-                    output_directory, backup_output_directory, enforce_lab=True
-                )
-                with open(output_path, "w", encoding="utf8") as f:
-                    if utterance.transcription_text is not None:
-                        f.write(utterance.transcription_text)
-                    else:
-                        f.write(utterance.text)
-                return
-        output_path = self.construct_output_path(output_directory, backup_output_directory)
-        max_time = self.duration
-        tiers = {}
-        for speaker in self.speaker_ordering:
-            if speaker is None:
-                tiers["speech"] = textgrid.IntervalTier("speech", [], minT=0, maxT=max_time)
-            else:
-                tiers[speaker] = textgrid.IntervalTier(speaker.name, [], minT=0, maxT=max_time)
-
-        tg = textgrid.Textgrid()
-        tg.maxTimestamp = max_time
-        for utterance in self.utterances:
-
-            if utterance.speaker is None:
-                speaker = "speech"
-            else:
-                speaker = utterance.speaker
-            if not self.aligned:
-
-                if utterance.transcription_text is not None:
-                    tiers[speaker].entryList.append(
-                        Interval(
-                            start=utterance.begin,
-                            end=utterance.end,
-                            label=utterance.transcription_text,
-                        )
-                    )
+        if text_type is None:
+            text_type = self.text_type
+            if text_type == TextFileType.NONE:
+                if utterance_count == 1:
+                    text_type = TextFileType.LAB
                 else:
-                    tiers[speaker].entryList.append(
-                        Interval(start=utterance.begin, end=utterance.end, label=utterance.text)
-                    )
-        for t in tiers.values():
-            tg.addTier(t)
-        tg.save(output_path, includeBlankSpaces=True, format="long_textgrid")
+                    text_type = TextFileType.TEXTGRID
+        if text_type == TextFileType.LAB:
+            if utterance_count == 0 and os.path.exists(self.text_path):
+                os.remove(self.text_path)
+                return
+            utterance = next(iter(self.utterances))
+            output_path = self.construct_output_path(
+                output_directory, backup_output_directory, enforce_lab=True
+            )
+            with open(output_path, "w", encoding="utf8") as f:
+                if utterance.transcription_text is not None:
+                    f.write(utterance.transcription_text)
+                else:
+                    f.write(utterance.text)
+            return
+        elif text_type == TextFileType.TEXTGRID:
+            output_path = self.construct_output_path(output_directory, backup_output_directory)
+            max_time = self.duration
+            tiers = {}
+            for speaker in self.speaker_ordering:
+                if speaker is None:
+                    tiers["speech"] = textgrid.IntervalTier("speech", [], minT=0, maxT=max_time)
+                else:
+                    tiers[speaker] = textgrid.IntervalTier(speaker.name, [], minT=0, maxT=max_time)
+
+            tg = textgrid.Textgrid()
+            tg.maxTimestamp = max_time
+            for utterance in self.utterances:
+
+                if utterance.speaker is None:
+                    speaker = "speech"
+                else:
+                    speaker = utterance.speaker
+                if not self.aligned:
+
+                    if utterance.transcription_text is not None:
+                        tiers[speaker].entryList.append(
+                            Interval(
+                                start=utterance.begin,
+                                end=utterance.end,
+                                label=utterance.transcription_text,
+                            )
+                        )
+                    else:
+                        tiers[speaker].entryList.append(
+                            Interval(
+                                start=utterance.begin, end=utterance.end, label=utterance.text
+                            )
+                        )
+            for t in tiers.values():
+                tg.addTier(t)
+            tg.save(output_path, includeBlankSpaces=True, format="long_textgrid")
 
     @property
     def meta(self) -> Dict[str, Any]:
@@ -506,32 +477,69 @@ class File(MfaCorpusClass):
             "text_path": self.text_path,
             "name": self.name,
             "relative_path": self.relative_path,
-            "wav_info": self.wav_info,
+            "wav_info": self.wav_info.meta,
             "speaker_ordering": [x.name for x in self.speaker_ordering],
         }
 
     @property
     def has_sound_file(self) -> bool:
         """Flag for whether the File has a sound file"""
-        if self.wav_path is not None and os.path.exists(self.wav_path):
-            return True
-        return False
+        return self.sound_type != SoundFileType.NONE
 
     @property
     def has_text_file(self) -> bool:
         """Flag for whether the File has a text file"""
-        if self.text_path is not None and os.path.exists(self.text_path):
-            return True
-        return False
+        return self.text_type != TextFileType.NONE
 
     @property
-    def text_type(self) -> Optional[str]:
-        """Type of text file"""
-        if self.has_text_file:
-            if os.path.splitext(self.text_path)[1].lower() == ".textgrid":
-                return "textgrid"
-            return "lab"
-        return None
+    def aligned_data(self) -> Dict[str, Dict[str, List[CtmInterval]]]:
+        """
+        Word and phone alignments for the file
+
+        Returns
+        -------
+        dict[str, dict[str, list[CtmInterval]]]
+            Dictionary of word and phone intervals for each speaker in the file
+        """
+        data = {}
+        for s in self.speaker_ordering:
+            if s.name not in data:
+                data[s.name] = {"words": [], "phones": []}
+        for u in self.utterances:
+            if u.word_labels is None:
+                continue
+            data[u.speaker_name]["words"].extend(u.word_labels)
+            data[u.speaker_name]["phones"].extend(u.phone_labels)
+        return data
+
+    def clean_up(self) -> None:
+        """
+        Recombine words that were split up as part of initial text processing
+        """
+        for u in self.utterances:
+            if not u.word_labels:
+                continue
+            cur_ind = 0
+            actual_labels = []
+            dictionary = u.speaker.dictionary
+            for word in u.text.split():
+                splits = dictionary.lookup(word)
+                b = 1000000
+                e = -1
+                for w in splits:
+                    cur = u.word_labels[cur_ind]
+                    if w == cur.label or cur.label == dictionary.oov_word:
+                        if cur.begin < b:
+                            b = cur.begin
+                        if cur.end > e:
+                            e = cur.end
+                    cur_ind += 1
+                lab = CtmInterval(b, e, word, u.name)
+                actual_labels.append(lab)
+            u.word_labels = actual_labels
+            u.phone_labels = [
+                x for x in u.phone_labels if x.label != dictionary.optional_silence_phone
+            ]
 
     def construct_output_path(
         self,
@@ -577,8 +585,7 @@ class File(MfaCorpusClass):
     def load_text(
         self,
         root_speaker: Optional[Speaker] = None,
-        sanitize_function: Optional[SanitizeFunction] = None,
-        stop_check: Optional[Callable] = None,
+        sanitize_function: Optional[MultispeakerSanitizationFunction] = None,
     ) -> None:
         """
         Load the transcription text from the text_file of the object
@@ -589,18 +596,16 @@ class File(MfaCorpusClass):
             Speaker derived from the root directory, ignored for TextGrids
         sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`, optional
             Function to sanitize words and strip punctuation
-        stop_check: Callable
-            Function to check whether this should break early
         """
-        if self.text_type == "lab":
+        if self.text_type == TextFileType.LAB:
             try:
                 text = load_text(self.text_path)
             except UnicodeDecodeError:
                 raise TextParseError(self.text_path)
-            words = parse_transcription(text, sanitize_function)
-            utterance = Utterance(speaker=root_speaker, file=self, text=" ".join(words))
+            utterance = Utterance(speaker=root_speaker, file=self, text=text)
+            utterance.parse_transcription(sanitize_function)
             self.add_utterance(utterance)
-        elif self.text_type == "textgrid":
+        elif self.text_type == TextFileType.TEXTGRID:
             try:
                 tg = textgrid.openTextgrid(self.text_path, includeEmptyIntervals=False)
             except Exception:
@@ -628,17 +633,15 @@ class File(MfaCorpusClass):
                 else:
                     speaker = root_speaker
                 for begin, end, text in ti.entryList:
-                    if stop_check is not None and stop_check():
-                        return
                     text = text.lower().strip()
-                    words = parse_transcription(text, sanitize_function)
-                    if not words:
+                    if not text:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
                     end = min(end, self.duration)
-                    utt = Utterance(
-                        speaker=speaker, file=self, begin=begin, end=end, text=" ".join(words)
-                    )
+                    utt = Utterance(speaker=speaker, file=self, begin=begin, end=end, text=text)
+                    utt.parse_transcription(sanitize_function)
+                    if not utt.text:
+                        continue
                     self.add_utterance(utt)
         else:
             utterance = Utterance(speaker=root_speaker, file=self)
@@ -694,7 +697,7 @@ class File(MfaCorpusClass):
             return 0
         if not self.wav_info:
             self.load_info()
-        return self.wav_info["duration"]
+        return self.wav_info.duration
 
     @property
     def num_channels(self) -> int:
@@ -703,7 +706,7 @@ class File(MfaCorpusClass):
             return 0
         if not self.wav_info:
             self.load_info()
-        return self.wav_info["num_channels"]
+        return self.wav_info.num_channels
 
     @property
     def num_utterances(self) -> int:
@@ -722,23 +725,26 @@ class File(MfaCorpusClass):
             return 0
         if not self.wav_info:
             self.load_info()
-        return self.wav_info["sample_rate"]
+        return self.wav_info.sample_rate
 
     @property
     def format(self) -> str:
         """Get the sound file format"""
         if not self.wav_info:
             self.load_info()
-        return self.wav_info["format"]
+        return self.wav_info.format
 
     @property
     def sox_string(self) -> str:
         """String used for converting sound file via SoX within Kaldi"""
         if not self.wav_info:
             self.load_info()
-        return self.wav_info["sox_string"]
+        return self.wav_info.sox_string
 
     def load_wav_data(self) -> None:
+        """
+        Load the sound file into memory as a numpy array
+        """
         self.waveform, _ = librosa.load(self.wav_path, sr=None, mono=False)
 
     def normalized_waveform(
@@ -746,7 +752,7 @@ class File(MfaCorpusClass):
     ) -> Tuple[np.array, np.array]:
         if self.waveform is None:
             self.load_wav_data()
-        if end is None:
+        if end is None or end > self.duration:
             end = self.duration
 
         begin_sample = int(begin * self.sample_rate)
@@ -814,8 +820,6 @@ class Utterance(MfaCorpusClass):
         be processed by Kaldi
     features: str, optional
         Feature string reference to the computed features archive
-    feature_length: int, optional
-        Number of feature frames
     phone_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
         Saved aligned phone labels
     word_labels: list[:class:`~montreal_forced_aligner.data.CtmInterval`], optional
@@ -836,7 +840,11 @@ class Utterance(MfaCorpusClass):
         self.speaker = speaker
         self.file = file
         self.file_name = file.name
-        self.speaker_name = speaker.name
+        self.speaker_name: str = speaker.name
+        if begin is None:
+            begin = 0
+        if end is None:
+            end = self.file.duration
         self.begin = begin
         self.end = end
         self.channel = channel
@@ -844,44 +852,70 @@ class Utterance(MfaCorpusClass):
         self.transcription_text = None
         self.ignored = False
         self.features = None
-        self.feature_length = None
         self.phone_labels: Optional[List[CtmInterval]] = None
         self.word_labels: Optional[List[CtmInterval]] = None
         self.oovs = set()
+        self.normalized_text = []
+        self.text_int = []
+        self.word_error_rate = None
 
-    def __getstate__(self) -> Dict[str, Any]:
-        """Get the state of the object for pickling"""
-        return {
-            "file_name": self.file_name,
-            "speaker_name": self.speaker_name,
-            "begin": self.begin,
-            "end": self.end,
-            "channel": self.channel,
-            "text": self.text,
-            "transcription_text": self.transcription_text,
-            "oovs": self.oovs,
-            "ignored": self.ignored,
-            "features": self.features,
-            "feature_length": self.feature_length,
-            "phone_labels": self.phone_labels,
-            "word_labels": self.word_labels,
-        }
+    def parse_transcription(self, sanitize_function=Optional[MultispeakerSanitizationFunction]):
+        """
+        Parse an orthographic transcription given punctuation and clitic markers
 
-    def __setstate__(self, state) -> None:
-        """Reconstruct the object following pickling"""
-        self.file_name = state["file_name"]
-        self.speaker_name = state["speaker_name"]
-        self.begin = state["begin"]
-        self.end = state["end"]
-        self.channel = state["channel"]
-        self.text = state["text"]
-        self.transcription_text = state["transcription_text"]
-        self.oovs = state["oovs"]
-        self.ignored = state["ignored"]
-        self.features = state["features"]
-        self.feature_length = state["feature_length"]
-        self.phone_labels = state["phone_labels"]
-        self.word_labels = state["word_labels"]
+        Parameters
+        ----------
+        sanitize_function: :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerSanitizationFunction`, optional
+            Function to sanitize words and strip punctuation
+
+        """
+        self.normalized_text = []
+        if sanitize_function is not None:
+            try:
+                sanitize, split = sanitize_function.get_functions_for_speaker(self.speaker_name)
+            except AttributeError:
+                sanitize = sanitize_function
+                split = None
+            words = [
+                sanitize(w)
+                for w in self.text.split()
+                if w not in sanitize.clitic_markers + sanitize.compound_markers
+            ]
+            self.text = " ".join(words)
+            if split is not None:
+                for w in words:
+                    for new_w in split(w):
+                        if new_w not in split.word_set:
+                            self.oovs.add(new_w)
+                        self.normalized_text.append(new_w)
+
+    @property
+    def multiprocessing_data(self):
+        return UtteranceData(
+            self.speaker_name,
+            self.file_name,
+            self.begin,
+            self.end,
+            self.channel,
+            self.text,
+            self.normalized_text,
+            self.oovs,
+        )
+
+    @classmethod
+    def load_from_mp_data(cls, data: UtteranceData, file: File) -> Utterance:
+        utterance = Utterance(
+            speaker=Speaker(data.speaker_name),
+            file=file,
+            begin=data.begin,
+            end=data.end,
+            channel=data.channel,
+            text=data.text,
+        )
+        if data.normalized_text:
+            utterance.normalized_text = data.normalized_text
+            utterance.oovs = data.oovs
+        return utterance
 
     def __str__(self) -> str:
         """String representation"""
@@ -892,7 +926,7 @@ class Utterance(MfaCorpusClass):
         return f'<Utterance "{self.name}">'
 
     def __eq__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is equal to another Utterance"""
+        """Check if an Utterance is equal to another Utterance"""
         if isinstance(other, Utterance):
             return other.name == self.name
         if isinstance(other, str):
@@ -900,35 +934,19 @@ class Utterance(MfaCorpusClass):
         raise TypeError("Utterances can only be compared to other utterances and strings.")
 
     def __lt__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is less than another Utterance"""
+        """Check if an Utterance is less than another Utterance"""
         if isinstance(other, Utterance):
             return other.name < self.name
         if isinstance(other, str):
             return self.name < other
         raise TypeError("Utterances can only be compared to other utterances and strings.")
 
-    def __lte__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is less than or equal to another Utterance"""
-        if isinstance(other, Utterance):
-            return other.name <= self.name
-        if isinstance(other, str):
-            return self.name <= other
-        raise TypeError("Utterances can only be compared to other utterances and strings.")
-
     def __gt__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is greater than another Utterance"""
+        """Check if an Utterance is greater than another Utterance"""
         if isinstance(other, Utterance):
             return other.name > self.name
         if isinstance(other, str):
             return self.name > other
-        raise TypeError("Utterances can only be compared to other utterances and strings.")
-
-    def __gte__(self, other: Union[Utterance, str]) -> bool:
-        """Check if a Utterance is greater than or equal to another Utterance"""
-        if isinstance(other, Utterance):
-            return other.name >= self.name
-        if isinstance(other, str):
-            return self.name >= other
         raise TypeError("Utterances can only be compared to other utterances and strings.")
 
     def __hash__(self) -> hash:
@@ -954,7 +972,10 @@ class Utterance(MfaCorpusClass):
             "text": self.text,
             "ignored": self.ignored,
             "features": self.features,
-            "feature_length": self.feature_length,
+            "normalized_text": self.normalized_text,
+            "oovs": self.oovs,
+            "transcription_text": self.transcription_text,
+            "word_error_rate": self.word_error_rate,
         }
 
     def set_speaker(self, speaker: Speaker) -> None:
@@ -975,16 +996,41 @@ class Utterance(MfaCorpusClass):
         """Check if this utterance is a segment of a longer file"""
         return self.begin is not None and self.end is not None
 
-    @property
-    def num_oovs(self):
-        """Number of unique OOV items in an utterance"""
-        count = 0
-        if self.speaker.dictionary is None:
-            return count
-        for w in set(self.text.split()):
-            if self.speaker.dictionary.check_word(w):
-                count += 1
-        return count
+    def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
+        """
+        Add aligned word intervals for the utterance
+
+        Parameters
+        ----------
+        intervals: Union[CtmInterval, list[CtmInterval]]
+            Intervals to add
+        """
+        if not isinstance(intervals, list):
+            intervals = [intervals]
+        if self.word_labels is None:
+            self.word_labels = []
+        for interval in intervals:
+            if self.begin is not None:
+                interval.shift_times(self.begin)
+        self.word_labels.extend(intervals)
+
+    def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
+        """
+        Add aligned phone intervals for the utterance
+
+        Parameters
+        ----------
+        intervals: Union[CtmInterval, list[CtmInterval]]
+            Intervals to add
+        """
+        if not isinstance(intervals, list):
+            intervals = [intervals]
+        if self.phone_labels is None:
+            self.phone_labels = []
+        for interval in intervals:
+            if self.begin is not None:
+                interval.shift_times(self.begin)
+        self.phone_labels.extend(intervals)
 
     def text_for_scp(self) -> List[str]:
         """
@@ -1006,17 +1052,23 @@ class Utterance(MfaCorpusClass):
         list[int]
             List of word IDs, or None if the utterance's speaker doesn't have an associated dictionary
         """
-        if self.speaker.dictionary_data is None:
+        if self.speaker.dictionary is None:
             return
-        text = self.text_for_scp()
-        new_text = []
+        if self.text_int:
+            return self.text_int
+        if self.normalized_text:
+            normalized = True
+            text = self.normalized_text
+        else:
+            normalized = False
+            text = self.text_for_scp()
+        self.text_int = []
         for i, t in enumerate(text):
-            lookup = self.speaker.dictionary_data.to_int(t)
-            for w in lookup:
-                if w == self.speaker.dictionary_data.oov_int:
-                    self.oovs.add(text[i])
-                new_text.append(w)
-        return new_text
+            lookup = self.speaker.dictionary.to_int(t, normalized)
+            if self.speaker.dictionary.oov_int in lookup:
+                self.oovs.add(text[i])
+            self.text_int.extend(lookup)
+        return self.text_int
 
     def segment_for_scp(self) -> List[Any]:
         """
@@ -1027,7 +1079,7 @@ class Utterance(MfaCorpusClass):
         list[Any]
             Segment data
         """
-        return [self.file.name, self.begin, self.end, self.channel]
+        return [self.file_name.replace(" ", "_MFASPACE_"), self.begin, self.end, self.channel]
 
     @property
     def name(self) -> str:
@@ -1055,11 +1107,6 @@ class Collection:
     def __init__(self):
         self._data: Dict[str, T] = {}
 
-    def __iter__(self) -> Generator[T]:
-        """Iterator over the collection"""
-        for v in self._data.values():
-            yield v
-
     def __getitem__(self, key: str) -> T:
         """Get an item by identifier"""
         return self._data[key]
@@ -1085,6 +1132,17 @@ class Collection:
         if not isinstance(item, str):
             item = item.name
         return item in self._data
+
+    def subset(self, subset_identifiers: Set[str]) -> Generator[T]:
+        for item in self:
+            if subset_identifiers and item.name not in subset_identifiers:
+                continue
+            yield item
+
+    def __iter__(self) -> Generator[T]:
+        """Iterator over the collection"""
+        for v in self._data.values():
+            yield v
 
     def update(self, other: Union[Collection, Set[T], List[T]]) -> None:
         """Update collection from another collection"""
@@ -1133,6 +1191,12 @@ class FileCollection(Collection):
 
     CLASS_TYPE = File
 
+    def __init__(self):
+        super(FileCollection, self).__init__()
+        self.lab_count = 0
+        self.textgrid_count = 0
+        self.sound_file_count = 0
+
     def add_file(self, file: File) -> None:
         """
         Add file to the collection
@@ -1143,6 +1207,12 @@ class FileCollection(Collection):
             File to be added
         """
         self[file.name] = file
+        if file.text_type == TextFileType.TEXTGRID:
+            self.textgrid_count += 1
+        elif file.text_type == TextFileType.LAB:
+            self.lab_count += 1
+        if file.sound_type != SoundFileType.NONE:
+            self.sound_file_count += 1
 
     def __repr__(self) -> str:
         """Object representation"""
@@ -1166,6 +1236,13 @@ class UtteranceCollection(Collection):
             Utterance to be added
         """
         self[utterance.name] = utterance
+
+    def __iter__(self) -> Generator[Utterance]:
+        """Iterator over the collection"""
+        for v in self._data.values():
+            if v.ignored:
+                continue
+            yield v
 
     def __repr__(self) -> str:
         """Object representation"""

@@ -5,30 +5,30 @@ Model classes
 """
 from __future__ import annotations
 
+import json
 import os
-import re
 import shutil
+import typing
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
 
 import yaml
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
+from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
     PronunciationAcousticMismatchError,
 )
-from montreal_forced_aligner.helper import TerminalPrinter
+from montreal_forced_aligner.helper import TerminalPrinter, set_default
 
 if TYPE_CHECKING:
     from logging import Logger
 
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.dictionary.pronunciation import (
-        DictionaryMixin,
-        PronunciationDictionaryMixin,
-    )
+    from montreal_forced_aligner.dictionary.pronunciation import DictionaryMixin
+    from montreal_forced_aligner.g2p.trainer import G2PTrainer
 
 
 # default format for output
@@ -108,8 +108,6 @@ class Archive(MfaModel):
             self._meta["features"]["uses_splices"] = os.path.exists(
                 os.path.join(self.dirname, "lda.mat")
             )
-        if "multilingual_ipa" not in self._meta:
-            self._meta["multilingual_ipa"] = False
         if "uses_speaker_adaptation" not in self._meta["features"]:
             self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
                 os.path.join(self.dirname, "final.alimdl")
@@ -319,12 +317,11 @@ class AcousticModel(Archive):
     def parameters(self) -> MetaDict:
         """Parameters to pass to top-level workers"""
         params = {**self.meta["features"]}
-        for key in ["multilingual_ipa"]:
-            params[key] = self.meta[key]
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
         params["optional_silence_phone"] = self.meta["optional_silence_phone"]
         params["other_noise_phone"] = self.meta["other_noise_phone"]
+        params["phone_set_type"] = self.meta["phone_set_type"]
         return params
 
     @property
@@ -359,7 +356,6 @@ class AcousticModel(Archive):
                 self._meta = {
                     "version": "0.9.0",
                     "architecture": "gmm-hmm",
-                    "multilingual_ipa": False,
                     "features": default_features,
                 }
             else:
@@ -377,9 +373,23 @@ class AcousticModel(Archive):
                 self._meta["other_noise_phone"] = "sp"
             if "phone_set_type" not in self._meta:
                 self._meta["phone_set_type"] = "UNKNOWN"
-            if "base_phone_regex" not in self._meta:
-                self._meta["base_phone_regex"] = None
             self._meta["phones"] = set(self._meta.get("phones", []))
+            if (
+                "uses_speaker_adaptation" not in self._meta["features"]
+                or not self._meta["features"]["uses_speaker_adaptation"]
+            ):
+                self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
+                    os.path.join(self.dirname, "final.alimdl")
+                )
+            if (
+                "uses_splices" not in self._meta["features"]
+                or not self._meta["features"]["uses_splices"]
+            ):
+                self._meta["features"]["uses_splices"] = os.path.exists(
+                    os.path.join(self.dirname, "lda.mat")
+                )
+                if self._meta["features"]["uses_splices"]:
+                    self._meta["features"]["uses_deltas"] = False
         self.parse_old_features()
         return self._meta
 
@@ -416,9 +426,6 @@ class AcousticModel(Archive):
         else:
             configuration_data["Acoustic model"]["data"]["Phones"] = ("None found!", "red")
 
-        configuration_data["Acoustic model"]["data"]["Configuration options"] = {
-            "Multilingual IPA": self.meta["multilingual_ipa"],
-        }
         printer.print_config(configuration_data)
 
     def add_model(self, source: str) -> None:
@@ -563,44 +570,40 @@ class G2PModel(Archive):
 
         super().__init__(source, root_directory)
 
-    def add_meta_file(
-        self, dictionary: PronunciationDictionaryMixin, architecture: Optional[str] = None
-    ) -> None:
+    def add_meta_file(self, g2p_trainer: G2PTrainer) -> None:
         """
-        Construct meta data information for the G2P model from the dictionary it was trained from
+        Construct metadata information for the G2P model from the dictionary it was trained from
 
         Parameters
         ----------
-        dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
-            Pronunciation dictionary that was the training data for the G2P model
-        architecture: str, optional
-            Architecture of the G2P model, defaults to "pynini"
+        g2p_trainer: :class:`~montreal_forced_aligner.g2p.trainer.G2PTrainer`
+            Trainer for the G2P model
         """
-        from .utils import get_mfa_version
 
-        if architecture is None:
-            architecture = "pynini"
-        with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
-            meta = {
-                "phones": sorted(dictionary.non_silence_phones),
-                "graphemes": sorted(dictionary.graphemes),
-                "architecture": architecture,
-                "version": get_mfa_version(),
-            }
-            yaml.dump(meta, f)
+        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+            json.dump(g2p_trainer.meta, f, default=set_default)
 
     @property
     def meta(self) -> dict:
         """Metadata for the G2P model"""
         if not self._meta:
-            meta_path = os.path.join(self.dirname, "meta.yaml")
+            meta_path = os.path.join(self.dirname, "meta.json")
+            format = "json"
+            if not os.path.exists(meta_path):
+                meta_path = os.path.join(self.dirname, "meta.yaml")
+                format = "yaml"
             if not os.path.exists(meta_path):
                 self._meta = {"version": "0.9.0", "architecture": "phonetisaurus"}
             else:
                 with open(meta_path, "r", encoding="utf8") as f:
-                    self._meta = yaml.safe_load(f)
+                    if format == "json":
+                        self._meta = json.load(f)
+                    else:
+                        self._meta = yaml.safe_load(f)
             self._meta["phones"] = set(self._meta.get("phones", []))
             self._meta["graphemes"] = set(self._meta.get("graphemes", []))
+            self._meta["evaluation"] = self._meta.get("evaluation", [])
+            self._meta["training"] = self._meta.get("training", [])
         return self._meta
 
     @property
@@ -668,10 +671,6 @@ class G2PModel(Archive):
             graphemes.update(w)
         missing_graphemes = graphemes - self.meta["graphemes"]
         if missing_graphemes:
-            print(
-                "WARNING! The following graphemes were not found in the specified G2P model: "
-                f"{' '.join(sorted(missing_graphemes))}"
-            )
             return False
         else:
             return True
@@ -766,7 +765,7 @@ class DictionaryModel(MfaModel):
     ----------
     path: str
         Path to the dictionary file
-    working_directory: str, optional
+    root_directory: str, optional
         Path to working directory (currently not needed, but present to maintain consistency with other MFA Models
     """
 
@@ -775,36 +774,70 @@ class DictionaryModel(MfaModel):
     extensions = [".dict", ".txt", ".yaml", ".yml"]
 
     def __init__(
-        self, path: str, working_directory: Optional[str] = None, detect_phone_set: bool = True
+        self,
+        path: str,
+        root_directory: Optional[str] = None,
+        phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
     ):
         if path in DictionaryModel.get_available_models():
             path = DictionaryModel.get_pretrained_path(path)
+
+        if root_directory is None:
+            from montreal_forced_aligner.config import get_temporary_directory
+
+            root_directory = get_temporary_directory()
         self.path = path
+        self.dirname = os.path.join(root_directory, self.name)
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
-        self.phone_set_type = "UNKNOWN"
-        self.phones = set()
-        self.graphemes = set()
-        arpa_detect = re.compile(r"^[A-Z]{2}\d$")
-        ipa_detect = re.compile(r"[əɚʊɤʁ˥˩ɹʉɒʃɕŋʰ̚ʲɾ]")
+        if not isinstance(phone_set_type, PhoneSetType):
+            phone_set_type = PhoneSetType[phone_set_type]
+        self.phone_set_type = phone_set_type
+        detect_phone_set = False
+        if self.phone_set_type == PhoneSetType.AUTO:
+            detect_phone_set = True
+
+        patterns = {
+            PhoneSetType.ARPA: PhoneSetType.ARPA.regex_detect,
+            PhoneSetType.IPA: PhoneSetType.IPA.regex_detect,
+            PhoneSetType.PINYIN: PhoneSetType.PINYIN.regex_detect,
+        }
+        counts = {
+            PhoneSetType.UNKNOWN: 0,
+            PhoneSetType.ARPA: 0,
+            PhoneSetType.IPA: 0,
+            PhoneSetType.PINYIN: 0,
+        }
+
+        count = 0
         with open(self.path, "r", encoding="utf8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                line = line.split()
                 if detect_phone_set:
-                    for phone in line:
-                        m = arpa_detect.match(phone)
-                        if m:
-                            self.phone_set_type = "ARPA"
-                        m = ipa_detect.search(phone)
-                        if m:
-                            self.phone_set_type = "IPA"
+                    for phone_set, pattern in patterns.items():
+                        if pattern.search(line):
+                            counts[phone_set] += 1
 
-                word = line.pop(0)  # word
-                next_item = line.pop(0)
-                self.graphemes.update(word)
+                            break
+                    else:
+                        counts[PhoneSetType.UNKNOWN] += 1
+                        continue
+                    if counts[phone_set] > 100:
+                        other_sets_max = max(counts[x] for x in counts if x is not phone_set)
+                        if counts[phone_set] - other_sets_max >= 100:
+                            break
+                else:
+                    count += 1
+                    if count > 15:
+                        break
+                _, line = line.split(maxsplit=1)  # word
+                try:
+                    next_item, line = line.split(maxsplit=1)
+                except ValueError:
+                    next_item = line
+                    line = ""
                 if self.pronunciation_probabilities:
                     try:
                         prob = float(next_item)
@@ -812,12 +845,11 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.pronunciation_probabilities = False
-                        self.phones.add(next_item)
                 try:
-                    next_item = line.pop(0)
-                except IndexError:
+                    next_item, line = line.split(maxsplit=1)
+                except ValueError:
                     self.silence_probabilities = False
-                    self.phones.add(next_item)
+                    continue
                 if self.silence_probabilities:
                     try:
                         prob = float(next_item)
@@ -825,45 +857,16 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.silence_probabilities = False
-                        self.phones.add(next_item)
-                if not line:
-                    continue
-                self.phones.update(line)
-
-    @property
-    def base_phone_regex(self) -> Optional[str]:
-        if self.phone_set_type == "UNKNOWN":
-            return None
-        if self.phone_set_type == "ARPA":
-            return r"(\D+)"
-        if self.phone_set_type == "IPA":
-            return r"([^̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̂̋̏‿̆͜͡ˌˈ̣]+)"
-
-    @property
-    def extra_questions(self) -> Dict[str, list[str]]:
-        extra_questions = {}
-        if self.phone_set_type == "ARPA":
-            extra_questions["non_silence_arpa_questions"] = []
-            for p in sorted(self.phones):
-                extra_questions["non_silence_arpa_questions"].append(p)
-            # extra stress questions
-            for i in range(3):
-                extra_questions[f"stress_{i}"] = []
-                for p in sorted(self.phones):
-                    if str(i) not in p:
-                        continue
-                    extra_questions[f"stress_{i}"].append(p)
-        return extra_questions
+        if detect_phone_set:
+            self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
     @property
     def meta(self) -> MetaDict:
         """Metadata for the dictionary"""
         return {
             "phone_set_type": self.phone_set_type,
-            "base_phone_regex": self.base_phone_regex,
             "pronunciation_probabilities": self.pronunciation_probabilities,
             "silence_probabilities": self.silence_probabilities,
-            "phones": self.phones,
         }
 
     def add_meta_file(self, trainer: ModelExporterMixin) -> None:
@@ -872,10 +875,28 @@ class DictionaryModel(MfaModel):
 
     def pretty_print(self):
         """
-        Pretty print the dictionary's meta data using TerminalPrinter
+        Pretty print the dictionary's metadata using TerminalPrinter
         """
+        from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+
         printer = TerminalPrinter()
         configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
+        dictionary = PronunciationDictionary(
+            self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
+        )
+        configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
+        if self.phone_set_type.has_base_phone_regex:
+            configuration_data["Dictionary"]["data"]["base_phones"] = {
+                k: sorted(v) for k, v in sorted(dictionary.base_phones.items())
+            }
+        else:
+            configuration_data["Dictionary"]["data"]["base_phones"] = "None"
+        if len(dictionary.graphemes) < 50:
+            configuration_data["Dictionary"]["data"]["graphemes"] = sorted(dictionary.graphemes)
+        else:
+            configuration_data["Dictionary"]["data"][
+                "graphemes"
+            ] = f"{len(dictionary.graphemes)} graphemes"
         printer.print_config(configuration_data)
 
     @classmethod

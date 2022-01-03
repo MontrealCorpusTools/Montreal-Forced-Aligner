@@ -5,16 +5,18 @@ Abstract Base Classes
 
 from __future__ import annotations
 
+import abc
 import logging
 import os
 import shutil
 import sys
 import time
-from abc import ABC, ABCMeta, abstractmethod
+import typing
 from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
     List,
     Optional,
     Set,
@@ -51,11 +53,12 @@ __all__ = [
     "OneToManyMappingType",
     "CorpusMappingType",
     "ScpType",
+    "KaldiFunction",
 ]
 
 # Configuration types
 MetaDict = Dict[str, Any]
-Labels: List[Any]
+Labels: Iterable[Any]
 CtmErrorDict: Dict[Tuple[str, int], str]
 
 # Dictionary types
@@ -72,7 +75,32 @@ CorpusMappingType: Union[OneToOneMappingType, OneToManyMappingType]
 ScpType: Union[List[Tuple[str, str]], List[Tuple[str, List[Any]]]]
 
 
-class TemporaryDirectoryMixin(metaclass=ABCMeta):
+class KaldiFunction(metaclass=abc.ABCMeta):
+    """
+    Abstract class for running Kaldi functions
+    """
+
+    @abc.abstractmethod
+    def __init__(self, args: typing.NamedTuple):
+        ...
+
+    @abc.abstractmethod
+    def run(self):
+        ...
+
+
+class MfaCorpusClass(metaclass=abc.ABCMeta):
+    """
+    Abstract class for MFA corpus classes
+    """
+
+    @property
+    @abc.abstractmethod
+    def name(self) -> str:
+        ...
+
+
+class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
     """
     Abstract mixin class for MFA temporary directories
 
@@ -93,21 +121,24 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
 
             temporary_directory = get_temporary_directory()
         self.temporary_directory = temporary_directory
+        self._corpus_output_directory = None
+        self._dictionary_output_directory = None
+        self._language_model_output_directory = None
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def identifier(self) -> str:
         """Identifier to use in creating the temporary directory"""
         ...
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def data_source_identifier(self) -> str:
         """Identifier for the data source (generally the corpus being used)"""
         ...
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def output_directory(self) -> str:
         """Root temporary directory"""
         ...
@@ -115,15 +146,38 @@ class TemporaryDirectoryMixin(metaclass=ABCMeta):
     @property
     def corpus_output_directory(self) -> str:
         """Temporary directory containing all corpus information"""
+        if self._corpus_output_directory:
+            return self._corpus_output_directory
         return os.path.join(self.output_directory, f"{self.data_source_identifier}")
+
+    @corpus_output_directory.setter
+    def corpus_output_directory(self, directory: str) -> None:
+        self._corpus_output_director = directory
 
     @property
     def dictionary_output_directory(self) -> str:
         """Temporary directory containing all dictionary information"""
+        if self._dictionary_output_directory:
+            return self._dictionary_output_directory
         return os.path.join(self.output_directory, "dictionary")
 
+    @dictionary_output_directory.setter
+    def dictionary_output_directory(self, directory: str) -> None:
+        self._dictionary_output_directory = directory
 
-class MfaWorker(metaclass=ABCMeta):
+    @property
+    def language_model_output_directory(self) -> str:
+        """Temporary directory containing all dictionary information"""
+        if self._language_model_output_directory:
+            return self._language_model_output_directory
+        return os.path.join(self.output_directory, "language_model")
+
+    @language_model_output_directory.setter
+    def language_model_output_directory(self, directory: str) -> None:
+        self._language_model_output_directory = directory
+
+
+class MfaWorker(metaclass=abc.ABCMeta):
     """
     Abstract class for MFA workers
 
@@ -277,7 +331,7 @@ class MfaWorker(metaclass=ABCMeta):
         }
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def working_directory(self) -> str:
         """Current working directory"""
         ...
@@ -288,13 +342,13 @@ class MfaWorker(metaclass=ABCMeta):
         return os.path.join(self.working_directory, "log")
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def data_directory(self) -> str:
         """Data directory"""
         ...
 
 
-class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
+class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     """
     Abstract mixin for top-level workers in MFA.  This class holds properties about the larger workflow run.
 
@@ -329,7 +383,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             handler.close()
             self.logger.removeHandler(handler)
 
-    @abstractmethod
+    @abc.abstractmethod
     def setup(self) -> None:
         """Abstract method for setting up a top-level worker"""
         ...
@@ -381,7 +435,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 if param_type == bool:
                     if unknown_dict[name].lower() == "false":
                         params[name] = False
-        if getattr(args, "disable_mp", "False"):
+        if getattr(args, "disable_mp", False):
             params["use_mp"] = False
         elif getattr(args, "disable_textgrid_cleanup", False):
             params["cleanup_textgrids"] = False
@@ -416,12 +470,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             with open(config_path, "r", encoding="utf8") as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
                 for k, v in data.items():
+                    if v is None and k in {"punctuation", "compound_markers", "clitic_markers"}:
+                        v = []
                     global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def workflow_identifier(self) -> str:
         """Identifier of the worker's workflow"""
         ...
@@ -579,6 +635,13 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             handler.setLevel(logging.INFO)
         handler.setFormatter(CustomFormatter())
         self.logger.addHandler(handler)
+        self.logger.debug(
+            f"Beginning run for {self.workflow_identifier} on {self.data_source_identifier}"
+        )
+        if self.use_mp:
+            self.logger.debug(f"Using multiprocessing with {self.num_jobs}")
+        else:
+            self.logger.debug(f"NOT using multiprocessing with {self.num_jobs}")
         self.logger.debug(f"Set up logger for MFA version: {current_version}")
         if self.clean:
             self.logger.debug("Cleaned previous run")
@@ -628,7 +691,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.logger.error(message)
 
 
-class ModelExporterMixin(metaclass=ABCMeta):
+class ModelExporterMixin(metaclass=abc.ABCMeta):
     """
     Abstract mixin class for exporting MFA models
 
@@ -643,12 +706,12 @@ class ModelExporterMixin(metaclass=ABCMeta):
         super().__init__(**kwargs)
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def meta(self) -> MetaDict:
         """Training configuration parameters"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def export_model(self, output_model_path: str) -> None:
         """
         Abstract method to export an MFA model
@@ -661,7 +724,7 @@ class ModelExporterMixin(metaclass=ABCMeta):
         ...
 
 
-class FileExporterMixin(metaclass=ABCMeta):
+class FileExporterMixin(metaclass=abc.ABCMeta):
     """
     Abstract mixin class for exporting TextGrid and text files
 
@@ -684,7 +747,7 @@ class FileExporterMixin(metaclass=ABCMeta):
             return None
         return os.path.join(self.working_directory, "backup")
 
-    @abstractmethod
+    @abc.abstractmethod
     def export_files(self, output_directory: str) -> None:
         """
         Export files to an output directory
@@ -717,22 +780,22 @@ class TrainerMixin(ModelExporterMixin):
         self.iteration: int = 0
         self.num_iterations = num_iterations
 
-    @abstractmethod
+    @abc.abstractmethod
     def initialize_training(self) -> None:
         """Initialize training"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def train(self) -> None:
         """Perform training"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def train_iteration(self) -> None:
         """Run one training iteration"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def finalize_training(self) -> None:
         """Finalize training"""
         ...
@@ -743,13 +806,13 @@ class AdapterMixin(ModelExporterMixin):
     Abstract class for MFA model adaptation
     """
 
-    @abstractmethod
+    @abc.abstractmethod
     def adapt(self) -> None:
         """Perform adaptation"""
         ...
 
 
-class MfaModel(ABC):
+class MfaModel(abc.ABC):
     """Abstract class for MFA models"""
 
     extensions: List[str]
@@ -799,28 +862,28 @@ class MfaModel(ABC):
         return cls.generate_path(cls.pretrained_directory(), name, enforce_existence)
 
     @classmethod
-    @abstractmethod
+    @abc.abstractmethod
     def valid_extension(cls, filename: str) -> bool:
         """Check whether a file has a valid extensions"""
         ...
 
     @classmethod
-    @abstractmethod
+    @abc.abstractmethod
     def generate_path(cls, root: str, name: str, enforce_existence: bool = True) -> Optional[str]:
         """Generate a path from a root directory"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def pretty_print(self) -> None:
         """Print the model's meta data"""
         ...
 
     @property
-    @abstractmethod
+    @abc.abstractmethod
     def meta(self) -> MetaDict:
         """Meta data for the model"""
         ...
 
-    @abstractmethod
+    @abc.abstractmethod
     def add_meta_file(self, trainer: TrainerMixin) -> None:
         """Add meta data to the model"""

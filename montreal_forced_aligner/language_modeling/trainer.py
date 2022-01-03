@@ -75,7 +75,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
     @property
     def medium_arpa_path(self) -> str:
         """Internal temporary path to the medium arpa file"""
-        return self.large_arpa_path.replace(".arpa", "_med.arpa")
+        return self.large_arpa_path.replace(".arpa", "_medium.arpa")
 
     @property
     def small_arpa_path(self) -> str:
@@ -247,7 +247,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
                 ],
                 stdout=subprocess.PIPE,
                 stderr=log_file,
-                text=True,
+                encoding="utf8",
             )
             stdout, stderr = perplexity_proc.communicate()
             num_sentences = None
@@ -280,7 +280,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
                 ],
                 stdout=subprocess.PIPE,
                 stderr=log_file,
-                text=True,
+                encoding="utf8",
             )
             stdout, stderr = perplexity_proc.communicate()
 
@@ -299,7 +299,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
                 ],
                 stdout=subprocess.PIPE,
                 stderr=log_file,
-                text=True,
+                encoding="utf8",
             )
             stdout, stderr = perplexity_proc.communicate()
 
@@ -403,8 +403,9 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         For top-level parsing parameters
     """
 
-    def __init__(self, arpa_path: str, **kwargs):
+    def __init__(self, arpa_path: str, keep_case: bool = False, **kwargs):
         self.arpa_path = arpa_path
+        self.keep_case = keep_case
         super().__init__(**kwargs)
 
     def setup(self) -> None:
@@ -414,7 +415,9 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
             self.large_arpa_path, "w", encoding="utf8"
         ) as outf:
             for line in inf:
-                outf.write(line.lower())
+                if not self.keep_case:
+                    line = line.lower()
+                outf.write(line)
         self.initialized = True
 
     @property
@@ -436,7 +439,13 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
     def train(self) -> None:
         """Convert the arpa model to MFA format"""
         self.log_info("Parsing large ngram model...")
-        subprocess.call(["ngramread", "--ARPA", self.large_arpa_path, self.mod_path])
+
+        with open(
+            os.path.join(self.working_log_directory, "read.log"), "w", encoding="utf8"
+        ) as log_file:
+            subprocess.call(
+                ["ngramread", "--ARPA", self.large_arpa_path, self.mod_path], stderr=log_file
+            )
 
         self.log_info("Large ngam model parsed!")
 

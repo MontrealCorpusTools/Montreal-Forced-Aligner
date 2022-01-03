@@ -5,29 +5,21 @@ from __future__ import annotations
 import abc
 import os
 import re
+import typing
 from collections import Counter
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import TemporaryDirectoryMixin
-from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.data import PhoneSetType
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import (
-        DictionaryEntryType,
-        MappingType,
-        MetaDict,
-        ReversedMappingType,
-        WordsType,
-    )
+    from montreal_forced_aligner.abc import MetaDict, ReversedMappingType
 
-DEFAULT_PUNCTUATION = list(r'、。।，@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
+DEFAULT_PUNCTUATION = list(r'、。।，？@<>"(),.:;¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
 DEFAULT_CLITIC_MARKERS = list("'’")
 DEFAULT_COMPOUND_MARKERS = list("-/")
-DEFAULT_STRIP_DIACRITICS = ["ː", "ˑ", "̩", "̆", "̑", "̯", "͡", "‿", "͜"]
-DEFAULT_DIGRAPHS = ["[dt][szʒʃʐʑʂɕç]", "[aoɔe][ʊɪ]"]
-DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")")]
+DEFAULT_BRACKETS = [("[", "]"), ("{", "}"), ("<", ">"), ("(", ")"), ("＜", "＞")]
 
 __all__ = ["SanitizeFunction", "DictionaryMixin"]
 
@@ -101,43 +93,43 @@ class SplitWordsFunction:
 
     def __init__(
         self,
-        punctuation: List[str],
         clitic_markers: List[str],
         compound_markers: List[str],
-        brackets: List[Tuple[str, str]],
         clitic_set: Set[str],
         word_set: Optional[Set[str]] = None,
     ):
-        self.punctuation = punctuation
         self.clitic_markers = clitic_markers
         self.compound_markers = compound_markers
-        self.brackets = brackets
-        self.sanitize_function = SanitizeFunction(
-            punctuation, clitic_markers, compound_markers, brackets
-        )
         self.clitic_set = clitic_set
         if not word_set:
             word_set = None
         self.word_set = word_set
-        self.compound_pattern = re.compile(rf"[{re.escape(''.join(self.compound_markers))}]")
-        initial_clitics = sorted(
-            x for x in self.clitic_set if any(x.endswith(y) for y in self.clitic_markers)
-        )
-        final_clitics = sorted(
-            x for x in self.clitic_set if any(x.startswith(y) for y in self.clitic_markers)
-        )
-        optional_initial_groups = f"({'|'.join(initial_clitics)})?" * 4
-        optional_final_groups = f"({'|'.join(final_clitics)})?" * 4
+        self.compound_pattern = None
+        self.clitic_pattern = None
+        self.initial_clitic_pattern = None
+        self.final_clitic_pattern = None
+        if self.compound_markers:
+            self.compound_pattern = re.compile(rf"[{re.escape(''.join(self.compound_markers))}]")
+        initial_clitics = sorted(x for x in self.clitic_set if x.endswith(self.clitic_markers[0]))
+        final_clitics = sorted(x for x in self.clitic_set if x.startswith(self.clitic_markers[0]))
+        if initial_clitics:
+            groups = f"({'|'.join(initial_clitics)})?" * 4
+            self.initial_clitic_pattern = re.compile(rf"^{groups}$")
+        if final_clitics:
+            groups = f"({'|'.join(final_clitics)})?" * 4
+            self.final_clitic_pattern = re.compile(rf"^{groups}$")
         if initial_clitics and final_clitics:
             self.clitic_pattern = re.compile(
-                rf"^(?:(?:{optional_initial_groups}(.+?))|(?:(.+?){optional_final_groups}))$"
+                rf"^(?P<initial>({'|'.join(initial_clitics)})*)(?P<word>.+?)(?P<final>({'|'.join(final_clitics)})*)$"
             )
         elif initial_clitics:
-            self.clitic_pattern = re.compile(rf"^(?:(?:{optional_initial_groups}(.+?))|(.+))$")
+            self.clitic_pattern = re.compile(
+                rf"^(?P<initial>({'|'.join(initial_clitics)})*)(?P<word>.+?)$"
+            )
         elif final_clitics:
-            self.clitic_pattern = re.compile(rf"^(?:(.+)|(?:(.+?){optional_final_groups}))$")
-        else:
-            self.clitic_pattern = None
+            self.clitic_pattern = re.compile(
+                rf"^(?P<word>.+?)(?P<final>({'|'.join(final_clitics)})*)$"
+            )
 
     def split_clitics(
         self,
@@ -159,20 +151,37 @@ class SplitWordsFunction:
         if self.word_set is not None and item in self.word_set:
             return [item]
         split = []
-        s = re.split(self.compound_pattern, item)
+        if self.compound_pattern:
+            s = re.split(self.compound_pattern, item)
+        else:
+            s = [item]
         for seg in s:
-            if self.clitic_pattern is None:
+            if self.clitic_pattern is None or self.clitic_markers[0] not in seg:
                 split.append(seg)
                 continue
 
             m = re.match(self.clitic_pattern, seg)
             if not m:
-                split.append(seg)
                 continue
-            for g in m.groups():
-                if g is None:
-                    continue
-                split.append(g)
+            try:
+                if m.group("initial"):
+                    for clitic in self.initial_clitic_pattern.match(m.group("initial")).groups():
+                        if clitic is None:
+                            continue
+                        split.append(clitic)
+            except IndexError:
+                pass
+            split.append(m.group("word"))
+            try:
+                if m.group("final"):
+                    for clitic in self.final_clitic_pattern.match(m.group("final")).groups():
+                        if clitic is None:
+                            continue
+                        split.append(clitic)
+            except IndexError:
+                pass
+        if not any(x in self.word_set for x in split):
+            return [item]
         return split
 
     def __call__(
@@ -195,10 +204,7 @@ class SplitWordsFunction:
         """
         if self.word_set is not None and item in self.word_set:
             return [item]
-        sanitized = self.sanitize_function(item)
-        if self.word_set is not None and sanitized in self.word_set:
-            return [sanitized]
-        split = self.split_clitics(sanitized)
+        split = self.split_clitics(item)
         if self.word_set is None:
             return split
         oov_count = sum(1 for x in split if x not in self.word_set)
@@ -206,7 +212,7 @@ class SplitWordsFunction:
             split
         ):  # Only returned split item if it gains us any transcribed speech
             return split
-        return [sanitized]
+        return [item]
 
 
 class DictionaryMixin:
@@ -235,12 +241,6 @@ class DictionaryMixin:
         Clitic markers to use when parsing text
     compound_markers: str, optional
         Compound markers to use when parsing text
-    multilingual_ipa: bool
-        Flag for multilingual IPA mode, defaults to False
-    strip_diacritics: list[str], optional
-        Diacritics to strip in multilingual IPA mode
-    digraphs: list[str], optional
-        Digraphs to split up in multilingual IPA mode
     brackets: list[tuple[str, str], optional
         Character tuples to treat as full brackets around words
     clitic_set: set[str]
@@ -270,27 +270,19 @@ class DictionaryMixin:
         punctuation: List[str] = None,
         clitic_markers: List[str] = None,
         compound_markers: List[str] = None,
-        multilingual_ipa: bool = False,
-        strip_diacritics: List[str] = None,
-        digraphs: List[str] = None,
         brackets: List[Tuple[str, str]] = None,
         non_silence_phones: Set[str] = None,
         disambiguation_symbols: Set[str] = None,
         clitic_set: Set[str] = None,
         max_disambiguation_symbol: int = 0,
+        phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.strip_diacritics = DEFAULT_STRIP_DIACRITICS
-        self.digraphs = DEFAULT_DIGRAPHS
         self.punctuation = DEFAULT_PUNCTUATION
         self.clitic_markers = DEFAULT_CLITIC_MARKERS
         self.compound_markers = DEFAULT_COMPOUND_MARKERS
         self.brackets = DEFAULT_BRACKETS
-        if strip_diacritics is not None:
-            self.strip_diacritics = strip_diacritics
-        if digraphs is not None:
-            self.digraphs = digraphs
         if punctuation is not None:
             self.punctuation = punctuation
         if clitic_markers is not None:
@@ -300,7 +292,6 @@ class DictionaryMixin:
         if brackets is not None:
             self.brackets = brackets
 
-        self.multilingual_ipa = multilingual_ipa
         self.num_silence_states = num_silence_states
         self.num_noise_states = num_noise_states
         self.num_non_silence_states = num_non_silence_states
@@ -326,39 +317,69 @@ class DictionaryMixin:
         if clitic_set is None:
             clitic_set = set()
         self.clitic_set = clitic_set
+        if not isinstance(phone_set_type, PhoneSetType):
+            phone_set_type = PhoneSetType[phone_set_type]
+        self.phone_set_type = phone_set_type
 
     @property
-    def base_phone_regex(self) -> Optional[str]:
-        """Regex pattern for extracting a base phone for the phone set"""
-        return None
+    def base_phones(self) -> Dict[str, Set[str]]:
+        base_phones = {}
+        for p in self.non_silence_phones:
+            b = self.phone_set_type.get_base_phone(p)
+            if b not in base_phones:
+                base_phones[b] = set()
+            base_phones[b].add(p)
 
-    @property
-    def phone_set_type(self) -> str:
-        """Phone set type, defaults to 'UNKNOWN', currently only 'ARPA' is supported"""
-        return "UNKNOWN"
+        return base_phones
 
     @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
+        """Mapping of extra questions for the given phone set type"""
         mapping = {}
         mapping["silence_question"] = []
         for p in sorted(self.silence_phones):
             mapping["silence_question"].append(p)
             if self.position_dependent_phones:
                 mapping["silence_question"].extend([p + x for x in self.positions])
-        if self.phone_set_type == "ARPA":
-            mapping["non_silence_arpa_questions"] = []
-            for p in self.kaldi_grouped_phones.keys():
+        for k, v in self.phone_set_type.extra_questions.items():
+            if k not in mapping:
+                mapping[k] = []
+            if self.phone_set_type is PhoneSetType.ARPA:
                 if self.position_dependent_phones:
-                    mapping["non_silence_arpa_questions"].extend([p + x for x in self.positions])
+                    for x in sorted(v):
+                        mapping[k].extend([x + pos for pos in self.positions])
                 else:
-                    mapping["non_silence_arpa_questions"].append(p)
-            # extra stress questions
-            for i in range(3):
-                mapping[f"stress_{i}"] = []
-                for p in self.kaldi_non_silence_phones:
-                    if str(i) not in p:
-                        continue
-                    mapping[f"stress_{i}"].append(p)
+                    mapping[k] = sorted(v)
+            elif self.phone_set_type == PhoneSetType.IPA:
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v:
+                        filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    del mapping[k]
+                    continue
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                filtered_v = set()
+                for x in self.non_silence_phones:
+                    base_phone = self.phone_set_type.get_base_phone(x)
+                    if base_phone in v or x in v:
+                        filtered_v.add(x)
+                    elif x in v:
+                        filtered_v.add(x)
+                if len(filtered_v) < 2:
+                    del mapping[k]
+                    continue
+                if self.position_dependent_phones:
+                    for x in sorted(filtered_v):
+                        mapping[k].extend([x + pos for pos in self.positions])
+                else:
+                    mapping[k] = sorted(filtered_v)
         if self.position_dependent_phones:
             phones = sorted(self.non_silence_phones)
             for pos in self.positions:
@@ -372,14 +393,11 @@ class DictionaryMixin:
     def dictionary_options(self) -> MetaDict:
         """Dictionary options"""
         return {
-            "strip_diacritics": self.strip_diacritics,
-            "digraphs": self.digraphs,
             "punctuation": self.punctuation,
             "clitic_markers": self.clitic_markers,
             "clitic_set": self.clitic_set,
             "compound_markers": self.compound_markers,
             "brackets": self.brackets,
-            "multilingual_ipa": self.multilingual_ipa,
             "num_silence_states": self.num_silence_states,
             "num_non_silence_states": self.num_non_silence_states,
             "shared_silence_phones": self.shared_silence_phones,
@@ -393,6 +411,7 @@ class DictionaryMixin:
             "non_silence_phones": self.non_silence_phones,
             "max_disambiguation_symbol": self.max_disambiguation_symbol,
             "disambiguation_symbols": self.disambiguation_symbols,
+            "phone_set_type": str(self.phone_set_type),
         }
 
     @property
@@ -406,6 +425,7 @@ class DictionaryMixin:
 
     @property
     def context_independent_csl(self):
+        """Context independent colon-separated list"""
         return ":".join(str(self.phone_mapping[x]) for x in self.silence_phones)
 
     @property
@@ -434,6 +454,16 @@ class DictionaryMixin:
         return phone_mapping
 
     @property
+    def reversed_phone_mapping(self) -> ReversedMappingType:
+        """
+        A mapping of integer ids to phones
+        """
+        mapping = {}
+        for k, v in self.phone_mapping.items():
+            mapping[v] = k
+        return mapping
+
+    @property
     def positional_silence_phones(self) -> List[str]:
         """
         List of silence phones with positions
@@ -445,69 +475,143 @@ class DictionaryMixin:
                 silence_phones.append(p + pos)
         return silence_phones
 
+    def _generate_positional_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate positional list for phones along with any base phones for the phone set
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of positional phones, sorted by base phone
+        """
+        positional_phones = []
+        for p in sorted(phones):
+            if p not in self.non_silence_phones:
+                continue
+            base_phone = self.phone_set_type.get_base_phone(p)
+            for pos in self.positions:
+                pos_p = base_phone + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
+            for pos in self.positions:
+                pos_p = p + pos
+                if pos_p not in positional_phones:
+                    positional_phones.append(pos_p)
+        return positional_phones
+
+    def _generate_non_positional_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate non-positional list for phones with any base phones for the phone set
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of non-positional phones, sorted by base phone
+        """
+        base_phones = set()
+        for p in phones:
+            base_phone = self.phone_set_type.get_base_phone(p)
+            base_phones.add(base_phone)
+
+        return sorted(phones | base_phones)
+
+    def _generate_phone_list(self, phones: Set[str]) -> List[str]:
+        """
+        Helper function to generate phone list
+
+        Parameters
+        ----------
+        phones: set[str]
+            Set of phones
+
+        Returns
+        -------
+        list[str]
+            List of positional or non-positional phones, sorted by base phone
+        """
+        if self.position_dependent_phones:
+            return self._generate_positional_list(phones)
+        return self._generate_non_positional_list(phones)
+
     @property
     def positional_non_silence_phones(self) -> List[str]:
         """
         List of non-silence phones with positions
         """
-        non_silence_phones = []
-        for p in sorted(self.non_silence_phones):
-            if self.phone_set_type == "ARPA":
-                m = re.match(self.base_phone_regex, p)
-                if m:
-                    base_phone = m.group(0)
-                    for pos in self.positions:
-                        pos_p = base_phone + pos
-                        if pos_p not in non_silence_phones:
-                            non_silence_phones.append(pos_p)
-            for pos in self.positions:
-                pos_p = p + pos
-                if pos_p not in non_silence_phones:
-                    non_silence_phones.append(pos_p)
-        return non_silence_phones
+        return self._generate_positional_list(self.non_silence_phones)
 
     @property
     def kaldi_non_silence_phones(self):
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_non_silence_phones
-        base_phones = set()
-        if self.phone_set_type == "ARPA":
-            for p in self.non_silence_phones:
-                m = re.match(self.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                    base_phones.add(base_phone)
+        return self._generate_non_positional_list(self.non_silence_phones)
 
-        return sorted(self.non_silence_phones | base_phones)
+    @property
+    def kaldi_phones_for_topo(self):
+        """Mappings of phones for generating topo file"""
+        mapping = {}
+        for p in sorted(self.non_silence_phones):
+            base_phone = self.phone_set_type.get_base_phone(p)
+            query_set = {p, base_phone}
+            if any(x in self.phone_set_type.extra_short_phones for x in query_set):
+                num_states = 1  # One state for extra short sounds
+            elif any(x in self.phone_set_type.diphthong_phones for x in query_set):
+                num_states = 5  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif any(x in self.phone_set_type.triphthong_phones for x in query_set):
+                num_states = 6  # 5 states for diphthongs (onset of first target, steady state,
+                # transition to next target, steady state, offset of second target)
+            elif any(x in self.phone_set_type.affricate_phones for x in query_set):
+                num_states = 4  # 4 states for affricates (closure, burst, onset of frication, offset of frication)
+            elif any(x in self.phone_set_type.stop_phones for x in query_set):
+                num_states = 2  # Two states for stops (closure, burst), extra states added below for aspirated, ejectives
+            else:
+                num_states = self.num_non_silence_states
+            if self.phone_set_type is PhoneSetType.IPA:
+                if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
+                    num_states += 1
+            elif self.phone_set_type is PhoneSetType.PINYIN:
+                if p in {"c", "ch", "q"}:
+                    num_states += 1
+            if num_states not in mapping:
+                mapping[num_states] = []
+            mapping[num_states].extend(
+                [x for x in self._generate_phone_list({p}) if x not in mapping[num_states]]
+            )
+        if self.phone_set_type is PhoneSetType.ARPA:
+            mapping[1] = [x for x in mapping[1] if "0" in x]
+        return mapping
 
     @property
     def kaldi_grouped_phones(self) -> Dict[str, List[str]]:
         """Non silence phones in Kaldi format"""
         groups = {}
         for p in sorted(self.non_silence_phones):
-            if self.phone_set_type == "ARPA":
-                m = re.match(self.base_phone_regex, p)
-                if m:
-                    base_phone = m.groups()[0]
-                    if base_phone not in groups:
-                        groups[base_phone] = []
-                        if self.position_dependent_phones:
-                            groups[base_phone] = [base_phone + pos for pos in self.positions]
-                        else:
-                            groups[base_phone] = [base_phone]
-                    if base_phone == p:
-                        continue
-                    if self.position_dependent_phones:
-                        groups[base_phone].extend([p + pos for pos in self.positions])
-                    else:
-                        groups[base_phone].append(p)
-            else:
-                if self.position_dependent_phones:
-                    groups[p] = [p + pos for pos in self.positions]
-                else:
-                    groups[p] = [p]
 
+            base_phone = self.phone_set_type.get_base_phone(p)
+            if base_phone not in groups:
+                if self.position_dependent_phones:
+                    groups[base_phone] = [base_phone + pos for pos in self.positions]
+                else:
+                    groups[base_phone] = [base_phone]
+            if self.position_dependent_phones:
+                groups[base_phone].extend(
+                    [p + pos for pos in self.positions if p + pos not in groups[base_phone]]
+                )
+            else:
+                if p not in groups[base_phone]:
+                    groups[base_phone].append(p)
         return groups
 
     @property
@@ -611,38 +715,6 @@ class DictionaryMixin:
         """
         return self.construct_sanitize_function()(item)
 
-    def parse_ipa(self, transcription: List[str]) -> Tuple[str, ...]:
-        """
-        Parse a transcription in a multilingual IPA format (strips out diacritics and splits digraphs).
-
-        Parameters
-        ----------
-        transcription: list[str]
-            Transcription to parse
-
-        Returns
-        -------
-        tuple[str, ...]
-            Parsed transcription
-        """
-        new_transcription = []
-        for t in transcription:
-            new_t = t
-            for d in self.strip_diacritics:
-                new_t = new_t.replace(d, "")
-            if "g" in new_t:
-                new_t = new_t.replace("g", "ɡ")
-
-            found = False
-            for digraph in self.digraphs:
-                if re.match(rf"^{digraph}$", new_t):
-                    found = True
-            if found:
-                new_transcription.extend(new_t)
-                continue
-            new_transcription.append(new_t)
-        return tuple(new_transcription)
-
 
 class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     def _write_word_boundaries(self) -> None:
@@ -678,62 +750,57 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
         """
         Write the topo file to the temporary directory
         """
-        topo_template = "<State> {cur_state} <PdfClass> {cur_state} <Transition> {cur_state} 0.75 <Transition> {next_state} 0.25 </State>"
-        topo_sil_template = "<State> {cur_state} <PdfClass> {cur_state} {transitions} </State>"
-        topo_transition_template = "<Transition> {} {}"
 
         sil_transp = 1 / (self.num_silence_states - 1)
-        initial_transition = [
-            topo_transition_template.format(x, sil_transp)
-            for x in range(self.num_silence_states - 1)
-        ]
-        middle_transition = [
-            topo_transition_template.format(x, sil_transp)
-            for x in range(1, self.num_silence_states)
-        ]
-        final_transition = [
-            topo_transition_template.format(self.num_silence_states - 1, 0.75),
-            topo_transition_template.format(self.num_silence_states, 0.25),
-        ]
-        states = []
-        for i in range(self.num_non_silence_states):
-            states.append(topo_template.format(cur_state=i, next_state=i + 1))
-        states.append(f"<State> {self.num_non_silence_states} </State>")
-        non_silence_state_string = "\n".join(states)
 
-        states = []
+        silence_lines = [
+            "<TopologyEntry>",
+            "<ForPhones>",
+            " ".join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones),
+            "</ForPhones>",
+        ]
         for i in range(self.num_silence_states):
-            if i == 0:
-                transition = " ".join(initial_transition)
-            elif i == self.num_silence_states - 1:
-                transition = " ".join(final_transition)
+            if i == 0:  # Initial silence state
+                transition_string = " ".join(
+                    f"<Transition> {x} {sil_transp}" for x in range(self.num_silence_states - 1)
+                )
+                silence_lines.append(f"<State> {i} <PdfClass> {i} {transition_string} </State>")
+            elif i < self.num_silence_states - 1:  # non-final silence states
+                transition_string = " ".join(
+                    f"<Transition> {x} {sil_transp}" for x in range(1, self.num_silence_states)
+                )
+                silence_lines.append(f"<State> {i} <PdfClass> {i} {transition_string} </State>")
             else:
-                transition = " ".join(middle_transition)
-            states.append(topo_sil_template.format(cur_state=i, transitions=transition))
-        states.append(f"<State> {self.num_silence_states} </State>")
-        silence_state_string = "\n".join(states)
+                silence_lines.append(
+                    f"<State> {i} <PdfClass> {i} <Transition> {i} 0.75 <Transition> {self.num_silence_states} 0.25 </State>"
+                )
+        silence_lines.append(f"<State> {self.num_silence_states} </State>")
+        silence_lines.append("</TopologyEntry>")
+        silence_topo_string = "\n".join(silence_lines)
+
+        topo_sections = [silence_topo_string]
+        topo_phones = self.kaldi_phones_for_topo
+        for num_states, phone_list in topo_phones.items():
+            non_silence_lines = [
+                "<TopologyEntry>",
+                "<ForPhones>",
+                " ".join(str(self.phone_mapping[x]) for x in phone_list),
+                "</ForPhones>",
+            ]
+            for i in range(num_states):
+                non_silence_lines.append(
+                    f"<State> {i} <PdfClass> {i} <Transition> {i} 0.75 <Transition> {i+1} 0.25 </State>"
+                )
+            non_silence_lines.append(f"<State> {num_states} </State>")
+            non_silence_lines.append("</TopologyEntry>")
+            non_silence_topo_string = "\n".join(non_silence_lines)
+            topo_sections.append(non_silence_topo_string)
 
         with open(self.topo_path, "w") as f:
-            f.write(
-                f"""
-            <Topology>
-            <TopologyEntry>
-            <ForPhones>
-            {' '.join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones)}
-            </ForPhones>
-            {silence_state_string}
-            </TopologyEntry>
-
-
-            <TopologyEntry>
-            <ForPhones>
-            {' '.join(str(self.phone_mapping[x]) for x in self.kaldi_non_silence_phones)}
-            </ForPhones>
-            {non_silence_state_string}
-            </TopologyEntry>
-            </Topology>
-            """
-            )
+            f.write("<Topology>\n")
+            for section in topo_sections:
+                f.write(section + "\n\n")
+            f.write("</Topology>\n")
 
     def _write_phone_sets(self) -> None:
         """
@@ -828,6 +895,8 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
             phone_extra_int, "w", encoding="utf8"
         ) as intf:
             for v in self.extra_questions_mapping.values():
+                if not v:
+                    continue
                 outf.write(f"{' '.join(v)}\n")
                 intf.write(f"{' '.join(str(self.phone_mapping[x]) for x in v)}\n")
         # error
@@ -844,275 +913,3 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
             for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
                 outf.write(f"{d}\n")
                 intf.write(f"{self.phone_mapping[d]}\n")
-
-
-@dataclass
-class DictionaryData:
-    """
-    Information required for parsing Kaldi-internal ids to text
-
-    Attributes
-    ----------
-    dictionary_options: dict[str, Any]
-        Options for the dictionary
-    sanitize_function: :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction`
-        Function to sanitize text
-    split_function: :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
-        Function to split words into subwords
-    words_mapping: MappingType
-        Mapping from words to their integer IDs
-    reversed_words_mapping: ReversedMappingType
-        Mapping from integer IDs to words
-    words: WordsType
-        Words and their associated pronunciations
-    """
-
-    dictionary_options: MetaDict
-    sanitize_function: SanitizeFunction
-    split_function: SplitWordsFunction
-    words_mapping: MappingType
-    reversed_words_mapping: ReversedMappingType
-    words: WordsType
-    lookup_cache: Dict[str, List[str]]
-
-    @property
-    def oov_word(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["oov_word"]
-
-    @property
-    def oov_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["oov_phone"]
-
-    @property
-    def other_noise_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["other_noise_phone"]
-
-    @property
-    def optional_silence_phone(self) -> str:
-        """Out of vocabulary code"""
-        return self.dictionary_options["optional_silence_phone"]
-
-    @property
-    def oov_int(self) -> int:
-        """Out of vocabulary integer ID"""
-        return self.words_mapping[self.oov_word]
-
-    @property
-    def compound_markers(self) -> List[str]:
-        """Characters that separate compound words"""
-        return self.dictionary_options["compound_markers"]
-
-    @property
-    def clitic_markers(self) -> List[str]:
-        """Characters that mark clitics"""
-        return self.dictionary_options["clitic_markers"]
-
-    @property
-    def clitic_set(self) -> Set[str]:
-        """Set of clitics"""
-        return self.dictionary_options["clitic_set"]
-
-    @property
-    def punctuation(self) -> List[str]:
-        """Characters to treat as punctuation"""
-        return self.dictionary_options["punctuation"]
-
-    @property
-    def strip_diacritics(self) -> List[str]:
-        """IPA diacritics to strip in multilingual IPA mode"""
-        return self.dictionary_options["strip_diacritics"]
-
-    @property
-    def multilingual_ipa(self) -> bool:
-        """Flag for multilingual IPA mode"""
-        return self.dictionary_options["multilingual_ipa"]
-
-    @property
-    def silence_phones(self) -> Set[str]:
-        """Silence phones"""
-        return {
-            self.dictionary_options["optional_silence_phone"],
-            self.dictionary_options["oov_phone"],
-            self.dictionary_options["other_noise_phone"],
-        }
-
-    def lookup(
-        self,
-        item: str,
-    ) -> List[str]:
-        """
-        Look up a word and return the list of sub words if necessary
-        taking into account clitic and compound markers
-
-        Parameters
-        ----------
-        item: str
-            Word to look up
-
-        Returns
-        -------
-        list[str]
-            List of subwords that are in the dictionary
-        """
-        if item in self.lookup_cache:
-            return self.lookup_cache[item]
-        if item in self.words:
-            return [item]
-        sanitized = self.sanitize_function(item)
-        if sanitized in self.words:
-            self.lookup_cache[item] = [sanitized]
-            return [sanitized]
-        split = self.split_function(sanitized)
-        oov_count = sum(1 for x in split if x not in self.words)
-        if oov_count < len(
-            split
-        ):  # Only returned split item if it gains us any transcribed speech
-            self.lookup_cache[item] = split
-            return split
-        self.lookup_cache[item] = [sanitized]
-        return [sanitized]
-
-    def to_int(
-        self,
-        item: str,
-    ) -> List[int]:
-        """
-        Convert a given word into integer IDs
-
-        Parameters
-        ----------
-        item: str
-            Word to look up
-
-        Returns
-        -------
-        list[int]
-            List of integer IDs corresponding to each subword
-        """
-        if item == "":
-            return []
-        sanitized = self.lookup(item)
-        text_int = []
-        for item in sanitized:
-            if not item:
-                continue
-            if item not in self.words_mapping:
-                text_int.append(self.oov_int)
-            else:
-                text_int.append(self.words_mapping[item])
-        return text_int
-
-    def check_word(self, item: str) -> bool:
-        """
-        Check whether a word is in the dictionary, takes into account sanitization and
-        clitic and compound markers
-
-        Parameters
-        ----------
-        item: str
-            Word to check
-
-        Returns
-        -------
-        bool
-            True if the look up would not result in an OOV item
-        """
-        if item == "":
-            return False
-        if item in self.words:
-            return True
-        sanitized = self.sanitize_function(item)
-        if sanitized in self.words:
-            return True
-
-        sanitized = self.split_function(sanitized)
-        if all(s in self.words for s in sanitized):
-            return True
-        return False
-
-    def map_to_original_pronunciation(
-        self, phones: List[CtmInterval], subpronunciations: List[DictionaryEntryType]
-    ) -> List[CtmInterval]:
-        """
-        Convert phone transcriptions from multilingual IPA mode to their original IPA transcription
-
-        Parameters
-        ----------
-        phones: list[CtmInterval]
-            List of aligned phones
-        subpronunciations: list[DictionaryEntryType]
-            Pronunciations of each sub word to reconstruct the transcriptions
-
-        Returns
-        -------
-        list[CtmInterval]
-            Intervals with their original IPA pronunciation rather than the internal simplified form
-        """
-        transcription = tuple(x.label for x in phones)
-        new_phones = []
-        mapping_ind = 0
-        transcription_ind = 0
-        for pronunciations in subpronunciations:
-            pron = None
-            if mapping_ind >= len(phones):
-                break
-            for p in pronunciations:
-                if (
-                    "original_pronunciation" in p
-                    and transcription == p["pronunciation"] == p["original_pronunciation"]
-                ) or (transcription == p["pronunciation"] and "original_pronunciation" not in p):
-                    new_phones.extend(phones)
-                    mapping_ind += len(phones)
-                    break
-                if (
-                    p["pronunciation"]
-                    == transcription[
-                        transcription_ind : transcription_ind + len(p["pronunciation"])
-                    ]
-                    and pron is None
-                ):
-                    pron = p
-            if mapping_ind >= len(phones):
-                break
-            if not pron:
-                new_phones.extend(phones)
-                mapping_ind += len(phones)
-                break
-            to_extend = phones[transcription_ind : transcription_ind + len(pron["pronunciation"])]
-            transcription_ind += len(pron["pronunciation"])
-            p = pron
-            if (
-                "original_pronunciation" not in p
-                or p["pronunciation"] == p["original_pronunciation"]
-            ):
-                new_phones.extend(to_extend)
-                mapping_ind += len(to_extend)
-                break
-            for pi in p["original_pronunciation"]:
-                if pi == phones[mapping_ind].label:
-                    new_phones.append(phones[mapping_ind])
-                else:
-                    modded_phone = pi
-                    new_p = phones[mapping_ind].label
-                    for diacritic in self.strip_diacritics:
-                        modded_phone = modded_phone.replace(diacritic, "")
-                    if modded_phone == new_p:
-                        phones[mapping_ind].label = pi
-                        new_phones.append(phones[mapping_ind])
-                    elif mapping_ind != len(phones) - 1:
-                        new_p = phones[mapping_ind].label + phones[mapping_ind + 1].label
-                        if modded_phone == new_p:
-                            new_phones.append(
-                                CtmInterval(
-                                    phones[mapping_ind].begin,
-                                    phones[mapping_ind + 1].end,
-                                    new_p,
-                                    phones[mapping_ind].utterance,
-                                )
-                            )
-                            mapping_ind += 1
-                mapping_ind += 1
-        return new_phones

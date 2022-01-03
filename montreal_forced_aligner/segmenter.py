@@ -9,32 +9,42 @@ Segmenting files
 """
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import re
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Union
 
+import tqdm
 import yaml
 
-from .abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
-from .corpus.acoustic_corpus import AcousticCorpusMixin
-from .corpus.classes import File, Speaker, Utterance
-from .corpus.features import VadConfigMixin
-from .exceptions import KaldiProcessingError
-from .helper import load_scp
-from .utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp
+from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
+from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.features import VadConfigMixin
+from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.utils import (
+    KaldiFunction,
+    KaldiProcessWorker,
+    Stopped,
+    log_kaldi_errors,
+    parse_logs,
+)
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
 SegmentationType = List[Dict[str, float]]
 
-__all__ = ["Segmenter"]
+__all__ = ["Segmenter", "SegmentVadFunction", "SegmentVadArguments"]
 
 
 class SegmentVadArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`"""
+    """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`"""
 
-    dictionaries: List[str]
-    vad_paths: Dict[str, str]
+    vad_path: str
     segmentation_options: MetaDict
 
 
@@ -123,11 +133,7 @@ def merge_segments(
     return merged_segs
 
 
-def segment_vad_func(
-    dictionaries: List[str],
-    vad_paths: Dict[str, str],
-    segmentation_options: MetaDict,
-) -> Dict[str, Utterance]:
+class SegmentVadFunction(KaldiFunction):
     """
     Multiprocessing function to generate segments from VAD output.
 
@@ -142,37 +148,40 @@ def segment_vad_func(
 
     Parameters
     ----------
-    dictionaries: list[str]
-        List of dictionary names
-    vad_paths: dict[str, str]
-        Dictionary of VAD archives per dictionary name
-    segmentation_options: dict[str, Any]
-        Options for segmentation
+    args: :class:`~montreal_forced_aligner.segmenter.SegmentVadArguments`
+        Arguments for the function
     """
 
-    utterances = {}
+    progress_pattern = re.compile(
+        r"^LOG.*processed (?P<done>\d+) utterances.*(?P<no_feats>\d+) had.*(?P<unvoiced>\d+) were.*"
+    )
 
-    speaker = Speaker("speech")
-    for dict_name in dictionaries:
-        vad_path = vad_paths[dict_name]
+    def __init__(self, args: SegmentVadArguments):
+        self.vad_path = args.vad_path
+        self.segmentation_options = args.segmentation_options
 
-        vad = load_scp(vad_path, data_type=int)
+    def run(self):
+        """Run the function"""
+
+        speaker = Speaker("speech")
+
+        vad = load_scp(self.vad_path, data_type=int)
         for recording, frames in vad.items():
             file = File(recording)
             initial_segments = get_initial_segmentation(
-                frames, segmentation_options["frame_shift"]
+                frames, self.segmentation_options["frame_shift"]
             )
+
             merged = merge_segments(
                 initial_segments,
-                segmentation_options["min_pause_duration"],
-                segmentation_options["max_segment_length"],
-                segmentation_options["snap_boundary_threshold"],
+                self.segmentation_options["min_pause_duration"],
+                self.segmentation_options["max_segment_length"],
+                self.segmentation_options["snap_boundary_threshold"],
             )
             for seg in merged:
-                utterances[recording] = Utterance(
+                yield recording, Utterance(
                     speaker, file, begin=seg["begin"], end=seg["end"], text="speech"
                 )
-    return utterances
 
 
 class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevelMfaWorker):
@@ -236,13 +245,19 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                             del v["type"]
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
     def segment_vad_arguments(self) -> List[SegmentVadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.segmenter.segment_vad_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
 
         Returns
         -------
@@ -251,8 +266,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """
         return [
             SegmentVadArguments(
-                j.current_dictionary_names,
-                j.construct_path_dictionary(self.split_directory, "vad", "scp"),
+                j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,
             )
             for j in self.jobs
@@ -279,32 +293,81 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
         See Also
         --------
-        segment_vad_func
+        :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`
             Multiprocessing helper function for each job
         segment_vad_arguments
             Job method for generating arguments for helper function
         """
 
-        jobs = self.segment_vad_arguments()
-        if self.use_mp:
-            segment_info = run_mp(segment_vad_func, jobs, self.features_log_directory, True)
-        else:
-            segment_info = run_non_mp(segment_vad_func, jobs, self.features_log_directory, True)
-        for j in self.jobs:
-            for old_utt, utterance in segment_info[j.name].items():
-                old_utt = self.utterances[old_utt]
-                file = old_utt.file
-                if self.ignore_speakers:
-                    if utterance.speaker_name not in self.speakers:
-                        self.speakers[utterance.speaker_name] = Speaker(utterance.speaker_name)
-                    speaker = self.speakers[utterance.speaker_name]
-                else:
-                    speaker = old_utt.speaker
-                utterance.file = file
-                utterance.set_speaker(speaker)
-                self.add_utterance(utterance)
-        utterance_ids = [x.name for x in self.utterances if x.begin is None]
-        for u in utterance_ids:
+        arguments = self.segment_vad_arguments()
+        old_utts = set()
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = SegmentVadFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                    while True:
+                        try:
+                            old_utt, utterance = return_queue.get(timeout=1)
+                            # print(utterance)
+                            if stopped.stop_check():
+                                continue
+                        except Empty:
+                            for proc in procs:
+                                if not proc.finished.stop_check():
+                                    break
+                            else:
+                                break
+                            continue
+                        if old_utt not in old_utts:
+                            old_utt = self.utterances[old_utt]
+                            file = old_utt.file
+                            if self.ignore_speakers:
+                                if utterance.speaker_name not in self.speakers:
+                                    self.speakers[utterance.speaker_name] = Speaker(
+                                        utterance.speaker_name
+                                    )
+                                speaker = self.speakers[utterance.speaker_name]
+                            else:
+                                speaker = old_utt.speaker
+                            utterance.file = file
+                            utterance.set_speaker(speaker)
+                            self.add_utterance(utterance)
+                            old_utts.add(old_utt)
+                            pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = SegmentVadFunction(args)
+                    for old_utt, utterance in function.run():
+                        if old_utt not in old_utts:
+                            old_utt = self.utterances[old_utt]
+                            file = old_utt.file
+                            if self.ignore_speakers:
+                                if utterance.speaker_name not in self.speakers:
+                                    self.speakers[utterance.speaker_name] = Speaker(
+                                        utterance.speaker_name
+                                    )
+                                speaker = self.speakers[utterance.speaker_name]
+                            else:
+                                speaker = old_utt.speaker
+                            utterance.file = file
+                            utterance.set_speaker(speaker)
+                            self.add_utterance(utterance)
+                            old_utts.add(old_utt)
+                            pbar.update(1)
+        for u in old_utts:
             self.delete_utterance(u)
 
     def setup(self) -> None:
@@ -367,4 +430,4 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             backup_output_directory = os.path.join(self.working_directory, "transcriptions")
             os.makedirs(backup_output_directory, exist_ok=True)
         for f in self.files:
-            f.save(output_directory, backup_output_directory)
+            f.save(output_directory, backup_output_directory, text_type=TextFileType.TEXTGRID)

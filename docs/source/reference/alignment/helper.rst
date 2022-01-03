@@ -15,39 +15,23 @@ Mixins
 Multiprocessing workers and functions
 -------------------------------------
 
-.. currentmodule:: montreal_forced_aligner.alignment.adapting
-
-.. autosummary::
-   :toctree: generated/
-
-   map_acc_stats_func
-
 .. currentmodule:: montreal_forced_aligner.alignment.multiprocessing
 
 .. autosummary::
    :toctree: generated/
 
-   align_func
-   compile_train_graphs_func
+   AlignFunction
+   CompileTrainGraphsFunction
    compile_information_func
-   ali_to_ctm_func
+   AliToCtmFunction
+   AccStatsFunction
+   WordCtmProcessWorker
    PhoneCtmProcessWorker
-   CleanupWordCtmProcessWorker
-   NoCleanupWordCtmProcessWorker
-   CombineProcessWorker
-   ExportPreparationProcessWorker
    ExportTextGridProcessWorker
 
 
 Multiprocessing argument classes
 --------------------------------
-
-.. currentmodule:: montreal_forced_aligner.alignment.adapting
-
-.. autosummary::
-   :toctree: generated/
-
-   MapAccStatsArguments
 
 .. currentmodule:: montreal_forced_aligner.alignment.multiprocessing
 
@@ -55,20 +39,10 @@ Multiprocessing argument classes
    :toctree: generated/
 
    AlignArguments
-   compile_train_graphs_func
+   AccStatsArguments
    CompileTrainGraphsArguments
-   compile_information_func
    CompileInformationArguments
-   ali_to_ctm_func
    AliToCtmArguments
-   PhoneCtmProcessWorker
    PhoneCtmArguments
-   CleanupWordCtmProcessWorker
-   CleanupWordCtmArguments
-   NoCleanupWordCtmProcessWorker
-   NoCleanupWordCtmArguments
-   CombineProcessWorker
-   CombineCtmArguments
-   ExportPreparationProcessWorker
-   ExportTextGridProcessWorker
+   WordCtmArguments
    ExportTextGridArguments

@@ -11,24 +11,33 @@ from abc import ABCMeta
 from queue import Empty
 from typing import Dict, List, Optional
 
+import tqdm
+
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
-from montreal_forced_aligner.corpus.classes import parse_file
+from montreal_forced_aligner.corpus.classes import File
 from montreal_forced_aligner.corpus.features import (
     CalcFmllrArguments,
+    CalcFmllrFunction,
+    ComputeVadFunction,
     FeatureConfigMixin,
     MfccArguments,
+    MfccFunction,
     VadArguments,
-    calc_fmllr_func,
-    compute_vad_func,
-    mfcc_func,
 )
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import load_scp
-from montreal_forced_aligner.utils import Stopped, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
+
+__all__ = [
+    "AcousticCorpusMixin",
+    "AcousticCorpus",
+    "AcousticCorpusWithPronunciations",
+    "AcousticCorpusPronunciationMixin",
+]
 
 
 class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
@@ -66,6 +75,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.transcriptions_without_wavs = []
         self.no_transcription_files = []
         self.stopped = Stopped()
+        self.features_generated = False
+        self.alignment_done = False
+        self.transcription_done = False
 
     def load_corpus(self) -> None:
         """
@@ -92,6 +104,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if not overwrite and os.path.exists(
             os.path.join(self.corpus_output_directory, "feats.scp")
         ):
+            self.features_generated = True
             return
         self.log_info(f"Generating base features ({self.feature_type})...")
         if self.feature_type == "mfcc":
@@ -101,7 +114,18 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             self.log_info("Calculating CMVN...")
             self.calc_cmvn()
         self.write_corpus_information()
+        self.features_generated = True
         self.create_corpus_split()
+
+    def create_corpus_split(self) -> None:
+        """Create the split directory for the corpus"""
+        if self.features_generated:
+            super().create_corpus_split()
+        else:
+            split_dir = self.split_directory
+            os.makedirs(os.path.join(split_dir, "log"), exist_ok=True)
+            for job in self.jobs:
+                job.output_for_features(split_dir)
 
     def write_corpus_information(self) -> None:
         """
@@ -225,7 +249,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def compute_vad_arguments(self) -> List[VadArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`
 
         Returns
         -------
@@ -235,9 +259,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             VadArguments(
                 os.path.join(self.split_directory, "log", f"compute_vad.{j.name}.log"),
-                j.current_dictionary_names,
-                j.construct_path_dictionary(self.split_directory, "feats", "scp"),
-                j.construct_path_dictionary(self.split_directory, "vad", "scp"),
+                j.construct_path(self.split_directory, "feats", "scp"),
+                j.construct_path(self.split_directory, "vad", "scp"),
                 self.vad_options,
             )
             for j in self.jobs
@@ -245,7 +268,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def calc_fmllr_arguments(self) -> List[CalcFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`
 
         Returns
         -------
@@ -270,7 +293,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
     def mfcc_arguments(self) -> List[MfccArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
 
         Returns
         -------
@@ -280,11 +303,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             MfccArguments(
                 os.path.join(self.split_directory, "log", f"make_mfcc.{j.name}.log"),
-                j.current_dictionary_names,
-                j.construct_path_dictionary(self.split_directory, "feats", "scp"),
-                j.construct_path_dictionary(self.split_directory, "utterance_lengths", "scp"),
-                j.construct_path_dictionary(self.split_directory, "segments", "scp"),
-                j.construct_path_dictionary(self.split_directory, "wav", "scp"),
+                j.construct_path(self.split_directory, "wav", "scp"),
+                j.construct_path(self.split_directory, "segments", "scp"),
+                j.construct_path(self.split_directory, "feats", "scp"),
                 self.mfcc_options,
             )
             for j in self.jobs
@@ -298,21 +319,52 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.mfcc_func`
+        :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.mfcc_arguments`
             Job method for generating arguments for helper function
         :kaldi_steps:`make_mfcc`
             Reference Kaldi script
         """
+        self.log_info("Generating MFCCs...")
         log_directory = os.path.join(self.split_directory, "log")
         os.makedirs(log_directory, exist_ok=True)
-
-        jobs = self.mfcc_arguments()
-        if self.use_mp:
-            run_mp(mfcc_func, jobs, log_directory)
-        else:
-            run_non_mp(mfcc_func, jobs, log_directory)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.mfcc_arguments()):
+                    function = MfccFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        num_utterances = return_queue.get(timeout=1)
+                        # print(utterance)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.mfcc_arguments():
+                    function = MfccFunction(args)
+                    for num_utterances in function.run():
+                        pbar.update(num_utterances)
 
     def calc_cmvn(self) -> None:
         """
@@ -353,7 +405,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.calc_fmllr_func`
+        :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.calc_fmllr_arguments`
             Job method for generating arguments for the helper function
@@ -363,13 +415,45 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Reference Kaldi script
         """
         begin = time.time()
-        log_directory = self.working_log_directory
+        self.log_info("Calculating fMLLR for speaker adaptation...")
 
-        jobs = self.calc_fmllr_arguments()
-        if self.use_mp:
-            run_mp(calc_fmllr_func, jobs, log_directory)
-        else:
-            run_non_mp(calc_fmllr_func, jobs, log_directory)
+        arguments = self.calc_fmllr_arguments()
+        with tqdm.tqdm(total=self.num_speakers) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = CalcFmllrFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        _ = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = CalcFmllrFunction(args)
+                    for _ in function.run():
+                        pbar.update(1)
+
         self.speaker_independent = False
         self.log_debug(f"Fmllr calculation took {time.time() - begin}")
 
@@ -379,7 +463,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.corpus.features.compute_vad_func`
+        :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticCorpusMixin.compute_vad_arguments`
             Job method for generating arguments for helper function
@@ -387,14 +471,46 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         if os.path.exists(os.path.join(self.split_directory, "vad.0.scp")):
             self.log_info("VAD already computed, skipping!")
             return
+        begin = time.time()
         self.log_info("Computing VAD...")
-        log_directory = os.path.join(self.split_directory, "log")
-        os.makedirs(log_directory, exist_ok=True)
-        jobs = self.compute_vad_arguments()
-        if self.use_mp:
-            run_mp(compute_vad_func, jobs, log_directory)
-        else:
-            run_non_mp(compute_vad_func, jobs, log_directory)
+
+        arguments = self.compute_vad_arguments()
+        with tqdm.tqdm(total=self.num_speakers) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = ComputeVadFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, no_feats, unvoiced = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + no_feats + unvoiced)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = ComputeVadFunction(args)
+                    for done, no_feats, unvoiced in function.run():
+                        pbar.update(done + no_feats + unvoiced)
+        self.log_debug(f"VAD computation took {time.time() - begin}")
 
     def combine_feats(self) -> None:
         """
@@ -403,34 +519,19 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         split_directory = self.split_directory
         ignore_check = []
         for job in self.jobs:
-            feats_paths = job.construct_path_dictionary(split_directory, "feats", "scp")
-            lengths_paths = job.construct_path_dictionary(
-                split_directory, "utterance_lengths", "scp"
-            )
-            for dict_name in job.current_dictionary_names:
-                path = feats_paths[dict_name]
-                lengths_path = lengths_paths[dict_name]
-                if os.path.exists(lengths_path):
-                    with open(lengths_path, "r") as inf:
-                        for line in inf:
-                            line = line.strip()
-                            utt, length = line.split()
-                            length = int(length)
-                            if length < 13:  # Minimum length to align one phone plus silence
-                                self.utterances[utt].ignored = True
-                                ignore_check.append(utt)
-                            self.utterances[utt].feature_length = length
-                with open(path, "r") as inf:
-                    for line in inf:
-                        line = line.strip()
-                        if line == "":
-                            continue
-                        f = line.split(maxsplit=1)
-                        if self.utterances[f[0]].ignored:
-                            continue
-                        self.utterances[f[0]].features = f[1]
+            feats_path = job.construct_path(split_directory, "feats", "scp")
+
+            with open(feats_path, "r") as inf:
+                for line in inf:
+                    line = line.strip()
+                    if line == "":
+                        continue
+                    f = line.split(maxsplit=1)
+                    if self.utterances[f[0]].ignored:
+                        continue
+                    self.utterances[f[0]].features = f[1]
         for utterance in self.utterances:
-            if utterance.features is None:
+            if utterance.features is None or utterance.duration < 0.13:
                 utterance.ignored = True
                 ignore_check.append(utterance.name)
         if ignore_check:
@@ -490,7 +591,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         Load a corpus using multiprocessing
         """
-        begin_time = time.time()
+        begin_time = time.process_time()
         manager = mp.Manager()
         job_queue = manager.Queue()
         return_queue = manager.Queue()
@@ -499,10 +600,22 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return_dict["decode_error_files"] = manager.list()
         return_dict["textgrid_read_errors"] = manager.dict()
         finished_adding = Stopped()
+        stopped = Stopped()
+        try:
+            sanitize_function = self.sanitize_function
+        except AttributeError:
+            sanitize_function = None
         procs = []
-        for _ in range(self.num_jobs):
+        for i in range(self.num_jobs):
             p = CorpusProcessWorker(
-                job_queue, return_dict, return_queue, self.stopped, finished_adding
+                i,
+                job_queue,
+                return_dict,
+                return_queue,
+                stopped,
+                finished_adding,
+                self.speaker_characters,
+                sanitize_function,
             )
             procs.append(p)
             p.start()
@@ -513,95 +626,80 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             if self.audio_directory and os.path.exists(self.audio_directory):
                 use_audio_directory = True
                 for root, _, files in os.walk(self.audio_directory, followlinks=True):
-                    (
-                        identifiers,
-                        wav_files,
-                        lab_files,
-                        textgrid_files,
-                        other_audio_files,
-                    ) = find_exts(files)
-                    wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                    exts = find_exts(files)
+                    wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
                     other_audio_files = {
-                        k: os.path.join(root, v) for k, v in other_audio_files.items()
+                        k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
                     }
                     all_sound_files.update(other_audio_files)
                     all_sound_files.update(wav_files)
-
+            file_counts = 0
+            begin = time.process_time()
+            self.log_debug(f"Walking through {self.corpus_directory}...")
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
-                identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(
-                    files
-                )
+                exts = find_exts(files)
                 relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
 
                 if self.stopped.stop_check():
                     break
+                self.log_debug(f"Inside relative root {relative_path}:")
+                self.log_debug(f"    Found {len(exts.identifiers)} identifiers")
+                self.log_debug(f"    Found {len(exts.wav_files)} .wav files")
+                self.log_debug(f"    Found {len(exts.other_audio_files)} other audio files")
+                self.log_debug(f"    Found {len(exts.lab_files)} .lab files")
+                self.log_debug(f"    Found {len(exts.textgrid_files)} .TextGrid files")
                 if not use_audio_directory:
                     all_sound_files = {}
-                    wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
-                    other_audio_files = {
-                        k: os.path.join(root, v) for k, v in other_audio_files.items()
+                    exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
+                    exts.other_audio_files = {
+                        k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
                     }
-                    all_sound_files.update(other_audio_files)
-                    all_sound_files.update(wav_files)
-                for file_name in identifiers:
+                    all_sound_files.update(exts.other_audio_files)
+                    all_sound_files.update(exts.wav_files)
+                for file_name in exts.identifiers:
                     if self.stopped.stop_check():
                         break
                     wav_path = None
                     transcription_path = None
                     if file_name in all_sound_files:
                         wav_path = all_sound_files[file_name]
-                    if file_name in lab_files:
-                        lab_name = lab_files[file_name]
+                    if file_name in exts.lab_files:
+                        lab_name = exts.lab_files[file_name]
                         transcription_path = os.path.join(root, lab_name)
 
-                    elif file_name in textgrid_files:
-                        tg_name = textgrid_files[file_name]
+                    elif file_name in exts.textgrid_files:
+                        tg_name = exts.textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
+                    if wav_path is None and transcription_path is None:  # Not a file for MFA
+                        continue
                     if wav_path is None:
                         self.transcriptions_without_wavs.append(transcription_path)
                         continue
                     if transcription_path is None:
                         self.no_transcription_files.append(wav_path)
-                    if hasattr(self, "construct_sanitize_function"):
-                        job_queue.put(
-                            (
-                                file_name,
-                                wav_path,
-                                transcription_path,
-                                relative_path,
-                                self.speaker_characters,
-                                self.construct_sanitize_function(),
-                            )
-                        )
-                    else:
-                        job_queue.put(
-                            (
-                                file_name,
-                                wav_path,
-                                transcription_path,
-                                relative_path,
-                                self.speaker_characters,
-                                None,
-                            )
-                        )
+                    job_queue.put((file_name, wav_path, transcription_path, relative_path))
+                    file_counts += 1
+            self.log_debug(f"Time to walk directory: {time.process_time() - begin}")
 
             finished_adding.stop()
             self.log_debug("Finished adding jobs!")
-            job_queue.join()
 
-            self.log_debug("Waiting for workers to finish...")
-            for p in procs:
-                p.join()
-
-            while True:
-                try:
-                    file = return_queue.get(timeout=1)
-                    if self.stopped.stop_check():
+            with tqdm.tqdm(total=file_counts) as pbar:
+                while True:
+                    try:
+                        file = return_queue.get(timeout=1)
+                        if self.stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished_processing.stop_check():
+                                break
+                        else:
+                            break
                         continue
-                except Empty:
-                    break
-
-                self.add_file(file)
+                    self.add_file(File.load_from_mp_data(file))
+                    pbar.update(1)
+            self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
 
             if "error" in return_dict:
                 raise return_dict["error"][1]
@@ -634,16 +732,26 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     if self.stopped.stop_check():
                         continue
                 except Empty:
-                    break
+                    for proc in procs:
+                        if not proc.finished_processing.stop_check():
+                            break
+                    else:
+                        break
         finally:
 
+            finished_adding.stop()
+            job_queue.join()
+            for p in procs:
+                p.join()
             if self.stopped.stop_check():
-                self.log_info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
+                self.log_info(
+                    f"Stopped parsing early ({time.process_time() - begin_time} seconds)"
+                )
                 if self.stopped.source():
                     sys.exit(0)
             else:
                 self.log_debug(
-                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.time() - begin_time} seconds"
+                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.process_time() - begin_time} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:
@@ -651,6 +759,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         Load a corpus without using multiprocessing
         """
         begin_time = time.time()
+        sanitize_function = None
+        if hasattr(self, "sanitize_function"):
+            sanitize_function = self.sanitize_function
 
         all_sound_files = {}
         use_audio_directory = False
@@ -659,71 +770,61 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             for root, _, files in os.walk(self.audio_directory, followlinks=True):
                 if self.stopped.stop_check():
                     return
-                identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(
-                    files
-                )
-                wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
-                other_audio_files = {
-                    k: os.path.join(root, v) for k, v in other_audio_files.items()
+                exts = find_exts(files)
+                exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
+                exts.other_audio_files = {
+                    k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
                 }
-                all_sound_files.update(other_audio_files)
-                all_sound_files.update(wav_files)
+                all_sound_files.update(exts.other_audio_files)
+                all_sound_files.update(exts.wav_files)
         self.log_debug(f"Walking through {self.corpus_directory}...")
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
-            identifiers, wav_files, lab_files, textgrid_files, other_audio_files = find_exts(files)
+            exts = find_exts(files)
             relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
             if self.stopped.stop_check():
                 return
             self.log_debug(f"Inside relative root {relative_path}:")
-            self.log_debug(f"    Found {len(identifiers)} identifiers")
-            self.log_debug(f"    Found {len(wav_files)} .wav files")
-            self.log_debug(f"    Found {len(other_audio_files)} other audio files")
-            self.log_debug(f"    Found {len(lab_files)} .lab files")
-            self.log_debug(f"    Found {len(textgrid_files)} .TextGrid files")
+            self.log_debug(f"    Found {len(exts.identifiers)} identifiers")
+            self.log_debug(f"    Found {len(exts.wav_files)} .wav files")
+            self.log_debug(f"    Found {len(exts.other_audio_files)} other audio files")
+            self.log_debug(f"    Found {len(exts.lab_files)} .lab files")
+            self.log_debug(f"    Found {len(exts.textgrid_files)} .TextGrid files")
             if not use_audio_directory:
                 all_sound_files = {}
-                wav_files = {k: os.path.join(root, v) for k, v in wav_files.items()}
+                wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
                 other_audio_files = {
-                    k: os.path.join(root, v) for k, v in other_audio_files.items()
+                    k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
                 }
                 all_sound_files.update(other_audio_files)
                 all_sound_files.update(wav_files)
-            for file_name in identifiers:
+            for file_name in exts.identifiers:
 
                 wav_path = None
                 transcription_path = None
                 if file_name in all_sound_files:
                     wav_path = all_sound_files[file_name]
-                if file_name in lab_files:
-                    lab_name = lab_files[file_name]
+                if file_name in exts.lab_files:
+                    lab_name = exts.lab_files[file_name]
                     transcription_path = os.path.join(root, lab_name)
-                elif file_name in textgrid_files:
-                    tg_name = textgrid_files[file_name]
+                elif file_name in exts.textgrid_files:
+                    tg_name = exts.textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
+                if wav_path is None and transcription_path is None:  # Not a file for MFA
+                    continue
                 if wav_path is None:
                     self.transcriptions_without_wavs.append(transcription_path)
                     continue
                 if transcription_path is None:
                     self.no_transcription_files.append(wav_path)
                 try:
-                    if hasattr(self, "construct_sanitize_function"):
-                        file = parse_file(
-                            file_name,
-                            wav_path,
-                            transcription_path,
-                            relative_path,
-                            self.speaker_characters,
-                            self.construct_sanitize_function(),
-                        )
-                    else:
-                        file = parse_file(
-                            file_name,
-                            wav_path,
-                            transcription_path,
-                            relative_path,
-                            self.speaker_characters,
-                            None,
-                        )
+                    file = File.parse_file(
+                        file_name,
+                        wav_path,
+                        transcription_path,
+                        relative_path,
+                        self.speaker_characters,
+                        sanitize_function,
+                    )
                     self.add_file(file)
                 except TextParseError as e:
                     self.decode_error_files.append(e)
@@ -772,6 +873,7 @@ class AcousticCorpusPronunciationMixin(
         """
         all_begin = time.time()
         self.dictionary_setup()
+        self.log_debug(f"Using {self.phone_set_type}")
         self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
         begin = time.time()
@@ -783,6 +885,13 @@ class AcousticCorpusPronunciationMixin(
         self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
 
         begin = time.time()
+
+        self.log_debug("Topology:")
+        for k, v in self.kaldi_phones_for_topo.items():
+            self.log_debug(f"{k}: {', '.join(v)}")
+        self.log_debug("Extra questions:")
+        for k, v in self.extra_questions_mapping.items():
+            self.log_debug(f"{k}: {', '.join(v)}")
         self.write_lexicon_information()
         self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 

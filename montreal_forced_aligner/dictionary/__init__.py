@@ -10,7 +10,6 @@ from montreal_forced_aligner.dictionary.multispeaker import (
     MultispeakerDictionaryMixin,
 )
 from montreal_forced_aligner.dictionary.pronunciation import (
-    DictionaryData,
     PronunciationDictionary,
     PronunciationDictionaryMixin,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "pronunciation",
     "multispeaker",
     "mixins",
-    "DictionaryData",
     "DictionaryMixin",
     "SanitizeFunction",
     "MultispeakerDictionary",

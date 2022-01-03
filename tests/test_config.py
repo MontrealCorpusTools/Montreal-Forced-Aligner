@@ -10,7 +10,6 @@ from montreal_forced_aligner.acoustic_modeling import (
     TriphoneTrainer,
 )
 from montreal_forced_aligner.alignment import PretrainedAligner
-from montreal_forced_aligner.dictionary.mixins import DEFAULT_STRIP_DIACRITICS
 from montreal_forced_aligner.exceptions import ConfigError
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
@@ -194,7 +193,4 @@ def test_multilingual_ipa(sick_corpus, sick_dict, temp_dir, config_directory):
         temporary_directory=temp_dir,
         **params
     )
-    assert am_trainer.multilingual_ipa
-    assert set(am_trainer.strip_diacritics) == set(DEFAULT_STRIP_DIACRITICS)
-    assert am_trainer.digraphs == ["[dt][szʒʃʐʑʂɕç]", "[a][job_name][u]"]
     am_trainer.cleanup()

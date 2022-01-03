@@ -10,6 +10,20 @@
 Beta releases
 =============
 
+2.0.0b11
+--------
+
+- Re-optimized corpus loading following the switch to a more class-based API.
+- Optimized validation, particularly when acoustics are being ignored
+- Added better progress bars for corpus loading, acoustic modeling, G2P training, transcription and alignment
+- Changed the default behavior of G2P generation to use a threshold system rather than returning a single top pronunciation.  The threshold defaults to 0.99, but can be specified through ``--g2p_threshold``.  Specifying number of pronunciations will override this behavior (use ``--num_pronunciation 1`` for the old behavior).
+- Changed the behavior of G2P evaluation to check whether the generated hypothesis is in the golden pronunciation set, so languages with pronunciation variation will be less penalized in evaluation
+- Added :class:`~montreal_forced_aligner.data.Word` and :class:`~montreal_forced_aligner.data.Pronunciation` data classes
+- Refactored and simplified TextGrid export process
+- Removed the ``multilingual_ipa`` mode in favor of a more general approach to better modeling phones
+- Added functionality to evaluate alignments against golden alignment set
+- Added the ability to compare alignments to a reference aligned, such as human annotated data. The evaluation will compute overlap score (sum of difference in aligned phone boundaries versus the reference phone boundaries) and overall phone error rate for each utterance.
+
 2.0.0b10
 --------
 
@@ -122,7 +136,7 @@ Beta release!
 
 - Add support for aligning mp3 files
 - Fix for log error in 0 probability entries in probabilistic lexicons
-- Add support for multilingual IPA mode (see :ref:`multilingual_ipa` for more details)
+- Add support for multilingual IPA mode
 - Add support for specifying per-speaker pronunciation dictionaries (see :ref:`speaker_dictionaries` for more details)
 - Fixed cases where TextGrid parsing errors were misattributed to sound file issues, and these should be properly detected
   by the validator now

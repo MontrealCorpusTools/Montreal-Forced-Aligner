@@ -22,10 +22,36 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
         temp_dir,
         "-q",
         "--clean",
-        "-n",
-        "3",
+        "--num_pronunciations",
+        "1",
         "--use_mp",
         "False",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_g2p(args, unknown)
+    assert os.path.exists(output_path)
+    d = PronunciationDictionary(output_path, temporary_directory=temp_dir)
+
+    assert len(d.words) > 0
+
+
+def test_generate_pretrained_threshold(
+    english_g2p_model, basic_corpus_dir, temp_dir, generated_dir
+):
+    if G2P_DISABLED:
+        pytest.skip("No Pynini found")
+    output_path = os.path.join(generated_dir, "g2p_out.txt")
+    command = [
+        "g2p",
+        "english_g2p",
+        basic_corpus_dir,
+        output_path,
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--g2p_threshold",
+        "0.95",
     ]
     args, unknown = parser.parse_known_args(command)
     run_g2p(args, unknown)

@@ -6,15 +6,18 @@ Helper functions
 from __future__ import annotations
 
 import functools
+import itertools
+import json
 import sys
-import textwrap
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
+import ansiwrap
 import numpy
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import CorpusMappingType, Labels, MetaDict, ScpType
+    from montreal_forced_aligner.dictionary.pronunciation import Word
     from montreal_forced_aligner.textgrid import CtmInterval
 
 
@@ -112,6 +115,70 @@ class TerminalPrinter:
             self.colors["reset"] = Style.RESET_ALL
             self.colors["normal"] = Style.NORMAL
 
+    def error_text(self, text: Any) -> str:
+        """
+        Highlight text as an error
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "red")
+
+    def emphasized_text(self, text: Any) -> str:
+        """
+        Highlight text as emphasis
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "bright")
+
+    def pass_text(self, text: Any) -> str:
+        """
+        Highlight text as good
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "green")
+
+    def warning_text(self, text: Any) -> str:
+        """
+        Highlight text as a warning
+
+        Parameters
+        ----------
+        text: Any
+            Text to highlight
+
+        Returns
+        -------
+        str
+            Highlighted text
+        """
+        return self.colorize(text, "yellow")
+
     @property
     def indent_string(self) -> str:
         """Indent string to use in formatting the output messages"""
@@ -155,6 +222,35 @@ class TerminalPrinter:
         self.indent_level -= 1
         print()
 
+    def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
+        """
+        Format lines
+
+        Parameters
+        ----------
+        lines: Union[list[str], str
+            Lines to format
+
+        Returns
+        -------
+        str
+            Formatted string
+        """
+        if isinstance(lines, str):
+            lines = [lines]
+
+        for i, line in enumerate(lines):
+            lines[i] = ansiwrap.fill(
+                line,
+                initial_indent=self.indent_string,
+                subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
+                width=self.width,
+                break_on_hyphens=False,
+                break_long_words=False,
+                drop_whitespace=False,
+            )
+        return lines
+
     def print_info_lines(self, lines: Union[list[str], str]) -> None:
         """
         Print formatted information lines
@@ -166,18 +262,9 @@ class TerminalPrinter:
         """
         if isinstance(lines, str):
             lines = [lines]
+        lines = self.format_info_lines(lines)
         for line in lines:
-            print(
-                textwrap.fill(
-                    line,
-                    initial_indent=self.indent_string,
-                    subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
-                    width=self.width,
-                    break_on_hyphens=False,
-                    break_long_words=False,
-                    drop_whitespace=False,
-                )
-            )
+            print(line)
 
     def print_green_stat(self, stat: Any, text: str) -> None:
         """
@@ -324,10 +411,15 @@ class TerminalPrinter:
         if key:
             key = f" {key}:"
             subsequent_indent += " " * (len(key))
-        wrapper = textwrap.TextWrapper(
-            initial_indent=indent, subsequent_indent=subsequent_indent, width=self.width
+
+        print(
+            ansiwrap.fill(
+                f"{self.colorize(key, key_color)} {value}",
+                width=self.width,
+                initial_indent=indent,
+                subsequent_indent=subsequent_indent,
+            )
         )
-        print(wrapper.fill(f"{self.colorize(key, key_color)} {value}"))
 
 
 def comma_join(sequence: List[Any]) -> str:
@@ -564,6 +656,42 @@ def edit_distance(x: Labels, y: Labels) -> int:
     return int(table[-1][-1])
 
 
+def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
+    """
+    Computes sufficient statistics for LER calculation.
+
+    Parameters
+    ----------
+    gold: Labels
+        The reference labels
+    hypo: Labels
+        The hypothesized labels
+    multiple_hypotheses: bool
+        Flag for whether the hypotheses contain multiple
+
+    Returns
+    -------
+    int
+        Edit distance
+    int
+        Length of the gold labels
+    """
+    for h in hypo.pronunciations:
+        if h in gold.pronunciations:
+            return 0, len(h)
+    edits = 100000
+    best_length = 100000
+    for (g, h) in itertools.product(gold.pronunciations, hypo.pronunciations):
+        e = edit_distance(g.pronunciation, h.pronunciation)
+        if e < edits:
+            edits = e
+            best_length = len(g)
+        if not edits:
+            best_length = len(g)
+            break
+    return edits, best_length
+
+
 def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
@@ -597,7 +725,9 @@ def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, i
     return edits, len(gold)
 
 
-def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None) -> int:
+def compare_labels(
+    ref: str, test: str, silence_phone: str, mapping: Optional[Dict[str, str]] = None
+) -> int:
     """
 
     Parameters
@@ -613,8 +743,14 @@ def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None
     """
     if ref == test:
         return 0
-    if mapping is not None and test in mapping and mapping[test] == ref:
-        return 0
+    if ref == silence_phone or test == silence_phone:
+        return 10
+    if mapping is not None and test in mapping:
+        if isinstance(mapping[test], str):
+            if mapping[test] == ref:
+                return 0
+        elif ref in mapping[test]:
+            return 0
     ref = ref.lower()
     test = test.lower()
     if ref == test:
@@ -625,6 +761,7 @@ def compare_labels(ref: str, test: str, mapping: Optional[Dict[str, str]] = None
 def overlap_scoring(
     first_element: CtmInterval,
     second_element: CtmInterval,
+    silence_phone: str,
     mapping: Optional[Dict[str, str]] = None,
 ) -> float:
     r"""
@@ -644,9 +781,9 @@ def overlap_scoring(
 
     Parameters
     ----------
-    first_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+    first_element: :class:`~montreal_forced_aligner.data.CtmInterval`
         First CTM interval to compare
-    second_element: :class:`~montreal_forced_aligner.textgrid.CtmInterval`
+    second_element: :class:`~montreal_forced_aligner.data.CtmInterval`
         Second CTM interval
     mapping: Optional[dict[str, str]]
         Optional mapping of phones to treat as matches even if they have different symbols
@@ -659,48 +796,57 @@ def overlap_scoring(
     """
     begin_diff = abs(first_element.begin - second_element.begin)
     end_diff = abs(first_element.end - second_element.end)
-    label_diff = compare_labels(first_element.label, second_element.label, mapping)
+    label_diff = compare_labels(first_element.label, second_element.label, silence_phone, mapping)
     return -1 * (begin_diff + end_diff + label_diff)
+
+
+def set_default(obj):
+    """JSON serialization"""
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError
+
+
+def jsonl_encoder(obj):
+    return json.dumps(obj, default=set_default)
 
 
 def align_phones(
     ref: List[CtmInterval],
     test: List[CtmInterval],
-    silence_phones: Set[str],
+    silence_phone: str,
     custom_mapping: Optional[Dict[str, str]] = None,
-) -> Tuple[Optional[float], Optional[int], Optional[int]]:
+) -> Tuple[float, float]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
     different phone labels to be scored as if they're the same phone
 
     Parameters
     ----------
-    ref: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+    ref: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of CTM intervals as reference
-    test: list[:class:`~montreal_forced_aligner.textgrid.CtmInterval`]
+    test: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of CTM intervals to compare to reference
     silence_phones: set[str]
         Set of silence phones (these are ignored in the final calculation)
     custom_mapping: dict[str, str], optional
-        Optional mapping of phones to treat as matches even if they have different symbols
+        Mapping of phones to treat as matches even if they have different symbols
 
     Returns
     -------
     float
         Score based on the average amount of overlap in phone intervals
-    int
-        Number of insertions
-    int
-        Number of deletions
+    float
+        Phone error rate
     """
-    try:
-        from Bio import pairwise2
-    except ImportError:
-        return None, None, None
+    from Bio import pairwise2
+
     if custom_mapping is None:
-        score_func = overlap_scoring
+        score_func = functools.partial(overlap_scoring, silence_phone=silence_phone)
     else:
-        score_func = functools.partial(overlap_scoring, mapping=custom_mapping)
+        score_func = functools.partial(
+            overlap_scoring, silence_phone=silence_phone, mapping=custom_mapping
+        )
     alignments = pairwise2.align.globalcs(
         ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
     )
@@ -708,20 +854,28 @@ def align_phones(
     overlap_sum = 0
     num_insertions = 0
     num_deletions = 0
+    num_substitutions = 0
     for a in alignments:
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
             if sa == "-":
-                if sb.label not in silence_phones:
+                if sb.label != silence_phone:
                     num_insertions += 1
                 else:
                     continue
             elif sb == "-":
-                if sa.label not in silence_phones:
+                if sa.label != silence_phone:
                     num_deletions += 1
                 else:
                     continue
             else:
                 overlap_sum += abs(sa.begin - sb.begin) + abs(sa.end - sb.end)
                 overlap_count += 1
-    return overlap_sum / overlap_count, num_insertions, num_deletions
+                if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
+                    num_substitutions += 1
+    if overlap_count:
+        score = overlap_sum / overlap_count
+    else:
+        score = None
+    phone_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
+    return score, phone_error_rate

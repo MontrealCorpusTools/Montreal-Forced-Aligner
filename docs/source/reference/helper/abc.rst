@@ -3,7 +3,9 @@
     .. autosummary::
        :toctree: generated/
 
+       KaldiFunction
        MfaModel -- Base model type for MFA
+       MfaCorpusClass
        MfaWorker -- Base worker class for MFA
        TopLevelMfaWorker -- MFA workers that have acoustic models
        TrainerMixin -- Trainer type interface

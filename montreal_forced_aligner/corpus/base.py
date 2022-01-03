@@ -8,6 +8,7 @@ from abc import ABCMeta, abstractmethod
 from collections import Counter
 from typing import Dict, List, Optional, Union
 
+import jsonlines
 import yaml
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
@@ -20,8 +21,9 @@ from montreal_forced_aligner.corpus.classes import (
     UtteranceCollection,
 )
 from montreal_forced_aligner.corpus.multiprocessing import Job
+from montreal_forced_aligner.data import SoundFileInformation
 from montreal_forced_aligner.exceptions import CorpusError
-from montreal_forced_aligner.helper import output_mapping
+from montreal_forced_aligner.helper import jsonl_encoder, output_mapping
 from montreal_forced_aligner.utils import Stopped
 
 __all__ = ["CorpusMixin"]
@@ -137,33 +139,30 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
 
     def _write_speakers(self):
         """Write speaker information for speeding up future runs"""
-        to_save = []
-        for speaker in self.speakers:
-            to_save.append(speaker.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "speakers.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "speakers.jsonl"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
+            for speaker in self.speakers:
+                writer.write(speaker.meta)
 
     def _write_files(self):
         """Write file information for speeding up future runs"""
-        to_save = []
-        for file in self.files:
-            to_save.append(file.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "files.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "files.jsonl"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
+            for file in self.files:
+                writer.write(file.meta)
 
     def _write_utterances(self):
         """Write utterance information for speeding up future runs"""
-        to_save = []
-        for utterance in self.utterances:
-            to_save.append(utterance.meta)
         with open(
-            os.path.join(self.corpus_output_directory, "utterances.yaml"), "w", encoding="utf8"
+            os.path.join(self.corpus_output_directory, "utterances.jsonl"), "w", encoding="utf8"
         ) as f:
-            yaml.safe_dump(to_save, f)
+            writer = jsonlines.Writer(f, dumps=jsonl_encoder)
+            for utterance in self.utterances:
+                writer.write(utterance.meta)
 
     def create_corpus_split(self) -> None:
         """Create split directory and output information from Jobs"""
@@ -225,6 +224,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         if utterance.file not in self.files:
             self.files.add_file(utterance.file)
         file = self.files[utterance.file.name]
+        utterance.file = file
         file.add_utterance(utterance)
         utterance.file = file
 
@@ -270,13 +270,17 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             File to be added
         """
         self.files.add_file(file)
-        for speaker in file.speaker_ordering:
-            if speaker not in self.speakers:
+        for i, speaker in enumerate(file.speaker_ordering):
+            if speaker.name not in self.speakers:
                 self.speakers.add_speaker(speaker)
+            else:
+                file.speaker_ordering[i] = self.speakers[speaker.name]
         for u in file.utterances:
             self.add_utterance(u)
             if u.text:
                 self.word_counts.update(u.text.split())
+            if u.normalized_text:
+                self.word_counts.update(u.normalized_text)
 
     @property
     def data_source_identifier(self) -> str:
@@ -292,10 +296,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         subset: int
             Number of utterances to include in subset
         """
+        self.log_debug(f"Creating subset_{subset} directory...")
         subset_directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
 
         larger_subset_num = subset * 10
-        if larger_subset_num < self.num_utterances:
+        if larger_subset_num < len(self.utterances):
             # Get all shorter utterances that are not one word long
             utts = sorted(
                 (utt for utt in self.utterances if " " in utt.text),
@@ -306,7 +311,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             larger_subset = sorted(self.utterances)
         random.seed(1234)  # make it deterministic sampling
         subset_utts = UtteranceCollection()
-        subset_utts.update(random.sample(larger_subset, subset))
+        try:
+            subset_utts.update(random.sample(larger_subset, subset))
+        except ValueError:
+            print(subset, larger_subset_num, len(larger_subset))
+            raise
         log_dir = os.path.join(subset_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -318,6 +327,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
     def num_utterances(self) -> int:
         """Number of utterances in the corpus"""
         return len(self.utterances)
+
+    @property
+    def num_speakers(self) -> int:
+        """Number of speakers in the corpus"""
+        return len(self.speakers)
 
     def subset_directory(self, subset: Optional[int]) -> str:
         """
@@ -334,12 +348,13 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         str
             Path to subset directory
         """
-        if subset is None or subset > self.num_utterances or subset <= 0:
+        if subset is None or subset >= len(self.utterances) or subset <= 0:
             for j in self.jobs:
                 j.set_subset(None)
             return self.split_directory
         directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
-        self.create_subset(subset)
+        if not os.path.exists(directory):
+            self.create_subset(subset)
         return directory
 
     def _load_corpus(self) -> None:
@@ -349,11 +364,12 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.log_info("Setting up corpus information...")
         loaded = self._load_corpus_from_temp()
         if not loaded:
+            self.log_debug("Could not load from temp")
+            self.log_info("Loading corpus from source files...")
             if self.use_mp:
-                self.log_debug("Loading from source with multiprocessing")
+
                 self._load_corpus_from_source_mp()
             else:
-                self.log_debug("Loading from source without multiprocessing")
                 self._load_corpus_from_source()
         else:
             self.log_debug("Successfully loaded from temporary files")
@@ -395,9 +411,15 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                         f"with --clean."
                     )
                     self.num_jobs = old_num_jobs
-        speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
-        files_path = os.path.join(self.corpus_output_directory, "files.yaml")
-        utterances_path = os.path.join(self.corpus_output_directory, "utterances.yaml")
+        format = "jsonl"
+        speakers_path = os.path.join(self.corpus_output_directory, "speakers.jsonl")
+        files_path = os.path.join(self.corpus_output_directory, "files.jsonl")
+        utterances_path = os.path.join(self.corpus_output_directory, "utterances.jsonl")
+        if not os.path.exists(speakers_path):
+            format = "yaml"
+            speakers_path = os.path.join(self.corpus_output_directory, "speakers.yaml")
+            files_path = os.path.join(self.corpus_output_directory, "files.yaml")
+            utterances_path = os.path.join(self.corpus_output_directory, "utterances.yaml")
 
         if not os.path.exists(speakers_path):
             self.log_debug(f"Could not find {speakers_path}, cannot load from temp")
@@ -411,42 +433,63 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.log_debug("Loading from temporary files...")
 
         with open(speakers_path, "r", encoding="utf8") as f:
-            speaker_data = yaml.safe_load(f)
+            if format == "jsonl":
+                speaker_data = jsonlines.Reader(f)
+            else:
+                speaker_data = yaml.safe_load(f)
 
-        for entry in speaker_data:
-            self.speakers.add_speaker(Speaker(entry["name"]))
-            self.speakers[entry["name"]].cmvn = entry["cmvn"]
+            for entry in speaker_data:
+                self.speakers.add_speaker(Speaker(entry["name"]))
+                self.speakers[entry["name"]].cmvn = entry["cmvn"]
 
         with open(files_path, "r", encoding="utf8") as f:
-            files_data = yaml.safe_load(f)
-        for entry in files_data:
-            self.files.add_file(
-                File(entry["wav_path"], entry["text_path"], entry["relative_path"])
-            )
-            self.files[entry["name"]].speaker_ordering = [
-                self.speakers[x] for x in entry["speaker_ordering"]
-            ]
-            self.files[entry["name"]].wav_info = entry["wav_info"]
+            if format == "jsonl":
+                files_data = jsonlines.Reader(f)
+            else:
+                files_data = yaml.safe_load(f)
+            for entry in files_data:
+                self.files.add_file(
+                    File(
+                        name=entry["name"],
+                        wav_path=entry["wav_path"],
+                        text_path=entry["text_path"],
+                        relative_path=entry["relative_path"],
+                    )
+                )
+                self.files[entry["name"]].speaker_ordering = [
+                    self.speakers[x] for x in entry["speaker_ordering"]
+                ]
+                self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
 
         with open(utterances_path, "r", encoding="utf8") as f:
-            utterances_data = yaml.safe_load(f)
-        for entry in utterances_data:
-            s = self.speakers[entry["speaker"]]
-            f = self.files[entry["file"]]
-            u = Utterance(
-                s,
-                f,
-                begin=entry["begin"],
-                end=entry["end"],
-                channel=entry["channel"],
-                text=entry["text"],
-            )
-            self.utterances[u.name] = u
-            if u.text:
-                self.word_counts.update(u.text.split())
-            self.utterances[u.name].features = entry["features"]
-            self.utterances[u.name].ignored = entry["ignored"]
-            self.add_utterance(u)
+            if format == "jsonl":
+                utterances_data = jsonlines.Reader(f)
+            else:
+                utterances_data = yaml.safe_load(f)
+            for entry in utterances_data:
+                s = self.speakers[entry["speaker"]]
+                f = self.files[entry["file"]]
+                u = Utterance(
+                    s,
+                    f,
+                    begin=entry["begin"],
+                    end=entry["end"],
+                    channel=entry["channel"],
+                    text=entry["text"],
+                )
+                u.oovs = set(entry["oovs"])
+                u.normalized_text = entry["normalized_text"]
+                self.utterances[u.name] = u
+                if u.text:
+                    self.word_counts.update(u.text.split())
+                if u.normalized_text:
+                    self.word_counts.update(u.normalized_text)
+                if entry.get("word_error_rate", None) is not None:
+                    u.word_error_rate = entry["word_error_rate"]
+                    u.transcription_text = entry["transcription_text"]
+                self.utterances[u.name].features = entry["features"]
+                self.utterances[u.name].ignored = entry["ignored"]
+                self.add_utterance(u)
 
         self.log_debug(
             f"Loaded from corpus_data temp directory in {time.time() - begin_time} seconds"

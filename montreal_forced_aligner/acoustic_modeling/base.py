@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 import os
 import re
 import shutil
@@ -9,12 +10,14 @@ import statistics
 import subprocess
 import time
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
+from queue import Empty
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 
-from tqdm import tqdm
+import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
-from montreal_forced_aligner.alignment.base import AlignMixin
+from montreal_forced_aligner.alignment import AlignMixin
+from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -22,6 +25,8 @@ from montreal_forced_aligner.helper import align_phones
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.textgrid import process_ctm_line
 from montreal_forced_aligner.utils import (
+    KaldiProcessWorker,
+    Stopped,
     log_kaldi_errors,
     parse_logs,
     run_mp,
@@ -48,74 +53,9 @@ class AlignmentImprovementArguments(NamedTuple):
     word_boundary_paths: Dict[str, str]
     ali_paths: Dict[str, str]
     frame_shift: int
-    reversed_phone_mappings: Dict[str, Dict[int, str]]
-    positions: Dict[str, List[str]]
+    reversed_phone_mappings: Dict[int, str]
+    positions: List[str]
     phone_ctm_paths: Dict[str, str]
-
-
-class AccStatsArguments(NamedTuple):
-    """
-    Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
-    """
-
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
-    model_path: str
-
-
-def acc_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
-    model_path: str,
-) -> None:
-    """
-    Multiprocessing function for accumulating stats in GMM training.
-
-    See Also
-    --------
-    :meth:`.AcousticModelTrainingMixin.acc_stats`
-        Main function that calls this function in parallel
-    :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`gmm-acc-stats-ali`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
-    model_path: str
-        Path to the acoustic model file
-    """
-    model_path = model_path
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            acc_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-acc-stats-ali"),
-                    model_path,
-                    feature_strings[dict_name],
-                    f"ark,s,cs:{ali_paths[dict_name]}",
-                    acc_paths[dict_name],
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            acc_proc.communicate()
 
 
 def compute_alignment_improvement_func(
@@ -126,8 +66,8 @@ def compute_alignment_improvement_func(
     word_boundary_paths: Dict[str, str],
     ali_paths: Dict[str, str],
     frame_shift: int,
-    reversed_phone_mappings: Dict[str, Dict[int, str]],
-    positions: Dict[str, List[str]],
+    reversed_phone_mappings: Dict[int, str],
+    positions: List[str],
     phone_ctm_paths: Dict[str, str],
 ) -> None:
     """
@@ -237,7 +177,7 @@ def compute_alignment_improvement_func(
                     env=os.environ,
                 )
                 nbest_proc.communicate()
-                mapping = reversed_phone_mappings[dict_name]
+                mapping = reversed_phone_mappings
                 actual_lines = []
                 with open(phone_ctm_path, "r", encoding="utf8") as f:
                     for line in f:
@@ -254,7 +194,7 @@ def compute_alignment_improvement_func(
                             label = mapping[int(label)]
                         except KeyError:
                             pass
-                        for p in positions[dict_name]:
+                        for p in positions:
                             if label.endswith(p):
                                 label = label[: -1 * len(p)]
                         actual_lines.append([utt, begin, end, label])
@@ -268,7 +208,7 @@ def compute_alignment_improvement_func(
 def compare_alignments(
     alignments_one: Dict[str, List[CtmInterval]],
     alignments_two: Dict[str, List[CtmInterval]],
-    silence_phones: Set[str],
+    silence_phone: str,
 ) -> Tuple[Optional[int], Optional[float]]:
     """
     Compares two sets of alignments for difference
@@ -302,8 +242,8 @@ def compare_alignments(
     for u in common_utts:
         one_alignment = alignments_one[u]
         two_alignment = alignments_two[u]
-        avg_overlap_diff, num_insertions, num_deletions = align_phones(
-            one_alignment, two_alignment, silence_phones
+        avg_overlap_diff, phone_error_rate = align_phones(
+            one_alignment, two_alignment, silence_phone
         )
         if avg_overlap_diff is None:
             return None, None
@@ -356,7 +296,7 @@ class AcousticModelTrainingMixin(
     Attributes
     ----------
     realignment_iterations : list
-        List of iterations to perform alignment
+        Iterations to perform alignment
     """
 
     architecture = "gmm-hmm"
@@ -388,11 +328,11 @@ class AcousticModelTrainingMixin(
 
     def acc_stats_arguments(self) -> List[AccStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AccStatsArguments`]
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`]
             Arguments for processing
         """
         feat_strings = self.worker.construct_feature_proc_strings()
@@ -417,6 +357,8 @@ class AcousticModelTrainingMixin(
         list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AlignmentImprovementArguments`]
             Arguments for processing
         """
+        positions = self.positions
+        phone_mapping = self.reversed_phone_mapping
         return [
             AlignmentImprovementArguments(
                 os.path.join(self.working_log_directory, f"alignment_analysis.{j.name}.log"),
@@ -426,8 +368,8 @@ class AcousticModelTrainingMixin(
                 j.word_boundary_int_files(),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 self.frame_shift,
-                j.reversed_phone_mappings(),
-                j.positions(),
+                phone_mapping,
+                positions,
                 j.construct_path_dictionary(
                     self.working_directory, f"phone.{self.iteration}", "ctm"
                 ),
@@ -519,6 +461,13 @@ class AcousticModelTrainingMixin(
         """Directory of the corpus"""
         return self.worker.corpus_output_directory
 
+    @property
+    def num_utterances(self) -> int:
+        """Number of utterances of the corpus"""
+        if self.subset:
+            return self.subset
+        return self.worker.num_utterances
+
     def initialize_training(self) -> None:
         """Initialize training"""
         self.compute_calculated_properties()
@@ -534,12 +483,13 @@ class AcousticModelTrainingMixin(
             return
         os.makedirs(self.working_directory, exist_ok=True)
         os.makedirs(self.working_log_directory, exist_ok=True)
-        if self.subset is not None and self.subset > self.worker.num_utterances:
+        if self.subset and self.subset >= len(self.worker.utterances):
             self.logger.warning(
                 "Subset specified is larger than the dataset, "
                 "using full corpus for this training block."
             )
-
+            self.subset = 0
+            self.worker.current_subset = 0
         try:
             self._trainer_initialization()
             parse_logs(self.working_log_directory)
@@ -623,7 +573,7 @@ class AcousticModelTrainingMixin(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.base.acc_stats_func`
+        :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.AcousticModelTrainingMixin.acc_stats_arguments`
             Job method for generating arguments for the helper function
@@ -636,12 +586,43 @@ class AcousticModelTrainingMixin(
         :kaldi_steps:`train_deltas`
             Reference Kaldi script
         """
+        self.logger.info("Accumulating statistics...")
         arguments = self.acc_stats_arguments()
-
-        if self.use_mp:
-            run_mp(acc_stats_func, arguments, self.working_log_directory)
-        else:
-            run_non_mp(acc_stats_func, arguments, self.working_log_directory)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = AccStatsFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        num_utterances, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = AccStatsFunction(args)
+                    for num_utterances, errors in function.run():
+                        pbar.update(num_utterances + errors)
 
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
         with open(log_path, "w") as log_file:
@@ -763,7 +744,7 @@ class AcousticModelTrainingMixin(
             return
         current_alignments = self.parse_iteration_alignments()
         utterance_aligned_diff, mean_difference = compare_alignments(
-            previous_alignments, current_alignments, self.silence_phones
+            previous_alignments, current_alignments, self.optional_silence_phone
         )
         if utterance_aligned_diff:
             self.log_warning(
@@ -820,10 +801,12 @@ class AcousticModelTrainingMixin(
         try:
             self.initialize_training()
             begin = time.time()
-            with tqdm(initial=1, total=self.num_iterations + 1) as pbar:
-                while self.iteration < self.num_iterations + 1:
-                    self.train_iteration()
-                    pbar.update(1)
+            for iteration in range(1, self.num_iterations + 1):
+                self.log_info(
+                    f"{self.identifier} - Iteration {iteration} of {self.num_iterations}"
+                )
+                self.iteration = iteration
+                self.train_iteration()
             self.finalize_training()
         except Exception as e:
             with open(dirty_path, "w"):
@@ -898,22 +881,14 @@ class AcousticModelTrainingMixin(
 
         from ..utils import get_mfa_version
 
-        phone_regex = None
-        if self.base_phone_regex is not None:
-            phone_regex = self.base_phone_regex.pattern
         data = {
             "phones": sorted(self.non_silence_phones),
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_options,
-            "phone_set_type": self.phone_set_type,
-            "base_phone_regex": phone_regex,
-            "multilingual_ipa": self.multilingual_ipa,
+            "phone_set_type": str(self.phone_set_type),
         }
-        if self.multilingual_ipa:
-            data["strip_diacritics"] = self.strip_diacritics
-            data["digraphs"] = self.digraphs
         return data
 
     def export_model(self, output_model_path: str) -> None:

@@ -5,6 +5,7 @@ Transcription
 """
 from __future__ import annotations
 
+import itertools
 import multiprocessing as mp
 import os
 import shutil
@@ -12,41 +13,48 @@ import subprocess
 import sys
 import time
 from abc import abstractmethod
+from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+import tqdm
 import yaml
 
-from ..abc import FileExporterMixin, TopLevelMfaWorker
-from ..corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from ..exceptions import KaldiProcessingError, PlatformError
-from ..helper import parse_old_features, score
-from ..models import AcousticModel, LanguageModel
-from ..utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
-from .multiprocessing import (
+from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
+from montreal_forced_aligner.exceptions import KaldiProcessingError, PlatformError
+from montreal_forced_aligner.helper import parse_old_features, score
+from montreal_forced_aligner.models import AcousticModel, LanguageModel
+from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
+    CarpaLmRescoreFunction,
     CreateHclgArguments,
+    CreateHclgFunction,
     DecodeArguments,
+    DecodeFunction,
     FinalFmllrArguments,
+    FinalFmllrFunction,
     FmllrRescoreArguments,
+    FmllrRescoreFunction,
     InitialFmllrArguments,
+    InitialFmllrFunction,
     LatGenFmllrArguments,
+    LatGenFmllrFunction,
     LmRescoreArguments,
+    LmRescoreFunction,
     ScoreArguments,
-    carpa_lm_rescore_func,
-    create_hclg_func,
-    decode_func,
-    final_fmllr_est_func,
-    fmllr_rescore_func,
-    initial_fmllr_func,
-    lat_gen_fmllr_func,
-    lm_rescore_func,
-    score_func,
+    ScoreFunction,
+)
+from montreal_forced_aligner.utils import (
+    KaldiProcessWorker,
+    Stopped,
+    log_kaldi_errors,
+    thirdparty_binary,
 )
 
 if TYPE_CHECKING:
     from argparse import Namespace
 
-    from ..abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["Transcriber", "TranscriberMixin"]
 
@@ -257,6 +265,12 @@ class Transcriber(
                     if k == "features":
                         global_params.update(v)
                     else:
+                        if v is None and k in {
+                            "punctuation",
+                            "compound_markers",
+                            "clitic_markers",
+                        }:
+                            v = []
                         global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
@@ -274,6 +288,16 @@ class Transcriber(
                 "This may cause issues, run with --clean, if you hit an error."
             )
         self.load_corpus()
+        dirty_path = os.path.join(self.working_directory, "dirty")
+        if os.path.exists(dirty_path):
+            shutil.rmtree(self.working_directory, ignore_errors=True)
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        dirty_path = os.path.join(self.model_directory, "dirty")
+
+        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
+            shutil.rmtree(self.model_directory)
+        log_dir = os.path.join(self.model_directory, "log")
+        os.makedirs(log_dir, exist_ok=True)
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
@@ -284,7 +308,7 @@ class Transcriber(
 
     def create_hclgs_arguments(self) -> Dict[str, CreateHclgArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.create_hclg_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
 
         Returns
         -------
@@ -312,7 +336,7 @@ class Transcriber(
 
     def decode_arguments(self) -> List[DecodeArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
 
         Returns
         -------
@@ -336,7 +360,7 @@ class Transcriber(
 
     def score_arguments(self) -> List[ScoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
 
         Returns
         -------
@@ -345,7 +369,7 @@ class Transcriber(
         """
         return [
             ScoreArguments(
-                os.path.join(self.working_log_directory, f"score.{j.name}.log"),
+                os.path.join(self.evaluation_directory, f"score.{j.name}.log"),
                 j.current_dictionary_names,
                 self.score_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
@@ -359,7 +383,7 @@ class Transcriber(
 
     def lm_rescore_arguments(self) -> List[LmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
 
         Returns
         -------
@@ -381,7 +405,7 @@ class Transcriber(
 
     def carpa_lm_rescore_arguments(self) -> List[CarpaLmRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
 
         Returns
         -------
@@ -411,7 +435,7 @@ class Transcriber(
 
     def initial_fmllr_arguments(self) -> List[InitialFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
 
         Returns
         -------
@@ -435,7 +459,7 @@ class Transcriber(
 
     def lat_gen_fmllr_arguments(self) -> List[LatGenFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
 
         Returns
         -------
@@ -459,7 +483,7 @@ class Transcriber(
 
     def final_fmllr_arguments(self) -> List[FinalFmllrArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
 
         Returns
         -------
@@ -483,7 +507,7 @@ class Transcriber(
 
     def fmllr_rescore_arguments(self) -> List[FmllrRescoreArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
 
         Returns
         -------
@@ -564,7 +588,7 @@ class Transcriber(
         """
         tree_proc = subprocess.Popen(
             [thirdparty_binary("tree-info"), os.path.join(self.model_directory, "tree")],
-            text=True,
+            encoding="utf8",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -583,13 +607,54 @@ class Transcriber(
         """
         Create HCLG.fst files for every dictionary being used by a :class:`~montreal_forced_aligner.transcription.transcriber.Transcriber`
         """
-        dict_arguments = self.create_hclgs_arguments()
 
+        dict_arguments = self.create_hclgs_arguments()
         dict_arguments = list(dict_arguments.values())
+        self.logger.info("Generating HCLG.fst...")
         if self.use_mp:
-            run_mp(create_hclg_func, dict_arguments, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(dict_arguments):
+                function = CreateHclgFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            with tqdm.tqdm(total=len(dict_arguments)) as pbar:
+                while True:
+                    try:
+                        result, hclg_path = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    if result:
+                        self.log_debug(f"Done generating {hclg_path}!")
+                    else:
+                        self.log_warning(f"There was an error in generating {hclg_path}")
+                    pbar.update(1)
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
         else:
-            run_non_mp(create_hclg_func, dict_arguments, self.working_log_directory)
+            for args in dict_arguments:
+                function = CreateHclgFunction(args)
+                with tqdm.tqdm(total=len(dict_arguments)) as pbar:
+                    for result, hclg_path in function.run():
+                        if result:
+                            self.log_debug(f"Done generating {hclg_path}!")
+                        else:
+                            self.log_warning(f"There was an error in generating {hclg_path}")
+                        pbar.update(1)
         error_logs = []
         for arg in dict_arguments:
             if not os.path.exists(arg.hclg_path):
@@ -606,10 +671,9 @@ class Transcriber(
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        dirty_path = os.path.join(self.model_directory, "dirty")
-
-        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
-            shutil.rmtree(self.model_directory)
+        done_path = os.path.join(self.model_directory, "done")
+        if os.path.exists(done_path):
+            self.logger.info("Graph construction already done, skipping!")
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         self.write_lexicon_information(write_disambiguation=True)
@@ -674,6 +738,7 @@ class Transcriber(
         try:
             self.create_hclgs()
         except Exception as e:
+            dirty_path = os.path.join(self.model_directory, "dirty")
             with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
@@ -681,13 +746,81 @@ class Transcriber(
                 e.update_log_file(self.logger)
             raise
 
+    def score(self) -> None:
+        """
+        Score the decoded transcriptions
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
+            Multiprocessing function
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreArguments`
+            Arguments for function
+        """
+        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+            os.path.join(self.evaluation_directory, "score_costs.csv"), "w", encoding="utf8"
+        ) as log_file:
+            log_file.write("utterance,graph_cost,acoustic_cost,total_cost,num_frames\n")
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.score_arguments()):
+                    function = ScoreFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        (
+                            utterance,
+                            graph_cost,
+                            acoustic_cost,
+                            total_cost,
+                            num_frames,
+                        ) = return_queue.get(timeout=1)
+                        log_file.write(
+                            f"{utterance},{graph_cost},{acoustic_cost},{total_cost},{num_frames}\n"
+                        )
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.score_arguments():
+                    function = ScoreFunction(args)
+                    for (
+                        utterance,
+                        graph_cost,
+                        acoustic_cost,
+                        total_cost,
+                        num_frames,
+                    ) in function.run():
+                        log_file.write(
+                            f"{utterance},{graph_cost},{acoustic_cost},{total_cost},{num_frames}\n"
+                        )
+                        pbar.update(1)
+
     def score_transcriptions(self):
         """
         Score transcriptions if reference text is available in the corpus
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.score_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`
             Multiprocessing helper function for each job
         :meth:`.Transcriber.score_arguments`
             Job method for generating arguments for this function
@@ -696,22 +829,33 @@ class Transcriber(
         if self.evaluation_mode:
             best_wer = 10000
             best = None
-            for lmwt in range(self.min_language_model_weight, self.max_language_model_weight):
-                for wip in self.word_insertion_penalties:
+            evaluations = list(
+                itertools.product(
+                    range(self.min_language_model_weight, self.max_language_model_weight),
+                    self.word_insertion_penalties,
+                )
+            )
+            with tqdm.tqdm(total=len(evaluations)) as pbar:
+                for lmwt, wip in evaluations:
+                    pbar.update(1)
                     self.language_model_weight = lmwt
                     self.word_insertion_penalty = wip
                     os.makedirs(self.evaluation_log_directory, exist_ok=True)
 
-                    jobs = self.score_arguments()
-                    if self.use_mp:
-                        run_mp(score_func, jobs, self.evaluation_log_directory)
-                    else:
-                        run_non_mp(score_func, jobs, self.evaluation_log_directory)
+                    self.log_debug(
+                        f"Evaluating with language model weight={lmwt} and word insertion penalty={wip}..."
+                    )
+                    self.score()
+
                     ser, wer = self.evaluate()
                     if wer < best_wer:
                         best = (lmwt, wip)
+                        best_wer = wer
             self.language_model_weight = best[0]
             self.word_insertion_penalty = best[1]
+            self.log_info(
+                f"Best language model weight={best[0]}, best word insertion penalty={best[1]}, WER={best_wer:.2f}%"
+            )
             for score_args in self.score_arguments():
                 for p in score_args.tra_paths.values():
                     shutil.copyfile(
@@ -719,11 +863,221 @@ class Transcriber(
                         p.replace(self.evaluation_directory, self.working_directory),
                     )
         else:
-            jobs = self.score_arguments()
+            self.score()
+
+    def calc_initial_fmllr(self):
+        """
+        Calculate initial fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.initial_fmllr_arguments`
+            Arguments for function
+        """
+        self.logger.info("Calculating initial fMLLR transforms...")
+        sum_errors = 0
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
             if self.use_mp:
-                run_mp(score_func, jobs, self.working_log_directory)
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.initial_fmllr_arguments()):
+                    function = InitialFmllrFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, no_gpost, other_errors = return_queue.get(timeout=1)
+                        sum_errors += no_gpost + other_errors
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + no_gpost + other_errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
             else:
-                run_non_mp(score_func, jobs, self.working_log_directory)
+                for args in self.initial_fmllr_arguments():
+                    function = InitialFmllrFunction(args)
+                    for done, no_gpost, other_errors in function.run():
+                        sum_errors += no_gpost + other_errors
+                        pbar.update(done + no_gpost + other_errors)
+            if sum_errors:
+                self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+
+    def lat_gen_fmllr(self):
+        """
+        Generate lattice with fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.lat_gen_fmllr_arguments`
+            Arguments for function
+        """
+        self.logger.info("Regenerating lattices with fMLLR transforms...")
+        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+            os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
+            "w",
+            encoding="utf8",
+        ) as log_file:
+            log_file.write("utterance,log_likelihood,num_frames\n")
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.lat_gen_fmllr_arguments()):
+                    function = LatGenFmllrFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        utterance, log_likelihood, num_frames = return_queue.get(timeout=1)
+                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.lat_gen_fmllr_arguments():
+                    function = LatGenFmllrFunction(args)
+                    for utterance, log_likelihood, num_frames in function.run():
+                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        pbar.update(1)
+
+    def calc_final_fmllr(self):
+        """
+        Calculate final fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.final_fmllr_arguments`
+            Arguments for function
+        """
+        self.logger.info("Calculating final fMLLR transforms...")
+        sum_errors = 0
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.final_fmllr_arguments()):
+                    function = FinalFmllrFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, no_gpost, other_errors = return_queue.get(timeout=1)
+                        sum_errors += no_gpost + other_errors
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + no_gpost + other_errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.final_fmllr_arguments():
+                    function = FinalFmllrFunction(args)
+                    for done, no_gpost, other_errors in function.run():
+                        sum_errors += no_gpost + other_errors
+                        pbar.update(done + no_gpost + other_errors)
+            if sum_errors:
+                self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+
+    def fmllr_rescore(self):
+        """
+        Rescore lattices with final fMLLR transforms
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.fmllr_rescore_arguments`
+            Arguments for function
+        """
+        self.logger.info("Rescoring fMLLR lattices with final transform...")
+        sum_errors = 0
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.fmllr_rescore_arguments()):
+                    function = FmllrRescoreFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        done, errors = return_queue.get(timeout=1)
+                        sum_errors += errors
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(done + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.fmllr_rescore_arguments():
+                    function = FmllrRescoreFunction(args)
+                    for done, errors in function.run():
+                        sum_errors += errors
+                        pbar.update(done + errors)
+            if sum_errors:
+                self.logger.warning(f"{errors} utterances had errors on calculating fMLLR.")
 
     def transcribe_fmllr(self) -> None:
         """
@@ -731,63 +1085,194 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.initial_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lat_gen_fmllr_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.final_fmllr_est_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.fmllr_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
             Multiprocessing helper function for each job
 
         """
-        jobs = self.initial_fmllr_arguments()
-
-        if self.use_mp:
-            run_mp(initial_fmllr_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(initial_fmllr_func, jobs, self.working_log_directory)
+        self.calc_initial_fmllr()
 
         self.speaker_independent = False
 
-        jobs = self.lat_gen_fmllr_arguments()
+        self.lat_gen_fmllr()
 
+        self.calc_final_fmllr()
+
+        self.fmllr_rescore()
+
+        self.lm_rescore()
+
+        self.carpa_lm_rescore()
+
+    def decode(self):
+        """
+        Generate lattices
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.decode_arguments`
+            Arguments for function
+        """
+        self.logger.info("Generating lattices...")
+        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+            os.path.join(self.working_log_directory, "decode_log_like.csv"), "w", encoding="utf8"
+        ) as log_file:
+            log_file.write("utterance,log_likelihood,num_frames\n")
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(self.decode_arguments()):
+                    function = DecodeFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        utterance, log_likelihood, num_frames = return_queue.get(timeout=1)
+                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in self.decode_arguments():
+                    function = DecodeFunction(args)
+                    for utterance, log_likelihood, num_frames in function.run():
+                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        pbar.update(1)
+
+    def lm_rescore(self):
+        """
+        Rescore lattices with bigger language model
+
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.lm_rescore_arguments`
+            Arguments for function
+        """
+        self.logger.info("Rescoring lattices with medium G.fst...")
         if self.use_mp:
-            run_mp(lat_gen_fmllr_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(self.lm_rescore_arguments()):
+                function = LmRescoreFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            with tqdm.tqdm(total=self.num_utterances) as pbar:
+                while True:
+                    try:
+                        succeeded, failed = return_queue.get(timeout=1)
+                        # print(utterance)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    if failed:
+                        self.log_warning("Some lattices failed to be rescored")
+                    pbar.update(succeeded + failed)
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
         else:
-            run_non_mp(lat_gen_fmllr_func, jobs, self.working_log_directory)
+            for args in self.lm_rescore_arguments():
+                function = LmRescoreFunction(args)
+                with tqdm.tqdm(total=self.num_jobs) as pbar:
+                    for succeeded, failed in function.run():
+                        if failed:
+                            self.log_warning("Some lattices failed to be rescored")
+                        pbar.update(succeeded + failed)
 
-        jobs = self.final_fmllr_arguments()
+    def carpa_lm_rescore(self):
+        """
+        Rescore lattices with CARPA language model
 
+        See Also
+        -------
+        :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
+            Multiprocessing function
+        :meth:`.Transcriber.carpa_lm_rescore_arguments`
+            Arguments for function
+        """
+        self.logger.info("Rescoring lattices with large G.carpa...")
         if self.use_mp:
-            run_mp(final_fmllr_est_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(self.carpa_lm_rescore_arguments()):
+                function = CarpaLmRescoreFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            with tqdm.tqdm(total=self.num_utterances) as pbar:
+                while True:
+                    try:
+                        succeeded, failed = return_queue.get(timeout=1)
+                        # print(utterance)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    if failed:
+                        self.log_warning("Some lattices failed to be rescored")
+                    pbar.update(succeeded + failed)
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
         else:
-            run_non_mp(final_fmllr_est_func, jobs, self.working_log_directory)
-
-        jobs = self.fmllr_rescore_arguments()
-
-        if self.use_mp:
-            run_mp(fmllr_rescore_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(fmllr_rescore_func, jobs, self.working_log_directory)
-
-        jobs = self.lm_rescore_arguments()
-
-        if self.use_mp:
-            run_mp(lm_rescore_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(lm_rescore_func, jobs, self.working_log_directory)
-
-        jobs = self.carpa_lm_rescore_arguments()
-
-        if self.use_mp:
-            run_mp(carpa_lm_rescore_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(carpa_lm_rescore_func, jobs, self.working_log_directory)
+            for args in self.carpa_lm_rescore_arguments():
+                function = CarpaLmRescoreFunction(args)
+                with tqdm.tqdm(total=self.num_utterances) as pbar:
+                    for succeeded, failed in function.run():
+                        if failed:
+                            self.log_warning("Some lattices failed to be rescored")
+                        pbar.update(succeeded + failed)
 
     def transcribe(self) -> None:
         """
@@ -795,11 +1280,11 @@ class Transcriber(
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.decode_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
             Multiprocessing helper function for each job
-        :func:`~montreal_forced_aligner.transcription.multiprocessing.carpa_lm_rescore_func`
+        :func:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
             Multiprocessing helper function for each job
 
         Raises
@@ -808,35 +1293,21 @@ class Transcriber(
             If there were any errors in running Kaldi binaries
         """
         self.logger.info("Beginning transcription...")
+        done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")
-        if os.path.exists(dirty_path):
-            shutil.rmtree(self.working_directory, ignore_errors=True)
-        os.makedirs(self.working_log_directory, exist_ok=True)
         try:
-            self.speaker_independent = True
-            jobs = self.decode_arguments()
+            if not os.path.exists(done_path):
+                self.speaker_independent = True
 
-            if self.use_mp:
-                run_mp(decode_func, jobs, self.working_log_directory)
+                self.decode()
+                if self.uses_speaker_adaptation:
+                    self.logger.info("Performing speaker adjusted transcription...")
+                    self.transcribe_fmllr()
+                else:
+                    self.lm_rescore()
+                    self.carpa_lm_rescore()
             else:
-                run_non_mp(decode_func, jobs, self.working_log_directory)
-
-            jobs = self.lm_rescore_arguments()
-
-            if self.use_mp:
-                run_mp(lm_rescore_func, jobs, self.working_log_directory)
-            else:
-                run_non_mp(lm_rescore_func, jobs, self.working_log_directory)
-
-            jobs = self.carpa_lm_rescore_arguments()
-
-            if self.use_mp:
-                run_mp(carpa_lm_rescore_func, jobs, self.working_log_directory)
-            else:
-                run_non_mp(carpa_lm_rescore_func, jobs, self.working_log_directory)
-            if self.uses_speaker_adaptation:
-                self.logger.info("Performing speaker adjusted transcription...")
-                self.transcribe_fmllr()
+                self.logger.info("Transcription already done, skipping!")
             self.score_transcriptions()
         except Exception as e:
             with open(dirty_path, "w"):
@@ -864,36 +1335,48 @@ class Transcriber(
         # Word-level measures
         total_edits = 0
         total_length = 0
-        issues = []
+        issues = {}
+        indices = []
         with mp.Pool(self.num_jobs) as pool:
             to_comp = []
-            for utt_name, utterance in self.utterances.items():
+            for utterance in self.utterances:
+                utt_name = utterance.name
+                if not utterance.text:
+                    continue
                 g = utterance.text.split()
                 if not utterance.transcription_text:
                     incorrect += 1
                     total_edits += len(g)
                     total_length += len(g)
+                    issues[utt_name] = [g, "", 1]
+                    continue
 
                 h = utterance.transcription_text.split()
                 if g != h:
-                    issues.append((utt_name, g, h))
-                to_comp.append((g, h))
+                    issues[utt_name] = [g, h]
+                    indices.append(utt_name)
+                    to_comp.append((g, h))
+                else:
+                    issues[utt_name] = [g, h, 0]
             gen = pool.starmap(score, to_comp)
-            for (edits, length) in gen:
+            for i, (edits, length) in enumerate(gen):
+                issues[indices[i]].append(edits / length)
                 if edits == 0:
                     correct += 1
                 else:
                     incorrect += 1
                 total_edits += edits
                 total_length += length
-        ser = 100 * incorrect / (correct + incorrect)
-        wer = 100 * total_edits / total_length
-        output_path = os.path.join(self.evaluation_directory, "transcription_issues.csv")
+        output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
         with open(output_path, "w", encoding="utf8") as f:
-            for utt, g, h in issues:
+            f.write("utterance,gold_transcript,hypothesis,WER\n")
+            for utt, (g, h, wer) in issues.items():
+                self.utterances[utt].word_error_rate = wer
                 g = " ".join(g)
                 h = " ".join(h)
-                f.write(f"{utt},{g},{h}\n")
+                f.write(f"{utt},{g},{h},{wer}\n")
+        ser = 100 * incorrect / (correct + incorrect)
+        wer = 100 * total_edits / total_length
         self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%")
         return ser, wer
 
@@ -933,3 +1416,8 @@ class Transcriber(
         self._load_transcripts()
         for file in self.files:
             file.save(output_directory, backup_output_directory)
+        if self.evaluation_mode:
+            shutil.copyfile(
+                os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),
+                os.path.join(output_directory, "transcription_evaluation.csv"),
+            )

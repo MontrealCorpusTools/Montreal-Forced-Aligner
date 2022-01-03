@@ -10,15 +10,16 @@ import multiprocessing as mp
 import os
 import shutil
 import sys
-import textwrap
 import traceback
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import ansiwrap
 from colorama import Fore, Style
 
-from .exceptions import KaldiProcessingError, ThirdpartyError
-from .models import MODEL_TYPES
+from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.exceptions import KaldiProcessingError, ThirdpartyError
+from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
     "thirdparty_binary",
@@ -188,7 +189,7 @@ class CustomFormatter(logging.Formatter):
             Formatted log message
         """
         log_fmt = self.FORMATS.get(record.levelno)
-        return textwrap.fill(
+        return ansiwrap.fill(
             record.getMessage(),
             initial_indent=log_fmt[0],
             subsequent_indent=" " * len(log_fmt[0]),
@@ -354,6 +355,56 @@ class ProcessWorker(mp.Process):
             self.return_dict["error"] = arguments, Exception(
                 traceback.format_exception(*sys.exc_info())
             )
+
+
+class KaldiProcessWorker(mp.Process):
+    """
+    Multiprocessing function work
+
+    Parameters
+    ----------
+    job_name: int
+        Integer number of job
+    job_q: :class:`~multiprocessing.Queue`
+        Job queue to pull arguments from
+    function: KaldiFunction
+        Multiprocessing function to call on arguments from job_q
+    return_dict: dict
+        Dictionary for collecting errors
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Stop check
+    return_info: dict[int, Any], optional
+        Optional dictionary to fill if the function should return information to main thread
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        return_q: mp.Queue,
+        function: KaldiFunction,
+        error_dict: dict,
+        stopped: Stopped,
+    ):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.function = function
+        self.return_q = return_q
+        self.error_dict = error_dict
+        self.stopped = stopped
+        self.finished = Stopped()
+
+    def run(self) -> None:
+        """
+        Run through the arguments in the queue apply the function to them
+        """
+        try:
+            for result in self.function.run():
+                self.return_q.put(result)
+        except Exception:
+            self.stopped.stop()
+            self.error_dict[self.job_name] = Exception(traceback.format_exception(*sys.exc_info()))
+        finally:
+            self.finished.stop()
 
 
 def run_non_mp(

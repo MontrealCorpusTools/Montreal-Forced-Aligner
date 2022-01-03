@@ -1,17 +1,24 @@
 """Class definitions for Monophone trainer"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import re
 import subprocess
+from queue import Empty
 from typing import Dict, List, NamedTuple
 
+import tqdm
+
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.utils import run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
+
+__all__ = ["MonophoneTrainer", "MonoAlignEqualFunction", "MonoAlignEqualArguments"]
 
 
 class MonoAlignEqualArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`"""
+    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`"""
 
     log_path: str
     dictionaries: List[str]
@@ -22,15 +29,7 @@ class MonoAlignEqualArguments(NamedTuple):
     model_path: str
 
 
-def mono_align_equal_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    fst_scp_paths: Dict[str, str],
-    ali_ark_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
-    model_path: str,
-):
+class MonoAlignEqualFunction(KaldiFunction):
     """
     Multiprocessing function for initializing monophone alignments
 
@@ -47,54 +46,60 @@ def mono_align_equal_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    fst_scp_paths: dict[str, str]
-        Dictionary of utterance FST scp files per dictionary name
-    ali_ark_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
-    model_path: str
-        Path to the acoustic model file
+    args: :class:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            fst_path = fst_scp_paths[dict_name]
-            ali_path = ali_ark_paths[dict_name]
-            acc_path = acc_paths[dict_name]
-            align_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("align-equal-compiled"),
-                    f"scp:{fst_path}",
-                    feature_strings[dict_name],
-                    f"ark:{ali_path}",
-                ],
-                stderr=log_file,
-                env=os.environ,
-            )
-            align_proc.communicate()
-            stats_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-acc-stats-ali"),
-                    "--binary=true",
-                    model_path,
-                    feature_strings[dict_name],
-                    f"ark:{ali_path}",
-                    acc_path,
-                ],
-                stdin=align_proc.stdout,
-                stderr=log_file,
-                env=os.environ,
-            )
-            stats_proc.communicate()
 
+    progress_pattern = re.compile(
+        r"^LOG.* Done (?P<utterances>\d+) files, (?P<errors>\d+) with errors.$"
+    )
 
-__all__ = ["MonophoneTrainer"]
+    def __init__(self, args: MonoAlignEqualArguments):
+        self.log_path = args.log_path
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.fst_scp_paths = args.fst_scp_paths
+        self.model_path = args.model_path
+        self.ali_ark_paths = args.ali_ark_paths
+        self.acc_paths = args.acc_paths
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
+            for dict_name in self.dictionaries:
+                fst_path = self.fst_scp_paths[dict_name]
+                ali_path = self.ali_ark_paths[dict_name]
+                acc_path = self.acc_paths[dict_name]
+                align_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("align-equal-compiled"),
+                        f"scp:{fst_path}",
+                        self.feature_strings[dict_name],
+                        f"ark:{ali_path}",
+                    ],
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                align_proc.communicate()
+                acc_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-acc-stats-ali"),
+                        "--binary=true",
+                        self.model_path,
+                        self.feature_strings[dict_name],
+                        f"ark:{ali_path}",
+                        acc_path,
+                    ],
+                    stdin=align_proc.stdout,
+                    stderr=subprocess.PIPE,
+                    encoding="utf8",
+                    env=os.environ,
+                )
+                for line in acc_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield int(m.group("utterances")), int(m.group("errors"))
 
 
 class MonophoneTrainer(AcousticModelTrainingMixin):
@@ -134,7 +139,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
     def mono_align_equal_arguments(self) -> List[MonoAlignEqualArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`
 
         Returns
         -------
@@ -184,7 +189,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.acoustic_modeling.monophone.mono_align_equal_func`
+        :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`
             Multiprocessing helper function for each job
         :meth:`.MonophoneTrainer.mono_align_equal_arguments`
             Job method for generating arguments for the helper function
@@ -196,12 +201,43 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             Reference Kaldi script
         """
 
+        self.logger.info("Generating initial alignments...")
         arguments = self.mono_align_equal_arguments()
-
-        if self.use_mp:
-            run_mp(mono_align_equal_func, arguments, self.working_log_directory)
-        else:
-            run_non_mp(mono_align_equal_func, arguments, self.working_log_directory)
+        with tqdm.tqdm(total=self.num_utterances) as pbar:
+            if self.use_mp:
+                manager = mp.Manager()
+                error_dict = manager.dict()
+                return_queue = manager.Queue()
+                stopped = Stopped()
+                procs = []
+                for i, args in enumerate(arguments):
+                    function = MonoAlignEqualFunction(args)
+                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        num_utterances, errors = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(num_utterances + errors)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for v in error_dict.values():
+                        raise v
+            else:
+                for args in arguments:
+                    function = MonoAlignEqualFunction(args)
+                    for num_utterances, errors in function.run():
+                        pbar.update(num_utterances + errors)
 
         log_path = os.path.join(self.working_log_directory, "update.0.log")
         with open(log_path, "w") as log_file:
@@ -270,10 +306,10 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 [thirdparty_binary("gmm-info"), "--print-args=false", self.model_path],
                 stderr=log_file,
                 stdout=subprocess.PIPE,
+                encoding="utf8",
             )
             stdout, stderr = proc.communicate()
-            num = stdout.decode("utf8")
-            matches = re.search(r"gaussians (\d+)", num)
+            matches = re.search(r"gaussians (\d+)", stdout)
             num_gauss = int(matches.groups()[0])
         if os.path.exists(self.model_path):
             os.remove(init_log_path)

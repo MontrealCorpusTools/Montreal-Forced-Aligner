@@ -107,6 +107,14 @@ def english_us_ipa_dictionary():
 
 
 @pytest.fixture(scope="session")
+def pinyin_dictionary():
+    from montreal_forced_aligner.command_line.model import download_model
+
+    download_model("dictionary", "mandarin_pinyin")
+    return "mandarin_pinyin"
+
+
+@pytest.fixture(scope="session")
 def english_uk_ipa_dictionary():
     from montreal_forced_aligner.command_line.model import download_model
 
@@ -319,6 +327,11 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "punctuated")
     os.makedirs(path, exist_ok=True)
     name = "punctuated"
+    shutil.copyfile(
+        os.path.join(wav_dir, "acoustic_corpus.wav"), os.path.join(path, name + ".wav")
+    )
+    shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    name = "weird_words"
     shutil.copyfile(
         os.path.join(wav_dir, "acoustic_corpus.wav"), os.path.join(path, name + ".wav")
     )
@@ -541,6 +554,11 @@ def basic_train_lm_config_path(config_directory):
 @pytest.fixture(scope="session")
 def different_punctuation_config_path(config_directory):
     return os.path.join(config_directory, "different_punctuation_config.yaml")
+
+
+@pytest.fixture(scope="session")
+def no_punctuation_config_path(config_directory):
+    return os.path.join(config_directory, "no_punctuation_config.yaml")
 
 
 @pytest.fixture(scope="session")

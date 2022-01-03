@@ -18,7 +18,7 @@ Montreal Forced Aligner documentation
 
     +++
 
-    .. link-button:: getting_started_ref
+    .. link-button:: getting_started
             :type: ref
             :text: Install MFA
             :classes: btn-block btn-primary btn-navigation stretched-link
