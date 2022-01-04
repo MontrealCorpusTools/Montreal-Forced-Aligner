@@ -816,7 +816,6 @@ def align_phones(
     test: List[CtmInterval],
     silence_phone: str,
     custom_mapping: Optional[Dict[str, str]] = None,
-    debug=False,
 ) -> Tuple[float, float]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
@@ -857,8 +856,6 @@ def align_phones(
     num_deletions = 0
     num_substitutions = 0
     for a in alignments:
-        if debug:
-            print(pairwise2.format_alignment(*a))
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
             if sa == "-":

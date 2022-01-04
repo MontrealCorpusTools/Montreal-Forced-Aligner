@@ -331,30 +331,32 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         else:
             csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
         with open(csv_path, "w", encoding="utf8") as f:
-            f.write("utterance,score,phone_error_rate\n")
+            f.write(
+                "utterance,file,speaker,duration,word_count,oov_count,reference_phone_count,score,phone_error_rate\n"
+            )
             for utterance_name, intervals in per_utterance_phone_intervals.items():
                 if not intervals:
                     continue
-                if not self.utterances[utterance_name].phone_labels:
+                utterance = self.utterances[utterance_name]
+                if not utterance.phone_labels:
                     continue
-                if utterance_name == "s20-s2002a-381-047-381-894":
-
-                    score, phone_error_rate = align_phones(
-                        intervals,
-                        self.utterances[utterance_name].phone_labels,
-                        self.optional_silence_phone,
-                        mapping,
-                        debug=True,
-                    )
                 score, phone_error_rate = align_phones(
                     intervals,
-                    self.utterances[utterance_name].phone_labels,
+                    utterance.phone_labels,
                     self.optional_silence_phone,
                     mapping,
                 )
                 if score is None:
                     continue
-                f.write(f"{utterance_name},{score},{phone_error_rate}\n")
+                speaker = utterance.speaker_name
+                file = utterance.file_name
+                duration = utterance.duration
+                reference_phone_count = len(intervals)
+                word_count = len(utterance.text.split())
+                oov_count = len(utterance.oovs)
+                f.write(
+                    f"{utterance_name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},{score},{phone_error_rate}\n"
+                )
                 score_count += 1
                 score_sum += score
                 phone_edit_sum += int(phone_error_rate * len(intervals))

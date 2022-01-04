@@ -1369,12 +1369,22 @@ class Transcriber(
                 total_length += length
         output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
         with open(output_path, "w", encoding="utf8") as f:
-            f.write("utterance,gold_transcript,hypothesis,WER\n")
+            f.write(
+                "utterance,file,speaker,duration,word_count,oov_count,gold_transcript,hypothesis,WER\n"
+            )
             for utt, (g, h, wer) in issues.items():
-                self.utterances[utt].word_error_rate = wer
+                utterance = self.utterances[utt]
+                utterance.word_error_rate = wer
+                speaker = utterance.speaker_name
+                file = utterance.file_name
+                duration = utterance.duration
+                word_count = len(utterance.text.split())
+                oov_count = len(utterance.oovs)
                 g = " ".join(g)
                 h = " ".join(h)
-                f.write(f"{utt},{g},{h},{wer}\n")
+                f.write(
+                    f"{utt},{file},{speaker},{duration},{word_count},{oov_count},{g},{h},{wer}\n"
+                )
         ser = 100 * incorrect / (correct + incorrect)
         wer = 100 * total_edits / total_length
         self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%")
