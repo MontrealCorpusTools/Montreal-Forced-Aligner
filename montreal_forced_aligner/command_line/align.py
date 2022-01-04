@@ -31,7 +31,6 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
     aligner = PretrainedAligner(
         acoustic_model_path=args.acoustic_model_path,
         corpus_directory=args.corpus_directory,
-        audio_directory=args.audio_directory,
         dictionary_path=args.dictionary_path,
         temporary_directory=args.temporary_directory,
         **PretrainedAligner.parse_parameters(args.config_path, args, unknown_args),

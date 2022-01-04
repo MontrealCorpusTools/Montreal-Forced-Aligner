@@ -5,6 +5,7 @@ Transcription
 """
 from __future__ import annotations
 
+import csv
 import itertools
 import multiprocessing as mp
 import os
@@ -1368,9 +1369,20 @@ class Transcriber(
                 total_edits += edits
                 total_length += length
         output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
-        with open(output_path, "w", encoding="utf8") as f:
-            f.write(
-                "utterance,file,speaker,duration,word_count,oov_count,gold_transcript,hypothesis,WER\n"
+        with open(output_path, "w", newline="", encoding="utf8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "utterance",
+                    "file",
+                    "speaker",
+                    "duration",
+                    "word_count",
+                    "oov_count",
+                    "gold_transcript",
+                    "hypothesis",
+                    "WER",
+                ]
             )
             for utt, (g, h, wer) in issues.items():
                 utterance = self.utterances[utt]
@@ -1382,9 +1394,7 @@ class Transcriber(
                 oov_count = len(utterance.oovs)
                 g = " ".join(g)
                 h = " ".join(h)
-                f.write(
-                    f"{utt},{file},{speaker},{duration},{word_count},{oov_count},{g},{h},{wer}\n"
-                )
+                writer.writerow([utt, file, speaker, duration, word_count, oov_count, g, h, wer])
         ser = 100 * incorrect / (correct + incorrect)
         wer = 100 * total_edits / total_length
         self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%")
@@ -1425,7 +1435,7 @@ class Transcriber(
             os.makedirs(backup_output_directory, exist_ok=True)
         self._load_transcripts()
         for file in self.files:
-            file.save(output_directory, backup_output_directory)
+            file.save(output_directory, backup_output_directory, save_transcription=True)
         if self.evaluation_mode:
             shutil.copyfile(
                 os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),

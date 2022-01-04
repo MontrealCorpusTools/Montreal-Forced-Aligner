@@ -393,6 +393,7 @@ class File(MfaCorpusClass):
         output_directory: Optional[str] = None,
         backup_output_directory: Optional[str] = None,
         text_type: Optional[TextFileType] = None,
+        save_transcription: bool = False,
     ) -> None:
         """
         Output File to TextGrid or lab.  If ``text_type`` is not specified, the original file type will be used,
@@ -408,6 +409,8 @@ class File(MfaCorpusClass):
             instead use this directory
         text_type: TextFileType, optional
             Text type to save as, if not provided, it will use either the original file type or guess the file type
+        save_transcription: bool
+            Flag for whether the hypothesized transcription text should be saved instead of the default text
         """
         utterance_count = len(self.utterances)
         if text_type is None:
@@ -426,8 +429,8 @@ class File(MfaCorpusClass):
                 output_directory, backup_output_directory, enforce_lab=True
             )
             with open(output_path, "w", encoding="utf8") as f:
-                if utterance.transcription_text is not None:
-                    f.write(utterance.transcription_text)
+                if save_transcription:
+                    f.write(utterance.transcription_text if utterance.transcription_text else "")
                 else:
                     f.write(utterance.text)
             return
@@ -451,12 +454,14 @@ class File(MfaCorpusClass):
                     speaker = utterance.speaker
                 if not self.aligned:
 
-                    if utterance.transcription_text is not None:
+                    if save_transcription:
                         tiers[speaker].entryList.append(
                             Interval(
                                 start=utterance.begin,
                                 end=utterance.end,
-                                label=utterance.transcription_text,
+                                label=utterance.transcription_text
+                                if utterance.transcription_text
+                                else "",
                             )
                         )
                     else:

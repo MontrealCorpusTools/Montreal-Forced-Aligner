@@ -30,7 +30,6 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
         validator = PretrainedValidator(
             acoustic_model_path=args.acoustic_model_path,
             corpus_directory=args.corpus_directory,
-            audio_directory=args.audio_directory,
             dictionary_path=args.dictionary_path,
             temporary_directory=args.temporary_directory,
             **PretrainedValidator.parse_parameters(args.config_path, args, unknown_args),
@@ -38,7 +37,6 @@ def validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -
     else:
         validator = TrainingValidator(
             corpus_directory=args.corpus_directory,
-            audio_directory=args.audio_directory,
             dictionary_path=args.dictionary_path,
             temporary_directory=args.temporary_directory,
             **TrainingValidator.parse_parameters(args.config_path, args, unknown_args),
