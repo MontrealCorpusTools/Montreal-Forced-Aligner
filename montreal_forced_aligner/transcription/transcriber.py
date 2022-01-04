@@ -1357,15 +1357,14 @@ class Transcriber(
                     issues[utt_name] = [g, h]
                     indices.append(utt_name)
                     to_comp.append((g, h))
+                    incorrect += 1
                 else:
                     issues[utt_name] = [g, h, 0]
+                    total_length += len(g)
+                    correct += 1
             gen = pool.starmap(score, to_comp)
             for i, (edits, length) in enumerate(gen):
                 issues[indices[i]].append(edits / length)
-                if edits == 0:
-                    correct += 1
-                else:
-                    incorrect += 1
                 total_edits += edits
                 total_length += length
         output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
