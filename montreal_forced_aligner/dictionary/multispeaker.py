@@ -126,7 +126,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self.clitic_markers,
                 self.compound_markers,
                 dictionary.clitic_set,
-                set(dictionary.words.keys()),
+                set(dictionary.actual_words.keys()),
             )
         return MultispeakerSanitizationFunction(
             self.speaker_mapping, sanitize_function, split_functions
