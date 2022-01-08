@@ -381,7 +381,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         if item == "":
             return []
         if normalized:
-            if item in self.words_mapping:
+            if item in self.words_mapping and item not in self.specials_set:
                 return [self.words_mapping[item]]
             else:
                 return [self.oov_int]
