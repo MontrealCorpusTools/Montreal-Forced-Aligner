@@ -1,6 +1,7 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
+import json
 import os
 import random
 import time
@@ -21,7 +22,7 @@ from montreal_forced_aligner.corpus.classes import (
     UtteranceCollection,
 )
 from montreal_forced_aligner.corpus.multiprocessing import Job
-from montreal_forced_aligner.data import SoundFileInformation
+from montreal_forced_aligner.data import CtmInterval, SoundFileInformation
 from montreal_forced_aligner.exceptions import CorpusError
 from montreal_forced_aligner.helper import jsonl_encoder, output_mapping
 from montreal_forced_aligner.utils import Stopped
@@ -100,6 +101,13 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self.jobs: List[Job] = []
         super().__init__(**kwargs)
 
+    def _initialize_from_json(self, data):
+        pass
+
+    @property
+    def corpus_meta(self):
+        return {}
+
     @property
     def features_directory(self) -> str:
         """Feature directory of the corpus"""
@@ -124,6 +132,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         self._write_files()
         self._write_utterances()
         self._write_spk2utt()
+        self._write_corpus_info()
 
     def _write_spk2utt(self):
         """Write spk2utt scp file for Kaldi"""
@@ -136,6 +145,13 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         """Write utt2spk scp file for Kaldi"""
         data = {u.name: u.speaker.name for u in self.utterances}
         output_mapping(data, os.path.join(self.corpus_output_directory, "utt2spk.scp"))
+
+    def _write_corpus_info(self):
+        """Write speaker information for speeding up future runs"""
+        with open(
+            os.path.join(self.corpus_output_directory, "corpus.json"), "w", encoding="utf8"
+        ) as f:
+            json.dump(self.corpus_meta, f)
 
     def _write_speakers(self):
         """Write speaker information for speeding up future runs"""
@@ -412,6 +428,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                     )
                     self.num_jobs = old_num_jobs
         format = "jsonl"
+        corpus_path = os.path.join(self.corpus_output_directory, "corpus.json")
         speakers_path = os.path.join(self.corpus_output_directory, "speakers.jsonl")
         files_path = os.path.join(self.corpus_output_directory, "files.jsonl")
         utterances_path = os.path.join(self.corpus_output_directory, "utterances.jsonl")
@@ -431,6 +448,11 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             self.log_debug(f"Could not find {utterances_path}, cannot load from temp")
             return False
         self.log_debug("Loading from temporary files...")
+
+        if os.path.exists(corpus_path):
+            with open(corpus_path, "r", encoding="utf8") as f:
+                data = json.load(f)
+                self._initialize_from_json(data)
 
         with open(speakers_path, "r", encoding="utf8") as f:
             if format == "jsonl":
@@ -479,16 +501,26 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 )
                 u.oovs = set(entry["oovs"])
                 u.normalized_text = entry["normalized_text"]
-                self.utterances[u.name] = u
                 if u.text:
                     self.word_counts.update(u.text.split())
                 if u.normalized_text:
                     self.word_counts.update(u.normalized_text)
-                if entry.get("word_error_rate", None) is not None:
-                    u.word_error_rate = entry["word_error_rate"]
-                    u.transcription_text = entry["transcription_text"]
-                self.utterances[u.name].features = entry["features"]
-                self.utterances[u.name].ignored = entry["ignored"]
+                u.word_error_rate = entry.get("word_error_rate", None)
+                u.transcription_text = entry.get("transcription_text", None)
+                u.phone_error_rate = entry.get("phone_error_rate", None)
+                u.alignment_score = entry.get("alignment_score", None)
+                u.reference_phone_labels = [
+                    CtmInterval(**x) for x in entry.get("reference_phone_labels", [])
+                ]
+
+                phone_labels = entry.get("phone_labels", None)
+                if phone_labels:
+                    u.phone_labels = [CtmInterval(**x) for x in phone_labels]
+                word_labels = entry.get("word_labels", None)
+                if word_labels:
+                    u.word_labels = [CtmInterval(**x) for x in word_labels]
+                u.features = entry.get("features", None)
+                u.ignored = entry.get("ignored", False)
                 self.add_utterance(u)
 
         self.log_debug(

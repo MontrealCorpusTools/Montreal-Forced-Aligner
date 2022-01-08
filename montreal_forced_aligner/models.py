@@ -21,7 +21,7 @@ from montreal_forced_aligner.exceptions import (
     ModelLoadError,
     PronunciationAcousticMismatchError,
 )
-from montreal_forced_aligner.helper import TerminalPrinter, set_default
+from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -198,9 +198,16 @@ class Archive(MfaModel):
         Get the meta data associated with the model
         """
         if not self._meta:
-            meta_path = os.path.join(self.dirname, "meta.yaml")
+            meta_path = os.path.join(self.dirname, "meta.json")
+            format = "json"
+            if not os.path.exists(meta_path):
+                meta_path = os.path.join(self.dirname, "meta.yaml")
+                format = "yaml"
             with open(meta_path, "r", encoding="utf8") as f:
-                self._meta = yaml.safe_load(f)
+                if format == "yaml":
+                    self._meta = yaml.safe_load(f)
+                else:
+                    self._meta = json.load(f)
         self.parse_old_features()
         return self._meta
 
@@ -213,8 +220,8 @@ class Archive(MfaModel):
         trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             The trainer to construct the metadata from
         """
-        with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
-            yaml.dump(trainer.meta, f)
+        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+            json.dump(trainer.meta, f)
 
     @classmethod
     def empty(
@@ -310,8 +317,8 @@ class AcousticModel(Archive):
         trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             Trainer to supply metadata information about the acoustic model
         """
-        with open(os.path.join(self.dirname, "meta.yaml"), "w", encoding="utf8") as f:
-            yaml.dump(trainer.meta, f)
+        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+            json.dump(trainer.meta, f)
 
     @property
     def parameters(self) -> MetaDict:
@@ -351,7 +358,11 @@ class AcousticModel(Archive):
             "splice_right_context": 3,
         }
         if not self._meta:
-            meta_path = os.path.join(self.dirname, "meta.yaml")
+            meta_path = os.path.join(self.dirname, "meta.json")
+            format = "json"
+            if not os.path.exists(meta_path):
+                meta_path = os.path.join(self.dirname, "meta.yaml")
+                format = "yaml"
             if not os.path.exists(meta_path):
                 self._meta = {
                     "version": "0.9.0",
@@ -360,7 +371,10 @@ class AcousticModel(Archive):
                 }
             else:
                 with open(meta_path, "r", encoding="utf8") as f:
-                    self._meta = yaml.safe_load(f)
+                    if format == "yaml":
+                        self._meta = yaml.safe_load(f)
+                    else:
+                        self._meta = json.load(f)
                 if self._meta["features"] == "mfcc+deltas":
                     self._meta["features"] = default_features
             if "phone_type" not in self._meta:
@@ -468,7 +482,9 @@ class AcousticModel(Archive):
         logger.debug("====ACOUSTIC MODEL INFO====")
         logger.debug("Acoustic model root directory: " + self.root_directory)
         logger.debug("Acoustic model dirname: " + self.dirname)
-        meta_path = os.path.join(self.dirname, "meta.yaml")
+        meta_path = os.path.join(self.dirname, "meta.json")
+        if not os.path.exists(meta_path):
+            meta_path = os.path.join(self.dirname, "meta.yaml")
         logger.debug("Acoustic model meta path: " + meta_path)
         if not os.path.exists(meta_path):
             logger.debug("META.YAML DOES NOT EXIST, this may cause issues in validating the model")
@@ -581,7 +597,7 @@ class G2PModel(Archive):
         """
 
         with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
-            json.dump(g2p_trainer.meta, f, default=set_default)
+            json.dump(g2p_trainer.meta, f, cls=EnhancedJSONEncoder)
 
     @property
     def meta(self) -> dict:

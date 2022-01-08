@@ -767,13 +767,10 @@ class File(MfaCorpusClass):
                 np.abs(self.waveform[:, begin_sample:end_sample]), axis=0
             )
             y[np.isnan(y)] = 0
-            y[0, :] += 3
-            y[0, :] += 1
         else:
-            y = (
-                self.waveform[begin_sample:end_sample]
-                / np.max(np.abs(self.waveform[begin_sample:end_sample]), axis=0)
-            ) + 1
+            y = self.waveform[begin_sample:end_sample] / np.max(
+                np.abs(self.waveform[begin_sample:end_sample]), axis=0
+            )
         x = np.arange(start=begin_sample, stop=end_sample) / self.sample_rate
         return x, y
 
@@ -859,10 +856,13 @@ class Utterance(MfaCorpusClass):
         self.features = None
         self.phone_labels: Optional[List[CtmInterval]] = None
         self.word_labels: Optional[List[CtmInterval]] = None
+        self.reference_phone_labels: Optional[List[CtmInterval]] = []
         self.oovs = set()
         self.normalized_text = []
         self.text_int = []
         self.word_error_rate = None
+        self.phone_error_rate = None
+        self.alignment_score = None
 
     def parse_transcription(self, sanitize_function=Optional[MultispeakerSanitizationFunction]):
         """
@@ -884,12 +884,14 @@ class Utterance(MfaCorpusClass):
             words = [
                 sanitize(w)
                 for w in self.text.split()
-                if w not in sanitize.clitic_markers + sanitize.compound_markers
+                if w and w not in sanitize.clitic_markers + sanitize.compound_markers
             ]
             self.text = " ".join(words)
             if split is not None:
                 for w in words:
                     for new_w in split(w):
+                        if not new_w:
+                            continue
                         if new_w not in split.word_set:
                             self.oovs.add(new_w)
                         self.normalized_text.append(new_w)
@@ -980,6 +982,9 @@ class Utterance(MfaCorpusClass):
             "normalized_text": self.normalized_text,
             "oovs": self.oovs,
             "transcription_text": self.transcription_text,
+            "reference_phone_labels": self.reference_phone_labels,
+            "phone_labels": self.phone_labels,
+            "word_labels": self.word_labels,
             "word_error_rate": self.word_error_rate,
         }
 
@@ -1017,7 +1022,7 @@ class Utterance(MfaCorpusClass):
         for interval in intervals:
             if self.begin is not None:
                 interval.shift_times(self.begin)
-        self.word_labels.extend(intervals)
+        self.word_labels = intervals
 
     def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
         """
@@ -1035,7 +1040,7 @@ class Utterance(MfaCorpusClass):
         for interval in intervals:
             if self.begin is not None:
                 interval.shift_times(self.begin)
-        self.phone_labels.extend(intervals)
+        self.phone_labels = intervals
 
     def text_for_scp(self) -> List[str]:
         """

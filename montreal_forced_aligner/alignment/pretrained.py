@@ -1,14 +1,12 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
-import multiprocessing as mp
 import os
 import subprocess
 import time
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
-import tqdm
 import yaml
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
@@ -16,7 +14,6 @@ from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import align_phones, parse_old_features
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_mp, run_non_mp, thirdparty_binary
 
 if TYPE_CHECKING:
@@ -251,7 +248,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
     def evaluate(
         self,
-        reference_directory: str,
         mapping: Optional[Dict[str, str]] = None,
         output_directory: Optional[str] = None,
     ) -> None:
@@ -268,60 +264,9 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             Directory to save results, if not specified, it will be saved in the log directory
         """
         # Set up
-        per_utterance_phone_intervals = {}
         self.log_info("Evaluating alignments...")
         self.log_debug(f"Mapping: {mapping}")
-        indices = []
-        jobs = []
-        self.log_info("Loading reference alignments...")
-        for root, _, files in os.walk(reference_directory, followlinks=True):
-            root_speaker = os.path.basename(root)
-            for f in files:
-                if f.endswith(".TextGrid"):
-                    file_name = f.replace(".TextGrid", "")
-                    if file_name not in self.files:
-                        continue
-                    if self.use_mp:
-                        indices.append(file_name)
-                        jobs.append((os.path.join(root, f), root_speaker))
-                    else:
-                        file = self.files[file_name]
-                        intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
-                        for u in file.utterances:
-                            if u.begin is None or u.end is None:
-                                for v in intervals.values():
-                                    per_utterance_phone_intervals[u.name] = v
-                            else:
-                                if u.speaker_name not in intervals:
-                                    continue
-                                utterance_name = u.name
-                                if utterance_name not in per_utterance_phone_intervals:
-                                    per_utterance_phone_intervals[utterance_name] = []
-                                for interval in intervals[u.speaker_name]:
-                                    if interval.begin >= u.begin and interval.end <= u.end:
-                                        per_utterance_phone_intervals[utterance_name].append(
-                                            interval
-                                        )
-        if self.use_mp:
-            with mp.Pool(self.num_jobs) as pool, tqdm.tqdm(total=len(jobs)) as pbar:
-                gen = pool.starmap(parse_aligned_textgrid, jobs)
-                for i, intervals in enumerate(gen):
-                    pbar.update(1)
-                    file_name = indices[i]
-                    file = self.files[file_name]
-                    for u in file.utterances:
-                        if u.begin is None or u.end is None:
-                            for v in intervals.values():
-                                per_utterance_phone_intervals[u.name] = v
-                        else:
-                            if u.speaker_name not in intervals:
-                                continue
-                            utterance_name = u.name
-                            if utterance_name not in per_utterance_phone_intervals:
-                                per_utterance_phone_intervals[utterance_name] = []
-                            for interval in intervals[u.speaker_name]:
-                                if interval.begin >= u.begin and interval.end <= u.end:
-                                    per_utterance_phone_intervals[utterance_name].append(interval)
+
         score_count = 0
         score_sum = 0
         phone_edit_sum = 0
@@ -334,33 +279,34 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             f.write(
                 "utterance,file,speaker,duration,word_count,oov_count,reference_phone_count,score,phone_error_rate\n"
             )
-            for utterance_name, intervals in per_utterance_phone_intervals.items():
-                if not intervals:
+            for utterance in self.utterances:
+                if not utterance.reference_phone_labels:
                     continue
-                utterance = self.utterances[utterance_name]
                 if not utterance.phone_labels:
                     continue
                 score, phone_error_rate = align_phones(
-                    intervals,
+                    utterance.reference_phone_labels,
                     utterance.phone_labels,
                     self.optional_silence_phone,
                     mapping,
                 )
                 if score is None:
                     continue
+                utterance.alignment_score = score
+                utterance.phone_error_rate = phone_error_rate
                 speaker = utterance.speaker_name
                 file = utterance.file_name
                 duration = utterance.duration
-                reference_phone_count = len(intervals)
+                reference_phone_count = len(utterance.reference_phone_labels)
                 word_count = len(utterance.text.split())
                 oov_count = len(utterance.oovs)
                 f.write(
-                    f"{utterance_name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},{score},{phone_error_rate}\n"
+                    f"{utterance.name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},{score},{phone_error_rate}\n"
                 )
                 score_count += 1
                 score_sum += score
-                phone_edit_sum += int(phone_error_rate * len(intervals))
-                phone_length_sum += len(intervals)
+                phone_edit_sum += int(phone_error_rate * reference_phone_count)
+                phone_length_sum += reference_phone_count
         self.logger.info(f"Average overlap score: {score_sum/score_count}")
         self.logger.info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
 
@@ -389,7 +335,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 self.align_utterances()
 
                 self.compile_information()
-
+            self.collect_alignments()
         except Exception as e:
             with open(dirty_path, "w"):
                 pass

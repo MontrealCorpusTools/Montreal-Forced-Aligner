@@ -346,6 +346,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
                 )
             self.compile_information()
+            self.collect_alignments()
             with open(done_path, "w"):
                 pass
         except Exception as e:

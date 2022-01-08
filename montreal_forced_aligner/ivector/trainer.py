@@ -39,6 +39,21 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         For acoustic model training parsing parameters
     """
 
+    @property
+    def meta(self) -> MetaDict:
+        """Generate metadata for the acoustic model that was trained"""
+        from datetime import datetime
+
+        from ..utils import get_mfa_version
+
+        data = {
+            "version": get_mfa_version(),
+            "architecture": self.architecture,
+            "train_date": str(datetime.now()),
+            "features": self.feature_options,
+        }
+        return data
+
     def export_model(self, output_model_path: str) -> None:
         """
         Output IvectorExtractor model

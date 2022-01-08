@@ -5,6 +5,7 @@ Helper functions
 """
 from __future__ import annotations
 
+import dataclasses
 import functools
 import itertools
 import json
@@ -800,15 +801,19 @@ def overlap_scoring(
     return -1 * (begin_diff + end_diff + label_diff)
 
 
-def set_default(obj):
+class EnhancedJSONEncoder(json.JSONEncoder):
     """JSON serialization"""
-    if isinstance(obj, set):
-        return list(obj)
-    raise TypeError
+
+    def default(self, o):
+        if dataclasses.is_dataclass(o):
+            return dataclasses.asdict(o)
+        if isinstance(o, set):
+            return list(o)
+        return dataclasses.asdict(o)
 
 
 def jsonl_encoder(obj):
-    return json.dumps(obj, default=set_default)
+    return json.dumps(obj, cls=EnhancedJSONEncoder)
 
 
 def align_phones(

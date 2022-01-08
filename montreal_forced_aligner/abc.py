@@ -426,7 +426,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                     val = unknown_args[i + 1]
                 unknown_dict[name] = val
         for name, param_type in param_types.items():
-            if name.endswith("_directory") or name.endswith("_path"):
+            if (name.endswith("_directory") and name != "audio_directory") or name.endswith(
+                "_path"
+            ):
                 continue
             if args is not None and hasattr(args, name):
                 params[name] = param_type(getattr(args, name))

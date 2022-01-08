@@ -842,6 +842,9 @@ class CtmInterval:
     label: str
     utterance: str
 
+    def __lt__(self, other: CtmInterval):
+        return self.begin < other.begin
+
     def __post_init__(self):
         """
         Check on data validity

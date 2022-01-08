@@ -69,8 +69,12 @@ class MultispeakerSanitizationFunction:
         :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
             Function for splitting up words
         """
-        dict_name = self.get_dict_name_for_speaker(speaker_name)
-        return self.sanitize_function, self.split_functions[dict_name]
+        try:
+            dict_name = self.get_dict_name_for_speaker(speaker_name)
+            split_function = self.split_functions[dict_name]
+        except KeyError:
+            split_function = None
+        return self.sanitize_function, split_function
 
 
 class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMeta):
