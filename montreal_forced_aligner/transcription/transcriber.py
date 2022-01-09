@@ -1331,42 +1331,40 @@ class Transcriber(
         self._load_transcripts()
         # Sentence-level measures
 
-        correct = 0
         incorrect = 0
+        total_count = 0
         # Word-level measures
         total_edits = 0
         total_length = 0
         issues = {}
         indices = []
-        with mp.Pool(self.num_jobs) as pool:
-            to_comp = []
-            for utterance in self.utterances:
-                utt_name = utterance.name
-                if not utterance.text:
-                    continue
-                g = utterance.text.split()
-                if not utterance.transcription_text:
-                    incorrect += 1
-                    total_edits += len(g)
-                    total_length += len(g)
-                    issues[utt_name] = [g, "", 1]
-                    continue
+        to_comp = []
+        for utterance in self.utterances:
+            utt_name = utterance.name
+            if not utterance.text:
+                continue
+            total_count += 1
+            g = utterance.text.split()
+            total_length += len(g)
+            if not utterance.transcription_text:
+                incorrect += 1
+                total_edits += len(g)
+                issues[utt_name] = [g, "", 1]
+                continue
 
-                h = utterance.transcription_text.split()
-                if g != h:
-                    issues[utt_name] = [g, h]
-                    indices.append(utt_name)
-                    to_comp.append((g, h))
-                    incorrect += 1
-                else:
-                    issues[utt_name] = [g, h, 0]
-                    total_length += len(g)
-                    correct += 1
+            h = utterance.transcription_text.split()
+            if g != h:
+                issues[utt_name] = [g, h]
+                indices.append(utt_name)
+                to_comp.append((g, h))
+                incorrect += 1
+            else:
+                issues[utt_name] = [g, h, 0]
+        with mp.Pool(self.num_jobs) as pool:
             gen = pool.starmap(score, to_comp)
             for i, (edits, length) in enumerate(gen):
                 issues[indices[i]].append(edits / length)
                 total_edits += edits
-                total_length += length
         output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
         with open(output_path, "w", newline="", encoding="utf8") as f:
             writer = csv.writer(f)
@@ -1383,7 +1381,8 @@ class Transcriber(
                     "WER",
                 ]
             )
-            for utt, (g, h, wer) in issues.items():
+            for utt in sorted(issues.keys()):
+                g, h, wer = issues[utt]
                 utterance = self.utterances[utt]
                 utterance.word_error_rate = wer
                 speaker = utterance.speaker_name
@@ -1394,7 +1393,7 @@ class Transcriber(
                 g = " ".join(g)
                 h = " ".join(h)
                 writer.writerow([utt, file, speaker, duration, word_count, oov_count, g, h, wer])
-        ser = 100 * incorrect / (correct + incorrect)
+        ser = 100 * incorrect / total_count
         wer = 100 * total_edits / total_length
         self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%")
         return ser, wer
@@ -1434,6 +1433,8 @@ class Transcriber(
             os.makedirs(backup_output_directory, exist_ok=True)
         self._load_transcripts()
         for file in self.files:
+            if len(file.utterances) == 0:
+                self.logger.debug(f"Could not find any utterances for {file.name}")
             file.save(output_directory, backup_output_directory, save_transcription=True)
         if self.evaluation_mode:
             shutil.copyfile(

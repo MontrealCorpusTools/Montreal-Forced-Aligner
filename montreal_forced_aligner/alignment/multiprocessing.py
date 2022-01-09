@@ -274,13 +274,6 @@ class AlignFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(
-        r"^LOG \(gmm-align-compiled.*gmm-align-compiled.cc:127\) (?P<utterance>.*)"
-    )
-    error_pattern = re.compile(
-        r"^WARNING \(gmm-align-compiled.*Did not successfully decode file (?P<utterance>.*),.*"
-    )
-
     def __init__(self, args: AlignArguments):
         self.log_path = args.log_path
         self.dictionaries = args.dictionaries
@@ -309,6 +302,7 @@ class AlignFunction(KaldiFunction):
                     f"scp:{fst_path}",
                     feature_string,
                     f"ark:{ali_path}",
+                    "ark,t:-",
                 ]
 
                 boost_proc = subprocess.Popen(
@@ -325,27 +319,16 @@ class AlignFunction(KaldiFunction):
                 )
                 align_proc = subprocess.Popen(
                     com,
-                    stderr=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
                     encoding="utf8",
                     stdin=boost_proc.stdout,
                     env=os.environ,
                 )
-                for line in align_proc.stderr:
-                    log_file.write(line)
+                for line in align_proc.stdout:
                     line = line.strip()
-                    if "Overall" in line:
-                        continue
-                    if "Retried" in line:
-                        continue
-                    if "Done" in line:
-                        continue
-                    m = self.error_pattern.match(line)
-                    if m:
-                        yield m.group("utterance"), False
-                    else:
-                        m = self.progress_pattern.match(line)
-                        if m:
-                            yield m.group("utterance"), True
+                    utterance, log_likelihood = line.split()
+                    yield utterance, log_likelihood
 
 
 def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:

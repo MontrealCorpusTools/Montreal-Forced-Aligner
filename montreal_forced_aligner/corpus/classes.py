@@ -421,8 +421,10 @@ class File(MfaCorpusClass):
                 else:
                     text_type = TextFileType.TEXTGRID
         if text_type == TextFileType.LAB:
-            if utterance_count == 0 and os.path.exists(self.text_path):
+            if utterance_count == 0 and os.path.exists(self.text_path) and not save_transcription:
                 os.remove(self.text_path)
+                return
+            elif utterance_count == 0:
                 return
             utterance = next(iter(self.utterances))
             output_path = self.construct_output_path(
@@ -860,6 +862,7 @@ class Utterance(MfaCorpusClass):
         self.oovs = set()
         self.normalized_text = []
         self.text_int = []
+        self.alignment_log_likelihood = None
         self.word_error_rate = None
         self.phone_error_rate = None
         self.alignment_score = None
@@ -892,7 +895,7 @@ class Utterance(MfaCorpusClass):
                     for new_w in split(w):
                         if not new_w:
                             continue
-                        if new_w not in split.word_set:
+                        if split.word_set is not None and new_w not in split.word_set:
                             self.oovs.add(new_w)
                         self.normalized_text.append(new_w)
 

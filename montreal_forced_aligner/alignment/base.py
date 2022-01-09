@@ -178,7 +178,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         continue
                     pbar.update(1)
                     if word_mode:
-                        print(utterance)
                         self.utterances[utterance].add_word_intervals(intervals)
                     else:
                         self.utterances[utterance].add_phone_intervals(intervals)

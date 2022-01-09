@@ -214,7 +214,7 @@ class SatTrainer(TriphoneTrainer):
         os.rename(self.model_path, self.next_model_path)
 
         self.iteration = 1
-        print(os.path.exists(os.path.join(self.previous_aligner.working_directory, "trans.0.ark")))
+
         if os.path.exists(os.path.join(self.previous_aligner.working_directory, "trans.0.ark")):
             for j in self.jobs:
                 for path in j.construct_path_dictionary(

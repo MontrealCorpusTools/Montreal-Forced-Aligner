@@ -507,13 +507,15 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
         "mean...",
     ]
     weird_words = corpus.utterances["punctuated-weird-words-0-26-72325"]
-    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me"
+    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me <s> </s>"
     assert weird_words.normalized_text == [
         "i’m",
         "talking-ajfish",
         "me-really",
         "asds-asda",
         "sdasd-me",
+        "<s>",
+        "</s>",
     ]
 
 
