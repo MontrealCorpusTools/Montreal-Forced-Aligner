@@ -426,15 +426,15 @@ class File(MfaCorpusClass):
                 return
             elif utterance_count == 0:
                 return
-            utterance = next(iter(self.utterances))
             output_path = self.construct_output_path(
                 output_directory, backup_output_directory, enforce_lab=True
             )
             with open(output_path, "w", encoding="utf8") as f:
-                if save_transcription:
-                    f.write(utterance.transcription_text if utterance.transcription_text else "")
-                else:
-                    f.write(utterance.text)
+                for u in self.utterances:
+                    if save_transcription:
+                        f.write(u.transcription_text if u.transcription_text else "")
+                    else:
+                        f.write(u.text)
             return
         elif text_type == TextFileType.TEXTGRID:
             output_path = self.construct_output_path(output_directory, backup_output_directory)
