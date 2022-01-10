@@ -321,7 +321,7 @@ class AlignMixin(DictionaryMixin):
                             break
                         continue
                     if hasattr(self, "utterances"):
-                        self.utterances[utterance].alignment_log_likelihood = log_likelihood
+                        self.utterances[utterance].alignment_log_likelihood = float(log_likelihood)
                         if hasattr(self, "frame_shift"):
                             num_frames = int(
                                 self.utterances[utterance].duration * self.frame_shift
@@ -341,7 +341,9 @@ class AlignMixin(DictionaryMixin):
                     function = AlignFunction(args)
                     for utterance, log_likelihood in function.run():
                         if hasattr(self, "utterances"):
-                            self.utterances[utterance].alignment_log_likelihood = log_likelihood
+                            self.utterances[utterance].alignment_log_likelihood = float(
+                                log_likelihood
+                            )
                             if hasattr(self, "frame_shift"):
                                 num_frames = int(
                                     self.utterances[utterance].duration * self.frame_shift
