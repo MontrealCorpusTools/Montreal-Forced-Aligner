@@ -140,8 +140,9 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
-        kwargs.update(self.acoustic_model.parameters)
-        super().__init__(**kwargs)
+        kw = self.acoustic_model.parameters
+        kw.update(kwargs)
+        super().__init__(**kw)
 
     @property
     def working_directory(self) -> str:
@@ -282,7 +283,19 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             for utterance in self.utterances:
                 if not utterance.reference_phone_labels:
                     continue
-                if not utterance.phone_labels:
+                speaker = utterance.speaker_name
+                file = utterance.file_name
+                duration = utterance.duration
+                reference_phone_count = len(utterance.reference_phone_labels)
+                word_count = len(utterance.text.split())
+                oov_count = len(utterance.oovs)
+                if not utterance.phone_labels:  # couldn't be aligned
+                    utterance.alignment_score = None
+                    utterance.phone_error_rate = len(utterance.reference_phone_labels)
+                    f.write(
+                        f"{utterance.name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},na,{len(utterance.reference_phone_labels)}\n"
+                    )
+
                     continue
                 score, phone_error_rate = align_phones(
                     utterance.reference_phone_labels,
@@ -294,12 +307,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     continue
                 utterance.alignment_score = score
                 utterance.phone_error_rate = phone_error_rate
-                speaker = utterance.speaker_name
-                file = utterance.file_name
-                duration = utterance.duration
-                reference_phone_count = len(utterance.reference_phone_labels)
-                word_count = len(utterance.text.split())
-                oov_count = len(utterance.oovs)
                 f.write(
                     f"{utterance.name},{file},{speaker},{duration},{word_count},{oov_count},{reference_phone_count},{score},{phone_error_rate}\n"
                 )

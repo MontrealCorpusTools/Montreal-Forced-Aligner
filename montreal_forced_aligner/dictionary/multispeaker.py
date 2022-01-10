@@ -242,7 +242,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._write_topo()
         self._write_extra_questions()
         for d in self.dictionary_mapping.values():
-            d.write(write_disambiguation)
+            d.write(write_disambiguation, debug=getattr(self, "debug", False))
 
     def set_lexicon_word_set(self, word_set: Collection[str]) -> None:
         """

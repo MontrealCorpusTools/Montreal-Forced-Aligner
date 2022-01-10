@@ -530,7 +530,7 @@ class WordAlignmentFunction(KaldiFunction):
                         cur_utt = interval.utterance
                     intervals.append(interval)
             if intervals:
-                cur_utt, self.cleanup_intervals(cur_utt, intervals)
+                yield cur_utt, self.cleanup_intervals(cur_utt, intervals)
 
 
 class PhoneAlignmentFunction(KaldiFunction):

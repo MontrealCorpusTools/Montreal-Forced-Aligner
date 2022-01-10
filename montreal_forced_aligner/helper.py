@@ -17,7 +17,7 @@ import numpy
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import CorpusMappingType, Labels, MetaDict, ScpType
+    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict, ScpType
     from montreal_forced_aligner.dictionary.pronunciation import Word
     from montreal_forced_aligner.textgrid import CtmInterval
 
@@ -619,7 +619,7 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
     return scp
 
 
-def edit_distance(x: Labels, y: Labels) -> int:
+def edit_distance(x: List[str], y: List[str]) -> int:
     """
     Compute edit distance between two sets of labels
 
@@ -630,9 +630,9 @@ def edit_distance(x: Labels, y: Labels) -> int:
 
     Parameters
     ----------
-    x: Labels
+    x: list[str]
         First sequence to compare
-    y: Labels
+    y: list[str]
         Second sequence to compare
 
     Returns
@@ -693,15 +693,15 @@ def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
     return edits, best_length
 
 
-def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, int]:
+def score(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
     Parameters
     ----------
-    gold: Labels
+    gold: list[str]
         The reference labels
-    hypo: Labels
+    hypo: list[str]
         The hypothesized labels
     multiple_hypotheses: bool
         Flag for whether the hypotheses contain multiple
@@ -713,16 +713,7 @@ def score(gold: Labels, hypo: Labels, multiple_hypotheses=False) -> Tuple[int, i
     int
         Length of the gold labels
     """
-    if multiple_hypotheses:
-        edits = 100000
-        for h in hypo:
-            e = edit_distance(gold, h)
-            if e < edits:
-                edits = e
-            if not edits:
-                break
-    else:
-        edits = edit_distance(gold, hypo)
+    edits = edit_distance(gold, hypo)
     return edits, len(gold)
 
 

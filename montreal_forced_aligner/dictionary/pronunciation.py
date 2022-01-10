@@ -636,10 +636,10 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             if write_disambiguation:
                 temp2_fst_path = os.path.join(self.dictionary_output_directory, "temp2.fst")
                 word_disambig_path = os.path.join(
-                    self.dictionary_output_directory, "word_disambig0.txt"
+                    self.dictionary_output_directory, "word_disambig.txt"
                 )
                 phone_disambig_path = os.path.join(
-                    self.dictionary_output_directory, "phone_disambig0.txt"
+                    self.dictionary_output_directory, "phone_disambig.txt"
                 )
                 with open(phone_disambig_path, "w") as f:
                     f.write(str(self.phone_mapping["#0"]))

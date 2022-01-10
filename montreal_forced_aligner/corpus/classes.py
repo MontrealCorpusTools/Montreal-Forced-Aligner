@@ -989,6 +989,9 @@ class Utterance(MfaCorpusClass):
             "phone_labels": self.phone_labels,
             "word_labels": self.word_labels,
             "word_error_rate": self.word_error_rate,
+            "phone_error_rate": self.phone_error_rate,
+            "alignment_score": self.alignment_score,
+            "alignment_log_likelihood": self.alignment_log_likelihood,
         }
 
     def set_speaker(self, speaker: Speaker) -> None:

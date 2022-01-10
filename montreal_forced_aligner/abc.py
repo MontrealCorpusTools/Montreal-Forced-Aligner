@@ -16,7 +16,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    Iterable,
     List,
     Optional,
     Set,
@@ -47,7 +46,6 @@ __all__ = [
     "TrainerMixin",
     "DictionaryEntryType",
     "ReversedMappingType",
-    "Labels",
     "WordsType",
     "OneToOneMappingType",
     "OneToManyMappingType",
@@ -58,7 +56,6 @@ __all__ = [
 
 # Configuration types
 MetaDict = Dict[str, Any]
-Labels: Iterable[Any]
 CtmErrorDict: Dict[Tuple[str, int], str]
 
 # Dictionary types

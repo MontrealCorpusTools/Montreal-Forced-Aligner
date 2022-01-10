@@ -505,6 +505,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 u.transcription_text = entry.get("transcription_text", None)
                 u.phone_error_rate = entry.get("phone_error_rate", None)
                 u.alignment_score = entry.get("alignment_score", None)
+                u.alignment_log_likelihood = entry.get("alignment_log_likelihood", None)
                 u.reference_phone_labels = [
                     CtmInterval(**x) for x in entry.get("reference_phone_labels", [])
                 ]
