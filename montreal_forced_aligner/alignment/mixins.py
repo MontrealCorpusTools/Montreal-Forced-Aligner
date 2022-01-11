@@ -321,14 +321,15 @@ class AlignMixin(DictionaryMixin):
                             break
                         continue
                     if hasattr(self, "utterances"):
-                        self.utterances[utterance].alignment_log_likelihood = float(log_likelihood)
                         if hasattr(self, "frame_shift"):
                             num_frames = int(
                                 self.utterances[utterance].duration * self.frame_shift
                             )
                         else:
                             num_frames = self.utterances[utterance].duration
-                        self.utterances[utterance].alignment_log_likelihood /= num_frames
+                        self.utterances[utterance].alignment_log_likelihood = (
+                            log_likelihood / num_frames
+                        )
                     pbar.update(1)
                 for p in procs:
                     p.join()
@@ -341,16 +342,15 @@ class AlignMixin(DictionaryMixin):
                     function = AlignFunction(args)
                     for utterance, log_likelihood in function.run():
                         if hasattr(self, "utterances"):
-                            self.utterances[utterance].alignment_log_likelihood = float(
-                                log_likelihood
-                            )
                             if hasattr(self, "frame_shift"):
                                 num_frames = int(
                                     self.utterances[utterance].duration * self.frame_shift
                                 )
                             else:
                                 num_frames = self.utterances[utterance].duration
-                            self.utterances[utterance].alignment_log_likelihood /= num_frames
+                            self.utterances[utterance].alignment_log_likelihood = (
+                                log_likelihood / num_frames
+                            )
                         pbar.update(1)
 
         self.compile_information()

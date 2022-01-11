@@ -328,7 +328,7 @@ class AlignFunction(KaldiFunction):
                 for line in align_proc.stdout:
                     line = line.strip()
                     utterance, log_likelihood = line.split()
-                    yield utterance, log_likelihood
+                    yield utterance, float(log_likelihood)
 
 
 def compile_information_func(align_log_path: str) -> Dict[str, Union[List[str], float, int]]:
