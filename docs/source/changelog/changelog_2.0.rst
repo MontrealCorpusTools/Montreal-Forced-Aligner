@@ -10,6 +10,15 @@
 Beta releases
 =============
 
+2.0.0rc1
+--------
+
+- Getting closer to stable release!
+- Fixed some bugs in how transcription and alignment accuracy were calculated
+- Added additional information to evaluation output files
+- Added file listing average per-frame log-likelihoods by utterance for alignment
+- Fixed a bug where having "<s>" in a transcript would cause MFA to crash
+
 2.0.0b11
 --------
 

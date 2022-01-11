@@ -211,23 +211,43 @@ def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
     audio_path = os.path.join(path, "audio")
     text_path = os.path.join(path, "text")
     os.makedirs(path, exist_ok=True)
-    names = [("michael", ["acoustic_corpus"]), ("sickmichael", ["cold_corpus", "cold_corpus3"])]
+    names = [
+        ("michael", ["acoustic_corpus"]),
+        ("sickmichael", ["cold_corpus", "cold_corpus3"]),
+        (
+            "speaker",
+            [
+                "multilingual_ipa",
+                "multilingual_ipa_2",
+                "multilingual_ipa_3",
+                "multilingual_ipa_4",
+                "multilingual_ipa_5",
+            ],
+        ),
+        (
+            "speaker_two",
+            [
+                "multilingual_ipa_us",
+                "multilingual_ipa_us_2",
+                "multilingual_ipa_us_3",
+                "multilingual_ipa_us_4",
+                "multilingual_ipa_us_5",
+            ],
+        ),
+    ]
     for s, files in names:
         s_text_dir = os.path.join(text_path, s)
         s_audio_dir = os.path.join(audio_path, s)
         os.makedirs(s_text_dir, exist_ok=True)
         os.makedirs(s_audio_dir, exist_ok=True)
         for name in files:
-            shutil.copyfile(
-                os.path.join(wav_dir, name + ".wav"), os.path.join(s_audio_dir, name + ".wav")
-            )
-            shutil.copyfile(
-                os.path.join(lab_dir, name + ".lab"), os.path.join(s_text_dir, name + ".lab")
-            )
-    shutil.copyfile(
-        os.path.join(textgrid_dir, "acoustic_corpus.TextGrid"),
-        os.path.join(s_text_dir, "acoustic_corpus_nonsense.TextGrid"),
-    )
+            wav_path = os.path.join(wav_dir, name + ".wav")
+            if os.path.exists(wav_path):
+                shutil.copyfile(wav_path, wav_path.replace(wav_dir, s_audio_dir))
+            lab_path = os.path.join(lab_dir, name + ".lab")
+            if not os.path.exists(lab_path):
+                lab_path = os.path.join(lab_dir, name + ".txt")
+            shutil.copyfile(lab_path, lab_path.replace(lab_dir, s_text_dir))
     return audio_path, text_path
 
 

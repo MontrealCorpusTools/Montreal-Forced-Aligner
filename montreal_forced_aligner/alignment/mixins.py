@@ -1,6 +1,7 @@
 """Class definitions for alignment mixins"""
 from __future__ import annotations
 
+import csv
 import logging
 import multiprocessing as mp
 import os
@@ -309,7 +310,7 @@ class AlignMixin(DictionaryMixin):
                     p.start()
                 while True:
                     try:
-                        utterance, succeeded = return_queue.get(timeout=1)
+                        utterance, log_likelihood = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -319,11 +320,17 @@ class AlignMixin(DictionaryMixin):
                         else:
                             break
                         continue
-                    if not succeeded and hasattr(self, "utterances"):
-                        self.utterances[utterance].phone_labels = []
-                        self.utterances[utterance].word_labels = []
-                    else:
-                        pbar.update(1)
+                    if hasattr(self, "utterances"):
+                        if hasattr(self, "frame_shift"):
+                            num_frames = int(
+                                self.utterances[utterance].duration * self.frame_shift
+                            )
+                        else:
+                            num_frames = self.utterances[utterance].duration
+                        self.utterances[utterance].alignment_log_likelihood = (
+                            log_likelihood / num_frames
+                        )
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -333,12 +340,18 @@ class AlignMixin(DictionaryMixin):
                 self.logger.debug("Not using multiprocessing...")
                 for args in self.align_arguments():
                     function = AlignFunction(args)
-                    for utterance, succeeded in function.run():
-                        if not succeeded and hasattr(self, "utterances"):
-                            self.utterances[utterance].phone_labels = []
-                            self.utterances[utterance].word_labels = []
-                        else:
-                            pbar.update(1)
+                    for utterance, log_likelihood in function.run():
+                        if hasattr(self, "utterances"):
+                            if hasattr(self, "frame_shift"):
+                                num_frames = int(
+                                    self.utterances[utterance].duration * self.frame_shift
+                                )
+                            else:
+                                num_frames = self.utterances[utterance].duration
+                            self.utterances[utterance].alignment_log_likelihood = (
+                                log_likelihood / num_frames
+                            )
+                        pbar.update(1)
 
         self.compile_information()
         self.logger.debug(f"Alignment round took {time.time() - begin}")
@@ -382,6 +395,14 @@ class AlignMixin(DictionaryMixin):
             if "logdet_frames" in data:
                 average_logdet_frames += data["logdet_frames"]
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
+
+        if hasattr(self, "utterances"):
+            csv_path = os.path.join(self.working_directory, "alignment_log_likelihood.csv")
+            with open(csv_path, "w", newline="", encoding="utf8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["utterance", "loglikelihood"])
+                for u in self.utterances:
+                    writer.writerow([u.name, u.alignment_log_likelihood])
 
         if not avg_like_frames:
             self.logger.warning(

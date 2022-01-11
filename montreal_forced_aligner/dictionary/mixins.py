@@ -180,7 +180,7 @@ class SplitWordsFunction:
                         split.append(clitic)
             except IndexError:
                 pass
-        if not any(x in self.word_set for x in split):
+        if self.word_set is not None and not any(x in self.word_set for x in split):
             return [item]
         return split
 

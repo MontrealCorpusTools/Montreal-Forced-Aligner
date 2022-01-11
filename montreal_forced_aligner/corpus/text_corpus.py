@@ -33,9 +33,10 @@ class TextCorpusMixin(CorpusMixin):
         """
         if self.stopped is None:
             self.stopped = Stopped()
-        sanitize_function = None
-        if hasattr(self, "construct_sanitize_function"):
-            sanitize_function = self.construct_sanitize_function()
+        try:
+            sanitize_function = self.sanitize_function
+        except AttributeError:
+            sanitize_function = None
         begin_time = time.time()
         manager = mp.Manager()
         job_queue = manager.Queue()
@@ -69,7 +70,6 @@ class TextCorpusMixin(CorpusMixin):
                     if self.stopped.stop_check():
                         break
                     wav_path = None
-                    transcription_path = None
                     if file_name in exts.lab_files:
                         lab_name = exts.lab_files[file_name]
                         transcription_path = os.path.join(root, lab_name)
@@ -77,6 +77,8 @@ class TextCorpusMixin(CorpusMixin):
                     elif file_name in exts.textgrid_files:
                         tg_name = exts.textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
+                    else:
+                        continue
                     job_queue.put((file_name, wav_path, transcription_path, relative_path))
 
             finished_adding.stop()
@@ -160,9 +162,10 @@ class TextCorpusMixin(CorpusMixin):
         begin_time = time.time()
         self.stopped = False
 
-        sanitize_function = None
-        if hasattr(self, "construct_sanitize_function"):
-            sanitize_function = self.construct_sanitize_function()
+        try:
+            sanitize_function = self.sanitize_function
+        except AttributeError:
+            sanitize_function = None
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
             exts = find_exts(files)
             relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
@@ -171,14 +174,14 @@ class TextCorpusMixin(CorpusMixin):
             for file_name in exts.identifiers:
 
                 wav_path = None
-                transcription_path = None
                 if file_name in exts.lab_files:
                     lab_name = exts.lab_files[file_name]
                     transcription_path = os.path.join(root, lab_name)
                 elif file_name in exts.textgrid_files:
                     tg_name = exts.textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
-
+                else:
+                    continue
                 try:
                     file = File.parse_file(
                         file_name,

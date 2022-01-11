@@ -69,8 +69,12 @@ class MultispeakerSanitizationFunction:
         :class:`~montreal_forced_aligner.dictionary.mixins.SplitWordsFunction`
             Function for splitting up words
         """
-        dict_name = self.get_dict_name_for_speaker(speaker_name)
-        return self.sanitize_function, self.split_functions[dict_name]
+        try:
+            dict_name = self.get_dict_name_for_speaker(speaker_name)
+            split_function = self.split_functions[dict_name]
+        except KeyError:
+            split_function = None
+        return self.sanitize_function, split_function
 
 
 class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMeta):
@@ -122,7 +126,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self.clitic_markers,
                 self.compound_markers,
                 dictionary.clitic_set,
-                set(dictionary.words.keys()),
+                set(dictionary.actual_words.keys()),
             )
         return MultispeakerSanitizationFunction(
             self.speaker_mapping, sanitize_function, split_functions
@@ -238,7 +242,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._write_topo()
         self._write_extra_questions()
         for d in self.dictionary_mapping.values():
-            d.write(write_disambiguation)
+            d.write(write_disambiguation, debug=getattr(self, "debug", False))
 
     def set_lexicon_word_set(self, word_set: Collection[str]) -> None:
         """

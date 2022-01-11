@@ -393,6 +393,7 @@ class File(MfaCorpusClass):
         output_directory: Optional[str] = None,
         backup_output_directory: Optional[str] = None,
         text_type: Optional[TextFileType] = None,
+        save_transcription: bool = False,
     ) -> None:
         """
         Output File to TextGrid or lab.  If ``text_type`` is not specified, the original file type will be used,
@@ -408,6 +409,8 @@ class File(MfaCorpusClass):
             instead use this directory
         text_type: TextFileType, optional
             Text type to save as, if not provided, it will use either the original file type or guess the file type
+        save_transcription: bool
+            Flag for whether the hypothesized transcription text should be saved instead of the default text
         """
         utterance_count = len(self.utterances)
         if text_type is None:
@@ -418,18 +421,20 @@ class File(MfaCorpusClass):
                 else:
                     text_type = TextFileType.TEXTGRID
         if text_type == TextFileType.LAB:
-            if utterance_count == 0 and os.path.exists(self.text_path):
+            if utterance_count == 0 and os.path.exists(self.text_path) and not save_transcription:
                 os.remove(self.text_path)
                 return
-            utterance = next(iter(self.utterances))
+            elif utterance_count == 0:
+                return
             output_path = self.construct_output_path(
                 output_directory, backup_output_directory, enforce_lab=True
             )
             with open(output_path, "w", encoding="utf8") as f:
-                if utterance.transcription_text is not None:
-                    f.write(utterance.transcription_text)
-                else:
-                    f.write(utterance.text)
+                for u in self.utterances:
+                    if save_transcription:
+                        f.write(u.transcription_text if u.transcription_text else "")
+                    else:
+                        f.write(u.text)
             return
         elif text_type == TextFileType.TEXTGRID:
             output_path = self.construct_output_path(output_directory, backup_output_directory)
@@ -451,12 +456,14 @@ class File(MfaCorpusClass):
                     speaker = utterance.speaker
                 if not self.aligned:
 
-                    if utterance.transcription_text is not None:
+                    if save_transcription:
                         tiers[speaker].entryList.append(
                             Interval(
                                 start=utterance.begin,
                                 end=utterance.end,
-                                label=utterance.transcription_text,
+                                label=utterance.transcription_text
+                                if utterance.transcription_text
+                                else "",
                             )
                         )
                     else:
@@ -762,13 +769,10 @@ class File(MfaCorpusClass):
                 np.abs(self.waveform[:, begin_sample:end_sample]), axis=0
             )
             y[np.isnan(y)] = 0
-            y[0, :] += 3
-            y[0, :] += 1
         else:
-            y = (
-                self.waveform[begin_sample:end_sample]
-                / np.max(np.abs(self.waveform[begin_sample:end_sample]), axis=0)
-            ) + 1
+            y = self.waveform[begin_sample:end_sample] / np.max(
+                np.abs(self.waveform[begin_sample:end_sample]), axis=0
+            )
         x = np.arange(start=begin_sample, stop=end_sample) / self.sample_rate
         return x, y
 
@@ -854,10 +858,14 @@ class Utterance(MfaCorpusClass):
         self.features = None
         self.phone_labels: Optional[List[CtmInterval]] = None
         self.word_labels: Optional[List[CtmInterval]] = None
+        self.reference_phone_labels: Optional[List[CtmInterval]] = []
         self.oovs = set()
         self.normalized_text = []
         self.text_int = []
+        self.alignment_log_likelihood = None
         self.word_error_rate = None
+        self.phone_error_rate = None
+        self.alignment_score = None
 
     def parse_transcription(self, sanitize_function=Optional[MultispeakerSanitizationFunction]):
         """
@@ -879,13 +887,15 @@ class Utterance(MfaCorpusClass):
             words = [
                 sanitize(w)
                 for w in self.text.split()
-                if w not in sanitize.clitic_markers + sanitize.compound_markers
+                if w and w not in sanitize.clitic_markers + sanitize.compound_markers
             ]
             self.text = " ".join(words)
             if split is not None:
                 for w in words:
                     for new_w in split(w):
-                        if new_w not in split.word_set:
+                        if not new_w:
+                            continue
+                        if split.word_set is not None and new_w not in split.word_set:
                             self.oovs.add(new_w)
                         self.normalized_text.append(new_w)
 
@@ -975,7 +985,13 @@ class Utterance(MfaCorpusClass):
             "normalized_text": self.normalized_text,
             "oovs": self.oovs,
             "transcription_text": self.transcription_text,
+            "reference_phone_labels": self.reference_phone_labels,
+            "phone_labels": self.phone_labels,
+            "word_labels": self.word_labels,
             "word_error_rate": self.word_error_rate,
+            "phone_error_rate": self.phone_error_rate,
+            "alignment_score": self.alignment_score,
+            "alignment_log_likelihood": self.alignment_log_likelihood,
         }
 
     def set_speaker(self, speaker: Speaker) -> None:
@@ -1012,7 +1028,7 @@ class Utterance(MfaCorpusClass):
         for interval in intervals:
             if self.begin is not None:
                 interval.shift_times(self.begin)
-        self.word_labels.extend(intervals)
+        self.word_labels = intervals
 
     def add_phone_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
         """
@@ -1030,7 +1046,7 @@ class Utterance(MfaCorpusClass):
         for interval in intervals:
             if self.begin is not None:
                 interval.shift_times(self.begin)
-        self.phone_labels.extend(intervals)
+        self.phone_labels = intervals
 
     def text_for_scp(self) -> List[str]:
         """

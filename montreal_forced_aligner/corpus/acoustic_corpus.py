@@ -27,9 +27,11 @@ from montreal_forced_aligner.corpus.features import (
 )
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
+from montreal_forced_aligner.data import TextFileType
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
 
 __all__ = [
@@ -78,6 +80,77 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.features_generated = False
         self.alignment_done = False
         self.transcription_done = False
+        self.has_reference_alignments = False
+        self.alignment_evaluation_done = False
+
+    def _initialize_from_json(self, data):
+        self.features_generated = data.get("features_generated", False)
+        self.alignment_done = data.get("alignment_done", False)
+        self.transcription_done = data.get("transcription_done", False)
+        self.has_reference_alignments = data.get("has_reference_alignments", False)
+        self.alignment_evaluation_done = data.get("alignment_evaluation_done", False)
+
+    @property
+    def corpus_meta(self):
+        return {
+            "features_generated": self.features_generated,
+            "alignment_done": self.alignment_done,
+            "transcription_done": self.transcription_done,
+            "has_reference_alignments": self.has_reference_alignments,
+            "alignment_evaluation_done": self.alignment_evaluation_done,
+        }
+
+    def load_reference_alignments(self, reference_directory: str):
+        self.log_info("Loading reference files...")
+        indices = []
+        jobs = []
+        with tqdm.tqdm(total=len(self.files)) as pbar:
+            for root, _, files in os.walk(reference_directory, followlinks=True):
+                root_speaker = os.path.basename(root)
+                for f in files:
+                    if f.endswith(".TextGrid"):
+                        file_name = f.replace(".TextGrid", "")
+                        if file_name not in self.files:
+                            continue
+                        if self.use_mp:
+                            indices.append(file_name)
+                            jobs.append((os.path.join(root, f), root_speaker))
+                        else:
+                            file = self.files[file_name]
+                            intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
+                            for u in file.utterances:
+                                if file.text_type == TextFileType.LAB:
+                                    for v in intervals.values():
+                                        self.utterances[u.name].reference_phone_labels = v
+                                else:
+                                    if u.speaker_name not in intervals:
+                                        continue
+                                    for interval in intervals[u.speaker_name]:
+                                        if interval.begin >= u.begin and interval.end <= u.end:
+                                            self.utterances[u.name].reference_phone_labels.append(
+                                                interval
+                                            )
+                            pbar.update(1)
+            if self.use_mp:
+                with mp.Pool(self.num_jobs) as pool:
+                    gen = pool.starmap(parse_aligned_textgrid, jobs)
+                    for i, intervals in enumerate(gen):
+                        pbar.update(1)
+                        file_name = indices[i]
+                        file = self.files[file_name]
+                        for u in file.utterances:
+                            if file.text_type == TextFileType.LAB:
+                                for v in intervals.values():
+                                    self.utterances[u.name].reference_phone_labels = v
+                            else:
+                                if u.speaker_name not in intervals:
+                                    continue
+                                for interval in intervals[u.speaker_name]:
+                                    if interval.begin >= u.begin and interval.end <= u.end:
+                                        self.utterances[u.name].reference_phone_labels.append(
+                                            interval
+                                        )
+        self.has_reference_alignments = True
 
     def load_corpus(self) -> None:
         """
@@ -954,12 +1027,12 @@ class AcousticCorpus(AcousticCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store corpus and dictionary files"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return self.temporary_directory
 
     @property
     def working_directory(self) -> str:
         """Working directory to save temporary corpus and dictionary files"""
-        return self.output_directory
+        return self.corpus_output_directory
 
 
 class AcousticCorpusWithPronunciations(

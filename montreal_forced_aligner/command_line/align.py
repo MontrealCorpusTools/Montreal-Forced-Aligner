@@ -31,7 +31,6 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
     aligner = PretrainedAligner(
         acoustic_model_path=args.acoustic_model_path,
         corpus_directory=args.corpus_directory,
-        audio_directory=args.audio_directory,
         dictionary_path=args.dictionary_path,
         temporary_directory=args.temporary_directory,
         **PretrainedAligner.parse_parameters(args.config_path, args, unknown_args),
@@ -44,9 +43,8 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
             if getattr(args, "custom_mapping_path", ""):
                 with open(args.custom_mapping_path, "r", encoding="utf8") as f:
                     mapping = yaml.safe_load(f)
-            aligner.evaluate(
-                args.reference_directory, mapping, output_directory=args.output_directory
-            )
+            aligner.load_reference_alignments(args.reference_directory)
+            aligner.evaluate(mapping, output_directory=args.output_directory)
     except Exception:
         aligner.dirty = True
         raise

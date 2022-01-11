@@ -377,7 +377,6 @@ class PhoneSetType(enum.Enum):
             extra_questions["dental_lenition"] = voiced_variants("ð") | voiced_variants("d")
             extra_questions["flapping"] = {"d", "t", "ɾ"}
             extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
-            extra_questions["glottal_variation"] = self.vowels | {"ʔ"}
             extra_questions["labial_lenition"] = voiced_variants("β") | voiced_variants("b")
             extra_questions["velar_lenition"] = voiced_variants("ɣ") | voiced_variants("ɡ")
 
@@ -842,6 +841,9 @@ class CtmInterval:
     end: float
     label: str
     utterance: str
+
+    def __lt__(self, other: CtmInterval):
+        return self.begin < other.begin
 
     def __post_init__(self):
         """

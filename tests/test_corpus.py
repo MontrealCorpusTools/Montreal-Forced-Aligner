@@ -409,8 +409,14 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
         "ajfish",
         "asds-asda",
         "sdasd",
+        "<s>",
+        "</s>",
     }
-
+    print(corpus.utterances["weird-words-weird-words-0-26-72325"].text_int_for_scp())
+    assert (
+        corpus.utterances["weird-words-weird-words-0-26-72325"].text_int_for_scp()[-1]
+        == corpus.default_dictionary.oov_int
+    )
     corpus.set_lexicon_word_set(corpus.corpus_word_set)
     for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
         _ = corpus.default_dictionary.to_int(w)
@@ -501,13 +507,15 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
         "mean...",
     ]
     weird_words = corpus.utterances["punctuated-weird-words-0-26-72325"]
-    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me"
+    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me <s> </s>"
     assert weird_words.normalized_text == [
         "i’m",
         "talking-ajfish",
         "me-really",
         "asds-asda",
         "sdasd-me",
+        "<s>",
+        "</s>",
     ]
 
 

@@ -887,7 +887,7 @@ class AcousticModelTrainingMixin(
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "features": self.feature_options,
-            "phone_set_type": str(self.phone_set_type),
+            "phone_set_type": str(self.worker.phone_set_type),
         }
         return data
 

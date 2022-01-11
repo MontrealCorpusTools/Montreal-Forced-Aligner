@@ -99,7 +99,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
         self.log_info("Pruning large ngram model to medium and small versions...")
         small_mod_path = self.mod_path.replace(".mod", "_small.mod")
         med_mod_path = self.mod_path.replace(".mod", "_med.mod")
-        subprocess.call(
+        subprocess.check_call(
             [
                 "ngramshrink",
                 f"--method={self.prune_method}",
@@ -108,10 +108,12 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
                 med_mod_path,
             ]
         )
-        subprocess.call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
+        assert os.path.exists(med_mod_path)
+        subprocess.check_call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
+        assert os.path.exists(self.medium_arpa_path)
 
         self.log_debug("Finished pruning medium arpa!")
-        subprocess.call(
+        subprocess.check_call(
             [
                 "ngramshrink",
                 f"--method={self.prune_method}",
@@ -120,7 +122,9 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
                 small_mod_path,
             ]
         )
-        subprocess.call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
+        assert os.path.exists(small_mod_path)
+        subprocess.check_call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
+        assert os.path.exists(self.small_arpa_path)
 
         self.log_debug("Finished pruning small arpa!")
         self.log_info("Done pruning!")
@@ -188,7 +192,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         self.save_oovs_found(self.working_directory)
 
         subprocess.call(
-            ["ngramsymbols", f'--OOV_symbol="{self.oov_word}"', self.training_path, self.sym_path]
+            ["ngramsymbols", f"--OOV_symbol={self.oov_word}", self.training_path, self.sym_path]
         )
         self.initialized = True
 
@@ -241,7 +245,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
             perplexity_proc = subprocess.Popen(
                 [
                     "ngramperplexity",
-                    f'--OOV_symbol="{self.oov_word}"',
+                    f"--OOV_symbol={self.oov_word}",
                     self.mod_path,
                     self.far_path,
                 ],
@@ -274,7 +278,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
             perplexity_proc = subprocess.Popen(
                 [
                     "ngramperplexity",
-                    f'--OOV_symbol="{self.oov_word}"',
+                    f"--OOV_symbol={self.oov_word}",
                     med_mod_path,
                     self.far_path,
                 ],
@@ -293,7 +297,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
             perplexity_proc = subprocess.Popen(
                 [
                     "ngramperplexity",
-                    f'--OOV_symbol="{self.oov_word}"',
+                    f"--OOV_symbol={self.oov_word}",
                     small_mod_path,
                     self.far_path,
                 ],
@@ -326,49 +330,41 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         """
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
         for u in self.utterances:
-            text = u.text.split()
-            new_text = []
-            for t in text:
-                if u.speaker.dictionary is not None:
-                    u.speaker.dictionary.to_int(t)
-                    lookup = u.speaker.dictionary.split_clitics(t)
-                    if lookup is None:
-                        continue
-                else:
-                    lookup = [t]
-                for item in lookup:
-                    if item in unk_words:
-                        new_text.append(self.oov_word)
-                        self.oovs_found[item] += 1
-                    elif (
-                        u.speaker.dictionary is not None and item not in u.speaker.dictionary.words
-                    ):
-                        new_text.append(self.oov_word)
-                    else:
-                        new_text.append(item)
-            yield " ".join(new_text)
+            normalized = u.normalized_text
+            if normalized:
+                normalized = u.text.split()
+            yield " ".join(x if x not in unk_words else self.oov_word for x in normalized)
 
     def train(self) -> None:
         """
         Train a language model
         """
         self.log_info("Beginning training large ngram model...")
-        subprocess.call(
+        subprocess.check_call(
             [
                 "farcompilestrings",
                 "--fst_type=compact",
-                f'--unknown_symbol="{self.oov_word}"',
+                f"--unknown_symbol={self.oov_word}",
                 f"--symbols={self.sym_path}",
                 "--keep_symbols",
                 self.training_path,
                 self.far_path,
             ]
         )
-        subprocess.call(["ngramcount", f"--order={self.order}", self.far_path, self.cnts_path])
-        subprocess.call(["ngrammake", f"--method={self.method}", self.cnts_path, self.mod_path])
+        assert os.path.exists(self.far_path)
+        subprocess.check_call(
+            ["ngramcount", f"--order={self.order}", self.far_path, self.cnts_path]
+        )
+
+        assert os.path.exists(self.cnts_path)
+        subprocess.check_call(
+            ["ngrammake", f"--method={self.method}", self.cnts_path, self.mod_path]
+        )
+        assert os.path.exists(self.mod_path)
         self.log_info("Done!")
 
-        subprocess.call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
+        subprocess.check_call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
+        assert os.path.exists(self.large_arpa_path)
 
         self.log_info("Large ngam model created!")
 
@@ -388,7 +384,28 @@ class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmCorpusTrainer):
         For dictionary parsing parameters
     """
 
-    pass
+    def setup(self) -> None:
+        """Set up language model training"""
+        if self.initialized:
+            return
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.dictionary_setup()
+        self._load_corpus()
+        self.set_lexicon_word_set(self.corpus_word_set)
+        self.write_lexicon_information()
+
+        with open(self.training_path, "w", encoding="utf8") as f:
+            for text in self.normalized_text_iter(self.count_threshold):
+                f.write(f"{text}\n")
+
+        self.save_oovs_found(self.working_directory)
+
+        self.initialized = True
+
+    @property
+    def sym_path(self):
+        """Internal path to symbols file"""
+        return os.path.join(self.default_dictionary.dictionary_output_directory, "words.txt")
 
 
 class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
@@ -443,9 +460,10 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         with open(
             os.path.join(self.working_log_directory, "read.log"), "w", encoding="utf8"
         ) as log_file:
-            subprocess.call(
+            subprocess.check_call(
                 ["ngramread", "--ARPA", self.large_arpa_path, self.mod_path], stderr=log_file
             )
+        assert os.path.exists(self.mod_path)
 
         self.log_info("Large ngam model parsed!")
 
