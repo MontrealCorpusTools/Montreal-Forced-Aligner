@@ -587,6 +587,8 @@ class DictionaryMixin:
             if self.phone_set_type is PhoneSetType.IPA:
                 if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
                     num_states += 1
+                if re.match(r"^.*̚$", p) and p not in self.phone_set_type.extra_short_phones:
+                    num_states -= 1
             elif self.phone_set_type is PhoneSetType.PINYIN:
                 if p in {"c", "ch", "q"}:
                     num_states += 1
