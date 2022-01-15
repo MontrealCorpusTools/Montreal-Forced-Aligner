@@ -8,11 +8,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import yaml
 
 from montreal_forced_aligner.abc import ModelExporterMixin, TopLevelMfaWorker
-from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.acoustic_modeling.lda import LdaTrainer
-from montreal_forced_aligner.acoustic_modeling.monophone import MonophoneTrainer
-from montreal_forced_aligner.acoustic_modeling.sat import SatTrainer
-from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import parse_old_features
@@ -23,6 +18,7 @@ if TYPE_CHECKING:
     from argparse import Namespace
 
     from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 
 __all__ = ["TrainableAligner"]
 
@@ -218,6 +214,11 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         :class:`~montreal_forced_aligner.exceptions.ConfigError`
             If an invalid train_type is specified
         """
+        from montreal_forced_aligner.acoustic_modeling.lda import LdaTrainer
+        from montreal_forced_aligner.acoustic_modeling.monophone import MonophoneTrainer
+        from montreal_forced_aligner.acoustic_modeling.sat import SatTrainer
+        from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+
         p = {}
         p.update(self.param_dict)
         p.update(params)

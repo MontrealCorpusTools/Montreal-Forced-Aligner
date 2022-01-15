@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
+from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
@@ -35,7 +36,6 @@ from montreal_forced_aligner.utils import (
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
     from montreal_forced_aligner.corpus.classes import UtteranceCollection
     from montreal_forced_aligner.corpus.multiprocessing import Job
     from montreal_forced_aligner.textgrid import CtmInterval
