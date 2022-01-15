@@ -94,7 +94,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 else:
                     line = line.split()
                     word = line.pop(0)
-                word = word.lower()
+                if self.ignore_case:
+                    word = word.lower()
                 if sanitize:
                     word = clitic_cleanup_regex.sub(self.clitic_markers[0], word)
                 if not line:
@@ -168,7 +169,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return self.silence_phones
 
     @property
-    def actual_words(self):
+    def actual_words(self) -> Dict[str, Word]:
         """Words in the dictionary stripping out Kaldi's internal words"""
         return {k: v for k, v in self.words.items() if k not in self.specials_set}
 

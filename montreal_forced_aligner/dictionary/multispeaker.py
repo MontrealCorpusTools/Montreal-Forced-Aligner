@@ -118,7 +118,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def sanitize_function(self) -> MultispeakerSanitizationFunction:
         """Sanitization function for the dictionary"""
         sanitize_function = SanitizeFunction(
-            self.punctuation, self.clitic_markers, self.compound_markers, self.brackets
+            self.punctuation,
+            self.clitic_markers,
+            self.compound_markers,
+            self.brackets,
+            self.ignore_case,
         )
         split_functions = {}
         for dictionary_name, dictionary in self.dictionary_mapping.items():

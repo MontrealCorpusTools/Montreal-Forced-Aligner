@@ -33,7 +33,7 @@ def load_text(path: str) -> str:
         Orthographic text of the file
     """
     with open(path, "r", encoding="utf8") as f:
-        text = f.read().strip().lower()
+        text = f.read().strip()
     return text
 
 

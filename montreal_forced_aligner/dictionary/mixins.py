@@ -46,11 +46,13 @@ class SanitizeFunction:
         clitic_markers: List[str],
         compound_markers: List[str],
         brackets: List[Tuple[str, str]],
+        ignore_case: bool = True,
     ):
         self.punctuation = punctuation
         self.clitic_markers = clitic_markers
         self.compound_markers = compound_markers
         self.brackets = brackets
+        self.ignore_case = ignore_case
 
     def __call__(self, item):
         """
@@ -66,6 +68,8 @@ class SanitizeFunction:
         str
             Sanitized form
         """
+        if self.ignore_case:
+            item = item.lower()
         for c in self.clitic_markers:
             item = item.replace(c, self.clitic_markers[0])
         if not item:
@@ -266,6 +270,7 @@ class DictionaryMixin:
         num_noise_states: int = 5,
         num_non_silence_states: int = 3,
         shared_silence_phones: bool = False,
+        ignore_case: bool = True,
         silence_probability: float = 0.5,
         punctuation: List[str] = None,
         clitic_markers: List[str] = None,
@@ -297,6 +302,7 @@ class DictionaryMixin:
         self.num_non_silence_states = num_non_silence_states
         self.shared_silence_phones = shared_silence_phones
         self.silence_probability = silence_probability
+        self.ignore_case = ignore_case
         self.oov_word = oov_word
         self.silence_word = silence_word
         self.noise_word = noise_word
