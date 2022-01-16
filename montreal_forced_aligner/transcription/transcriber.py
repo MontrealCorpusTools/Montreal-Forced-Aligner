@@ -23,7 +23,7 @@ import yaml
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError, PlatformError
-from montreal_forced_aligner.helper import parse_old_features, score
+from montreal_forced_aligner.helper import parse_old_features, score_wer
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
@@ -1330,12 +1330,16 @@ class Transcriber(
         self.logger.info("Evaluating transcripts...")
         self._load_transcripts()
         # Sentence-level measures
-
         incorrect = 0
         total_count = 0
         # Word-level measures
-        total_edits = 0
-        total_length = 0
+        total_word_edits = 0
+        total_word_length = 0
+
+        # Character-level measures
+        total_character_edits = 0
+        total_character_length = 0
+
         issues = {}
         indices = []
         to_comp = []
@@ -1343,13 +1347,18 @@ class Transcriber(
             utt_name = utterance.name
             if not utterance.text:
                 continue
-            total_count += 1
             g = utterance.text.split()
-            total_length += len(g)
+
+            total_count += 1
+            total_word_length += len(g)
+            character_length = len("".join(g))
+            total_character_length += character_length
+
             if not utterance.transcription_text:
                 incorrect += 1
-                total_edits += len(g)
-                issues[utt_name] = [g, "", 1]
+                total_word_edits += len(g)
+                total_character_edits += character_length
+                issues[utt_name] = [g, "", 1, 1]
                 continue
 
             h = utterance.transcription_text.split()
@@ -1359,12 +1368,14 @@ class Transcriber(
                 to_comp.append((g, h))
                 incorrect += 1
             else:
-                issues[utt_name] = [g, h, 0]
+                issues[utt_name] = [g, h, 0, 0]
         with mp.Pool(self.num_jobs) as pool:
-            gen = pool.starmap(score, to_comp)
-            for i, (edits, length) in enumerate(gen):
-                issues[indices[i]].append(edits / length)
-                total_edits += edits
+            gen = pool.starmap(score_wer, to_comp)
+            for i, (word_edits, word_length, character_edits, character_length) in enumerate(gen):
+                issues[indices[i]].append(word_edits / word_length)
+                issues[indices[i]].append(character_edits / character_length)
+                total_word_edits += word_edits
+                total_character_edits += character_edits
         output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
         with open(output_path, "w", newline="", encoding="utf8") as f:
             writer = csv.writer(f)
@@ -1379,12 +1390,14 @@ class Transcriber(
                     "gold_transcript",
                     "hypothesis",
                     "WER",
+                    "CER",
                 ]
             )
             for utt in sorted(issues.keys()):
-                g, h, wer = issues[utt]
+                g, h, wer, cer = issues[utt]
                 utterance = self.utterances[utt]
                 utterance.word_error_rate = wer
+                utterance.character_error_rate = cer
                 speaker = utterance.speaker_name
                 file = utterance.file_name
                 duration = utterance.duration
@@ -1392,10 +1405,13 @@ class Transcriber(
                 oov_count = len(utterance.oovs)
                 g = " ".join(g)
                 h = " ".join(h)
-                writer.writerow([utt, file, speaker, duration, word_count, oov_count, g, h, wer])
+                writer.writerow(
+                    [utt, file, speaker, duration, word_count, oov_count, g, h, wer, cer]
+                )
         ser = 100 * incorrect / total_count
-        wer = 100 * total_edits / total_length
-        self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%")
+        wer = 100 * total_word_edits / total_word_length
+        cer = 100 * total_character_edits / total_character_length
+        self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%, CER: {cer:.2f}%")
         return ser, wer
 
     def _load_transcripts(self):

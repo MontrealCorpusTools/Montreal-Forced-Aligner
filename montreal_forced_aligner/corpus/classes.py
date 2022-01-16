@@ -368,7 +368,11 @@ class File(MfaCorpusClass):
     @property
     def name(self) -> str:
         """Name of the file"""
-        return self._name
+        name = self._name
+        if self.relative_path:
+            prefix = self.relative_path.replace("/", "").replace("\\", "")
+            name = f"{prefix}_{name}"
+        return name
 
     @property
     def is_fully_aligned(self) -> bool:
@@ -583,7 +587,7 @@ class File(MfaCorpusClass):
             relative = os.path.join(output_directory, self.relative_path)
         else:
             relative = output_directory
-        tg_path = os.path.join(relative, self.name + extension)
+        tg_path = os.path.join(relative, self._name + extension)
         if backup_output_directory is not None and os.path.exists(tg_path):
             tg_path = tg_path.replace(output_directory, backup_output_directory)
         os.makedirs(os.path.dirname(tg_path), exist_ok=True)
@@ -864,6 +868,7 @@ class Utterance(MfaCorpusClass):
         self.text_int = []
         self.alignment_log_likelihood = None
         self.word_error_rate = None
+        self.character_error_rate = None
         self.phone_error_rate = None
         self.alignment_score = None
 
@@ -989,6 +994,7 @@ class Utterance(MfaCorpusClass):
             "phone_labels": self.phone_labels,
             "word_labels": self.word_labels,
             "word_error_rate": self.word_error_rate,
+            "character_error_rate": self.character_error_rate,
             "phone_error_rate": self.phone_error_rate,
             "alignment_score": self.alignment_score,
             "alignment_log_likelihood": self.alignment_log_likelihood,
@@ -1010,7 +1016,12 @@ class Utterance(MfaCorpusClass):
     @property
     def is_segment(self) -> bool:
         """Check if this utterance is a segment of a longer file"""
-        return self.begin is not None and self.end is not None
+        return (
+            self.begin is not None
+            and self.end is not None
+            and self.begin != 0
+            and self.end != self.file.duration
+        )
 
     def add_word_intervals(self, intervals: Union[CtmInterval, List[CtmInterval]]) -> None:
         """

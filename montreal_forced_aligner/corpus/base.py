@@ -502,6 +502,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 if u.normalized_text:
                     self.word_counts.update(u.normalized_text)
                 u.word_error_rate = entry.get("word_error_rate", None)
+                u.character_error_rate = entry.get("character_error_rate", None)
                 u.transcription_text = entry.get("transcription_text", None)
                 u.phone_error_rate = entry.get("phone_error_rate", None)
                 u.alignment_score = entry.get("alignment_score", None)

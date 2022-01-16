@@ -30,7 +30,7 @@ __all__ = [
     "save_scp",
     "load_scp",
     "load_scp_safe",
-    "score",
+    "score_wer",
     "edit_distance",
     "output_mapping",
     "parse_old_features",
@@ -693,28 +693,33 @@ def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
     return edits, best_length
 
 
-def score(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
+def score_wer(gold: List[str], hypo: List[str]) -> Tuple[int, int, int, int]:
     """
-    Computes sufficient statistics for LER calculation.
+    Computes word error rate and character error rate for a transcription
 
     Parameters
     ----------
     gold: list[str]
-        The reference labels
+        The reference words
     hypo: list[str]
-        The hypothesized labels
-    multiple_hypotheses: bool
-        Flag for whether the hypotheses contain multiple
+        The hypothesized words
 
     Returns
     -------
     int
-        Edit distance
+        Word Edit distance
     int
-        Length of the gold labels
+        Length of the gold words labels
+    int
+        Character edit distance
+    int
+        Length of the gold characters
     """
-    edits = edit_distance(gold, hypo)
-    return edits, len(gold)
+    word_edits = edit_distance(gold, hypo)
+    character_gold = list("".join(gold))
+    character_hypo = list("".join(hypo))
+    character_edits = edit_distance(character_gold, character_hypo)
+    return word_edits, len(gold), character_edits, len(character_gold)
 
 
 def compare_labels(
