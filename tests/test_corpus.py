@@ -341,7 +341,11 @@ def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_u
     for _, _, files in os.walk(multilingual_ipa_corpus_dir):
         for f in files:
             name, ext = os.path.splitext(f)
-            assert name in corpus.files
+            for file in corpus.files:
+                if name == file._name:
+                    break
+            else:
+                raise Exception(f"File {name} not loaded")
 
     shutil.rmtree(output_directory, ignore_errors=True)
     new_corpus = AcousticCorpusWithPronunciations(
@@ -357,7 +361,11 @@ def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_u
     for _, _, files in os.walk(multilingual_ipa_corpus_dir):
         for f in files:
             name, ext = os.path.splitext(f)
-            assert name in new_corpus.files
+            for file in new_corpus.files:
+                if name == file._name:
+                    break
+            else:
+                raise Exception(f"File {name} not loaded")
 
 
 def test_subset(multilingual_ipa_corpus_dir, generated_dir, english_us_ipa_dictionary):
@@ -405,16 +413,16 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
         in corpus.default_dictionary.words["'m"].pronunciations
     )
     print(corpus.utterances)
-    assert corpus.utterances["weird-words-weird-words-0-26-72325"].oovs == {
+    assert corpus.utterances["weird-words-weird-words"].oovs == {
         "ajfish",
         "asds-asda",
         "sdasd",
         "<s>",
         "</s>",
     }
-    print(corpus.utterances["weird-words-weird-words-0-26-72325"].text_int_for_scp())
+    print(corpus.utterances["weird-words-weird-words"].text_int_for_scp())
     assert (
-        corpus.utterances["weird-words-weird-words-0-26-72325"].text_int_for_scp()[-1]
+        corpus.utterances["weird-words-weird-words"].text_int_for_scp()[-1]
         == corpus.default_dictionary.oov_int
     )
     corpus.set_lexicon_word_set(corpus.corpus_word_set)
@@ -438,7 +446,7 @@ def test_punctuated(punctuated_dir, generated_dir, sick_dict_path):
     corpus.load_corpus()
     print(corpus.utterances)
     assert (
-        corpus.utterances["punctuated-punctuated-0-26-72325"].text
+        corpus.utterances["punctuated-punctuated"].text
         == "oh yes they they you know they love her and so i mean"
     )
 
@@ -459,11 +467,11 @@ def test_alternate_punctuation(
         corpus_directory=punctuated_dir,
         dictionary_path=sick_dict_path,
         temporary_directory=output_directory,
-        **params
+        **params,
     )
     corpus.load_corpus()
     assert (
-        corpus.utterances["punctuated-punctuated-0-26-72325"].text
+        corpus.utterances["punctuated-punctuated"].text
         == "oh yes, they they, you know, they love her and so i mean"
     )
 
@@ -482,13 +490,13 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
         corpus_directory=punctuated_dir,
         dictionary_path=sick_dict_path,
         temporary_directory=output_directory,
-        **params
+        **params,
     )
     assert not corpus.punctuation
     assert not corpus.compound_markers
     assert not corpus.clitic_markers
     corpus.load_corpus()
-    punctuated = corpus.utterances["punctuated-punctuated-0-26-72325"]
+    punctuated = corpus.utterances["punctuated-punctuated"]
     assert punctuated.text == "oh yes, they - they, you know, they love her and so i mean..."
     assert punctuated.normalized_text == [
         "oh",
@@ -506,7 +514,7 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
         "i",
         "mean...",
     ]
-    weird_words = corpus.utterances["punctuated-weird-words-0-26-72325"]
+    weird_words = corpus.utterances["punctuated-weird-words"]
     assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me <s> </s>"
     assert weird_words.normalized_text == [
         "i’m",
@@ -535,10 +543,10 @@ def test_xsampa_corpus(
         corpus_directory=xsampa_corpus_dir,
         dictionary_path=xsampa_dict_path,
         temporary_directory=output_directory,
-        **params
+        **params,
     )
     corpus.load_corpus()
     assert (
-        corpus.utterances["michael-xsampa-0-26-72325"].text
+        corpus.utterances["michael-xsampa"].text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
     )

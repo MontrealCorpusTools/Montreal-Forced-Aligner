@@ -10,6 +10,11 @@
 Beta releases
 =============
 
+2.0.0rc2
+--------
+- Added configuration parameter (``ignore_case=False``) to allow for disabling the default behavior of making all text and lexicon entries lower case
+- Added some metadata about training data to acoustic models
+
 2.0.0rc1
 --------
 

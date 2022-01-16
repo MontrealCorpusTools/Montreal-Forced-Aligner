@@ -14,7 +14,7 @@ def test_save_text_lab(
         temporary_directory=output_directory,
     )
     corpus._load_corpus()
-    corpus.files["acoustic_corpus"].save()
+    corpus.files["michael_acoustic_corpus"].save()
 
 
 def test_file_properties(

@@ -466,18 +466,17 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
             else:
                 files_data = yaml.safe_load(f)
             for entry in files_data:
-                self.files.add_file(
-                    File(
-                        name=entry["name"],
-                        wav_path=entry["wav_path"],
-                        text_path=entry["text_path"],
-                        relative_path=entry["relative_path"],
-                    )
+                file = File(
+                    name=entry["name"],
+                    wav_path=entry["wav_path"],
+                    text_path=entry["text_path"],
+                    relative_path=entry["relative_path"],
                 )
-                self.files[entry["name"]].speaker_ordering = [
+                self.files.add_file(file)
+                self.files[file.name].speaker_ordering = [
                     self.speakers[x] for x in entry["speaker_ordering"]
                 ]
-                self.files[entry["name"]].wav_info = SoundFileInformation(**entry["wav_info"])
+                self.files[file.name].wav_info = SoundFileInformation(**entry["wav_info"])
 
         with open(utterances_path, "r", encoding="utf8") as f:
             if format == "jsonl":
@@ -502,6 +501,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
                 if u.normalized_text:
                     self.word_counts.update(u.normalized_text)
                 u.word_error_rate = entry.get("word_error_rate", None)
+                u.character_error_rate = entry.get("character_error_rate", None)
                 u.transcription_text = entry.get("transcription_text", None)
                 u.phone_error_rate = entry.get("phone_error_rate", None)
                 u.alignment_score = entry.get("alignment_score", None)

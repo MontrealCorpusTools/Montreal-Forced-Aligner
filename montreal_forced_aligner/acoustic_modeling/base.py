@@ -36,6 +36,7 @@ from montreal_forced_aligner.utils import (
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.corpus.classes import UtteranceCollection
     from montreal_forced_aligner.corpus.multiprocessing import Job
     from montreal_forced_aligner.textgrid import CtmInterval
 
@@ -224,8 +225,8 @@ def compare_alignments(
         First set of alignments
     alignments_two: dict[str, list[tuple[float, float, str]]]
         Second set of alignments
-    frame_shift: int
-        Frame shift in feature generation, in ms
+    silence_phone: str
+        Label of optional silence phone
 
     Returns
     -------
@@ -265,7 +266,7 @@ class AcousticModelTrainingMixin(
     ----------
     identifier : str
         Identifier for the trainer
-    worker: :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin`
+    worker: :class:`~montreal_forced_aligner.corpus.acoustic.AcousticCorpusPronunciationMixin`
         Top-level worker
     num_iterations : int
         Number of iterations, defaults to 40
@@ -378,9 +379,13 @@ class AcousticModelTrainingMixin(
         ]
 
     @property
-    def previous_aligner(self):
+    def previous_aligner(self) -> AcousticCorpusPronunciationMixin:
         """Previous aligner seeding training"""
         return self.worker
+
+    @property
+    def utterances(self) -> UtteranceCollection:
+        return self.worker.utterances
 
     def log_debug(self, message: str) -> None:
         """
@@ -886,6 +891,17 @@ class AcousticModelTrainingMixin(
             "version": get_mfa_version(),
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
+            "training": {
+                "audio_duration": sum(x.duration for x in self.worker.utterances),
+                "num_speakers": self.worker.num_speakers,
+                "num_utterances": self.worker.num_utterances,
+                "num_oovs": sum(self.worker.oovs_found.values()),
+                "average_log_likelihood": statistics.mean(
+                    x.alignment_log_likelihood
+                    for x in self.worker.utterances
+                    if x.alignment_log_likelihood
+                ),
+            },
             "features": self.feature_options,
             "phone_set_type": str(self.worker.phone_set_type),
         }

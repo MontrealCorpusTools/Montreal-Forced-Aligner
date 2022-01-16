@@ -149,6 +149,4 @@ def test_training_validator_ipa(
     assert "dʒ_I" in topos[4]
     assert "b_E" in topos[2]
     assert "ŋ_B" in topos[3]
-    assert set(topos[1]) == {
-        x + p for x, p in itertools.product(["ə", "ɚ", "ɾ", "ʔ"], d.positions)
-    }
+    assert set(topos[1]) == {x + p for x, p in itertools.product(["ə", "ɚ", "ɾ"], d.positions)}
