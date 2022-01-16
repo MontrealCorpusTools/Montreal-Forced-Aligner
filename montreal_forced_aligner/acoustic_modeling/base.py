@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
 import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
-from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
+from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import align_phones
@@ -266,7 +266,7 @@ class AcousticModelTrainingMixin(
     ----------
     identifier : str
         Identifier for the trainer
-    worker: :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TrainableAligner`
+    worker: :class:`~montreal_forced_aligner.corpus.acoustic.AcousticCorpusPronunciationMixin`
         Top-level worker
     num_iterations : int
         Number of iterations, defaults to 40
@@ -305,7 +305,7 @@ class AcousticModelTrainingMixin(
     def __init__(
         self,
         identifier: str,
-        worker: TrainableAligner,
+        worker: AcousticCorpusPronunciationMixin,
         num_iterations: int = 40,
         subset: int = 0,
         max_gaussians: int = 1000,
@@ -379,7 +379,7 @@ class AcousticModelTrainingMixin(
         ]
 
     @property
-    def previous_aligner(self) -> TrainableAligner:
+    def previous_aligner(self) -> AcousticCorpusPronunciationMixin:
         """Previous aligner seeding training"""
         return self.worker
 

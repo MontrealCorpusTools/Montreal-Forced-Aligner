@@ -243,7 +243,7 @@ class File(MfaCorpusClass):
         Data object for the file
         """
         return FileData(
-            self.name,
+            self._name,
             self.wav_path,
             self.text_path,
             self.relative_path,
@@ -371,7 +371,8 @@ class File(MfaCorpusClass):
         name = self._name
         if self.relative_path:
             prefix = self.relative_path.replace("/", "").replace("\\", "")
-            name = f"{prefix}_{name}"
+            if not name.startswith(prefix):
+                name = f"{prefix}_{name}"
         return name
 
     @property
@@ -486,7 +487,7 @@ class File(MfaCorpusClass):
         return {
             "wav_path": self.wav_path,
             "text_path": self.text_path,
-            "name": self.name,
+            "name": self._name,
             "relative_path": self.relative_path,
             "wav_info": self.wav_info.meta,
             "speaker_ordering": [x.name for x in self.speaker_ordering],

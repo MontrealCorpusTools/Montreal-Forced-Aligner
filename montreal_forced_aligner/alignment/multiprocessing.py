@@ -14,13 +14,13 @@ import traceback
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Union
 
-from montreal_forced_aligner.data import CtmInterval
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
 from montreal_forced_aligner.utils import KaldiFunction, Stopped, thirdparty_binary
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
+    from montreal_forced_aligner.data import CtmInterval
 
 __all__ = [
     "WordAlignmentFunction",
@@ -417,6 +417,7 @@ class WordAlignmentFunction(KaldiFunction):
         self.arguments = arguments
 
     def cleanup_intervals(self, utterance_name: str, intervals: List[CtmInterval]):
+        from montreal_forced_aligner.data import CtmInterval
 
         speaker = None
         for utt2spk in self.arguments.utterance_speakers.values():
@@ -710,6 +711,12 @@ class ExportTextGridProcessWorker(mp.Process):
                 try:
                     data, output_path, duration = self.for_write_queue.get(timeout=1)
                     log_file.write(f"Processing {output_path}...\n")
+                    log_file.write(f"  * {len(data)} speakers\n")
+                    for speaker, d in data.items():
+
+                        log_file.write(f"Speaker {speaker}:\n")
+                        log_file.write(f"  * {len(d['words'])} words\n")
+                        log_file.write(f"  * {len(d['phones'])} phones\n")
                 except Empty:
                     if self.finished_processing.stop_check():
                         break
