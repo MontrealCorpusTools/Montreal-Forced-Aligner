@@ -319,7 +319,7 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         if larger_subset_num < len(self.utterances):
             # Get all shorter utterances that are not one word long
             utts = sorted(
-                (utt for utt in self.utterances if " " in utt.text),
+                (utt for utt in self.utterances if utt.text and " " in utt.text),
                 key=lambda x: x.duration,
             )
             larger_subset = utts[:larger_subset_num]
