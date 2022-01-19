@@ -331,7 +331,7 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
         for u in self.utterances:
             normalized = u.normalized_text
-            if normalized:
+            if not normalized:
                 normalized = u.text.split()
             yield " ".join(x if x not in unk_words else self.oov_word for x in normalized)
 
