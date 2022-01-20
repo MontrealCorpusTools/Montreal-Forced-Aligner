@@ -339,6 +339,14 @@ class DictionaryMixin:
         return base_phones
 
     @property
+    def split_regex(self) -> re.Pattern:
+        """Pattern for splitting arbitrary text"""
+        markers = self.compound_markers
+        if "-" in markers:
+            markers = ["-"] + [x for x in self.compound_markers if x != "-"]
+        return re.compile(rf'[{"".join(markers)} ]')
+
+    @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
         """Mapping of extra questions for the given phone set type"""
         mapping = {}

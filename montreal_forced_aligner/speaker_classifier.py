@@ -178,10 +178,9 @@ class SpeakerClassifier(
         output_directory: str
             Output directory to save files
         """
-        backup_output_directory = None
-        if not self.overwrite:
-            backup_output_directory = os.path.join(self.working_directory, "output")
-            os.makedirs(backup_output_directory, exist_ok=True)
+        if not self.overwrite and os.path.exists(output_directory):
+            output_directory = os.path.join(self.working_directory, "transcriptions")
+        os.makedirs(output_directory, exist_ok=True)
 
         for file in self.files:
-            file.save(output_directory, backup_output_directory)
+            file.save(output_directory)

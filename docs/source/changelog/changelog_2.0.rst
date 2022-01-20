@@ -10,6 +10,14 @@
 Beta releases
 =============
 
+2.0.0rc3
+--------
+- Fixed a bug where textgrids weren't being properly generated following training
+- Fixed a bug where commands were not always respecting ``--overwrite``
+- Fixed a bug where not all words in multispeaker dictionaries would be parsed
+- Improved transcription accuracy calculation to account for compounds and clitics
+- Fixed a crash when subsetting corpora that did not all have transcriptions
+
 2.0.0rc2
 --------
 - Added configuration parameter (``ignore_case=False``) to allow for disabling the default behavior of making all text and lexicon entries lower case

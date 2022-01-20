@@ -141,14 +141,22 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         auto_set = {PhoneSetType.AUTO, PhoneSetType.UNKNOWN, "AUTO", "UNKNOWN"}
         if not isinstance(self.phone_set_type, PhoneSetType):
             self.phone_set_type = PhoneSetType[self.phone_set_type]
+
+        options = self.dictionary_options
+        pretrained = False
+        if self.non_silence_phones:
+            pretrained = True
+
         for speaker, dictionary in self.dictionary_model.load_dictionary_paths().items():
             self.speaker_mapping[speaker] = dictionary.name
             if dictionary.name not in self.dictionary_mapping:
+                if not pretrained:
+                    options["non_silence_phones"] = set()
                 self.dictionary_mapping[dictionary.name] = PronunciationDictionary(
                     dictionary_path=dictionary.path,
                     temporary_directory=self.dictionary_output_directory,
                     root_dictionary=self,
-                    **self.dictionary_options,
+                    **options,
                 )
                 if self.phone_set_type not in auto_set:
                     if (
@@ -161,15 +169,14 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 else:
                     self.phone_set_type = self.dictionary_mapping[dictionary.name].phone_set_type
 
-                self.non_silence_phones.update(
-                    self.dictionary_mapping[dictionary.name].non_silence_phones
-                )
                 self.excluded_phones.update(
                     self.dictionary_mapping[dictionary.name].excluded_phones
                 )
                 self.excluded_pronunciation_count += self.dictionary_mapping[
                     dictionary.name
                 ].excluded_pronunciation_count
+        for dictionary in self.dictionary_mapping.values():
+            self.non_silence_phones.update(dictionary.non_silence_phones)
         for dictionary in self.dictionary_mapping.values():
             dictionary.non_silence_phones = self.non_silence_phones
 

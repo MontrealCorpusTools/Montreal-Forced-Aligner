@@ -155,10 +155,12 @@ def export_textgrid(
         phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=duration)
         tg.addTier(word_tier)
         tg.addTier(phone_tier)
-
+    has_data = False
     for speaker, data in speaker_data.items():
         words = data["words"]
         phones = data["phones"]
+        if len(words) and len(phones):
+            has_data = True
         tg_words = []
         tg_phones = []
         for w in words:
@@ -180,5 +182,7 @@ def export_textgrid(
         phone_tier = tgio.IntervalTier(phone_tier_name, tg_phones, minT=0, maxT=duration)
         tg.replaceTier(word_tier_name, word_tier)
         tg.replaceTier(phone_tier_name, phone_tier)
-
-    tg.save(output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error")
+    if has_data:
+        tg.save(
+            output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error"
+        )

@@ -9,6 +9,7 @@ import csv
 import itertools
 import multiprocessing as mp
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1347,7 +1348,8 @@ class Transcriber(
             utt_name = utterance.name
             if not utterance.text:
                 continue
-            g = utterance.text.split()
+
+            g = self.split_regex.split(utterance.text)
 
             total_count += 1
             total_word_length += len(g)
@@ -1416,6 +1418,12 @@ class Transcriber(
 
     def _load_transcripts(self):
         """Load transcripts from Kaldi temporary files"""
+        initial_clitics = {
+            x for x in self.clitic_set if re.match(rf"^.*[{''.join(self.clitic_markers)}]$", x)
+        }
+        final_clitics = {
+            x for x in self.clitic_set if re.match(rf"^[{''.join(self.clitic_markers)}].*$", x)
+        }
         for score_args in self.score_arguments():
             for tra_path in score_args.tra_paths.values():
 
@@ -1431,7 +1439,13 @@ class Transcriber(
                             continue
                         transcription = []
                         for i in ints:
-                            transcription.append(lookup[int(i)])
+                            w = lookup[int(i)]
+                            if len(transcription) and (
+                                w in final_clitics or transcription[-1] in initial_clitics
+                            ):
+                                transcription[-1] += w
+                                continue
+                            transcription.append(w)
                         utterance.transcription_text = " ".join(transcription)
 
     def export_files(self, output_directory: str) -> None:
@@ -1443,15 +1457,14 @@ class Transcriber(
         output_directory: str
             Directory to save transcriptions
         """
-        backup_output_directory = None
-        if not self.overwrite:
-            backup_output_directory = os.path.join(self.working_directory, "transcriptions")
-            os.makedirs(backup_output_directory, exist_ok=True)
+        if not self.overwrite and os.path.exists(output_directory):
+            output_directory = os.path.join(self.working_directory, "transcriptions")
+        os.makedirs(output_directory, exist_ok=True)
         self._load_transcripts()
         for file in self.files:
             if len(file.utterances) == 0:
                 self.logger.debug(f"Could not find any utterances for {file.name}")
-            file.save(output_directory, backup_output_directory, save_transcription=True)
+            file.save(output_directory, save_transcription=True)
         if self.evaluation_mode:
             shutil.copyfile(
                 os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),

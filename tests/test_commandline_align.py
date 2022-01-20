@@ -95,7 +95,7 @@ def test_align_basic(
     assert os.path.exists(align_temp_dir)
 
     backup_textgrid_dir = os.path.join(align_temp_dir, "textgrids")
-    assert not os.listdir(backup_textgrid_dir)
+    assert not os.path.exists(backup_textgrid_dir)
 
     command = [
         "align",
