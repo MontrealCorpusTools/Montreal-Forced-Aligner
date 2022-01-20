@@ -1457,15 +1457,14 @@ class Transcriber(
         output_directory: str
             Directory to save transcriptions
         """
-        backup_output_directory = None
-        if not self.overwrite:
-            backup_output_directory = os.path.join(self.working_directory, "transcriptions")
-            os.makedirs(backup_output_directory, exist_ok=True)
+        if not self.overwrite and os.path.exists(output_directory):
+            output_directory = os.path.join(self.working_directory, "transcriptions")
+        os.makedirs(output_directory, exist_ok=True)
         self._load_transcripts()
         for file in self.files:
             if len(file.utterances) == 0:
                 self.logger.debug(f"Could not find any utterances for {file.name}")
-            file.save(output_directory, backup_output_directory, save_transcription=True)
+            file.save(output_directory, save_transcription=True)
         if self.evaluation_mode:
             shutil.copyfile(
                 os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),

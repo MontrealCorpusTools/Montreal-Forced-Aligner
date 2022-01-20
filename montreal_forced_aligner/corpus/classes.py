@@ -396,7 +396,6 @@ class File(MfaCorpusClass):
     def save(
         self,
         output_directory: Optional[str] = None,
-        backup_output_directory: Optional[str] = None,
         text_type: Optional[TextFileType] = None,
         save_transcription: bool = False,
     ) -> None:
@@ -431,9 +430,7 @@ class File(MfaCorpusClass):
                 return
             elif utterance_count == 0:
                 return
-            output_path = self.construct_output_path(
-                output_directory, backup_output_directory, enforce_lab=True
-            )
+            output_path = self.construct_output_path(output_directory, enforce_lab=True)
             with open(output_path, "w", encoding="utf8") as f:
                 for u in self.utterances:
                     if save_transcription:
@@ -442,7 +439,7 @@ class File(MfaCorpusClass):
                         f.write(u.text)
             return
         elif text_type == TextFileType.TEXTGRID:
-            output_path = self.construct_output_path(output_directory, backup_output_directory)
+            output_path = self.construct_output_path(output_directory)
             max_time = self.duration
             tiers = {}
             for speaker in self.speaker_ordering:
@@ -556,7 +553,6 @@ class File(MfaCorpusClass):
     def construct_output_path(
         self,
         output_directory: Optional[str] = None,
-        backup_output_directory: Optional[str] = None,
         enforce_lab: bool = False,
     ) -> str:
         """
@@ -566,8 +562,6 @@ class File(MfaCorpusClass):
         ----------
         output_directory: str, optional
             Directory to output to, if None, it will overwrite the original file
-        backup_output_directory: str, optional
-            Backup directory to write to in order to avoid overwriting an existing file
         enforce_lab: bool
             Flag for whether to enforce generating a lab file over a TextGrid
 
@@ -589,8 +583,6 @@ class File(MfaCorpusClass):
         else:
             relative = output_directory
         tg_path = os.path.join(relative, self._name + extension)
-        if backup_output_directory is not None and os.path.exists(tg_path):
-            tg_path = tg_path.replace(output_directory, backup_output_directory)
         os.makedirs(os.path.dirname(tg_path), exist_ok=True)
         return tg_path
 
@@ -1037,8 +1029,8 @@ class Utterance(MfaCorpusClass):
             intervals = [intervals]
         if self.word_labels is None:
             self.word_labels = []
-        for interval in intervals:
-            if self.begin is not None:
+        if self.is_segment:
+            for interval in intervals:
                 interval.shift_times(self.begin)
         self.word_labels = intervals
 
@@ -1055,8 +1047,8 @@ class Utterance(MfaCorpusClass):
             intervals = [intervals]
         if self.phone_labels is None:
             self.phone_labels = []
-        for interval in intervals:
-            if self.begin is not None:
+        if self.is_segment:
+            for interval in intervals:
                 interval.shift_times(self.begin)
         self.phone_labels = intervals
 

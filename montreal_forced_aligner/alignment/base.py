@@ -224,11 +224,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Job method for TextGrid export
         """
         begin = time.time()
-        self.logger.info("Exporting TextGrids...")
-        os.makedirs(self.export_output_directory, exist_ok=True)
-        if self.backup_output_directory:
-            os.makedirs(self.backup_output_directory, exist_ok=True)
+        export_directory = self.export_output_directory
+        if os.path.exists(export_directory) and not self.overwrite:
+            export_directory = self.backup_output_directory
+            self.log_debug(f"Not overwriting existing directory, exporting to {export_directory}")
 
+        self.logger.info(f"Exporting TextGrids to {export_directory}...")
+        os.makedirs(export_directory, exist_ok=True)
         export_errors = {}
         total_files = len(self.files)
         with tqdm.tqdm(total=total_files) as pbar:
@@ -255,9 +257,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 try:
                     for file in self.files:
                         tiers = file.aligned_data
-                        output_path = file.construct_output_path(
-                            self.export_output_directory, self.backup_output_directory
-                        )
+                        output_path = file.construct_output_path(export_directory)
                         duration = file.duration
                         for_write_queue.put((tiers, output_path, duration))
                         pbar.update(1)
@@ -276,24 +276,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 for file in self.files:
                     data = file.aligned_data
 
-                    backup_output_directory = None
-                    if not self.overwrite:
-                        backup_output_directory = self.backup_output_directory
-                        os.makedirs(backup_output_directory, exist_ok=True)
-                    output_path = file.construct_output_path(
-                        self.export_output_directory, backup_output_directory
-                    )
+                    output_path = file.construct_output_path(export_directory)
                     export_textgrid(data, output_path, file.duration, self.frame_shift)
                     pbar.update(1)
 
         if export_errors:
             self.logger.warning(
                 f"There were {len(export_errors)} errors encountered in generating TextGrids. "
-                f"Check the output_errors.txt file in {os.path.join(self.export_output_directory)} "
+                f"Check {os.path.join(export_directory, 'output_errors.txt')} "
                 f"for more details"
             )
-        output_textgrid_writing_errors(self.export_output_directory, export_errors)
-        self.logger.info("Finished exporting TextGrids!")
+        output_textgrid_writing_errors(export_directory, export_errors)
+        self.logger.info(f"Finished exporting TextGrids to {export_directory}!")
         self.logger.debug(f"Exported TextGrids in a total of {time.time() - begin} seconds")
 
     def export_files(self, output_directory: str) -> None:

@@ -425,9 +425,8 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         output_directory: str
             Directory to save segmentation TextGrids
         """
-        backup_output_directory = None
-        if not self.overwrite:
-            backup_output_directory = os.path.join(self.working_directory, "transcriptions")
-            os.makedirs(backup_output_directory, exist_ok=True)
+        if not self.overwrite and os.path.exists(output_directory):
+            output_directory = os.path.join(self.working_directory, "transcriptions")
+        os.makedirs(output_directory, exist_ok=True)
         for f in self.files:
-            f.save(output_directory, backup_output_directory, text_type=TextFileType.TEXTGRID)
+            f.save(output_directory, text_type=TextFileType.TEXTGRID)

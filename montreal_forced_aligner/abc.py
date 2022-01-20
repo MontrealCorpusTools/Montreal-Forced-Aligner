@@ -690,9 +690,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         self.logger.error(message)
 
 
-class ModelExporterMixin(metaclass=abc.ABCMeta):
+class ExporterMixin(metaclass=abc.ABCMeta):
     """
-    Abstract mixin class for exporting MFA models
+    Abstract mixin class for exporting any kind of file
 
     Parameters
     ----------
@@ -703,6 +703,12 @@ class ModelExporterMixin(metaclass=abc.ABCMeta):
     def __init__(self, overwrite: bool = False, **kwargs):
         self.overwrite = overwrite
         super().__init__(**kwargs)
+
+
+class ModelExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
+    """
+    Abstract mixin class for exporting MFA models
+    """
 
     @property
     @abc.abstractmethod
@@ -723,19 +729,17 @@ class ModelExporterMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class FileExporterMixin(metaclass=abc.ABCMeta):
+class FileExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
     """
     Abstract mixin class for exporting TextGrid and text files
 
     Parameters
     ----------
-    overwrite: bool
-        Flag for whether to overwrite files if they already exist
-
+    cleanup_textgrids: bool
+        Flag for whether to clean up exported TextGrids
     """
 
-    def __init__(self, overwrite: bool = False, cleanup_textgrids: bool = True, **kwargs):
-        self.overwrite = overwrite
+    def __init__(self, cleanup_textgrids: bool = True, **kwargs):
         self.cleanup_textgrids = cleanup_textgrids
         super().__init__(**kwargs)
 
