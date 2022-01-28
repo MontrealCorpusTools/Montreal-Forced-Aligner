@@ -216,7 +216,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         from ..utils import get_mfa_version
 
         return {
-            "type": "ngram",
+            "architecture": "ngram",
             "order": self.order,
             "method": self.method,
             "train_date": str(datetime.now()),
