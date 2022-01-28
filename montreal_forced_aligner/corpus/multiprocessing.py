@@ -211,7 +211,7 @@ class Job:
             dict_name = utt.speaker.dictionary_name
             if not utt.text:
                 continue
-            data[dict_name][utt.name] = utt.text
+            data[dict_name][utt.name] = utt.normalized_text
         return data
 
     def text_int_scp_data(self) -> Dict[str, Dict[str, str]]:

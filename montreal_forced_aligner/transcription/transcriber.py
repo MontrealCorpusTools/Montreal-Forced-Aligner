@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import time
-from abc import abstractmethod
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -119,21 +118,113 @@ class TranscriberMixin:
         self.language_model_weight = language_model_weight
         self.word_insertion_penalty = word_insertion_penalty
 
-    @abstractmethod
-    def create_decoding_graph(self) -> None:
-        """Create decoding graph for use in transcription"""
-        ...
+    def save_transcription_evaluation(self, output_directory):
+        output_path = os.path.join(output_directory, "transcription_evaluation.csv")
+        with open(output_path, "w", newline="", encoding="utf8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "utterance",
+                    "file",
+                    "speaker",
+                    "duration",
+                    "word_count",
+                    "oov_count",
+                    "gold_transcript",
+                    "hypothesis",
+                    "WER",
+                    "CER",
+                ]
+            )
+            for utterance in self.utterances:
+                speaker = utterance.speaker_name
+                file = utterance.file_name
+                duration = utterance.duration
+                if not utterance.text:
+                    continue
+                word_count = len(utterance.text.split())
+                oov_count = len(utterance.oovs)
+                writer.writerow(
+                    [
+                        utterance.name,
+                        file,
+                        speaker,
+                        duration,
+                        word_count,
+                        oov_count,
+                        utterance.text,
+                        utterance.transcription_text,
+                        utterance.word_error_rate,
+                        utterance.character_error_rate,
+                    ]
+                )
 
-    @abstractmethod
-    def transcribe(self) -> None:
-        """Perform transcription"""
-        ...
+    def compute_wer(self):
+        """
+        Evaluates the transcripts if there are reference transcripts
 
-    @property
-    @abstractmethod
-    def model_path(self) -> str:
-        """Acoustic model file path"""
-        ...
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if not hasattr(self, "utterances"):
+            raise Exception("Must be used as part of a class")
+        self.logger.info("Evaluating transcripts...")
+        # Sentence-level measures
+        incorrect = 0
+        total_count = 0
+        # Word-level measures
+        total_word_edits = 0
+        total_word_length = 0
+
+        # Character-level measures
+        total_character_edits = 0
+        total_character_length = 0
+
+        indices = []
+        to_comp = []
+        for utterance in self.utterances:
+            utt_name = utterance.name
+            if not utterance.text:
+                continue
+
+            g = self.split_regex.split(utterance.text)
+
+            total_count += 1
+            total_word_length += len(g)
+            character_length = len("".join(g))
+            total_character_length += character_length
+
+            if not utterance.transcription_text:
+                incorrect += 1
+                total_word_edits += len(g)
+                total_character_edits += character_length
+                utterance.transcription_text = ""
+                utterance.word_error_rate = 1
+                utterance.character_error_rate = 1
+                continue
+
+            h = utterance.transcription_text.split()
+            if g != h:
+                indices.append(utt_name)
+                to_comp.append((g, h))
+                incorrect += 1
+            else:
+                utterance.word_error_rate = 0
+                utterance.character_error_rate = 0
+        with mp.Pool(self.num_jobs) as pool:
+            gen = pool.starmap(score_wer, to_comp)
+            for i, (word_edits, word_length, character_edits, character_length) in enumerate(gen):
+                utterance = self.utterances[indices[i]]
+                utterance.word_error_rate = word_edits / word_length
+                utterance.character_error_rate = character_edits / character_length
+                total_word_edits += word_edits
+                total_character_edits += character_edits
+        ser = incorrect / total_count
+        wer = total_word_edits / total_word_length
+        cer = total_character_edits / total_character_length
+        return ser, wer, cer
 
     @property
     def decode_options(self) -> MetaDict:
@@ -1330,90 +1421,8 @@ class Transcriber(
         """
         self.logger.info("Evaluating transcripts...")
         self._load_transcripts()
-        # Sentence-level measures
-        incorrect = 0
-        total_count = 0
-        # Word-level measures
-        total_word_edits = 0
-        total_word_length = 0
-
-        # Character-level measures
-        total_character_edits = 0
-        total_character_length = 0
-
-        issues = {}
-        indices = []
-        to_comp = []
-        for utterance in self.utterances:
-            utt_name = utterance.name
-            if not utterance.text:
-                continue
-
-            g = self.split_regex.split(utterance.text)
-
-            total_count += 1
-            total_word_length += len(g)
-            character_length = len("".join(g))
-            total_character_length += character_length
-
-            if not utterance.transcription_text:
-                incorrect += 1
-                total_word_edits += len(g)
-                total_character_edits += character_length
-                issues[utt_name] = [g, "", 1, 1]
-                continue
-
-            h = utterance.transcription_text.split()
-            if g != h:
-                issues[utt_name] = [g, h]
-                indices.append(utt_name)
-                to_comp.append((g, h))
-                incorrect += 1
-            else:
-                issues[utt_name] = [g, h, 0, 0]
-        with mp.Pool(self.num_jobs) as pool:
-            gen = pool.starmap(score_wer, to_comp)
-            for i, (word_edits, word_length, character_edits, character_length) in enumerate(gen):
-                issues[indices[i]].append(word_edits / word_length)
-                issues[indices[i]].append(character_edits / character_length)
-                total_word_edits += word_edits
-                total_character_edits += character_edits
-        output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
-        with open(output_path, "w", newline="", encoding="utf8") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "utterance",
-                    "file",
-                    "speaker",
-                    "duration",
-                    "word_count",
-                    "oov_count",
-                    "gold_transcript",
-                    "hypothesis",
-                    "WER",
-                    "CER",
-                ]
-            )
-            for utt in sorted(issues.keys()):
-                g, h, wer, cer = issues[utt]
-                utterance = self.utterances[utt]
-                utterance.word_error_rate = wer
-                utterance.character_error_rate = cer
-                speaker = utterance.speaker_name
-                file = utterance.file_name
-                duration = utterance.duration
-                word_count = len(utterance.text.split())
-                oov_count = len(utterance.oovs)
-                g = " ".join(g)
-                h = " ".join(h)
-                writer.writerow(
-                    [utt, file, speaker, duration, word_count, oov_count, g, h, wer, cer]
-                )
-        ser = 100 * incorrect / total_count
-        wer = 100 * total_word_edits / total_word_length
-        cer = 100 * total_character_edits / total_character_length
-        self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%, CER: {cer:.2f}%")
+        ser, wer, cer = self.compute_wer()
+        self.logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
         return ser, wer
 
     def _load_transcripts(self):
@@ -1466,7 +1475,4 @@ class Transcriber(
                 self.logger.debug(f"Could not find any utterances for {file.name}")
             file.save(output_directory, save_transcription=True)
         if self.evaluation_mode:
-            shutil.copyfile(
-                os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),
-                os.path.join(output_directory, "transcription_evaluation.csv"),
-            )
+            self.save_transcription_evaluation(output_directory)

@@ -886,6 +886,14 @@ class AcousticModelTrainingMixin(
 
         from ..utils import get_mfa_version
 
+        try:
+            average_log_likelihood = statistics.mean(
+                x.alignment_log_likelihood
+                for x in self.worker.utterances
+                if x.alignment_log_likelihood
+            )
+        except statistics.StatisticsError:
+            average_log_likelihood = None
         data = {
             "phones": sorted(self.non_silence_phones),
             "version": get_mfa_version(),
@@ -896,11 +904,7 @@ class AcousticModelTrainingMixin(
                 "num_speakers": self.worker.num_speakers,
                 "num_utterances": self.worker.num_utterances,
                 "num_oovs": sum(self.worker.oovs_found.values()),
-                "average_log_likelihood": statistics.mean(
-                    x.alignment_log_likelihood
-                    for x in self.worker.utterances
-                    if x.alignment_log_likelihood
-                ),
+                "average_log_likelihood": average_log_likelihood,
             },
             "features": self.feature_options,
             "phone_set_type": str(self.worker.phone_set_type),

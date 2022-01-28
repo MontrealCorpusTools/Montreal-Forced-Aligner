@@ -271,14 +271,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """Tree path of the final model"""
         return self.training_configs[self.final_identifier].tree_path
 
-    def train(self, generate_final_alignments: bool = True) -> None:
+    def train(self) -> None:
         """
         Run through the training configurations to produce a final acoustic model
-
-        Parameters
-        ----------
-        generate_final_alignments: bool
-            Flag for whether final alignments should be generated at the end of training, defaults to True
         """
         self.setup()
         previous = None
@@ -300,15 +295,14 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             previous = trainer
         self.logger.info(f"Completed training in {time.time()-begin} seconds!")
 
-        if generate_final_alignments:
-            self.current_subset = None
-            self.current_aligner = previous
-            os.makedirs(self.working_log_directory, exist_ok=True)
-            self.current_acoustic_model = AcousticModel(
-                previous.exported_model_path, self.working_directory
-            )
-            self.align()
-            self.collect_alignments()
+        self.current_subset = None
+        self.current_aligner = previous
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.current_acoustic_model = AcousticModel(
+            previous.exported_model_path, self.working_directory
+        )
+        self.align()
+        self.collect_alignments()
 
     @property
     def num_utterances(self) -> int:

@@ -139,6 +139,22 @@ def openfst_src_role(
     return [pnode], []
 
 
+def ngram_src_role(
+    typ: str,
+    rawtext: str,
+    text: str,
+    lineno: int,
+    inliner: Inliner,
+    options: dict = None,
+    content: List[str] = None,
+) -> Tuple[List[Node], List[system_message]]:
+    text = utils.unescape(text)
+    full_url = f"https://www.opengrm.org/doxygen/ngram/html/{text}-main_8cc_source.html"
+    title = f"OpenFst {text} source"
+    pnode = nodes.reference(title, title, internal=False, refuri=full_url)
+    return [pnode], []
+
+
 def kaldi_src_role(
     typ: str,
     rawtext: str,

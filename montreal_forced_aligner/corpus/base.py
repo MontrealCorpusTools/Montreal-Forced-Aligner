@@ -192,31 +192,6 @@ class CorpusMixin(MfaWorker, TemporaryDirectoryMixin, metaclass=ABCMeta):
         """Speaker ordering for each file"""
         return {file.name: file.speaker_ordering for file in self.files}
 
-    def get_word_frequency(self) -> Dict[str, float]:
-        """
-        Calculate the relative word frequency across all the texts in the corpus
-
-        Returns
-        -------
-        dict[str, float]
-            Dictionary of words and their relative frequencies
-        """
-        word_counts = Counter()
-        for u in self.utterances:
-            text = u.text
-            speaker = u.speaker
-            d = speaker.dictionary
-            new_text = []
-            text = text.split()
-            for t in text:
-
-                lookup = d.split_clitics(t)
-                if lookup is None:
-                    continue
-                new_text.extend(x for x in lookup if x != "")
-            word_counts.update(new_text)
-        return {k: v / sum(word_counts.values()) for k, v in word_counts.items()}
-
     @property
     def corpus_word_set(self) -> List[str]:
         """Set of words used in the corpus"""

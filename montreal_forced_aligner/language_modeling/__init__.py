@@ -6,9 +6,9 @@ Language modeling
 """
 
 from montreal_forced_aligner.language_modeling.trainer import (
-    LmArpaTrainer,
-    LmCorpusTrainer,
-    LmDictionaryCorpusTrainer,
+    MfaLmArpaTrainer,
+    MfaLmCorpusTrainer,
+    MfaLmDictionaryCorpusTrainer,
 )
 
-__all__ = ["LmCorpusTrainer", "LmDictionaryCorpusTrainer", "LmArpaTrainer"]
+__all__ = ["MfaLmCorpusTrainer", "MfaLmDictionaryCorpusTrainer", "MfaLmArpaTrainer"]

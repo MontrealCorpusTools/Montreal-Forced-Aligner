@@ -374,7 +374,9 @@ class PhoneSetType(enum.Enum):
 
         elif self is PhoneSetType.IPA:
 
-            extra_questions["dental_lenition"] = voiced_variants("ð") | voiced_variants("d")
+            extra_questions["dental_lenition"] = (
+                voiced_variants("ð") | voiced_variants("d") | voiced_variants("d̪")
+            )
             extra_questions["flapping"] = {"d", "t", "ɾ"}
             extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
             extra_questions["labial_lenition"] = voiced_variants("β") | voiced_variants("b")
@@ -460,10 +462,13 @@ class PhoneSetType(enum.Enum):
             )
             extra_questions["bilabial_stop_variation"] = bilabial_stops
 
-            alveolar_stops = voiceless_variants("t") | voiceless_variants("ʈ")
+            alveolar_stops = (
+                voiceless_variants("t") | voiceless_variants("t̪") | voiceless_variants("ʈ")
+            )
             alveolar_stops |= (
                 voiced_variants("d")
                 | voiced_variants("ɗ")
+                | voiced_variants("d̪")
                 | voiced_variants("ɖ")
                 | voiced_variants("ᶑ")
             )

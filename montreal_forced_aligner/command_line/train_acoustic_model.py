@@ -33,13 +33,7 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] = No
         **TrainableAligner.parse_parameters(args.config_path, args, unknown_args),
     )
     try:
-        generate_final_alignments = True
-        if args.output_directory is None:
-            generate_final_alignments = False
-        else:
-            os.makedirs(args.output_directory, exist_ok=True)
-
-        trainer.train(generate_final_alignments)
+        trainer.train()
         if args.output_model_path is not None:
             trainer.export_model(args.output_model_path)
 

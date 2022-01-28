@@ -438,7 +438,9 @@ class WordAlignmentFunction(KaldiFunction):
         cur_ind = 0
         try:
             actual_labels = []
-            for word in text.split():
+            if isinstance(text, str):
+                text = text.split()
+            for word in text:
                 splits = split(word)
                 b = 1000000
                 e = -1

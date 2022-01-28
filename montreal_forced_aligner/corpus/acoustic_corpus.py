@@ -28,6 +28,7 @@ from montreal_forced_aligner.corpus.features import (
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.dictionary.mixins import DictionaryMixin, SanitizeFunction
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.helper import load_scp
@@ -994,7 +995,7 @@ class AcousticCorpusPronunciationMixin(
         self.log_debug(f"Setting up corpus took {time.time() - all_begin} seconds")
 
 
-class AcousticCorpus(AcousticCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
+class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryDirectoryMixin):
     """
     Standalone class for working with acoustic corpora and pronunciation dictionaries
 
@@ -1018,6 +1019,10 @@ class AcousticCorpus(AcousticCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     def __init__(self, num_jobs=3, **kwargs):
         super(AcousticCorpus, self).__init__(**kwargs)
         self.num_jobs = num_jobs
+
+    @property
+    def sanitize_function(self) -> SanitizeFunction:
+        return self.construct_sanitize_function()
 
     @property
     def identifier(self) -> str:

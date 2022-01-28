@@ -49,7 +49,7 @@ __all__ = [
 
 
 def threshold_lattice_to_dfa(
-    lattice: pynini.Fst, threshold: float = 0.99, state_multiplier: int = 4
+    lattice: pynini.Fst, threshold: float = 0.99, state_multiplier: int = 2
 ) -> pynini.Fst:
     """Constructs a (possibly pruned) weighted DFA of output strings.
     Given an epsilon-free lattice of output strings (such as produced by

@@ -353,7 +353,6 @@ class AlignMixin(DictionaryMixin):
                             )
                         pbar.update(1)
 
-        self.compile_information()
         self.logger.debug(f"Alignment round took {time.time() - begin}")
 
     def compile_information(self):

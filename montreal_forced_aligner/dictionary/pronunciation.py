@@ -89,7 +89,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 if not line:
                     continue
                 if "\t" in line:
-                    word, line = line.split("\t")
+                    word, line = line.split("\t", maxsplit=1)
                     line = line.strip().split()
                 else:
                     line = line.split()
@@ -329,7 +329,11 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         fst_text = ""
         for k, v in word_probs.items():
             cost = -1 * math.log(v)
-            w = self.to_int(k)[0]
+            try:
+                w = self.to_int(k)[0]
+            except IndexError:
+                print(k, self.to_int(k))
+                raise
             fst_text += f"0 0 {w} {w} {cost}\n"
         fst_text += f"0 {-1 * math.log(1 / num_words)}\n"
         return fst_text

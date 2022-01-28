@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
@@ -5,7 +9,8 @@ from montreal_forced_aligner.command_line.validate import run_validate_corpus
 def test_validate_corpus(
     multilingual_ipa_tg_corpus_dir, english_ipa_acoustic_model, english_us_ipa_dictionary, temp_dir
 ):
-
+    if sys.platform == "win32":
+        pytest.skip("Transcription testing uses ngram")
     command = [
         "validate",
         multilingual_ipa_tg_corpus_dir,

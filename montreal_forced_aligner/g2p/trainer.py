@@ -273,7 +273,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
         model_size: int = 1000000,
         input_epsilon: bool = True,
         output_epsilon: bool = True,
-        fst_default_cache_gc="false",
+        fst_default_cache_gc="",
         fst_default_cache_gc_limit="",
         **kwargs,
     ):

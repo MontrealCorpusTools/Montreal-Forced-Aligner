@@ -26,7 +26,7 @@ For the Kaldi recipe that monophone training is based on, see :kaldi_steps:`trai
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
    "num_iterations", 40, "Number of training iterations"
-   "max_gaussians", 40, "Total number of gaussians"
+   "max_gaussians", 1000, "Total number of gaussians"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
 
 

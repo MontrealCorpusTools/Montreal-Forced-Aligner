@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, List, Optional
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.language_modeling.trainer import (
-    LmArpaTrainer,
-    LmCorpusTrainer,
-    LmDictionaryCorpusTrainer,
+    MfaLmArpaTrainer,
+    MfaLmCorpusTrainer,
+    MfaLmDictionaryCorpusTrainer,
 )
 
 if TYPE_CHECKING:
@@ -32,23 +32,25 @@ def train_lm(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
 
     if not args.source_path.lower().endswith(".arpa"):
         if not args.dictionary_path:
-            trainer = LmCorpusTrainer(
+            trainer = MfaLmCorpusTrainer(
                 corpus_directory=args.source_path,
                 temporary_directory=args.temporary_directory,
-                **LmCorpusTrainer.parse_parameters(args.config_path, args, unknown_args),
+                **MfaLmCorpusTrainer.parse_parameters(args.config_path, args, unknown_args),
             )
         else:
-            trainer = LmDictionaryCorpusTrainer(
+            trainer = MfaLmDictionaryCorpusTrainer(
                 corpus_directory=args.source_path,
                 dictionary_path=args.dictionary_path,
                 temporary_directory=args.temporary_directory,
-                **LmDictionaryCorpusTrainer.parse_parameters(args.config_path, args, unknown_args),
+                **MfaLmDictionaryCorpusTrainer.parse_parameters(
+                    args.config_path, args, unknown_args
+                ),
             )
     else:
-        trainer = LmArpaTrainer(
+        trainer = MfaLmArpaTrainer(
             arpa_path=args.source_path,
             temporary_directory=args.temporary_directory,
-            **LmArpaTrainer.parse_parameters(args.config_path, args, unknown_args),
+            **MfaLmArpaTrainer.parse_parameters(args.config_path, args, unknown_args),
         )
 
     try:
