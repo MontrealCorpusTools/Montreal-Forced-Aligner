@@ -594,7 +594,7 @@ class DictionaryMixin:
             else:
                 num_states = self.num_non_silence_states
             if self.phone_set_type is PhoneSetType.IPA:
-                if re.match(r"^.*[ʱʼʰʲʷⁿˠ][ː]?$", p):
+                if re.match(r"^.*[ʱʼʰⁿ][ː]?$", p):
                     num_states += 1
                 if re.match(r"^.*̚$", p) and p not in self.phone_set_type.extra_short_phones:
                     num_states -= 1
