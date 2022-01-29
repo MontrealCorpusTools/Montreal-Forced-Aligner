@@ -138,6 +138,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     self.clitic_markers[0]
                 ):
                     self.clitic_set.add(word)
+        self.split_words = self.construct_split_words_function()
         self.lexicon_word_set = set(self.words.keys())
         self.non_silence_phones -= self.silence_phones
         self.words_mapping = {}
@@ -221,7 +222,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             List of subwords
         """
 
-        return self.construct_split_words_function()(item)
+        return self.split_words(item)
 
     def __bool__(self):
         """Check that the dictionary contains words"""
@@ -357,7 +358,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         sanitized = self.construct_sanitize_function()(item)
         if sanitized in self.words:
             return [sanitized]
-        split = self.construct_split_words_function()(sanitized)
+        split = self.split_words(sanitized)
         oov_count = sum(1 for x in split if x not in self.words)
         if oov_count < len(
             split
@@ -423,7 +424,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         if sanitized in self.words:
             return True
 
-        sanitized = self.construct_split_words_function()(sanitized)
+        sanitized = self.split_words(sanitized)
         for s in sanitized:
             if s not in self.words:
                 return False
