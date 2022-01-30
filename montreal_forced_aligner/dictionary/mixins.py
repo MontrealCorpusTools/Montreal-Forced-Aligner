@@ -15,7 +15,7 @@ from montreal_forced_aligner.data import PhoneSetType
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict, ReversedMappingType
 
-DEFAULT_PUNCTUATION = list(r'、。।，？!@<>"()“„,.:;—¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
+DEFAULT_PUNCTUATION = list(r'、。।，？!@<>→"”()“„–,.:;—¿?¡!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
 DEFAULT_CLITIC_MARKERS = list("'’")
 DEFAULT_COMPOUND_MARKERS = list("-/")
@@ -79,8 +79,8 @@ class SanitizeFunction:
                 return item
         if self.punctuation:
             character_set = rf"[{re.escape(''.join(self.punctuation))}]"
-            item = re.sub(rf"^{character_set}+", "", item)
-            item = re.sub(rf"{character_set}+$", "", item)
+            item = re.sub(rf"^[-']?{character_set}+", "", item)
+            item = re.sub(rf"{character_set}+[-']?$", "", item)
         return item
 
 

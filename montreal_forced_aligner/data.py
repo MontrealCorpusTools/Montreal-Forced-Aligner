@@ -92,7 +92,7 @@ class PhoneSetType(enum.Enum):
         elif self is PhoneSetType.PINYIN:
             return re.compile(r"[12345]")
         elif self is PhoneSetType.IPA:
-            return re.compile(r"([ː˩˨˧˦˥̪̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
+            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
         return None
 
     @property
