@@ -100,7 +100,7 @@ class PhoneSetType(enum.Enum):
         if self is PhoneSetType.ARPA:
             return {"AH0", "IH0", "ER0", "UH0"}
         elif self is PhoneSetType.IPA:
-            return {"ʔ", "ə", "ɚ", "ɾ", "p̚", "t̚", "k̚"}
+            return {"ʔ", "ə", "ɚ", "ɾ"}
         return set()
 
     @property
