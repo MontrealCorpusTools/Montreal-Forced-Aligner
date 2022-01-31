@@ -365,7 +365,13 @@ class Transcriber(
                         }:
                             v = []
                         global_params[k] = v
+
         global_params.update(cls.parse_args(args, unknown_args))
+        if hasattr(args, "language_model_weight"):
+            global_params["min_language_model_weight"] = args.language_model_weight
+            global_params["max_language_model_weight"] = args.language_model_weight + 1
+        if hasattr(args, "word_insertion_penalty"):
+            global_params["word_insertion_penalties"] = [args.word_insertion_penalty]
         return global_params
 
     def setup(self) -> None:

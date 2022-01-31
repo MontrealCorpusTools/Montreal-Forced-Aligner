@@ -729,6 +729,20 @@ def create_parser() -> ArgumentParser:
         help="Evaluate the transcription against golden texts",
         action="store_true",
     )
+    transcribe_parser.add_argument(
+        "--language_model_weight",
+        dest="language_model_weight",
+        help="Specific language model weight to use in evaluating transcriptions, if not specified, "
+        "metrics will be calculated over a range from 7 to 16 (inclusive)",
+        type=int,
+    )
+    transcribe_parser.add_argument(
+        "--word_insertion_penalty",
+        dest="word_insertion_penalty",
+        help="Specific word insertion penalty to use in evaluating transcriptions, if not specified, "
+        "metrics will be calculated over values of [0, 0.5, 1.0]",
+        type=float,
+    )
     add_global_options(transcribe_parser)
 
     config_parser = subparsers.add_parser(

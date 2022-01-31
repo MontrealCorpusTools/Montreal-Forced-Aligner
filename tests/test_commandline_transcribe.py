@@ -103,7 +103,7 @@ def test_transcribe_speaker_dictionaries(
         transcribe_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args)
+    run_transcribe_corpus(args, unknown)
 
 
 def test_transcribe_speaker_dictionaries_evaluate(
@@ -128,9 +128,13 @@ def test_transcribe_speaker_dictionaries_evaluate(
         "-q",
         "--clean",
         "--debug",
+        "--language_model_weight",
+        "16",
+        "--word_insertion_penalty",
+        "1.0",
         "--config_path",
         transcribe_config_path,
         "--evaluate",
     ]
     args, unknown = parser.parse_known_args(command)
-    run_transcribe_corpus(args)
+    run_transcribe_corpus(args, unknown)
