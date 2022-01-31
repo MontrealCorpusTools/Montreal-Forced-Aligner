@@ -114,6 +114,7 @@ class PhoneSetType(enum.Enum):
             for p in {
                 "pf",
                 "ts",
+                "t̪s̪",
                 "tʃ",
                 "tɕ",
                 "tʂ",
@@ -125,6 +126,7 @@ class PhoneSetType(enum.Enum):
                 affricates |= voiceless_variants(p)
             for p in {
                 "dz",
+                "d̪z̪",
                 "dʒ",
                 "dʑ",
                 "dʐ",
@@ -145,9 +147,9 @@ class PhoneSetType(enum.Enum):
             return {"b", "d", "g"}
         if self is PhoneSetType.IPA:
             stops = set()
-            for p in {"p", "t", "ʈ", "c", "k", "q"}:
+            for p in {"p", "t", "t̪", "ʈ", "c", "k", "q"}:
                 stops |= voiceless_variants(p)
-            for p in {"b", "d", "ɖ", "ɟ", "ɡ", "ɢ"}:
+            for p in {"b", "d", "d̪", "ɖ", "ɟ", "ɡ", "ɢ"}:
                 stops |= voiced_variants(p)
             return stops
         return set()
@@ -377,13 +379,14 @@ class PhoneSetType(enum.Enum):
             extra_questions["dental_lenition"] = (
                 voiced_variants("ð") | voiced_variants("d") | voiced_variants("d̪")
             )
-            extra_questions["flapping"] = {"d", "t", "ɾ"}
-            extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
+            extra_questions["flapping"] = {"d", "d̪", "t", "t̪", "ɾ"}
+            extra_questions["glottalization"] = {"t", "t̪", "ʔ", "t̚", "t̪̚"}
             extra_questions["labial_lenition"] = voiced_variants("β") | voiced_variants("b")
             extra_questions["velar_lenition"] = voiced_variants("ɣ") | voiced_variants("ɡ")
 
             nasal_variation = (
                 voiced_variants("m")
+                | voiced_variants("n̪")
                 | voiced_variants("n")
                 | voiced_variants("ɲ")
                 | voiced_variants("ŋ")
@@ -440,12 +443,7 @@ class PhoneSetType(enum.Enum):
             extra_questions["uvular_variation"] = uvular_variation
 
             lateral_variation = voiced_variants("l") | voiced_variants("ɫ") | voiced_variants("ʎ")
-            lateral_variation |= (
-                voiced_variants("ʟ")
-                | voiced_variants("ɭ")
-                | voiced_variants("ɮ")
-                | voiceless_variants("ɬ")
-            )
+            lateral_variation |= voiced_variants("ʟ") | voiced_variants("ɭ") | voiced_variants("ɮ")
             extra_questions["lateral_variation"] = lateral_variation
 
             dorsal_stops = voiceless_variants("k") | voiced_variants("ɡ") | voiced_variants("ɠ")
@@ -503,6 +501,7 @@ class PhoneSetType(enum.Enum):
             extra_questions["voiced_fricative_variation"] = voiced_fricatives
             voiceless_sibilants = (
                 voiceless_variants("s")
+                | voiceless_variants("s̪")
                 | voiceless_variants("ʃ")
                 | voiceless_variants("ɕ")
                 | voiceless_variants("ʂ")
@@ -510,11 +509,14 @@ class PhoneSetType(enum.Enum):
             voiceless_sibilants |= (
                 voiceless_variants("ts") | voiceless_variants("tʃ") | voiceless_variants("tɕ")
             )
-            voiceless_sibilants |= voiceless_variants("ʈʂ") | voiceless_variants("tʂ")
+            voiceless_sibilants |= (
+                voiceless_variants("t̪s̪") | voiceless_variants("ʈʂ") | voiceless_variants("tʂ")
+            )
             extra_questions["voiceless_sibilant_variation"] = voiceless_sibilants
 
             voiced_sibilants = (
                 voiced_variants("z")
+                | voiced_variants("z̪")
                 | voiced_variants("ʒ")
                 | voiced_variants("ʐ")
                 | voiced_variants("ʑ")
@@ -522,6 +524,7 @@ class PhoneSetType(enum.Enum):
             voiced_sibilants |= (
                 voiced_variants("dz")
                 | voiced_variants("dʒ")
+                | voiced_variants("d̪z̪")
                 | voiced_variants("dʐ")
                 | voiced_variants("ɖʐ")
                 | voiced_variants("dʑ")
