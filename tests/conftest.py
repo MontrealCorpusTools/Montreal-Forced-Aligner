@@ -156,6 +156,7 @@ def english_uk_mfa_dictionary(model_manager):
 
 @pytest.fixture(scope="session")
 def english_ivector_model(model_manager):
+    return None
     if not model_manager.has_local_model("ivector", "english_ivector"):
         model_manager.download_model("ivector", "english_ivector")
     return "english_ivector"
