@@ -12,7 +12,6 @@ from montreal_forced_aligner.corpus.acoustic_corpus import (
     AcousticCorpusPronunciationMixin,
 )
 from montreal_forced_aligner.corpus.base import CorpusMixin
-from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
 from montreal_forced_aligner.corpus.text_corpus import (
     DictionaryTextCorpusMixin,
     TextCorpus,
@@ -23,9 +22,6 @@ __all__ = [
     "base",
     "helper",
     "classes",
-    "File",
-    "Speaker",
-    "Utterance",
     "features",
     "multiprocessing",
     "CorpusMixin",

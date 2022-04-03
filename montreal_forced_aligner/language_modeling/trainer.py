@@ -6,7 +6,10 @@ import re
 import subprocess
 from typing import TYPE_CHECKING, Generator
 
+from sqlalchemy.orm import Session, load_only
+
 from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -333,13 +336,15 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             Normalized text
         """
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
-        for u in self.utterances:
-            normalized = u.normalized_text
-            if not normalized:
-                normalized = u.text.split()
-            yield " ".join(x if x not in unk_words else self.oov_word for x in normalized)
 
-    def train_large_lm(self):
+        with Session(self.db_engine) as session:
+            utterances = session.query(Utterance).options(load_only(Utterance.normalized_text))
+            for u in utterances:
+                text = u.normalized_text.split()
+                yield " ".join(x if x not in unk_words else self.oov_word for x in text)
+
+    def train_large_lm(self) -> None:
+        """Train a large language model"""
         self.log_info("Beginning training large ngram model...")
         subprocess.check_call(
             [
@@ -426,18 +431,22 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
 
     @property
     def data_directory(self) -> str:
+        """Data directory"""
         return ""
 
     @property
     def workflow_identifier(self) -> str:
+        """Workflow identifier"""
         return "train_lm_from_arpa"
 
     @property
     def data_source_identifier(self) -> str:
+        """Data source identifier"""
         return os.path.splitext(os.path.basename(self.arpa_path))[0]
 
     @property
     def meta(self) -> MetaDict:
+        """Metadata information for the trainer"""
         return {}
 
     def train(self) -> None:
@@ -494,6 +503,10 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
 
 
 class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
+    """
+    Trainer class for generating a language model from a corpus
+    """
+
     def setup(self) -> None:
         """Set up language model training"""
         if self.initialized:
@@ -504,8 +517,6 @@ class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
         with open(self.training_path, "w", encoding="utf8") as f:
             for text in self.normalized_text_iter(self.count_threshold):
                 f.write(f"{text}\n")
-
-        self.save_oovs_found(self.working_directory)
 
         subprocess.call(
             ["ngramsymbols", f"--OOV_symbol={self.oov_word}", self.training_path, self.sym_path]

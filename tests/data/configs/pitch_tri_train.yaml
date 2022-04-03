@@ -1,0 +1,24 @@
+beam: 10
+retry_beam: 400
+use_mp: false
+
+features:
+  type: "mfcc"
+  use_energy: false
+  frame_shift: 10
+  use_pitch: true
+
+training:
+  - monophone:
+      num_iterations: 5
+      max_gaussians: 100
+      subset: 1000
+
+  - triphone:
+      num_iterations: 3
+      num_leaves: 250
+      max_gaussians: 2000
+      cluster_threshold: -1
+      subset: 3000
+      boost_silence: 1.25
+      power: 0.25

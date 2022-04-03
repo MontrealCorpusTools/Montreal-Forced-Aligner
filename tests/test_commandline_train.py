@@ -25,6 +25,7 @@ def test_train_and_align_basic(
         mono_train_config_path,
         "-q",
         "--clean",
+        "--quiet",
         "--debug",
         "-o",
         textgrid_output_model_path,
@@ -36,7 +37,7 @@ def test_train_and_align_basic(
 
 def test_train_and_align_basic_speaker_dict(
     multilingual_ipa_tg_corpus_dir,
-    ipa_speaker_dict_path,
+    mfa_speaker_dict_path,
     generated_dir,
     temp_dir,
     basic_train_config_path,
@@ -47,7 +48,7 @@ def test_train_and_align_basic_speaker_dict(
     command = [
         "train",
         multilingual_ipa_tg_corpus_dir,
-        ipa_speaker_dict_path,
+        mfa_speaker_dict_path,
         os.path.join(generated_dir, "ipa_speaker_output"),
         "-t",
         temp_dir,

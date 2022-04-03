@@ -2,23 +2,27 @@
 
 from __future__ import annotations
 
+import collections
 import math
 import os
 import re
 import subprocess
 import sys
-from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
     from montreal_forced_aligner.abc import (
         ReversedMappingType,
     )
 
-from montreal_forced_aligner.data import Pronunciation, Word
+from montreal_forced_aligner.data import Pronunciation, WordData
 from montreal_forced_aligner.dictionary.mixins import SplitWordsFunction, TemporaryDictionaryMixin
-from montreal_forced_aligner.exceptions import DictionaryError, DictionaryFileError
+from montreal_forced_aligner.exceptions import (
+    DictionaryError,
+    DictionaryFileError,
+    KaldiProcessingError,
+)
 from montreal_forced_aligner.models import DictionaryModel
 from montreal_forced_aligner.utils import thirdparty_binary
 
@@ -62,6 +66,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.dictionary_model = DictionaryModel(
             dictionary_path, phone_set_type=self.phone_set_type
         )
+        self.name = self.dictionary_model.name
 
         self.phone_set_type = self.dictionary_model.phone_set_type
         self.root_dictionary = root_dictionary
@@ -71,14 +76,11 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         os.makedirs(self.dictionary_output_directory, exist_ok=True)
         self.words = {}
         self.graphemes = set()
-
-        eps_word = Word(
-            "<eps>", {Pronunciation((self.optional_silence_phone,), 1, None, None, None)}
-        )
-        oov_word = Word(self.oov_word, {Pronunciation((self.oov_phone,), 1, None, None, None)})
-        self.words["<eps>"] = eps_word
-        self.words[self.oov_word] = oov_word
+        eps_word = WordData(self.silence_word, {Pronunciation((self.optional_silence_phone,))})
+        self.words[self.silence_word] = eps_word
+        self.phone_counts = collections.Counter()
         sanitize = False
+        self.silence_words = set()
         clitic_cleanup_regex = None
         if len(self.clitic_markers) > 1:
             sanitize = True
@@ -96,6 +98,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     word = line.pop(0)
                 if self.ignore_case:
                     word = word.lower()
+                if " " in word:
+                    continue
                 if sanitize:
                     word = clitic_cleanup_regex.sub(self.clitic_markers[0], word)
                 if not line:
@@ -110,27 +114,39 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     prob = float(line.pop(0))
                     if prob > 1 or prob < 0:
                         raise ValueError
+                silence_after_prob = None
+                silence_before_correct = None
+                non_silence_before_correct = None
                 if self.dictionary_model.silence_probabilities:
-                    right_sil_prob = float(line.pop(0))
-                    left_sil_prob = float(line.pop(0))
-                else:
-                    right_sil_prob = None
-                    left_sil_prob = None
+                    silence_after_prob = float(line.pop(0))
+                    silence_before_correct = float(line.pop(0))
+                    non_silence_before_correct = float(line.pop(0))
                 pron = tuple(line)
                 if pretrained:
-                    difference = set(pron) - self.non_silence_phones
+                    difference = set(pron) - self.non_silence_phones - self.silence_phones
                     if difference:
                         self.excluded_phones.update(difference)
                         self.excluded_pronunciation_count += 1
                         continue
-                pronunciation = Pronunciation(pron, prob, None, left_sil_prob, right_sil_prob)
+                pronunciation = Pronunciation(
+                    pronunciation=pron,
+                    probability=prob,
+                    silence_after_probability=silence_after_prob,
+                    silence_before_correction=silence_before_correct,
+                    non_silence_before_correction=non_silence_before_correct,
+                )
+
                 if word in self.words and pronunciation in self.words[word]:
                     continue
-                self.non_silence_phones.update(pron)
+                if not set(pron) - self.silence_phones:
+                    self.silence_words.add(word)
+                else:
+                    self.non_silence_phones.update(pron)
+                    self.phone_counts.update(pron)
                 if word not in self.words:
-                    self.words[word] = Word(word, set())
+                    self.words[word] = WordData(word, set())
 
-                self.words[word].pronunciations.add(pronunciation)
+                self.words[word].add_pronunciation(pronunciation)
                 # test whether a word is a clitic
                 if not self.clitic_markers or self.clitic_markers[0] not in word:
                     continue
@@ -138,8 +154,34 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     self.clitic_markers[0]
                 ):
                     self.clitic_set.add(word)
+        if self.oov_word not in self.words:
+            oov_word = WordData(self.oov_word, {Pronunciation(pronunciation=(self.oov_phone,))})
+            self.words[self.oov_word] = oov_word
+        for w in ["laugh", "laughter", "lachen", "lg"]:
+            for initial_bracket, final_bracket in self.brackets:
+                orth = f"{initial_bracket}{w}{final_bracket}"
+                if orth not in self.words:
+                    self.words[orth] = WordData(
+                        orth, {Pronunciation(pronunciation=(self.oov_phone,))}
+                    )
+                self.silence_words.add(orth)
+        self.bracketed_word = "[bracketed]"
+        if self.bracketed_word not in self.words:
+            self.words[self.bracketed_word] = WordData(
+                self.bracketed_word, {Pronunciation(pronunciation=(self.oov_phone,))}
+            )
+        self.silence_words.add(self.bracketed_word)
         self.lexicon_word_set = set(self.words.keys())
         self.non_silence_phones -= self.silence_phones
+
+        self.bracket_regex = None
+        if self.brackets:
+            left_brackets = [x[0] for x in self.brackets]
+            right_brackets = [x[1] for x in self.brackets]
+            self.bracket_regex = re.compile(
+                rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
+            )
+
         self.words_mapping = {}
         self._to_int_cache = {}
         if not self.graphemes:
@@ -147,14 +189,9 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 f"No words were found in the dictionary path {self.dictionary_model.path}"
             )
 
-    @property
-    def name(self) -> str:
-        """Name of the dictionary"""
-        return self.dictionary_model.name
-
     def __hash__(self) -> Any:
         """Return the hash of a given dictionary"""
-        return hash(self.dictionary_model.path)
+        return hash(self.name)
 
     @property
     def dictionary_output_directory(self) -> str:
@@ -169,9 +206,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return self.silence_phones
 
     @property
-    def actual_words(self) -> Dict[str, Word]:
+    def actual_words(self) -> Dict[str, WordData]:
         """Words in the dictionary stripping out Kaldi's internal words"""
-        return {k: v for k, v in self.words.items() if k not in self.specials_set}
+        return {
+            k: v
+            for k, v in self.words.items()
+            if k not in self.specials_set and k not in self.silence_words
+        }
 
     def construct_split_words_function(self) -> SplitWordsFunction:
         """
@@ -186,6 +227,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             self.clitic_markers,
             self.compound_markers,
             self.clitic_set,
+            self.brackets,
             set(self.words.keys()),
         )
 
@@ -256,11 +298,15 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         Generate word mappings from text to integer IDs
         """
+        if self.words_mapping:
+            return
         self.words_mapping = {}
         i = 0
-        self.words_mapping["<eps>"] = i
+        self.words_mapping[self.silence_word] = i
         for w in sorted(self.words.keys()):
-            if self.exclude_for_alignment(w):
+            # if self.exclude_for_alignment(w):
+            #    continue
+            if w == self.silence_word:
                 continue
             i += 1
             self.words_mapping[w] = i
@@ -268,7 +314,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         self.words_mapping["#0"] = i + 1
         self.words_mapping["<s>"] = i + 2
         self.words_mapping["</s>"] = i + 3
-        self.oovs_found = Counter()
         self.add_disambiguation()
 
     def add_disambiguation(self) -> None:
@@ -278,19 +323,15 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         subsequences = set()
         pronunciation_counts = defaultdict(int)
 
-        for w, word in self.words.items():
-            if self.exclude_for_alignment(w):
-                continue
-            for p in word.pronunciations:
+        for word in self.words.values():
+            for p in word:
                 pronunciation_counts[p.pronunciation] += 1
                 pron = p.pronunciation[:-1]
                 while pron:
                     subsequences.add(tuple(p.pronunciation))
                     pron = pron[:-1]
         last_used = defaultdict(int)
-        for w, prons in sorted(self.words.items()):
-            if self.exclude_for_alignment(w):
-                continue
+        for _, prons in sorted(self.words.items()):
             for p in prons:
                 if (
                     pronunciation_counts[p.pronunciation] == 1
@@ -306,37 +347,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             self.max_disambiguation_symbol = max(
                 self.max_disambiguation_symbol, max(last_used.values())
             )
-
-    def create_utterance_fst(self, text: List[str], frequent_words: List[Tuple[str, int]]) -> str:
-        """
-        Create an FST for an utterance with frequent words as a unigram language model
-
-        Parameters
-        ----------
-        text: list[str]
-            Text of the utterance
-        frequent_words: list[tuple[str, int]]
-            Frequent words to incorporate into the FST
-        Returns
-        -------
-        str
-            FST created from the utterance text and frequent words
-        """
-        num_words = len(text)
-        word_probs = Counter(text)
-        word_probs = {k: v / num_words for k, v in word_probs.items()}
-        word_probs.update(frequent_words)
-        fst_text = ""
-        for k, v in word_probs.items():
-            cost = -1 * math.log(v)
-            try:
-                w = self.to_int(k)[0]
-            except IndexError:
-                print(k, self.to_int(k))
-                raise
-            fst_text += f"0 0 {w} {w} {cost}\n"
-        fst_text += f"0 {-1 * math.log(1 / num_words)}\n"
-        return fst_text
 
     def lookup(
         self,
@@ -358,16 +368,13 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         if item in self.words:
             return [item]
-        sanitized = self.construct_sanitize_function()(item)
-        if sanitized in self.words:
-            return [sanitized]
-        split = self.construct_split_words_function()(sanitized)
+        split = self.construct_split_words_function()(item)
         oov_count = sum(1 for x in split if x not in self.words)
         if oov_count < len(
             split
         ):  # Only returned split item if it gains us any transcribed speech
             return split
-        return [sanitized]
+        return [item]
 
     def to_int(self, item: str, normalized=False) -> List[int]:
         """
@@ -377,6 +384,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         ----------
         item: str
             Word to look up
+        normalized: bool
+            Flag for whether to use pre-existing normalized text
 
         Returns
         -------
@@ -388,6 +397,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         if normalized:
             if item in self.words_mapping and item not in self.specials_set:
                 return [self.words_mapping[item]]
+            elif self.bracket_regex and self.bracket_regex.match(item):
+                return [self.bracketed_int]
             else:
                 return [self.oov_int]
         if item in self._to_int_cache:
@@ -397,10 +408,12 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         for item in sanitized:
             if not item:
                 continue
-            if item not in self.words_mapping:
-                text_int.append(self.oov_int)
-            else:
+            if item in self.words_mapping and item not in self.specials_set:
                 text_int.append(self.words_mapping[item])
+            elif self.bracket_regex and self.bracket_regex.match(item):
+                text_int.append(self.bracketed_int)
+            else:
+                text_int.append(self.oov_int)
         self._to_int_cache[item] = text_int
         return text_int
 
@@ -423,11 +436,8 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             return False
         if item in self.words:
             return True
-        sanitized = self.construct_sanitize_function()(item)
-        if sanitized in self.words:
-            return True
 
-        sanitized = self.construct_split_words_function()(sanitized)
+        sanitized = self.construct_split_words_function()(item)
         for s in sanitized:
             if s not in self.words:
                 return False
@@ -451,11 +461,25 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         return super().phone_mapping
 
     @property
+    def silence_disambiguation_symbol(self) -> str:
+        """Mapping of phones to integer IDs"""
+        if self.root_dictionary is not None:
+            return self.root_dictionary.silence_disambiguation_symbol
+        return super().silence_disambiguation_symbol
+
+    @property
     def oov_int(self) -> int:
         """
         The integer id for out of vocabulary items
         """
         return self.words_mapping[self.oov_word]
+
+    @property
+    def bracketed_int(self) -> int:
+        """
+        The integer id for bracketed items
+        """
+        return self.words_mapping[self.bracketed_word]
 
     @property
     def phones_dir(self) -> str:
@@ -492,7 +516,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(self.dictionary_output_directory, "L_disambig.fst")
+        return os.path.join(self.dictionary_output_directory, "L.disambig_fst")
 
     def write(
         self,
@@ -513,22 +537,20 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             self.generate_mappings()
             os.makedirs(self.phones_dir, exist_ok=True)
             self._write_word_boundaries()
-            self._write_phone_sets()
             self._write_phone_symbol_table()
             self._write_disambig()
-            self._write_topo()
-            self._write_extra_questions()
         if debug:
             self.export_lexicon(os.path.join(self.dictionary_output_directory, "lexicon.txt"))
         self._write_graphemes()
         self._write_word_file()
-        if write_disambiguation:
-            self._write_fst_text_disambiguated()
-        else:
-            self._write_basic_fst_text()
+        self._write_probabilistic_fst_text(write_disambiguation)
         self._write_fst_binary(write_disambiguation=write_disambiguation)
         if not debug:
             self.cleanup()
+
+    def write_subset_fst(self, path: str, word_set: Set[str]):
+        self._write_probabilistic_fst_text(disambiguation=False, path=path, word_set=word_set)
+        self._write_fst_binary(write_disambiguation=False, path=path)
 
     def cleanup(self) -> None:
         """
@@ -548,11 +570,21 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             for char in sorted(self.graphemes):
                 f.write(char + "\n")
 
+    @property
+    def silence_probability_info(self) -> Dict[str, float]:
+        return {
+            "silence_probability": self.silence_probability,
+            "initial_silence_probability": self.initial_silence_probability,
+            "final_silence_correction": self.final_silence_correction,
+            "final_non_silence_correction": self.final_non_silence_correction,
+        }
+
     def export_lexicon(
         self,
         path: str,
         write_disambiguation: Optional[bool] = False,
         probability: Optional[bool] = False,
+        silence_probabilities: Optional[bool] = False,
     ) -> None:
         """
         Export pronunciation dictionary to a text file
@@ -565,16 +597,37 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
             Flag for whether to include disambiguation information
         probability: bool, optional
             Flag for whether to include probabilities
+        silence_probabilities: bool, optional
+            Flag for whether to include per pronunciation silence probabilities, only valid
+            when ``probability`` is set to True
         """
         with open(path, "w", encoding="utf8") as f:
             for w in sorted(self.words.keys()):
-                for p in sorted(self.words[w].pronunciations):
+                if w == self.silence_word:
+                    continue
+                for p in sorted(self.words[w]):
                     phones = " ".join(p.pronunciation)
                     if write_disambiguation and p.disambiguation is not None:
                         phones += f" #{p.disambiguation}"
+                    probability_string = ""
                     if probability:
-                        f.write(f"{w}\t{p.probability}\t{phones}\n")
+                        probability_string = f"{p.probability}"
+
+                        if silence_probabilities:
+                            if not p.silence_before_correction and w in self.silence_words:
+                                continue
+                            extra_probs = [
+                                p.silence_after_probability,
+                                p.silence_before_correction,
+                                p.non_silence_before_correction,
+                            ]
+                            for x in extra_probs:
+                                probability_string += f"\t{x if x else 0.0}"
+                    if probability:
+                        f.write(f"{w}\t{probability_string}\t{phones}\n")
                     else:
+                        if w in self.silence_words:
+                            continue
                         f.write(f"{w}\t{phones}\n")
 
     def _write_word_file(self) -> None:
@@ -591,8 +644,7 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                 f.write(f"{w} {i}\n")
 
     def _write_fst_binary(
-        self,
-        write_disambiguation: Optional[bool] = False,
+        self, write_disambiguation: Optional[bool] = False, path: Optional[str] = None
     ) -> None:
         """
         Write the binary fst file to the temporary directory
@@ -611,20 +663,32 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         write_disambiguation: bool, optional
             Flag for including disambiguation symbols
         """
+        text_ext = ".text_fst"
+        binary_ext = ".fst"
+        word_disambig_path = os.path.join(self.dictionary_output_directory, "word_disambig.txt")
+        phone_disambig_path = os.path.join(self.dictionary_output_directory, "phone_disambig.txt")
+        with open(phone_disambig_path, "w") as f:
+            f.write(str(self.phone_mapping["#0"]))
+        with open(word_disambig_path, "w") as f:
+            f.write(str(self.words_mapping["#0"]))
         if write_disambiguation:
-            lexicon_fst_path = os.path.join(
-                self.dictionary_output_directory, "lexicon_disambig.text.fst"
-            )
-            output_fst = os.path.join(self.dictionary_output_directory, "L_disambig.fst")
+            text_ext = ".disambig_text_fst"
+            binary_ext = ".disambig_fst"
+        if path is not None:
+            text_path = path.replace(".fst", text_ext)
+            binary_path = path.replace(".fst", binary_ext)
         else:
-            lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
-            output_fst = os.path.join(self.dictionary_output_directory, "L.fst")
+            text_path = os.path.join(self.dictionary_output_directory, "lexicon" + text_ext)
+            binary_path = os.path.join(self.dictionary_output_directory, "L" + binary_ext)
 
         words_file_path = os.path.join(self.dictionary_output_directory, "words.txt")
 
-        log_path = os.path.join(self.dictionary_output_directory, "fst.log")
-        temp_fst_path = os.path.join(self.dictionary_output_directory, "temp.fst")
+        log_path = os.path.join(
+            self.dictionary_output_directory, os.path.basename(binary_path) + ".log"
+        )
         with open(log_path, "w") as log_file:
+            log_file.write(f"Phone isymbols: {self.phone_symbol_table_path}\n")
+            log_file.write(f"Word osymbols: {words_file_path}\n")
             compile_proc = subprocess.Popen(
                 [
                     thirdparty_binary("fstcompile"),
@@ -632,42 +696,31 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     f"--osymbols={words_file_path}",
                     "--keep_isymbols=false",
                     "--keep_osymbols=false",
-                    lexicon_fst_path,
-                    temp_fst_path,
+                    "--keep_state_numbering=true",
+                    text_path,
                 ],
                 stderr=log_file,
+                stdout=subprocess.PIPE,
             )
-            compile_proc.communicate()
             if write_disambiguation:
-                temp2_fst_path = os.path.join(self.dictionary_output_directory, "temp2.fst")
-                word_disambig_path = os.path.join(
-                    self.dictionary_output_directory, "word_disambig.txt"
-                )
-                phone_disambig_path = os.path.join(
-                    self.dictionary_output_directory, "phone_disambig.txt"
-                )
-                with open(phone_disambig_path, "w") as f:
-                    f.write(str(self.phone_mapping["#0"]))
-                with open(word_disambig_path, "w") as f:
-                    f.write(str(self.words_mapping["#0"]))
                 selfloop_proc = subprocess.Popen(
                     [
                         thirdparty_binary("fstaddselfloops"),
                         phone_disambig_path,
                         word_disambig_path,
-                        temp_fst_path,
-                        temp2_fst_path,
                     ],
+                    stdin=compile_proc.stdout,
+                    stdout=subprocess.PIPE,
                     stderr=log_file,
                 )
-                selfloop_proc.communicate()
                 arc_sort_proc = subprocess.Popen(
                     [
                         thirdparty_binary("fstarcsort"),
                         "--sort_type=olabel",
-                        temp2_fst_path,
-                        output_fst,
+                        "-",
+                        binary_path,
                     ],
+                    stdin=selfloop_proc.stdout,
                     stderr=log_file,
                 )
             else:
@@ -675,165 +728,121 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                     [
                         thirdparty_binary("fstarcsort"),
                         "--sort_type=olabel",
-                        temp_fst_path,
-                        output_fst,
+                        "-",
+                        binary_path,
                     ],
+                    stdin=compile_proc.stdout,
                     stderr=log_file,
                 )
             arc_sort_proc.communicate()
+            if arc_sort_proc.returncode != 0:
+                raise KaldiProcessingError([log_path])
 
-    def _write_basic_fst_text(self) -> None:
+    def _write_probabilistic_fst_text(
+        self, disambiguation=False, path: Optional[str] = None, word_set: Optional[Set[str]] = None
+    ) -> None:
         """
         Write the L.fst text file to the temporary directory
         """
-        lexicon_fst_path = os.path.join(self.dictionary_output_directory, "lexicon.text.fst")
-        start_state = 0
-        silence_state = 0
-        no_silence_cost = 0
-        loop_state = 0
-        next_state = 1
-
-        with open(lexicon_fst_path, "w", encoding="utf8") as outf:
-            if self.silence_probability:
-                optional_silence_phone = self.optional_silence_phone
-
-                silence_cost = -1 * math.log(self.silence_probability)
-                no_silence_cost = -1 * math.log(1.0 - self.silence_probability)
-                loop_state = 1
-                silence_state = 2
-                outf.write(
-                    "\t".join(
-                        map(str, [start_state, loop_state, "<eps>", "<eps>", no_silence_cost])
-                    )
-                    + "\n"
-                )  # no silence
-
-                outf.write(
-                    "\t".join(
-                        map(
-                            str,
-                            [
-                                start_state,
-                                loop_state,
-                                optional_silence_phone,
-                                "<eps>",
-                                silence_cost,
-                            ],
-                        )
-                    )
-                    + "\n"
-                )  # silence
-                outf.write(
-                    "\t".join(
-                        map(str, [silence_state, loop_state, optional_silence_phone, "<eps>"])
-                    )
-                    + "\n"
-                )  # no cost
-                next_state = 3
-
-            for w in sorted(self.words.keys()):
-                if self.exclude_for_alignment(w):
-                    continue
-                for pron in sorted(self.words[w].pronunciations):
-                    phones = list(pron.pronunciation)
-                    prob = pron.probability
-                    if self.position_dependent_phones:
-                        if len(phones) == 1:
-                            phones[0] += "_S"
-                        else:
-                            for i in range(len(phones)):
-                                if i == 0:
-                                    phones[i] += "_B"
-                                elif i == len(phones) - 1:
-                                    phones[i] += "_E"
-                                else:
-                                    phones[i] += "_I"
-                    if not prob:
-                        prob = 0.001  # Dithering to ensure low probability entries
-                    pron_cost = abs(math.log(prob))
-
-                    current_state = loop_state
-                    word_or_eps = w
-                    local_no_silence_cost = no_silence_cost + pron_cost
-                    local_silcost = no_silence_cost + pron_cost
-                    for i, p in enumerate(phones):
-                        if i < len(phones) - 1:
-                            outf.write(
-                                f"{current_state}\t{next_state}\t{p}\t{word_or_eps}\t{pron_cost}\n"
-                            )
-                            word_or_eps = "<eps>"
-                            pron_cost = 0
-                            current_state = next_state
-                            next_state += 1
-                        else:  # transition on last phone to loop state
-                            if self.silence_probability:
-                                outf.write(
-                                    f"{current_state}\t{loop_state}\t{p}\t{word_or_eps}\t{local_no_silence_cost}\n"
-                                )
-                                outf.write(
-                                    f"{current_state}\t{silence_state}\t{p}\t{word_or_eps}\t{local_silcost}\n"
-                                )
-                            else:
-                                outf.write(
-                                    f"{current_state}\t{loop_state}\t{p}\t{word_or_eps}\t{pron_cost}\n"
-                                )
-                                word_or_eps = "<eps>"
-
-            outf.write(f"{loop_state}\t0\n")
-
-    def _write_fst_text_disambiguated(
-        self, multispeaker_dictionary: Optional[MultispeakerDictionaryMixin] = None
-    ) -> None:
-        """
-        Write the text L_disambig.fst file to the temporary directory
-
-        Parameters
-        ----------
-        multispeaker_dictionary: MultispeakerDictionaryMixin, optional
-            Main dictionary with phone mappings
-        """
-        lexicon_fst_path = os.path.join(
-            self.dictionary_output_directory, "lexicon_disambig.text.fst"
-        )
-        if multispeaker_dictionary is not None:
-            sil_disambiguation = f"#{multispeaker_dictionary.max_disambiguation_symbol + 1}"
+        base_ext = ".text_fst"
+        if disambiguation:
+            base_ext = ".disambig_text_fst"
+        if path is not None:
+            path = path.replace(".fst", base_ext)
         else:
-            sil_disambiguation = f"#{self.max_disambiguation_symbol + 1}"
-        assert self.silence_probability
+            path = os.path.join(self.dictionary_output_directory, "lexicon" + base_ext)
         start_state = 0
-        loop_state = 1
+        non_silence_state = 1  # Also loop state
         silence_state = 2
         next_state = 3
+        if disambiguation:
+            sil_disambiguation_symbol = self.silence_disambiguation_symbol
+        else:
+            sil_disambiguation_symbol = "<eps>"
+        optional_silence_phone = self.optional_silence_phone
+        oov_phone = self.oov_phone
+        if self.position_dependent_phones:
+            oov_phone += "_S"
+        initial_silence_cost = -1 * math.log(self.initial_silence_probability)
+        initial_non_silence_cost = -1 * math.log(1.0 - (self.initial_silence_probability))
+        if self.final_silence_correction is None or self.final_non_silence_correction is None:
+            final_silence_cost = 0
+            final_non_silence_cost = 0
+        else:
+            final_silence_cost = -math.log(self.final_silence_correction)
+            final_non_silence_cost = -math.log(self.final_non_silence_correction)
+        base_silence_before_cost = 0.0
+        base_non_silence_before_cost = 0.0
+        base_silence_following_cost = -math.log(self.silence_probability)
+        base_non_silence_following_cost = -math.log(1 - self.silence_probability)
+        with open(path, "w", encoding="utf8") as outf:
+            if self.dictionary_model.silence_probabilities:
+                outf.write(
+                    f"{start_state}\t{non_silence_state}\t{sil_disambiguation_symbol}\t{self.silence_word}\t{initial_non_silence_cost}\n"
+                )  # initial no silence
 
-        silence_phone = self.optional_silence_phone
+                outf.write(
+                    f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
+                )  # initial silence
+            else:
+                outf.write(
+                    f"{start_state}\t{non_silence_state}\t<eps>\t<eps>\t{initial_non_silence_cost}\n"
+                )  # initial no silence
 
-        silence_cost = -1 * math.log(self.silence_probability)
-        no_silence_cost = -1 * math.log(1 - self.silence_probability)
+                outf.write(
+                    f"{start_state}\t{non_silence_state}\t<eps>\t<eps>\t{initial_silence_cost}\n"
+                )  # initial silence
 
-        with open(lexicon_fst_path, "w", encoding="utf8") as outf:
-            outf.write(
-                f"{start_state}\t{loop_state}\t<eps>\t<eps>\t{no_silence_cost}\n"
-            )  # no silence
-            outf.write(
-                f"{start_state}\t{silence_state}\t<eps>\t<eps>\t{silence_cost}\n"
-            )  # silence
-            silence_disambiguation_state = next_state
-            next_state += 1
+                if disambiguation:
+                    sil_disambiguation_state = next_state
+                    next_state += 1
+                    outf.write(
+                        f"{silence_state}\t{sil_disambiguation_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
+                    )
+                    outf.write(
+                        f"{sil_disambiguation_state}\t{non_silence_state}\t{sil_disambiguation_symbol}\t{self.silence_word}\t0.0\n"
+                    )
+                else:
+                    outf.write(
+                        f"{silence_state}\t{non_silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
+                    )
 
-            outf.write(
-                f"{silence_state}\t{silence_disambiguation_state}\t{silence_phone}\t<eps>\t0.0\n"
-            )  # silence disambig
-            outf.write(
-                f"{silence_disambiguation_state}\t{loop_state}\t{sil_disambiguation}\t<eps>\t0.0\n"
-            )  # silence disambig
-
-            for w in sorted(self.words.keys()):
-                if self.exclude_for_alignment(w):
-                    continue
-                for pron in sorted(self.words[w].pronunciations):
+            for word in sorted(self.words.keys()):
+                if word_set is not None:
+                    if word not in word_set:
+                        continue
+                for pron in sorted(self.words[word]):
                     phones = list(pron.pronunciation)
+                    if phones == [self.optional_silence_phone]:
+                        if pron.pronunciation[0] == self.optional_silence_phone:  # silences
+                            outf.write(
+                                f"{non_silence_state}\t{non_silence_state}\t{phones[0]}\t{word}\t0.0\n"
+                            )
+                            outf.write(
+                                f"{start_state}\t{non_silence_state}\t{phones[0]}\t{word}\t0.0\n"
+                            )  # initial silence
+                        continue
                     prob = pron.probability
-                    disambig_symbol = pron.disambiguation
+                    if self.dictionary_model.silence_probabilities:
+                        silence_following_prob = pron.silence_after_probability
+                        silence_before_correction = pron.silence_before_correction
+                        non_silence_before_correction = pron.non_silence_before_correction
+                        silence_before_cost = 0.0
+                        non_silence_before_cost = 0.0
+                        if not silence_following_prob:
+                            silence_following_prob = self.silence_probability
+
+                        silence_following_cost = -math.log(silence_following_prob)
+                        non_silence_following_cost = -math.log(1 - (silence_following_prob))
+                        if silence_before_correction:
+                            silence_before_cost = -math.log(silence_before_correction)
+                        if non_silence_before_correction:
+                            non_silence_before_cost = -math.log(non_silence_before_correction)
+                    else:
+                        silence_before_cost = base_silence_before_cost
+                        non_silence_before_cost = base_non_silence_before_cost
+                        silence_following_cost = base_silence_following_cost
+                        non_silence_following_cost = base_non_silence_following_cost
                     if self.position_dependent_phones:
                         if len(phones) == 1:
                             phones[0] += "_S"
@@ -845,36 +854,62 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
                                     phones[i] += "_E"
                                 else:
                                     phones[i] += "_I"
-                    if not prob:
-                        prob = 0.001  # Dithering to ensure low probability entries
+                    if prob == 0:
+                        prob = 0.01  # Dithering to ensure low probability entries
+                    elif prob is None:
+                        prob = 1
                     pron_cost = abs(math.log(prob))
-                    if disambig_symbol:
-                        phones += [f"#{disambig_symbol}"]
+                    if disambiguation and pron.disambiguation:
+                        phones += [f"#{pron.disambiguation}"]
 
-                    current_state = loop_state
-                    for i in range(0, len(phones) - 1):
-                        p = phones[i]
+                    if self.dictionary_model.silence_probabilities:
+                        new_state = next_state
                         outf.write(
-                            f"{current_state}\t{next_state}\t{p}\t{w if i == 0 else '<eps>'}\t{pron_cost if i == 0 else 0.0}\n"
+                            f"{non_silence_state}\t{new_state}\t{phones[0]}\t{word}\t{pron_cost+non_silence_before_cost}\n"
                         )
-                        current_state = next_state
+                        outf.write(
+                            f"{silence_state}\t{new_state}\t{phones[0]}\t{word}\t{pron_cost+silence_before_cost}\n"
+                        )
+
                         next_state += 1
+                        current_state = new_state
+                        for i in range(1, len(phones)):
+                            new_state = next_state
+                            next_state += 1
+                            outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
+                            current_state = new_state
+                        outf.write(
+                            f"{current_state}\t{non_silence_state}\t{sil_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
+                        )
+                        outf.write(
+                            f"{current_state}\t{silence_state}\t{optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
+                        )
+                    else:
+                        current_state = non_silence_state
+                        for i in range(len(phones) - 1):
+                            w_or_eps = word if i == 0 else "<eps>"
+                            cost = pron_cost if i == 0 else 0.0
+                            outf.write(
+                                f"{current_state}\t{next_state}\t{phones[i]}\t{w_or_eps}\t{cost}\n"
+                            )
+                            current_state = next_state
+                            next_state += 1
 
-                    i = len(phones) - 1
+                        i = len(phones) - 1
+                        p = phones[i] if i >= 0 else "<eps>"
+                        w = word if i <= 0 else "<eps>"
+                        sil_cost = silence_following_cost + (pron_cost if i <= 0 else 0.0)
+                        non_sil_cost = non_silence_following_cost + (pron_cost if i <= 0 else 0.0)
+                        outf.write(
+                            f"{current_state}\t{non_silence_state}\t{p}\t{w}\t{non_sil_cost}\n"
+                        )
+                        outf.write(f"{current_state}\t{silence_state}\t{p}\t{w}\t{sil_cost}\n")
 
-                    local_no_silence_cost = no_silence_cost + pron_cost
-                    local_silcost = silence_cost + pron_cost
-                    if i <= 0:
-                        local_silcost = silence_cost
-                        local_no_silence_cost = no_silence_cost
-                    outf.write(
-                        f"{current_state}\t{loop_state}\t{phones[i] if i >= 0 else '<eps>'}\t{w if i <= 0 else '<eps>'}\t{local_no_silence_cost}\n"
-                    )
-                    outf.write(
-                        f"{current_state}\t{silence_state}\t{phones[i] if i >= 0 else '<eps>'}\t{w if i <= 0 else '<eps>'}\t{local_silcost}\n"
-                    )
-
-            outf.write(f"{loop_state}\t0.0\n")
+            if self.dictionary_model.silence_probabilities:
+                outf.write(f"{silence_state}\t{final_silence_cost}\n")
+                outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
+            else:
+                outf.write(f"{non_silence_state}\t0.0\n")
 
 
 class PronunciationDictionary(PronunciationDictionaryMixin):

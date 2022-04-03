@@ -9,10 +9,11 @@ import os
 import re
 import subprocess
 import sys
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, TextIO
+from typing import TYPE_CHECKING, Dict, List, TextIO
 
-from ..abc import KaldiFunction, MetaDict
-from ..utils import thirdparty_binary
+from montreal_forced_aligner.abc import KaldiFunction, MetaDict
+from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
     from ..abc import MappingType
@@ -36,10 +37,9 @@ __all__ = [
 ]
 
 
-class CreateHclgArguments(NamedTuple):
+class CreateHclgArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`"""
 
-    log_path: str
     working_directory: str
     path_template: str
     words_path: str
@@ -59,10 +59,9 @@ class CreateHclgArguments(NamedTuple):
         return self.path_template.format(file_name="HCLG")
 
 
-class DecodeArguments(NamedTuple):
+class DecodeArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     decode_options: MetaDict
@@ -72,10 +71,9 @@ class DecodeArguments(NamedTuple):
     hclg_paths: Dict[str, str]
 
 
-class ScoreArguments(NamedTuple):
+class ScoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     score_options: MetaDict
     lat_paths: Dict[str, str]
@@ -85,10 +83,9 @@ class ScoreArguments(NamedTuple):
     tra_paths: Dict[str, str]
 
 
-class LmRescoreArguments(NamedTuple):
+class LmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     lm_rescore_options: MetaDict
     lat_paths: Dict[str, str]
@@ -97,10 +94,9 @@ class LmRescoreArguments(NamedTuple):
     new_g_paths: Dict[str, str]
 
 
-class CarpaLmRescoreArguments(NamedTuple):
+class CarpaLmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     lat_paths: Dict[str, str]
     rescored_lat_paths: Dict[str, str]
@@ -108,10 +104,9 @@ class CarpaLmRescoreArguments(NamedTuple):
     new_g_paths: Dict[str, str]
 
 
-class InitialFmllrArguments(NamedTuple):
+class InitialFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
@@ -121,10 +116,9 @@ class InitialFmllrArguments(NamedTuple):
     spk2utt_paths: Dict[str, str]
 
 
-class LatGenFmllrArguments(NamedTuple):
+class LatGenFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
@@ -134,10 +128,9 @@ class LatGenFmllrArguments(NamedTuple):
     tmp_lat_paths: Dict[str, str]
 
 
-class FinalFmllrArguments(NamedTuple):
+class FinalFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
@@ -147,10 +140,9 @@ class FinalFmllrArguments(NamedTuple):
     tmp_lat_paths: Dict[str, str]
 
 
-class FmllrRescoreArguments(NamedTuple):
+class FmllrRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     model_path: str
@@ -539,7 +531,7 @@ class CreateHclgFunction(KaldiFunction):
     )
 
     def __init__(self, args: CreateHclgArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.working_directory = args.working_directory
         self.path_template = args.path_template
         self.words_path = args.words_path
@@ -642,6 +634,7 @@ class CreateHclgFunction(KaldiFunction):
                 env=os.environ,
             )
             convert_proc.communicate()
+            self.check_call(convert_proc)
             if os.path.exists(hclg_path):
                 yield True, hclg_path
             else:
@@ -672,7 +665,7 @@ class DecodeFunction(KaldiFunction):
     )
 
     def __init__(self, args: DecodeArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.lat_paths = args.lat_paths
@@ -728,6 +721,7 @@ class DecodeFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield m.group("utterance"), m.group("loglike"), m.group("num_frames")
+            self.check_call(decode_proc)
 
 
 class ScoreFunction(KaldiFunction):
@@ -758,7 +752,7 @@ class ScoreFunction(KaldiFunction):
     )
 
     def __init__(self, args: ScoreArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.score_options = args.score_options
         self.lat_paths = args.lat_paths
@@ -824,6 +818,7 @@ class ScoreFunction(KaldiFunction):
                         yield m.group("utterance"), float(m.group("graph_cost")), float(
                             m.group("acoustic_cost")
                         ), float(m.group("total_cost")), int(m.group("num_frames"))
+            self.check_call(best_path_proc)
 
 
 class LmRescoreFunction(KaldiFunction):
@@ -852,7 +847,7 @@ class LmRescoreFunction(KaldiFunction):
     )
 
     def __init__(self, args: LmRescoreArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.lat_paths = args.lat_paths
         self.rescored_lat_paths = args.rescored_lat_paths
@@ -900,6 +895,7 @@ class LmRescoreFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield int(m.group("succeeded")), int(m.group("failed"))
+            self.check_call(lattice_scale_proc)
 
 
 class CarpaLmRescoreFunction(KaldiFunction):
@@ -930,7 +926,7 @@ class CarpaLmRescoreFunction(KaldiFunction):
     )
 
     def __init__(self, args: CarpaLmRescoreArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.lat_paths = args.lat_paths
         self.rescored_lat_paths = args.rescored_lat_paths
@@ -988,6 +984,7 @@ class CarpaLmRescoreFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield int(m.group("succeeded")), int(m.group("failed"))
+            self.check_call(lmrescore_const_proc)
 
 
 class InitialFmllrFunction(KaldiFunction):
@@ -1020,7 +1017,7 @@ class InitialFmllrFunction(KaldiFunction):
     )
 
     def __init__(self, args: InitialFmllrArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.model_path = args.model_path
@@ -1099,6 +1096,7 @@ class InitialFmllrFunction(KaldiFunction):
                         yield int(m.group("done")), int(m.group("no_gpost")), int(
                             m.group("other_errors")
                         )
+            self.check_call(fmllr_proc)
 
 
 class LatGenFmllrFunction(KaldiFunction):
@@ -1125,7 +1123,7 @@ class LatGenFmllrFunction(KaldiFunction):
     )
 
     def __init__(self, args: LatGenFmllrArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.tmp_lat_paths = args.tmp_lat_paths
@@ -1166,6 +1164,7 @@ class LatGenFmllrFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield m.group("utterance"), m.group("loglike"), m.group("num_frames")
+            self.check_call(lat_gen_proc)
 
 
 class FinalFmllrFunction(KaldiFunction):
@@ -1201,7 +1200,7 @@ class FinalFmllrFunction(KaldiFunction):
     )
 
     def __init__(self, args: FinalFmllrArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.model_path = args.model_path
@@ -1281,6 +1280,7 @@ class FinalFmllrFunction(KaldiFunction):
                         yield int(m.group("done")), int(m.group("no_gpost")), int(
                             m.group("other_errors")
                         )
+                self.check_call(fmllr_proc)
 
                 compose_proc = subprocess.Popen(
                     [
@@ -1295,6 +1295,7 @@ class FinalFmllrFunction(KaldiFunction):
                     env=os.environ,
                 )
                 compose_proc.communicate()
+                self.check_call(compose_proc)
                 os.remove(trans_path)
                 os.remove(temp_trans_path)
                 os.rename(temp_composed_trans_path, trans_path)
@@ -1326,7 +1327,7 @@ class FmllrRescoreFunction(KaldiFunction):
     )
 
     def __init__(self, args: FmllrRescoreArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.model_path = args.model_path
@@ -1371,3 +1372,4 @@ class FmllrRescoreFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield int(m.group("done")), int(m.group("errors"))
+                self.check_call(determinize_proc)

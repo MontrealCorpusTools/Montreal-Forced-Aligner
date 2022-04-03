@@ -38,7 +38,8 @@ def train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] = No
             trainer.export_model(args.output_model_path)
 
         if args.output_directory is not None:
-            trainer.export_files(args.output_directory)
+            output_format = getattr(args, "output_format", None)
+            trainer.export_files(args.output_directory, output_format)
     except Exception:
         trainer.dirty = True
         raise

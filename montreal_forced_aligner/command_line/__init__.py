@@ -11,13 +11,7 @@ from montreal_forced_aligner.command_line.classify_speakers import run_classify_
 from montreal_forced_aligner.command_line.create_segments import run_create_segments
 from montreal_forced_aligner.command_line.g2p import run_g2p
 from montreal_forced_aligner.command_line.mfa import create_parser, main
-from montreal_forced_aligner.command_line.model import (
-    download_model,
-    inspect_model,
-    list_model,
-    run_model,
-    save_model,
-)
+from montreal_forced_aligner.command_line.model import inspect_model, run_model, save_model
 from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
@@ -63,8 +57,6 @@ __all__ = [
     "create_parser",
     "validate_model_arg",
     "main",
-    "list_model",
     "save_model",
     "inspect_model",
-    "download_model",
 ]

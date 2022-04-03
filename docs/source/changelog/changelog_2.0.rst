@@ -5,10 +5,33 @@
 2.0 Changelog
 *************
 
-.. _2.0b:
+.. _2.0r:
 
-Beta releases
-=============
+Release candidates
+==================
+
+2.0.0rc4
+--------
+
+- Added ``--quiet`` flag to suppress printing output to the console
+- Added ability to specify ``pronunciation_probabilities`` in training blocks where probabilities of pronunciation variants and their probabilities of appearing before/after silence will be calculated based on alignment at that stage.  The lexicon files will be regenerated and use these probabilities for later training blocks
+- Added a flag to export per-pronunciation silence probabilities to :ref:`training_dictionary`
+- Added a flag to :ref:`transcribing` for specifying the language model weight and word insertion penalties to speed up evaluation of transcripts
+- Added a final SAT training block equivalent to the :kaldi_steps:`train_quick` script
+- Added early stopping of SAT training blocks if the corpus size is below the specified subset (at least two rounds of SAT training will be performed)
+- Refactored how transcription parsing is done, so that you can specify word break characters other than whitespace (i.e., instances of ``.`` or ``?`` in embedded in words that are typos in the corpus)
+- Refactored quotations and clitic markers, so if there happens to be a word like ``kid'``, MFA can recover the word ``kid`` from it.  If there is no word entry for ``kid`` or ``kid'`` is in the dictionary, the apostrophe will be kept.
+- Refactored the ``--test_transcription`` functionality of :ref:`validating_data` to use small language models built from all transcripts of a speaker, mixed with an even smaller language model per utterance, following :kaldi_steps:`cleanup/make_biased_lm_graphs`.
+- Refactored how internal storage is done to use a sqlite database rather than having everything in memory.  Bigger corpora should not need as much memory when aligning/training.
+- Fixed an issue in lexicon construction where explicit silences were not being respected
+- Fixed an issue in training where initial gaussians were not being properly used
+- Changed the behavior of assigning speakers to jobs, so that it now tries to balance the number of utterances across jobs
+- Changed the default topology to allow for more variable length phones (minimum duration is now one frame, 10ms by default)
+- Changed how models and dictionaries are downloaded with the changes to the `MFA Models <https://mfa-models.readthedocs.io/>`_
+- Added the ability to use pitch features for models, with the ``--use_pitch`` flag or configuration option
+- Added a ``[bracketed]`` word that will capture any transcriptions like ``[wor-]`` or ``<hes->``, as these are typically restarts, hesitations, speech errors, etc that have separate characteristics compared to a word that happen to not be in the dictionary.  The same phone is used for both, but having a separate word symbol allows silence probabilities to be modelled separately.
+- Added words for ``[laugh]`` and ``[laughter]`` to capture laughter annotations as separate from both OOV ``<unk>`` items and ``[bracketed]`` words.  As with ``[bracketed]``, the laughter words use the same ``spn`` phone, but allow for separate silence probabilities.
+- Fixed a bug where models trained in earlier version were not correctly reporting their phone set (:github_issue:`422`)
 
 2.0.0rc3
 --------
@@ -32,6 +55,11 @@ Beta releases
 - Added file listing average per-frame log-likelihoods by utterance for alignment
 - Fixed a bug where having "<s>" in a transcript would cause MFA to crash
 
+.. _2.0b:
+
+Beta releases
+=============
+
 2.0.0b11
 --------
 
@@ -40,7 +68,7 @@ Beta releases
 - Added better progress bars for corpus loading, acoustic modeling, G2P training, transcription and alignment
 - Changed the default behavior of G2P generation to use a threshold system rather than returning a single top pronunciation.  The threshold defaults to 0.99, but can be specified through ``--g2p_threshold``.  Specifying number of pronunciations will override this behavior (use ``--num_pronunciation 1`` for the old behavior).
 - Changed the behavior of G2P evaluation to check whether the generated hypothesis is in the golden pronunciation set, so languages with pronunciation variation will be less penalized in evaluation
-- Added :class:`~montreal_forced_aligner.data.Word` and :class:`~montreal_forced_aligner.data.Pronunciation` data classes
+- Added :class:`~montreal_forced_aligner.data.WordData` and :class:`~montreal_forced_aligner.data.Pronunciation` data classes
 - Refactored and simplified TextGrid export process
 - Removed the ``multilingual_ipa`` mode in favor of a more general approach to better modeling phones
 - Added functionality to evaluate alignments against golden alignment set
@@ -95,7 +123,7 @@ Beta releases
 - Massive refactor to a proper class-based API for interacting with MFA corpora
 
   - Sorry, I really do hope this is the last big refactor of 2.0
-  - :class:`~montreal_forced_aligner.corpus.classes.Speaker`, :class:`~montreal_forced_aligner.corpus.classes.File`, and :class:`~montreal_forced_aligner.corpus.classes.Utterance` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
+  - montreal_forced_aligner.corpus.classes.Speaker, :class:`~montreal_forced_aligner.corpus.classes.FileData`, and :class:`~montreal_forced_aligner.corpus.classes.UtteranceData` have dedicated classes rather than having their information split across dictionaries mimicking Kaldi files, so they should be more useful for interacting with outside of MFA
   - Added :class:`~montreal_forced_aligner.corpus.multiprocessing.Job` class as well to make it easier to generate and keep track of information about different processes
 - Updated installation style to be more dependent on conda-forge packages
 

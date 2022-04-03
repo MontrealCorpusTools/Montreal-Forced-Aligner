@@ -9,9 +9,9 @@
 
 .. _dictionary_format:
 
-*****************
-Dictionary format
-*****************
+*******************************
+Pronunciation dictionary format
+*******************************
 
 .. _text_normalization:
 
@@ -113,7 +113,7 @@ This lexicon uses the Arpabet transcription format (like the `CMU Pronouncing Di
 
 The Prosodylab-aligner has two preconstructed dictionaries as well, one
 for English (`Prosodylab-aligner English dictionary`_)
-and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :ref:`pretrained_dictionaries` for a list of supported dictionaries.
+and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :xref:`pretrained_dictionaries` for a list of supported dictionaries.
 
 .. note::
 
@@ -140,6 +140,23 @@ The format for this dictionary format is:
    While this means that the sum of probabilities per word is greater than 1, it does not penalize words for having
    multiple pronunciations, and these probabilities are converted to log costs in the eventual weighted FST.
 
+Silence probabilities
+---------------------
+
+As part of modeling pronunciation probabilities, probabilities of silence before and after a given pronunciation can be estimated as well. As an example, with pronunciations of the English word ``the``, we might have one that is a full version ``[ð i]`` and a more reduced version ``[ð ə]``.  While the the more reduced version will be the more likely variant overall, the full version will likely have a higher probabilities following or preceding silence.
+
+The format for this dictionary format is:
+
+::
+
+  the	0.16	0.08	2.17	1.13	d i
+  the	0.99	0.04	2.14	1.15	d ə
+  the	0.01	0.14	2.48	1.18	ð i
+  the	0.02	0.12	1.87	1.23	ð ə
+  the	0.11	0.15	2.99	1.15	ə
+
+The first float column is the probability of the pronunciation, the next float is the probability of silence following the pronunciation, and the final two floats are correction terms for preceding silence and non-silence. Given that each entry in a dictionary is independent and there is no way to encode information about the preceding context, the correction terms are calculated as how much more common was silence or non-silence compared to what we would expect factoring out the likelihood of silence from the previous word. More details are found in :kaldi_steps:`get_prons` and the `related paper <https://www.danielpovey.com/files/2015_interspeech_silprob.pdf>`_.
+
 Non-speech annotations
 ======================
 
@@ -164,11 +181,11 @@ dictionaries via a yaml file, like the following.
 
 .. code-block:: yaml
 
-   default: /mnt/d/Data/speech/english_us_ipa.txt
+   default: /mnt/d/Data/speech/english_us_mfa.dict
 
-   speaker_a: /mnt/d/Data/speech/english_uk_ipa.txt
-   speaker_b: /mnt/d/Data/speech/english_uk_ipa.txt
-   speaker_c: /mnt/d/Data/speech/english_uk_ipa.txt
+   speaker_a: /mnt/d/Data/speech/english_uk_mfa.dict
+   speaker_b: /mnt/d/Data/speech/english_uk_mfa.dict
+   speaker_c: /mnt/d/Data/speech/english_uk_mfa.dict
 
 What the above yaml file specifies is a "default" dictionary that will be used for any speaker not explicitly listed with
 another dictionary, so it's possible to train/align/transcribe using multiple dialects or languages, provided the model
@@ -185,4 +202,4 @@ The way to use this per-speaker dictionary is in place of where the dictionary a
 Supported phone sets
 ====================
 
-In addition to the basic capabilities, specifying a phone set can aid in creating acoustic models that are better suited to the particular phones. For instance, phones like glottal stops, taps/flaps, and schwas can all be extremely short where the 30 ms minimum duration of the normal acoustic model may be too long and cause mis-alignments.
+In addition to the basic capabilities, specifying a phone set can aid in creating acoustic models that are better suited to the particular phones, with better contextual questions dependent on the place and manner of articulation for triphone modeling.

@@ -1,7 +1,5 @@
 import os
 
-import pytest
-
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
@@ -17,7 +15,7 @@ def test_basic(basic_dict_path, generated_dir):
 
     assert dictionary
     assert len(dictionary) > 0
-    assert set(dictionary.phones) == {"sil", "noi", "spn", "phonea", "phoneb", "phonec"}
+    assert set(dictionary.phones) == {"sil", "spn", "phonea", "phoneb", "phonec"}
     assert set(dictionary.kaldi_non_silence_phones) == {
         "phonea_B",
         "phonea_I",
@@ -69,7 +67,7 @@ def test_basic_noposition(basic_dict_path, generated_dir):
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     d = dictionary.default_dictionary
-    assert set(d.phones) == {"sil", "noi", "spn", "phonea", "phoneb", "phonec"}
+    assert set(d.phones) == {"sil", "spn", "phonea", "phoneb", "phonec"}
 
 
 def test_frclitics(frclitics_dict_path, generated_dir):
@@ -140,44 +138,18 @@ def test_english_clitics(english_dictionary, generated_dir):
     assert all(x.endswith("0") for x in d.extra_questions_mapping["stress_0"])
     assert all(x.endswith("1") for x in d.extra_questions_mapping["stress_1"])
     assert all(x.endswith("2") for x in d.extra_questions_mapping["stress_2"])
-    assert "voiceless_fricative_variation" in d.extra_questions_mapping
-    voiceless_fricatives = ["F", "HH", "K", "TH"]
-    assert all(
-        x in d.extra_questions_mapping["voiceless_fricative_variation"]
-        for x in voiceless_fricatives
-    )
-    assert set(d.extra_questions_mapping["high_back_variation"]) == {
-        "UH0",
-        "UH1",
-        "UH2",
-        "UW0",
-        "UW1",
-        "UW2",
+    assert "fricatives" in d.extra_questions_mapping
+    voiceless_fricatives = {
+        "V",
+        "DH",
+        "HH",
+        "F",
+        "TH",
     }
-    assert set(d.extra_questions_mapping["central_variation"]) == {
-        "ER0",
-        "ER1",
-        "ER2",
-        "AH0",
-        "AH1",
-        "AH2",
-        "UH0",
-        "UH1",
-        "UH2",
-        "IH0",
-        "IH1",
-        "IH2",
-    }
+    assert all(x in d.extra_questions_mapping["fricatives"] for x in voiceless_fricatives)
+    assert set(d.extra_questions_mapping["close"]) == {"IH", "UH", "IY", "UW"}
+    assert set(d.extra_questions_mapping["close_mid"]) == {"EY", "OW", "AH"}
 
-    topos = d.kaldi_phones_for_topo
-    print(topos)
-    assert 1 in topos
-    assert 2 in topos
-    assert "AY1" in topos[5]
-    assert "JH" in topos[4]
-    assert "B" in topos[2]
-    assert "NG" in topos[3]
-    assert set(topos[1]) == {"AH0", "ER0", "UH0", "IH0"}
     assert d.split_clitics("l'orme's") == ["l'", "orme", "'s"]
 
     assert d.to_int("l'orme's") == [
@@ -187,10 +159,10 @@ def test_english_clitics(english_dictionary, generated_dir):
     ]
 
 
-def test_english_ipa(english_us_ipa_dictionary, generated_dir):
+def test_english_mfa(english_us_mfa_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
     dictionary = MultispeakerDictionary(
-        dictionary_path=english_us_ipa_dictionary,
+        dictionary_path=english_us_mfa_dictionary,
         position_dependent_phones=False,
         temporary_directory=output_directory,
         phone_set_type="AUTO",
@@ -205,35 +177,11 @@ def test_english_ipa(english_us_ipa_dictionary, generated_dir):
         print(k)
         print(v)
         assert len(v) == len(set(v))
-    assert "voiceless_fricative_variation" in d.extra_questions_mapping
-    voiceless_fricatives = [
-        "θ",
-        "f",
-        "h",
-    ]
-    assert all(
-        x in d.extra_questions_mapping["voiceless_fricative_variation"]
-        for x in voiceless_fricatives
-    )
-    assert set(d.extra_questions_mapping["high_back_variation"]) == {"ʊ", "u", "uː"}
-    assert set(d.extra_questions_mapping["central_variation"]) == {
-        "ə",
-        "ɚ",
-        "ʌ",
-        "ʊ",
-        "ɝ",
-        "ɝː",
-    }
-
-    topos = d.kaldi_phones_for_topo
-    print(topos)
-    assert 1 in topos
-    assert 2 in topos
-    assert "aɪ" in topos[5]
-    assert "dʒ" in topos[4]
-    assert "b" in topos[2]
-    assert "ŋ" in topos[3]
-    assert set(topos[1]) == {"ə", "ɚ", "ɾ"}
+    assert "dental" in d.extra_questions_mapping
+    dental = {"f", "v", "θ", "ð"}
+    assert all(x in d.extra_questions_mapping["dental"] for x in dental)
+    # assert set(d.extra_questions_mapping["central"]) == {'ʉ', 'ə', 'ɐ', 'ɝ', 'ɚ', 'ɝː'}
+    # assert set(d.extra_questions_mapping["close"]) == {'ɪ', 'ʉ', 'ʊ', 'i'}
 
 
 def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
@@ -272,16 +220,6 @@ def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
     assert set(d.extra_questions_mapping["dorsal_variation"]) == {"h", "k", "g"}
     assert "uai1" in d.extra_questions_mapping["tone_1"]
 
-    topos = d.kaldi_phones_for_topo
-    print(topos)
-    assert 2 in topos
-    assert 5 in topos
-    assert "ai" in topos[5]
-    assert "ch" in topos[5]
-    assert "z" in topos[4]
-    assert "b" in topos[2]
-    assert "p" in topos[3]
-
 
 def test_devanagari(english_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
@@ -292,7 +230,7 @@ def test_devanagari(english_dictionary, generated_dir):
     )
     test_cases = ["हैं", "हूं", "हौं"]
     for tc in test_cases:
-        assert tc == d.sanitize(tc)
+        assert [tc] == list(d.sanitize(tc))
 
 
 def test_japanese(english_dictionary, generated_dir):
@@ -302,34 +240,8 @@ def test_japanese(english_dictionary, generated_dir):
         position_dependent_phones=False,
         temporary_directory=output_directory,
     )
-    assert "かぎ括弧" == d.sanitize("「かぎ括弧」")
-    assert "二重かぎ括弧" == d.sanitize("『二重かぎ括弧』")
-
-
-@pytest.mark.skip
-def test_multilingual_ipa(english_dictionary, generated_dir):
-    output_directory = os.path.join(generated_dir, "dictionary_tests")
-    dictionary = MultispeakerDictionary(
-        dictionary_path=english_dictionary,
-        position_dependent_phones=False,
-        multilingual_ipa=True,
-        temporary_directory=output_directory,
-    )
-
-    dictionary.dictionary_setup()
-    dictionary.write_lexicon_information()
-    d = dictionary.default_dictionary
-    input_transcription = "m æ ŋ g oʊ dʒ aɪ".split()
-    expected = tuple("m æ ŋ ɡ o ʊ d ʒ a ɪ".split())
-    assert d.parse_ipa(input_transcription) == expected
-
-    input_transcription = "n ɔː ɹ job_name".split()
-    expected = tuple("n ɔ ɹ job_name".split())
-    assert d.parse_ipa(input_transcription) == expected
-
-    input_transcription = "t ʌ tʃ ə b l̩".split()
-    expected = tuple("t ʌ t ʃ ə b l".split())
-    assert d.parse_ipa(input_transcription) == expected
+    assert ["かぎ括弧"] == list(d.sanitize("「かぎ括弧」"))
+    assert ["二重かぎ括弧"] == list(d.sanitize("『二重かぎ括弧』"))
 
 
 def test_xsampa_dir(xsampa_dict_path, generated_dir):
@@ -365,3 +277,32 @@ def test_multispeaker_config(multispeaker_dictionary_config_path, sick_corpus, g
     for d in dictionary.dictionary_mapping.values():
         assert d.silence_phones.issubset(dictionary.silence_phones)
         assert d.non_silence_phones.issubset(dictionary.non_silence_phones)
+
+
+def test_vietnamese_tones(vietnamese_dict_path, generated_dir):
+    output_directory = os.path.join(generated_dir, "dictionary_tests")
+    d = PronunciationDictionary(
+        dictionary_path=vietnamese_dict_path,
+        position_dependent_phones=False,
+        temporary_directory=output_directory,
+        phone_set_type="IPA",
+    )
+    assert d.get_base_phone("o˨˩ˀ") == "o"
+    assert "o˦˩" in d.phone_counts
+    assert "o" in d.kaldi_grouped_phones
+    assert "o˨˩ˀ" in d.kaldi_grouped_phones["o"]
+    assert "o˦˩" in d.kaldi_grouped_phones["o"]
+
+    output_directory = os.path.join(generated_dir, "dictionary_tests")
+    d = PronunciationDictionary(
+        dictionary_path=vietnamese_dict_path,
+        position_dependent_phones=False,
+        temporary_directory=output_directory,
+        preserve_suprasegmentals=True,
+        phone_set_type="IPA",
+    )
+
+    assert d.get_base_phone("o˨˩ˀ") == "o˨˩ˀ"
+    assert "o" not in d.kaldi_grouped_phones
+    assert "o˨˩ˀ" in d.kaldi_grouped_phones
+    assert "o˦˩" in d.kaldi_grouped_phones

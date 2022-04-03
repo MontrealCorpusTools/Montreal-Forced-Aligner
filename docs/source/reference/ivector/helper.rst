@@ -19,11 +19,11 @@ Helper
 .. autosummary::
    :toctree: generated/
 
-   gmm_gselect_func
+   GmmGselectFunction
    GmmGselectArguments
-   gauss_to_post_func
+   GaussToPostFunction
    GaussToPostArguments
-   acc_global_stats_func
+   AccGlobalStatsFunction
    AccGlobalStatsArguments
-   acc_ivector_stats_func
+   AccIvectorStatsFunction
    AccIvectorStatsArguments

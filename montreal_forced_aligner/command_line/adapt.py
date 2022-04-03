@@ -48,10 +48,11 @@ def adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> No
         if generate_final_alignments:
             begin = time.time()
             adapter.align()
-            adapter.logger.debug(
+            adapter.log_debug(
                 f"Generated alignments with adapted model in {time.time() - begin} seconds"
             )
-            adapter.export_files(args.output_directory)
+            output_format = getattr(args, "output_format", None)
+            adapter.export_files(args.output_directory, output_format)
         if export_model:
             adapter.export_model(args.output_model_path)
     except Exception:

@@ -10,7 +10,7 @@
        save_scp
        load_scp
        load_scp_safe
-       score
+       score_wer
        edit_distance
        output_mapping
        compare_labels

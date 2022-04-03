@@ -152,6 +152,13 @@ def create_parser() -> ArgumentParser:
             default=GLOBAL_CONFIG["verbose"],
         )
         subparser.add_argument(
+            "-q",
+            "--quiet",
+            help=f"Suppress all output messages (overrides verbose), default is {GLOBAL_CONFIG['quiet']}",
+            action="store_true",
+            default=GLOBAL_CONFIG["quiet"],
+        )
+        subparser.add_argument(
             "--clean",
             help=f"Remove files from previous runs, default is {GLOBAL_CONFIG['clean']}",
             action="store_true",
@@ -598,6 +605,11 @@ def create_parser() -> ArgumentParser:
         "--config_path", type=str, default="", help="Path to config file to use for alignment"
     )
     train_dictionary_parser.add_argument(
+        "--silence_probabilities",
+        action="store_true",
+        help="Flag for saving silence information for pronunciations",
+    )
+    train_dictionary_parser.add_argument(
         "-s",
         "--speaker_characters",
         type=str,
@@ -780,6 +792,10 @@ def create_parser() -> ArgumentParser:
     )
     config_parser.add_argument(
         "--never_verbose", help="Default to non-verbose output", action="store_true"
+    )
+    config_parser.add_argument("--always_quiet", help="Default to no output", action="store_true")
+    config_parser.add_argument(
+        "--never_quiet", help="Default to printing output", action="store_true"
     )
     config_parser.add_argument(
         "--always_debug", help="Default to running debugging steps", action="store_true"

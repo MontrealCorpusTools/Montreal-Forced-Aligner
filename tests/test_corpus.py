@@ -1,25 +1,27 @@
 import os
 import shutil
 
-import pytest
-
 from montreal_forced_aligner.corpus.acoustic_corpus import (
     AcousticCorpus,
     AcousticCorpusWithPronunciations,
 )
-from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.helper import get_wav_info
 from montreal_forced_aligner.corpus.text_corpus import TextCorpus
+from montreal_forced_aligner.data import TextFileType
 from montreal_forced_aligner.dictionary.pronunciation import Pronunciation
-from montreal_forced_aligner.exceptions import SoxError
 
 
 def test_mp3(mp3_test_path):
-    try:
-        info = get_wav_info(mp3_test_path)
-        assert info.sox_string
-    except SoxError:
-        pytest.skip()
+    info = get_wav_info(mp3_test_path)
+    assert info.sox_string
+    assert info.duration > 0
+
+
+def test_opus(opus_test_path):
+    info = get_wav_info(opus_test_path)
+    assert info.sox_string
+    assert info.duration > 0
 
 
 def test_speaker_word_set(
@@ -31,9 +33,9 @@ def test_speaker_word_set(
         temporary_directory=temp_dir,
     )
     corpus.load_corpus()
-    speaker_one = corpus.speakers["speaker_one"]
-    assert speaker_one.dictionary.lookup("chad-like") == ["chad", "like"]
-    assert speaker_one.dictionary.oov_int not in speaker_one.dictionary.to_int("chad-like")
+    dictionary = corpus.get_dictionary("speaker_one")
+    assert dictionary.lookup("chad-like") == ["chad", "like"]
+    assert dictionary.oov_int not in dictionary.to_int("chad-like")
 
 
 def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
@@ -46,26 +48,30 @@ def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
         temporary_directory=output_directory,
     )
     corpus._load_corpus()
-    new_speaker = Speaker("new_speaker")
-    new_file = File(
-        os.path.join(basic_corpus_dir, "michael", "acoustic_corpus.wav"),
-        os.path.join(basic_corpus_dir, "michael", "acoustic_corpus.lab"),
-        name="new_file",
-    )
-    new_utterance = Utterance(new_speaker, new_file, text="blah blah")
-    utterance_id = new_utterance.name
-    assert utterance_id not in corpus.utterances
-    corpus.add_utterance(new_utterance)
+    with corpus.session() as session:
+        new_speaker = "new_speaker"
+        corpus.add_speaker(new_speaker, session)
+        new_file_name = "new_file"
+        new_file = FileData(
+            text_path=os.path.join(basic_corpus_dir, "michael", "acoustic_corpus.lab"),
+            text_type=TextFileType.NONE,
+            name=new_file_name,
+            relative_path="",
+            wav_path=None,
+        )
+        new_utterance = UtteranceData(new_speaker, new_file_name, text="blah blah")
+        assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
-    assert utterance_id in corpus.utterances
-    assert utterance_id in corpus.speakers["new_speaker"].utterances
-    assert utterance_id in corpus.files["new_file"].utterances
-    assert corpus.utterances[utterance_id].text == "blah blah"
+        corpus.add_file(new_file, session)
+        corpus.add_utterance(new_utterance, session)
+        session.commit()
 
-    corpus.delete_utterance(utterance_id)
-    assert utterance_id not in corpus.utterances
-    assert "new_speaker" in corpus.speakers
-    assert "new_file" in corpus.files
+    utts = corpus.get_utterances(file=new_file_name, speaker=new_speaker)
+    assert len(utts) == 1
+    assert utts[0].text == "blah blah"
+    print(utts[0].id)
+    corpus.delete_utterance(utts[0].id)
+    assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
 
 def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
@@ -79,15 +85,13 @@ def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    for speaker in corpus.speakers:
-        assert speaker.dictionary.silence_phones == corpus.silence_phones
+
+    for speaker in corpus.speakers():
         assert (
-            speaker.dictionary.words_mapping == corpus.get_dictionary(speaker.name).words_mapping
+            speaker.dictionary.words_path == corpus.get_dictionary(speaker.name).words_symbol_path
         )
-        assert speaker.dictionary.punctuation == corpus.punctuation
-        assert speaker.dictionary.clitic_markers == corpus.clitic_markers
-        assert speaker.dictionary.oov_int == corpus.get_dictionary(speaker.name).oov_int
-        assert speaker.dictionary.words == corpus.get_dictionary(speaker.name).words
+        assert speaker.dictionary.clitic_marker == corpus.clitic_markers[0]
+        assert speaker.dictionary.oov_word == corpus.get_dictionary(speaker.name).oov_word
     assert corpus.get_feat_dim() == 39
 
 
@@ -99,12 +103,13 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir):
         corpus_directory=basic_corpus_txt_dir,
         use_mp=False,
         temporary_directory=output_directory,
+        use_pitch=True,
     )
     corpus.load_corpus()
 
     print(corpus.no_transcription_files)
     assert len(corpus.no_transcription_files) == 0
-    assert corpus.get_feat_dim() == 39
+    assert corpus.get_feat_dim() == 48
 
 
 def test_acoustic_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir):
@@ -141,7 +146,7 @@ def test_text_corpus_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    assert len(corpus.utterances) > 0
+    assert corpus.num_utterances > 0
 
 
 def test_extra(sick_dict, extra_corpus_dir, generated_dir):
@@ -176,7 +181,7 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert corpus.files["michaelandsickmichael"].num_channels == 2
+    assert corpus.get_file(name="michaelandsickmichael").num_channels == 2
 
 
 def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, generated_dir):
@@ -192,7 +197,7 @@ def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, generated_
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert corpus.files["michaelandsickmichael"].num_channels == 2
+    assert corpus.get_file(name="michaelandsickmichael").num_channels == 2
 
 
 def test_flac(basic_dict_path, flac_corpus_dir, generated_dir):
@@ -225,7 +230,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -238,7 +243,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
 
 def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir):
@@ -254,7 +259,7 @@ def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
 
 def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir):
@@ -270,7 +275,7 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
 
 def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir):
@@ -286,7 +291,7 @@ def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
 
 def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir):
@@ -302,7 +307,7 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir):
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 2
     assert corpus.get_feat_dim() == 39
-    assert len(corpus.files) > 0
+    assert corpus.num_files > 0
 
 
 def test_short_segments(shortsegments_corpus_dir, generated_dir):
@@ -316,59 +321,61 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir):
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    assert len(corpus.utterances._data) == 3
-    assert len([x for x in corpus.utterances._data.values() if not x.ignored]) == 1
-    assert len([x for x in corpus.utterances._data.values() if x.features is not None]) == 2
-    assert len([x for x in corpus.utterances._data.values() if x.ignored]) == 2
-    assert len([x for x in corpus.utterances._data.values() if x.features is None]) == 1
+    assert corpus.num_utterances == 3
+    assert len([x for x in corpus.utterances() if not x.ignored]) == 2
+    assert len([x for x in corpus.utterances() if x.features is not None]) == 2
+    assert len([x for x in corpus.utterances() if x.ignored]) == 1
+    assert len([x for x in corpus.utterances() if x.features is None]) == 1
 
 
-def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_us_ipa_dictionary):
+def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_us_mfa_dictionary):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_corpus_dir,
-        dictionary_path=english_us_ipa_dictionary,
+        dictionary_path=english_us_mfa_dictionary,
         use_mp=True,
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    speakers = os.listdir(multilingual_ipa_corpus_dir)
-    for s in speakers:
-        assert any(s in x.speakers for x in corpus.jobs)
-    for _, _, files in os.walk(multilingual_ipa_corpus_dir):
-        for f in files:
-            name, ext = os.path.splitext(f)
-            for file in corpus.files:
-                if name == file._name:
-                    break
-            else:
-                raise Exception(f"File {name} not loaded")
-
-    shutil.rmtree(output_directory, ignore_errors=True)
+    with corpus.session() as session:
+        files = corpus.files(session)
+        print(files)
+        assert files.count() > 0
+        for _, _, file_listing in os.walk(multilingual_ipa_corpus_dir):
+            for f in file_listing:
+                name, ext = os.path.splitext(f)
+                for file in files:
+                    if name == file.name:
+                        break
+                else:
+                    raise Exception(f"File {name} not loaded")
+    del corpus
+    shutil.rmtree(output_directory)
     new_corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_corpus_dir,
-        dictionary_path=english_us_ipa_dictionary,
+        dictionary_path=english_us_mfa_dictionary,
         num_jobs=1,
         use_mp=True,
         temporary_directory=output_directory,
     )
     new_corpus.load_corpus()
-    for s in speakers:
-        assert any(s in x.speakers for x in new_corpus.jobs)
-    for _, _, files in os.walk(multilingual_ipa_corpus_dir):
-        for f in files:
+    files = new_corpus.files()
+    print(files)
+    assert files.count() > 0
+    for _, _, file_listing in os.walk(multilingual_ipa_corpus_dir):
+        for f in file_listing:
             name, ext = os.path.splitext(f)
-            for file in new_corpus.files:
-                if name == file._name:
+            for file in files:
+                if name == file.name:
                     break
             else:
                 raise Exception(f"File {name} not loaded")
 
 
-def test_subset(multilingual_ipa_corpus_dir, generated_dir, english_us_ipa_dictionary):
+def test_subset(multilingual_ipa_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -400,30 +407,48 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
     corpus.load_corpus()
     assert "i’m" not in corpus.default_dictionary.words
     assert "’m" not in corpus.default_dictionary.words
-    assert (
-        Pronunciation(("ay", "m", "ih"), 1, None, None, None)
-        in corpus.default_dictionary.words["i'm"].pronunciations
+    assert Pronunciation(("ay", "m", "ih")) in corpus.default_dictionary.words["i'm"]
+    assert Pronunciation(("ay", "m")) in corpus.default_dictionary.words["i'm"]
+    assert Pronunciation(("m",)) in corpus.default_dictionary.words["'m"]
+    print(corpus.utterances())
+    weird_words = corpus.get_utterances(file="weird_words")[0]
+    print(weird_words.text)
+    print(weird_words.oovs)
+    print(corpus.oovs_found)
+    assert all(
+        x in corpus.oovs_found
+        for x in {
+            "ajfish",
+            "asds-asda",
+            "sdasd",
+            "[me_really]",
+            "[me____really]",
+            "[me_really]",
+            "<s>",
+            "<_s>",
+        }
     )
     assert (
-        Pronunciation(("ay", "m"), 1, None, None, None)
-        in corpus.default_dictionary.words["i'm"].pronunciations
+        weird_words.text
+        == "i'm talking-ajfish me-really [me_really] [me_really] [me____really] asds-asda sdasd-me <s> <_s>"
     )
-    assert (
-        Pronunciation(("m",), 1, None, None, None)
-        in corpus.default_dictionary.words["'m"].pronunciations
-    )
-    print(corpus.utterances)
-    assert corpus.utterances["weird-words-weird-words"].oovs == {
+    assert weird_words.normalized_text.split() == [
+        "i'm",
+        "talking",
         "ajfish",
+        "me",
+        "really",
+        "[me_really]",
+        "[me_really]",
+        "[me____really]",
         "asds-asda",
         "sdasd",
+        "me",
         "<s>",
-        "</s>",
-    }
-    print(corpus.utterances["weird-words-weird-words"].text_int_for_scp())
-    assert (
-        corpus.utterances["weird-words-weird-words"].text_int_for_scp()[-1]
-        == corpus.default_dictionary.oov_int
+        "<_s>",
+    ]
+    assert weird_words.normalized_text_int.split()[-1] == str(
+        corpus.default_dictionary.bracketed_int
     )
     corpus.set_lexicon_word_set(corpus.corpus_word_set)
     for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
@@ -444,10 +469,13 @@ def test_punctuated(punctuated_dir, generated_dir, sick_dict_path):
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    print(corpus.utterances)
+    print(corpus.files())
+    print(corpus.utterances())
+
+    punctuated = corpus.get_utterances(file="punctuated")[0]
+    assert punctuated.text == "oh yes they they you know they love her' and so' 'i mean 'you"
     assert (
-        corpus.utterances["punctuated-punctuated"].text
-        == "oh yes they they you know they love her and so i mean"
+        punctuated.normalized_text == "oh yes they they you know they love her' and so i mean 'you"
     )
 
 
@@ -456,7 +484,7 @@ def test_alternate_punctuation(
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = os.path.join(generated_dir, "corpus_tests", "alternate")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
@@ -470,10 +498,8 @@ def test_alternate_punctuation(
         **params,
     )
     corpus.load_corpus()
-    assert (
-        corpus.utterances["punctuated-punctuated"].text
-        == "oh yes, they they, you know, they love her and so i mean"
-    )
+    punctuated = corpus.get_utterances(file="punctuated")[0]
+    assert punctuated.text == "oh yes, they they, you know, they love her and so i mean you"
 
 
 def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctuation_config_path):
@@ -496,9 +522,11 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
     assert not corpus.compound_markers
     assert not corpus.clitic_markers
     corpus.load_corpus()
-    punctuated = corpus.utterances["punctuated-punctuated"]
-    assert punctuated.text == "oh yes, they - they, you know, they love her and so i mean..."
-    assert punctuated.normalized_text == [
+    punctuated = corpus.get_utterances(file="punctuated")[0]
+    assert (
+        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+    )
+    assert punctuated.normalized_text.split() == [
         "oh",
         "yes,",
         "they",
@@ -508,18 +536,25 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
         "know,",
         "they",
         "love",
-        "her",
+        "her'",
         "and",
-        "so",
-        "i",
+        "so'",
+        "'i",
         "mean...",
+        "‘you",
     ]
-    weird_words = corpus.utterances["punctuated-weird-words"]
-    assert weird_words.text == "i’m talking-ajfish me-really asds-asda sdasd-me <s> </s>"
-    assert weird_words.normalized_text == [
+    weird_words = corpus.get_utterances(file="weird_words")[0]
+    assert (
+        weird_words.text
+        == "i’m talking-ajfish me-really [me-really] [me'really] [me_??_really] asds-asda sdasd-me <s> </s>"
+    )
+    assert weird_words.normalized_text.split() == [
         "i’m",
         "talking-ajfish",
         "me-really",
+        "[me-really]",
+        "[me'really]",
+        "[me_??_really]",
         "asds-asda",
         "sdasd-me",
         "<s>",
@@ -545,8 +580,10 @@ def test_xsampa_corpus(
         temporary_directory=output_directory,
         **params,
     )
+    print(corpus.quote_markers)
     corpus.load_corpus()
+    xsampa = corpus.get_utterances(file="xsampa")[0]
     assert (
-        corpus.utterances["michael-xsampa"].text
+        xsampa.text
         == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
     )

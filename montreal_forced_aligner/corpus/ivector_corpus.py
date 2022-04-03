@@ -44,21 +44,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         """DUBM model path"""
         raise
 
-    def write_corpus_information(self) -> None:
-        """
-        Output information to the temporary directory for later loading
-        """
-        super().write_corpus_information()
-        self._write_utt2spk()
-
-    def _write_utt2spk(self):
-        """Write feats scp file for Kaldi"""
-        with open(
-            os.path.join(self.corpus_output_directory, "utt2spk.scp"), "w", encoding="utf8"
-        ) as f:
-            for utterance in self.utterances:
-                f.write(f"{utterance.name} {utterance.speaker.name}\n")
-
     def extract_ivectors_arguments(self) -> List[ExtractIvectorsArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`
@@ -70,6 +55,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         """
         return [
             ExtractIvectorsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"extract_ivectors.{j.name}.log"),
                 j.construct_path(self.split_directory, "feats", "scp"),
                 self.ivector_options,
@@ -100,7 +87,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         os.makedirs(log_dir, exist_ok=True)
 
         arguments = self.extract_ivectors_arguments()
-        with tqdm.tqdm(total=self.num_speakers) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()

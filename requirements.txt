@@ -6,3 +6,6 @@ requests
 colorama
 biopython
 requests
+dataclassy
+sqlalchemy
+ansiwrap

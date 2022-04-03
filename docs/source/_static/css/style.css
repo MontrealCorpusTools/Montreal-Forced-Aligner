@@ -12,12 +12,26 @@
   white-space: normal;
 }
 
+
+
+a.external::after{
+content: "  \f35d";
+font-size: 0.75em;
+text-align: center;
+vertical-align: middle;
+padding-bottom: 0.45em;
+}
+
 :root {
   --base-blue: 0, 53, 102;
   --dark-blue: 0, 29, 61;
   --light-blue: 14, 99, 179;
   --base-yellow: 255, 195, 0;
   --light-yellow: 255, 214, 10;
+  --sd-color-primary: #003566;
+  --sd-color-dark: #003566;
+  --sd-color-primary-text: #FFC300;
+  --sd-color-primary-highlight: #FFC300;
   --pst-color-primary: var(--base-blue);
   --pst-color-warning: var(--light-yellow);
   --pst-color-info: var(--light-blue);
@@ -41,21 +55,21 @@
     --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
     --pst-color-toc-link-active: var(--pst-color-active-navigation);
 }
-.btn-navigation{
-    background-color: #0E63B3;
-    border-color: #0E63B3;
+
+.sd-btn-primary{
+font-weight: bold;
 }
-.btn-navigation:hover {
-    background-color: #FFC300;
-    border-color: #FFC300;
-    color: #000814;
+
+.sd-btn-primary:hover{
+color: #003566 !important;
 }
 .i-navigation{
     color: #003566;
     padding: 20px;
 }
-.i-navigation:hover {
-    color: #FFC300;
+
+.navbar-light .navbar-nav li a.nav-link:{
+font-size: 1.15em;
 }
 
 .rst-table-cell{
@@ -64,6 +78,9 @@ height: 100%;
 display: inline-block;
 text-align: center;
 
+}
+div[class*="highlight-"] {
+  text-align: left;
 }
 
 .supported {

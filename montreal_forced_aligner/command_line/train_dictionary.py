@@ -36,7 +36,9 @@ def train_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) 
 
     try:
         aligner.align()
-        aligner.export_lexicons(args.output_directory)
+        aligner.export_lexicons(
+            args.output_directory, getattr(args, "silence_probabilities", False)
+        )
     except Exception:
         aligner.dirty = True
         raise

@@ -47,7 +47,7 @@ extensions = [
     "external_links",
     # "numpydoc",
     "sphinx.ext.napoleon",
-    "sphinx_panels",
+    "sphinx_design",
     "sphinx.ext.viewcode",
     "sphinxcontrib.autoprogram",
     "sphinxemoji.sphinxemoji",
@@ -55,15 +55,36 @@ extensions = [
 ]
 panels_add_bootstrap_css = False
 intersphinx_mapping = {
+    "sqlalchemy": ("https://docs.sqlalchemy.org/en/14/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
     "python": ("https://docs.python.org/3", None),
     "Bio": ("https://biopython.org/docs/latest/api/", None),
 }
+
 
 extlinks = {
     "mfa_pr": ("https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/%s", "PR #%s"),
 }
 
 xref_links = {
+    "mfa_models": ("MFA Models", "https://mfa-models.readthedocs.io/"),
+    "anchor": ("Anchor Annotator", "https://anchor-annotator.readthedocs.io/en/latest/"),
+    "pretrained_acoustic_models": (
+        "MFA acoustic models",
+        "https://mfa-models.readthedocs.io/en/latest/acoustic/index.html",
+    ),
+    "pretrained_dictionaries": (
+        "MFA dictionaries",
+        "https://mfa-models.readthedocs.io/en/latest/dictionary/index.html",
+    ),
+    "pretrained_g2p": (
+        "MFA G2P models",
+        "https://mfa-models.readthedocs.io/en/latest/g2p/index.html",
+    ),
+    "pretrained_language_models": (
+        "MFA language models",
+        "https://mfa-models.readthedocs.io/en/latest/language_model/index.html",
+    ),
     "mfa_mailing_list": ("MFA mailing list", "https://groups.google.com/g/mfa-users"),
     "mfa_github": (
         "MFA GitHub Repo",
@@ -123,6 +144,10 @@ xref_links = {
         "MFA-reorganization-scripts repository",
         "https://github.com/MontrealCorpusTools/MFA-reorganization-scripts",
     ),
+    "corpus_creation_scripts": (
+        "@mmcauliffe's corpus creation scripts",
+        "https://github.com/mmcauliffe/corpus-creation-scripts",
+    ),
 }
 
 # -----------------------------------------------------------------------------
@@ -139,12 +164,9 @@ autodoc_type_aliases = {
     "MultispeakerDictionary": "montreal_forced_aligner.dictionary.MultispeakerDictionary",
     "Trainer": "montreal_forced_aligner.abc.Trainer",
     "Aligner": "montreal_forced_aligner.abc.Aligner",
-    "Utterance": "montreal_forced_aligner.corpus.classes.Utterance",
-    "File": "montreal_forced_aligner.corpus.classes.File",
     "FeatureConfig": "montreal_forced_aligner.config.FeatureConfig",
     "multiprocessing.context.Process": "multiprocessing.Process",
     "mp.Process": "multiprocessing.Process",
-    "Speaker": "montreal_forced_aligner.corpus.classes.Speaker",
     "Namespace": "argparse.Namespace",
     "MetaDict": "dict[str, Any]",
 }

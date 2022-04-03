@@ -1,4 +1,6 @@
 
+.. _installation:
+
 ************
 Installation
 ************
@@ -18,6 +20,10 @@ All platforms
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 
+.. warning::
+
+   Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting only Linux and MacOS. To use G2P functionality on Windows, please set up the :xref:`wsl` and use the Bash console to continue the instructions.
+
 Upgrading from non-conda version
 ================================
 
@@ -27,10 +33,6 @@ In general, it's recommend to create a new environment.  If you want to update,
 2. Upgrade all packages via :code:`conda update --all`
 3. Run :code:`pip uninstall montreal-forced-aligner` (to clean up previous pip installation)
 4. Run :code:`conda install -c conda-forge montreal-forced-aligner`
-
-.. warning::
-
-   Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting only Linux and MacOS. To use G2P functionality on Windows, please set up the :xref:`wsl` and use the Bash console to continue the instructions.
 
 Installing from source
 ======================

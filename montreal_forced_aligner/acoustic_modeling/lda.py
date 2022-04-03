@@ -7,12 +7,13 @@ import re
 import shutil
 import subprocess
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, NamedTuple
+from typing import TYPE_CHECKING, Dict, List
 
 import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
     Stopped,
@@ -33,10 +34,9 @@ __all__ = [
 ]
 
 
-class LdaAccStatsArguments(NamedTuple):
+class LdaAccStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.LdaAccStatsFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
@@ -45,10 +45,9 @@ class LdaAccStatsArguments(NamedTuple):
     acc_paths: Dict[str, str]
 
 
-class CalcLdaMlltArguments(NamedTuple):
+class CalcLdaMlltArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.lda.CalcLdaMlltFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
@@ -83,7 +82,7 @@ class LdaAccStatsFunction(KaldiFunction):
     progress_pattern = re.compile(r"^LOG.*Done (?P<done>\d+) files, failed for (?P<failed>\d+)$")
 
     def __init__(self, args: LdaAccStatsArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.ali_paths = args.ali_paths
@@ -107,7 +106,7 @@ class LdaAccStatsFunction(KaldiFunction):
                 weight_silence_post_proc = subprocess.Popen(
                     [
                         thirdparty_binary("weight-silence-post"),
-                        f"{self.lda_options['boost_silence']}",
+                        "0.0",
                         self.lda_options["silence_csl"],
                         self.model_path,
                         "ark:-",
@@ -137,6 +136,7 @@ class LdaAccStatsFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield int(m.group("done")), int(m.group("failed"))
+                self.check_call(acc_lda_post_proc)
 
 
 class CalcLdaMlltFunction(KaldiFunction):
@@ -165,7 +165,7 @@ class CalcLdaMlltFunction(KaldiFunction):
     progress_pattern = re.compile(r"^LOG.*Average like for this file.*$")
 
     def __init__(self, args: CalcLdaMlltArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.ali_paths = args.ali_paths
@@ -221,6 +221,7 @@ class CalcLdaMlltFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield 1
+                self.check_call(acc_proc)
 
 
 class LdaTrainer(TriphoneTrainer):
@@ -268,12 +269,18 @@ class LdaTrainer(TriphoneTrainer):
         splice_left_context: int = 3,
         splice_right_context: int = 3,
         random_prune=4.0,
+        boost_silence: float = 1.0,
+        power: float = 0.25,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.subset = subset
-        self.num_leaves = num_leaves
-        self.max_gaussians = max_gaussians
+        super().__init__(
+            boost_silence=boost_silence,
+            power=power,
+            subset=subset,
+            num_leaves=num_leaves,
+            max_gaussians=max_gaussians,
+            **kwargs,
+        )
         self.lda_dimension = lda_dimension
         self.random_prune = random_prune
         self.uses_splices = uses_splices
@@ -292,8 +299,10 @@ class LdaTrainer(TriphoneTrainer):
         feat_strings = self.worker.construct_feature_proc_strings()
         return [
             LdaAccStatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"lda_acc_stats.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.previous_aligner.working_directory, "ali", "ark"),
                 self.previous_aligner.alignment_model_path,
@@ -315,10 +324,12 @@ class LdaTrainer(TriphoneTrainer):
         feat_strings = self.worker.construct_feature_proc_strings()
         return [
             CalcLdaMlltArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(
                     self.working_log_directory, f"lda_mllt.{self.iteration}.{j.name}.log"
                 ),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 self.model_path,
@@ -338,7 +349,6 @@ class LdaTrainer(TriphoneTrainer):
         """Options for computing LDA"""
         return {
             "lda_dimension": self.lda_dimension,
-            "boost_silence": self.boost_silence,
             "random_prune": self.random_prune,
             "silence_csl": self.silence_csl,
         }
@@ -346,12 +356,7 @@ class LdaTrainer(TriphoneTrainer):
     def compute_calculated_properties(self) -> None:
         """Generate realignment iterations, MLLT estimation iterations, and initial gaussians based on configuration"""
         super().compute_calculated_properties()
-        self.mllt_iterations = []
-        max_mllt_iter = int(self.num_iterations / 2) - 1
-        for i in range(1, max_mllt_iter):
-            if i < max_mllt_iter / 2 and i % 2 == 0:
-                self.mllt_iterations.append(i)
-        self.mllt_iterations.append(max_mllt_iter)
+        self.mllt_iterations = [2, 4, 6, 12]
 
     def lda_acc_stats(self) -> None:
         """
@@ -374,7 +379,9 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -436,7 +443,13 @@ class LdaTrainer(TriphoneTrainer):
         self.uses_splices = True
         self.worker.uses_splices = True
         self.lda_acc_stats()
-        super()._trainer_initialization()
+        self.tree_stats()
+        self._setup_tree(initial_mix_up=False)
+
+        self.compile_train_graphs()
+
+        self.convert_alignments()
+        os.rename(self.model_path, self.next_model_path)
 
     def calc_lda_mllt(self) -> None:
         """
@@ -458,9 +471,11 @@ class LdaTrainer(TriphoneTrainer):
             Reference Kaldi script
 
         """
-        self.logger.info("Re-calculating LDA...")
+        self.log_info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -545,14 +560,12 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(self.next_model_path):
             return
         if self.iteration in self.realignment_iterations:
-            self.align_utterances()
-            if self.debug:
-                self.compute_alignment_improvement()
+            self.align_iteration()
         if self.iteration in self.mllt_iterations:
             self.calc_lda_mllt()
 
         self.acc_stats()
         parse_logs(self.working_log_directory)
-        if self.iteration < self.final_gaussian_iteration:
+        if self.iteration <= self.final_gaussian_iteration:
             self.increment_gaussians()
         self.iteration += 1

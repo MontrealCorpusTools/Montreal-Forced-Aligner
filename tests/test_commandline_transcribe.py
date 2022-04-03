@@ -79,8 +79,8 @@ def test_transcribe_arpa(
 
 def test_transcribe_speaker_dictionaries(
     multilingual_ipa_corpus_dir,
-    ipa_speaker_dict_path,
-    english_ipa_acoustic_model,
+    mfa_speaker_dict_path,
+    english_mfa_acoustic_model,
     generated_dir,
     transcription_language_model,
     temp_dir,
@@ -90,8 +90,8 @@ def test_transcribe_speaker_dictionaries(
     command = [
         "transcribe",
         multilingual_ipa_corpus_dir,
-        ipa_speaker_dict_path,
-        english_ipa_acoustic_model,
+        mfa_speaker_dict_path,
+        english_mfa_acoustic_model,
         transcription_language_model,
         output_path,
         "-t",
@@ -108,8 +108,8 @@ def test_transcribe_speaker_dictionaries(
 
 def test_transcribe_speaker_dictionaries_evaluate(
     multilingual_ipa_tg_corpus_dir,
-    ipa_speaker_dict_path,
-    english_ipa_acoustic_model,
+    mfa_speaker_dict_path,
+    english_mfa_acoustic_model,
     generated_dir,
     transcription_language_model,
     temp_dir,
@@ -119,8 +119,8 @@ def test_transcribe_speaker_dictionaries_evaluate(
     command = [
         "transcribe",
         multilingual_ipa_tg_corpus_dir,
-        ipa_speaker_dict_path,
-        english_ipa_acoustic_model,
+        mfa_speaker_dict_path,
+        english_mfa_acoustic_model,
         transcription_language_model,
         output_path,
         "-t",

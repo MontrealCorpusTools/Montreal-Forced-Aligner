@@ -20,3 +20,4 @@ Training acoustic models
    TriphoneTrainer -- Triphone trainer
    LdaTrainer -- LDA trainer
    SatTrainer -- Speaker adapted trainer
+   PronunciationProbabilityTrainer -- Pronunciation probability trainer

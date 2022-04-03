@@ -1,5 +1,6 @@
 import os
 
+from montreal_forced_aligner.command_line.align import run_align_corpus
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
 
@@ -24,13 +25,15 @@ def test_train_dict(
         "-q",
         "--clean",
         "--debug",
+        "--silence_probabilities",
         "--config_path",
         basic_align_config_path,
+        "--use_mp",
     ]
     args, unknown = parser.parse_known_args(command)
     run_train_dictionary(args)
 
-    dict_path = os.path.join(output_path, "english.txt")
+    dict_path = os.path.join(output_path, "english_us_arpa.dict")
     assert os.path.exists(output_path)
     textgrid_output = os.path.join(generated_dir, "trained_dict_output")
     command = [
@@ -48,4 +51,4 @@ def test_train_dict(
         basic_align_config_path,
     ]
     args, unknown = parser.parse_known_args(command)
-    run_train_dictionary(args)
+    run_align_corpus(args)

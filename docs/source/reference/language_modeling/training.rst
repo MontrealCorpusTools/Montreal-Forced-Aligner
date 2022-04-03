@@ -9,6 +9,6 @@ Training language models
 .. autosummary::
    :toctree: generated/
 
-   LmCorpusTrainer -- Trainer for language model on text corpora
-   LmDictionaryCorpusTrainer -- Trainer for language model on text corpora
-   LmArpaTrainer -- Trainer for MFA language model on arpa format language model
+   MfaLmCorpusTrainer -- Trainer for language model on text corpora
+   MfaLmDictionaryCorpusTrainer -- Trainer for language model on text corpora
+   MfaLmArpaTrainer -- Trainer for MFA language model on arpa format language model

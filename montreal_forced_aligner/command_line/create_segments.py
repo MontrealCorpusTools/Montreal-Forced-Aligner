@@ -33,7 +33,8 @@ def create_segments(args: Namespace, unknown_args: Optional[List[str]] = None) -
     )
     try:
         segmenter.segment()
-        segmenter.export_files(args.output_directory)
+        output_format = getattr(args, "output_format", None)
+        segmenter.export_files(args.output_directory, output_format)
     except Exception:
         segmenter.dirty = True
         raise

@@ -15,7 +15,7 @@ import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
-from montreal_forced_aligner.dictionary.pronunciation import Pronunciation, Word
+from montreal_forced_aligner.dictionary.pronunciation import Pronunciation, WordData
 from montreal_forced_aligner.exceptions import G2PError, PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
 from montreal_forced_aligner.helper import comma_join
@@ -218,7 +218,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
         For top level G2P generation parameters
     """
 
-    def generate_pronunciations(self) -> Dict[str, Word]:
+    def generate_pronunciations(self) -> Dict[str, WordData]:
         """
         Generate pronunciations for the word set
 
@@ -229,8 +229,8 @@ class OrthographyGenerator(G2PTopLevelMixin):
         """
         pronunciations = {}
         for word in self.words_to_g2p:
-            pronunciation = Pronunciation(tuple(word), 1, None, None, None)
-            pronunciations[word] = Word(word, {pronunciation})
+            pronunciation = Pronunciation(tuple(word), 1, None, None, None, None)
+            pronunciations[word] = WordData(word, {pronunciation})
         return pronunciations
 
 
@@ -261,7 +261,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
 
-    def generate_pronunciations(self) -> Dict[str, Word]:
+    def generate_pronunciations(self) -> Dict[str, WordData]:
         """
         Generate pronunciations
 
@@ -311,8 +311,8 @@ class PyniniGenerator(G2PTopLevelMixin):
                     pron = rewriter(w)
                 except rewrite.Error:
                     continue
-                to_return[word] = Word(
-                    w, {Pronunciation(p, 1, None, None, None) for p in pron if p}
+                to_return[word] = WordData(
+                    w, {Pronunciation(p, 1, None, None, None, None) for p in pron if p}
                 )
             self.log_debug(
                 f"Skipping {skipped_words} words for containing the following graphemes: "
@@ -357,7 +357,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 sleep_increment = 10
             else:
                 sleep_increment = 2
-            with tqdm.tqdm(total=num_words) as pbar:
+            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
                 while value < num_words:
                     time.sleep(sleep_increment)
                     if stopped.stop_check():
@@ -378,8 +378,9 @@ class PyniniGenerator(G2PTopLevelMixin):
                 raise PyniniGenerationError(error_dict)
             for w in self.words_to_g2p:
                 if w in return_dict:
-                    to_return[w] = Word(
-                        w, {Pronunciation(p, 1, None, None, None) for p in return_dict[w] if p}
+                    to_return[w] = WordData(
+                        w,
+                        {Pronunciation(p, 1, None, None, None, None) for p in return_dict[w] if p},
                     )
         self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return
@@ -500,6 +501,7 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
         if self.initialized:
             return
         self._load_corpus()
+        self.calculate_word_counts()
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
 
@@ -534,6 +536,7 @@ class OrthographicCorpusGenerator(OrthographyGenerator, TextCorpusMixin, TopLeve
         if self.initialized:
             return
         self._load_corpus()
+        self.calculate_word_counts()
         self.initialized = True
 
     @property

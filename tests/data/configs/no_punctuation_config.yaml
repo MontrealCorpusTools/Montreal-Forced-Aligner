@@ -2,7 +2,9 @@ beam: 10
 retry_beam: 400
 use_mp: false
 punctuation:
+word_break_markers:
 compound_markers:
+quote_markers:
 clitic_markers:
 
 features:

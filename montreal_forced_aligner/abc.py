@@ -9,9 +9,9 @@ import abc
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
-import typing
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -27,10 +27,13 @@ from typing import (
 
 import yaml
 
-from montreal_forced_aligner.helper import comma_join
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import comma_join, load_configuration
 
 if TYPE_CHECKING:
     from argparse import Namespace
+
+    from montreal_forced_aligner.data import MfaArguments
 
 __all__ = [
     "MfaModel",
@@ -77,24 +80,35 @@ class KaldiFunction(metaclass=abc.ABCMeta):
     Abstract class for running Kaldi functions
     """
 
-    @abc.abstractmethod
-    def __init__(self, args: typing.NamedTuple):
-        ...
+    def __init__(self, args: MfaArguments):
+        self.args = args
+        self.db_path = self.args.db_path
+        self.job_name = self.args.job_name
+        self.log_path = self.args.log_path
 
     @abc.abstractmethod
     def run(self):
+        """Run the function"""
         ...
 
+    def check_call(self, proc: subprocess.Popen):
+        """
+        Check whether a subprocess successfully completed
 
-class MfaCorpusClass(metaclass=abc.ABCMeta):
-    """
-    Abstract class for MFA corpus classes
-    """
+        Parameters
+        ----------
+        proc: subprocess.Popen
+            Subprocess to check
 
-    @property
-    @abc.abstractmethod
-    def name(self) -> str:
-        ...
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there was an error running the subprocess
+        """
+        if proc.returncode is None:
+            proc.wait()
+        if proc.returncode != 0:
+            raise KaldiProcessingError([self.log_path])
 
 
 class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
@@ -149,7 +163,7 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
 
     @corpus_output_directory.setter
     def corpus_output_directory(self, directory: str) -> None:
-        self._corpus_output_director = directory
+        self._corpus_output_directory = directory
 
     @property
     def dictionary_output_directory(self) -> str:
@@ -186,6 +200,8 @@ class MfaWorker(metaclass=abc.ABCMeta):
         Flag to run in debug mode, defaults to False
     verbose: bool
         Flag to run in verbose mode, defaults to False
+    quiet: bool
+        Flag for whether to suppress printing to the terminal
 
     Attributes
     ----------
@@ -198,6 +214,7 @@ class MfaWorker(metaclass=abc.ABCMeta):
         use_mp: bool = True,
         debug: bool = False,
         verbose: bool = False,
+        quiet: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -205,8 +222,9 @@ class MfaWorker(metaclass=abc.ABCMeta):
         self.verbose = verbose
         self.use_mp = use_mp
         self.dirty = False
+        self.quiet = quiet
 
-    def log_debug(self, message: str) -> None:
+    def log_debug(self, message: str = "") -> None:
         """
         Print a debug message
 
@@ -215,9 +233,10 @@ class MfaWorker(metaclass=abc.ABCMeta):
         message: str
             Debug message to log
         """
-        print(message)
+        if not self.quiet and self.verbose:
+            print(message)
 
-    def log_error(self, message: str) -> None:
+    def log_error(self, message: str = "") -> None:
         """
         Print an error message
 
@@ -226,9 +245,10 @@ class MfaWorker(metaclass=abc.ABCMeta):
         message: str
             Error message to log
         """
-        print(message)
+        if not self.quiet:
+            print(message)
 
-    def log_info(self, message: str) -> None:
+    def log_info(self, message: str = "") -> None:
         """
         Print an info message
 
@@ -237,9 +257,10 @@ class MfaWorker(metaclass=abc.ABCMeta):
         message: str
             Info message to log
         """
-        print(message)
+        if not self.quiet:
+            print(message)
 
-    def log_warning(self, message: str) -> None:
+    def log_warning(self, message: str = "") -> None:
         """
         Print a warning message
 
@@ -248,7 +269,8 @@ class MfaWorker(metaclass=abc.ABCMeta):
         message: str
             Warning message to log
         """
-        print(message)
+        if not self.quiet:
+            print(message)
 
     @classmethod
     def extract_relevant_parameters(cls, config: MetaDict) -> Tuple[MetaDict, List[str]]:
@@ -323,6 +345,7 @@ class MfaWorker(metaclass=abc.ABCMeta):
         return {
             "debug": self.debug,
             "verbose": self.verbose,
+            "quiet": self.quiet,
             "use_mp": self.use_mp,
             "dirty": self.dirty,
         }
@@ -352,10 +375,18 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     Parameters
     ----------
     num_jobs: int
-        Number of jobs and processes to uses
+        Number of jobs and processes to use
     clean: bool
         Flag for whether to remove any old files in the work directory
     """
+
+    nullable_fields = [
+        "punctuation",
+        "compound_markers",
+        "clitic_markers",
+        "quote_markers",
+        "word_break_markers",
+    ]
 
     def __init__(
         self,
@@ -371,14 +402,15 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         self.start_time = time.time()
         self.setup_logger()
         if skipped:
-            self.logger.warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
+            self.log_warning(f"Skipped the following configuration keys: {comma_join(skipped)}")
 
     def __del__(self):
         """Ensure that loggers are cleaned up on delete"""
-        handlers = self.logger.handlers[:]
+        logger = logging.getLogger(self.identifier)
+        handlers = logger.handlers[:]
         for handler in handlers:
             handler.close()
-            self.logger.removeHandler(handler)
+            logger.removeHandler(handler)
 
     @abc.abstractmethod
     def setup(self) -> None:
@@ -427,7 +459,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
                 "_path"
             ):
                 continue
-            if args is not None and hasattr(args, name):
+            if args is not None and hasattr(args, name) and getattr(args, name) is not None:
                 params[name] = param_type(getattr(args, name))
             elif name in unknown_dict:
                 params[name] = param_type(unknown_dict[name])
@@ -466,12 +498,11 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         global_params = {}
         if config_path and os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                for k, v in data.items():
-                    if v is None and k in {"punctuation", "compound_markers", "clitic_markers"}:
-                        v = []
-                    global_params[k] = v
+            data = load_configuration(config_path)
+            for k, v in data.items():
+                if v is None and k in cls.nullable_fields:
+                    v = []
+                global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
@@ -492,13 +523,14 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         try:
             if self.dirty:
-                self.logger.error("There was an error in the run, please see the log.")
+                self.log_error("There was an error in the run, please see the log.")
             else:
-                self.logger.info(f"Done! Everything took {time.time() - self.start_time} seconds")
-            handlers = self.logger.handlers[:]
+                self.log_info(f"Done! Everything took {time.time() - self.start_time} seconds")
+            logger = logging.getLogger(self.identifier)
+            handlers = logger.handlers[:]
             for handler in handlers:
                 handler.close()
-                self.logger.removeHandler(handler)
+                logger.removeHandler(handler)
             self.save_worker_config()
         except (NameError, ValueError):  # already cleaned up
             pass
@@ -527,7 +559,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         clean = True
         current_version = get_mfa_version()
         if conf["dirty"]:
-            self.logger.debug("Previous run ended in an error (maybe ctrl-c?)")
+            self.log_debug("Previous run ended in an error (maybe ctrl-c?)")
             clean = False
         if "type" in conf:
             command = conf["type"]
@@ -536,12 +568,12 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         else:
             command = self.workflow_identifier
         if command != self.workflow_identifier:
-            self.logger.debug(
+            self.log_debug(
                 f"Previous run was a different subcommand than {self.workflow_identifier} (was {command})"
             )
             clean = False
         if conf.get("version", current_version) != current_version:
-            self.logger.debug(
+            self.log_debug(
                 f"Previous run was on {conf['version']} version (new run: {current_version})"
             )
             clean = False
@@ -553,7 +585,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             "language_model_path",
         ]:
             if conf.get(key, None) != getattr(self, key, None):
-                self.logger.debug(
+                self.log_debug(
                     f"Previous run used a different {key.replace('_', ' ')} than {getattr(self, key, None)} (was {conf.get(key, None)})"
                 )
                 clean = False
@@ -570,11 +602,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         if not os.path.exists(self.worker_config_path):
             return True
-        with open(self.worker_config_path, "r") as f:
-            conf = yaml.load(f, Loader=yaml.SafeLoader)
+        conf = load_configuration(self.worker_config_path)
         clean = self._validate_previous_configuration(conf)
         if not clean:
-            self.logger.warning(
+            self.log_warning(
                 "The previous run had a different configuration than the current, which may cause issues."
                 " Please see the log for details or use --clean flag if issues are encountered."
             )
@@ -609,43 +640,40 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         current_version = get_mfa_version()
         # Remove previous directory if versions are different
         if os.path.exists(self.worker_config_path):
-            with open(self.worker_config_path, "r") as f:
-                conf = yaml.load(f, Loader=yaml.SafeLoader)
+            conf = load_configuration(self.worker_config_path)
             if conf.get("version", current_version) != current_version:
                 self.clean = True
         if self.clean:
             shutil.rmtree(self.output_directory, ignore_errors=True)
         os.makedirs(self.workflow_directory, exist_ok=True)
-        if os.path.exists(self.log_file):
-            os.remove(self.log_file)
-        self.logger = logging.getLogger(self.workflow_identifier)
-        self.logger.setLevel(logging.DEBUG)
+        logger = logging.getLogger(self.identifier)
+        logger.setLevel(logging.DEBUG)
 
         file_handler = logging.FileHandler(self.log_file, encoding="utf8")
         file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-
-        handler = logging.StreamHandler(sys.stdout)
-        if self.verbose:
-            handler.setLevel(logging.DEBUG)
-        else:
-            handler.setLevel(logging.INFO)
-        handler.setFormatter(CustomFormatter())
-        self.logger.addHandler(handler)
-        self.logger.debug(
+        logger.addHandler(file_handler)
+        if not self.quiet:
+            handler = logging.StreamHandler(sys.stdout)
+            if self.verbose:
+                handler.setLevel(logging.DEBUG)
+            else:
+                handler.setLevel(logging.INFO)
+            handler.setFormatter(CustomFormatter())
+            logger.addHandler(handler)
+        logger.debug(
             f"Beginning run for {self.workflow_identifier} on {self.data_source_identifier}"
         )
         if self.use_mp:
-            self.logger.debug(f"Using multiprocessing with {self.num_jobs}")
+            logger.debug(f"Using multiprocessing with {self.num_jobs}")
         else:
-            self.logger.debug(f"NOT using multiprocessing with {self.num_jobs}")
-        self.logger.debug(f"Set up logger for MFA version: {current_version}")
+            logger.debug(f"NOT using multiprocessing with {self.num_jobs}")
+        logger.debug(f"Set up logger for MFA version: {current_version}")
         if self.clean:
-            self.logger.debug("Cleaned previous run")
+            logger.debug("Cleaned previous run")
 
-    def log_debug(self, message: str) -> None:
+    def log_debug(self, message: str = "") -> None:
         """
         Log a debug message. This function is a wrapper around the :meth:`logging.Logger.debug`
 
@@ -654,9 +682,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         message: str
             Debug message to log
         """
-        self.logger.debug(message)
+        logger = logging.getLogger(self.identifier)
+        logger.debug(message)
 
-    def log_info(self, message: str) -> None:
+    def log_info(self, message: str = "") -> None:
         """
         Log an info message. This function is a wrapper around the :meth:`logging.Logger.info`
 
@@ -665,9 +694,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         message: str
             Info message to log
         """
-        self.logger.info(message)
+        logger = logging.getLogger(self.identifier)
+        logger.info(message)
 
-    def log_warning(self, message: str) -> None:
+    def log_warning(self, message: str = "") -> None:
         """
         Log a warning message. This function is a wrapper around the :meth:`logging.Logger.warning`
 
@@ -676,9 +706,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         message: str
             Warning message to log
         """
-        self.logger.warning(message)
+        logger = logging.getLogger(self.identifier)
+        logger.warning(message)
 
-    def log_error(self, message: str) -> None:
+    def log_error(self, message: str = "") -> None:
         """
         Log an error message. This function is a wrapper around the :meth:`logging.Logger.error`
 
@@ -687,7 +718,8 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         message: str
             Error message to log
         """
-        self.logger.error(message)
+        logger = logging.getLogger(self.identifier)
+        logger.error(message)
 
 
 class ExporterMixin(metaclass=abc.ABCMeta):
@@ -823,6 +855,7 @@ class MfaModel(abc.ABC):
 
     @classmethod
     def pretrained_directory(cls) -> str:
+        """Directory that pretrained models are saved in"""
         from .config import get_temporary_directory
 
         return os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
@@ -884,9 +917,9 @@ class MfaModel(abc.ABC):
     @property
     @abc.abstractmethod
     def meta(self) -> MetaDict:
-        """Meta data for the model"""
+        """Metadata for the model"""
         ...
 
     @abc.abstractmethod
     def add_meta_file(self, trainer: TrainerMixin) -> None:
-        """Add meta data to the model"""
+        """Add metadata to the model"""

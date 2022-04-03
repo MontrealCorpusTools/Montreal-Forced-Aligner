@@ -24,6 +24,11 @@ def mp3_test_path(wav_dir):
 
 
 @pytest.fixture(scope="session")
+def opus_test_path(wav_dir):
+    return os.path.join(wav_dir, "13697_11991_000000.opus")
+
+
+@pytest.fixture(scope="session")
 def lab_dir(test_dir):
     return os.path.join(test_dir, "lab")
 
@@ -59,81 +64,108 @@ def temp_dir(generated_dir):
 
 
 @pytest.fixture(scope="session")
-def english_acoustic_model():
-    from montreal_forced_aligner.command_line.model import download_model
+def model_manager():
+    from montreal_forced_aligner.models import ModelManager
 
-    download_model("acoustic", "english")
-    return "english"
-
-
-@pytest.fixture(scope="session")
-def english_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("dictionary", "english")
-    return "english"
+    return ModelManager()
 
 
 @pytest.fixture(scope="session")
-def german_prosodylab_acoustic_model():
-    from montreal_forced_aligner.command_line.model import download_model
+def english_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "english_us_arpa"):
+        model_manager.download_model("acoustic", "english_us_arpa")
+    return "english_us_arpa"
 
-    download_model("acoustic", "german_prosodylab")
+
+@pytest.fixture(scope="session")
+def english_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "english_us_arpa"):
+        model_manager.download_model("dictionary", "english_us_arpa")
+    return "english_us_arpa"
+
+
+@pytest.fixture(scope="session")
+def german_prosodylab_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "german_prosodylab"):
+        model_manager.download_model("acoustic", "german_prosodylab")
     return "german_prosodylab"
 
 
 @pytest.fixture(scope="session")
-def german_prosodylab_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("dictionary", "german_prosodylab")
+def german_prosodylab_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "german_prosodylab"):
+        model_manager.download_model("dictionary", "german_prosodylab")
     return "german_prosodylab"
 
 
 @pytest.fixture(scope="session")
-def english_ipa_acoustic_model():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("acoustic", "english_ipa")
-    return "english_ipa"
-
-
-@pytest.fixture(scope="session")
-def english_us_ipa_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("dictionary", "english_us_ipa")
-    return "english_us_ipa"
+def english_mfa_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "english_mfa"):
+        model_manager.download_model("acoustic", "english_mfa")
+    return "english_mfa"
 
 
 @pytest.fixture(scope="session")
-def pinyin_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
+def english_us_mfa_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "english_us_mfa"):
+        model_manager.download_model("dictionary", "english_us_mfa")
+    return "english_us_mfa"
 
-    download_model("dictionary", "mandarin_pinyin")
+
+@pytest.fixture(scope="session")
+def swedish_mfa_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "swedish_mfa"):
+        model_manager.download_model("acoustic", "swedish_mfa")
+    return "swedish_mfa"
+
+
+@pytest.fixture(scope="session")
+def swedish_cv_acoustic_model(model_manager):
+    if not model_manager.has_local_model("acoustic", "swedish_cv"):
+        model_manager.download_model("acoustic", "swedish_cv")
+    return "swedish_cv"
+
+
+@pytest.fixture(scope="session")
+def swedish_mfa_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "swedish_mfa"):
+        model_manager.download_model("dictionary", "swedish_mfa")
+    return "swedish_mfa"
+
+
+@pytest.fixture(scope="session")
+def swedish_cv_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "swedish_cv"):
+        model_manager.download_model("dictionary", "swedish_cv")
+    return "swedish_cv"
+
+
+@pytest.fixture(scope="session")
+def pinyin_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "mandarin_pinyin"):
+        model_manager.download_model("dictionary", "mandarin_pinyin")
     return "mandarin_pinyin"
 
 
 @pytest.fixture(scope="session")
-def english_uk_ipa_dictionary():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("dictionary", "english_uk_ipa")
-    return "english_uk_ipa"
-
-
-@pytest.fixture(scope="session")
-def english_ivector_model():
-    from montreal_forced_aligner.command_line.model import download_model
-
-    download_model("ivector", "english_ivector")
+def english_uk_mfa_dictionary(model_manager):
+    if not model_manager.has_local_model("dictionary", "english_uk_mfa"):
+        model_manager.download_model("dictionary", "english_uk_mfa")
+    return "english_uk_mfa"
 
 
 @pytest.fixture(scope="session")
-def english_g2p_model():
-    from montreal_forced_aligner.command_line.model import download_model
+def english_ivector_model(model_manager):
+    if not model_manager.has_local_model("ivector", "english_ivector"):
+        model_manager.download_model("ivector", "english_ivector")
+    return "english_ivector"
 
-    download_model("g2p", "english_g2p")
+
+@pytest.fixture(scope="session")
+def english_g2p_model(model_manager):
+    if not model_manager.has_local_model("g2p", "english_us_arpa"):
+        model_manager.download_model("g2p", "english_us_arpa")
+    return "english_us_arpa"
 
 
 @pytest.fixture(scope="session")
@@ -360,6 +392,34 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope="session")
+def swedish_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "swedish")
+    os.makedirs(path, exist_ok=True)
+    names = [
+        (
+            "se10x016",
+            [
+                "se10x016-08071999-1334_u0016001",
+                "se10x016-08071999-1334_u0016002",
+                "se10x016-08071999-1334_u0016003",
+                "se10x016-08071999-1334_u0016004",
+            ],
+        )
+    ]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(
+                os.path.join(wav_dir, name + ".wav"), os.path.join(s_dir, name + ".wav")
+            )
+            shutil.copyfile(
+                os.path.join(lab_dir, name + ".lab"), os.path.join(s_dir, name + ".txt")
+            )
+    return path
+
+
+@pytest.fixture(scope="session")
 def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "basic_txt")
     os.makedirs(path, exist_ok=True)
@@ -407,6 +467,28 @@ def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     shutil.copyfile(
         os.path.join(textgrid_dir, name + ".TextGrid"), os.path.join(path, name + ".TextGrid")
     )
+    return path
+
+
+@pytest.fixture(scope="session")
+def mp3_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "cv_mp3")
+    os.makedirs(path, exist_ok=True)
+    names = ["common_voice_en_22058264", "common_voice_en_22058266", "common_voice_en_22058267"]
+    for name in names:
+        shutil.copyfile(os.path.join(wav_dir, name + ".mp3"), os.path.join(path, name + ".mp3"))
+        shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
+    return path
+
+
+@pytest.fixture(scope="session")
+def opus_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "mls_opus")
+    os.makedirs(path, exist_ok=True)
+    names = ["13697_11991_000000"]
+    for name in names:
+        shutil.copyfile(os.path.join(wav_dir, name + ".opus"), os.path.join(path, name + ".opus"))
+        shutil.copyfile(os.path.join(lab_dir, name + ".lab"), os.path.join(path, name + ".lab"))
     return path
 
 
@@ -485,6 +567,11 @@ def xsampa_dict_path(dict_dir):
 @pytest.fixture(scope="session")
 def sick_dict_path(dict_dir):
     return os.path.join(dict_dir, "sick.txt")
+
+
+@pytest.fixture(scope="session")
+def vietnamese_dict_path(dict_dir):
+    return os.path.join(dict_dir, "vietnamese_ipa.txt")
 
 
 @pytest.fixture(scope="session")
@@ -602,6 +689,11 @@ def mono_align_config_path(config_directory):
 
 
 @pytest.fixture(scope="session")
+def pron_train_config_path(config_directory):
+    return os.path.join(config_directory, "pron_train.yaml")
+
+
+@pytest.fixture(scope="session")
 def mono_train_config_path(config_directory):
     return os.path.join(config_directory, "mono_train.yaml")
 
@@ -609,6 +701,11 @@ def mono_train_config_path(config_directory):
 @pytest.fixture(scope="session")
 def tri_train_config_path(config_directory):
     return os.path.join(config_directory, "tri_train.yaml")
+
+
+@pytest.fixture(scope="session")
+def pitch_train_config_path(config_directory):
+    return os.path.join(config_directory, "pitch_tri_train.yaml")
 
 
 @pytest.fixture(scope="session")
@@ -630,11 +727,11 @@ def multispeaker_dictionary_config_path(generated_dir, sick_dict_path):
 
 
 @pytest.fixture(scope="session")
-def ipa_speaker_dict_path(generated_dir, english_uk_ipa_dictionary, english_us_ipa_dictionary):
-    path = os.path.join(generated_dir, "multispeaker_ipa_dictionary.yaml")
+def mfa_speaker_dict_path(generated_dir, english_uk_mfa_dictionary, english_us_mfa_dictionary):
+    path = os.path.join(generated_dir, "multispeaker_mfa_dictionary.yaml")
     with open(path, "w", encoding="utf8") as f:
         yaml.safe_dump(
-            {"default": english_us_ipa_dictionary, "speaker": english_uk_ipa_dictionary}, f
+            {"default": english_us_mfa_dictionary, "speaker": english_uk_mfa_dictionary}, f
         )
     return path
 

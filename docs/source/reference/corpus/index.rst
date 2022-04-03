@@ -23,25 +23,14 @@ Corpora
 .. autosummary::
    :toctree: generated/
 
-   Speaker -- Class for collecting metadata about speakers in corpora
-   File -- Class for representing sound file/transcription file pairs in corpora
-   Utterance -- Class for collecting information about utterances
+   FileData -- Class for representing sound file/transcription file pairs in corpora
+   UtteranceData -- Class for collecting information about utterances
+
+
 
 Helper classes and functions
 ============================
 
-Collections
------------
-
-.. currentmodule::  montreal_forced_aligner.corpus.classes
-
-.. autosummary::
-   :toctree: generated/
-
-   Collection
-   SpeakerCollection
-   FileCollection
-   UtteranceCollection
 
 Multiprocessing
 ---------------

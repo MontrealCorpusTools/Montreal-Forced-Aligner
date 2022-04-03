@@ -1,22 +1,24 @@
 channels:
   - conda-forge
 dependencies:
-  - python>=3.8
+  - python>=3.9
   - numpy
   - librosa
   - tqdm
   - requests
   - colorama
   - ansiwrap
-  - jsonlines
   - pyyaml
   - praatio
+  - dataclassy
+  - sqlalchemy
   - pip
   - pip:
       - sphinxemoji
       - sphinxcontrib-autoprogram
       - pydata-sphinx-theme
-      - sphinx-panels
+      - sphinx-design
       - interrogate
       - sphinx
       - numpydoc
+      - importlib_metadata > 3.1

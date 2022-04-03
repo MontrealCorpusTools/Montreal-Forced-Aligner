@@ -7,6 +7,7 @@ Segmentation options
 
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "energy_threshold", 5.5, "Energy threshold above which a frame will be counted as voiced"

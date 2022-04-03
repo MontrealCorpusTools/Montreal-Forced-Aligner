@@ -5,7 +5,7 @@
 Generate a new pronunciation dictionary ``(mfa g2p)``
 =====================================================
 
-We have trained several G2P models that are available for download (:ref:`pretrained_g2p`).
+We have trained several G2P models that are available for download (:xref:`pretrained_g2p`).
 
 .. warning::
 
@@ -28,7 +28,7 @@ See :ref:`dict_generating_example` for an example of how to use G2P functionalit
 
 .. warning::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation_ref` for more details.
+   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
 
 Command reference
 -----------------

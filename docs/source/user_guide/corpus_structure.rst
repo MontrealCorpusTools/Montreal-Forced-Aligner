@@ -2,9 +2,9 @@
 
 .. _corpus_structure:
 
-****************
-Corpus structure
-****************
+****************************
+Corpus formats and structure
+****************************
 
 Prior to running the aligner, make sure the following are set up:
 
@@ -39,7 +39,7 @@ The sound files and the orthographic annotations should be contained in one dire
 
 .. note::
 
-   A collection of preprocessing scripts to get various corpora of other formats is available in the :xref:`mfa_reorg_scripts`.
+   A collection of preprocessing scripts to get various corpora of other formats is available in the :xref:`mfa_reorg_scripts` and :xref:`corpus_creation_scripts`.
 
 Transcription file formats
 ==========================
@@ -117,26 +117,23 @@ each speaker.
 Sound files
 -----------
 
-The default format for sound files in Kaldi is ``.wav``.  However, if MFA is installed via conda, you should have :code:`sox` available which will pipe sound files of various formats to Kaldi in wav format.  Running :code:`sox` by itself will a list of formats that it supports. Of interest to speech researchers, the version on conda-forge supports non-standard :code:`wav` formats, :code:`aiff`, :code:`flac`, :code:`ogg`, and :code:`vorbis`.
+The default format for sound files in Kaldi is ``.wav``.  However, if MFA is installed via conda, you should have :code:`sox` and/or :code:`ffmpeg` available which will pipe sound files of various formats to Kaldi in wav format.  Running :code:`sox` by itself will a list of formats that it supports. Of interest to speech researchers, the version on conda-forge supports non-standard :code:`wav` formats, :code:`aiff`, :code:`flac`, :code:`ogg`, and :code:`vorbis`.
 
 .. note::
 
-   ``.mp3``  files are supported on Linux and Mac only at the moment. You can verify whether sox can read them via the ``soxi yoursoundfile.mp3``.
+   ``.mp3`` files on Windows are converted to wav via ``ffmpeg`` rather than ``sox``.
 
-   :code:`opus` files are not currently supported, but I would like to get them working soon.
+   Likewise, :code:`opus` files can be processed using ``ffmpeg`` on all platforms
 
 Sampling rate
 =============
 
-Feature generation for MFA uses a consistent frequency range (20-7800 Hz).  Files that are higher or lower sampling rate
-than 16 kHz will be up- or down-sampled by default to 16 kHz during the feature generation procedure, which may produce artifacts for
-upsampled files.  You can modify this default sample rate as part of configuring features (see :ref:`feature_config` for more details).
+Feature generation for MFA uses a consistent frequency range (20-7800 Hz).  Files that are higher or lower sampling rate than 16 kHz will be up- or down-sampled by default to 16 kHz during the feature generation procedure, which may produce artifacts for upsampled files.  You can modify this default sample rate as part of configuring features (see :ref:`feature_config` for more details).
 
 Bit depth
 =========
 
-Kaldi can only process 16-bit WAV files.  Higher bit depths (24 and 32 bit) are getting more common for recording, so
-MFA will automatically convert higher bit depths via the :code:`sox` conda package.
+Kaldi can only process 16-bit WAV files.  Higher bit depths (24 and 32 bit) are getting more common for recording, so MFA will automatically convert higher bit depths via :code:`sox` or :code:`ffmpeg`.
 
 Duration
 ========

@@ -7,22 +7,38 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import re
 import subprocess
 import sys
 import time
+import typing
 from decimal import Decimal
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional
 
+import sqlalchemy
 import tqdm
-import yaml
+from sqlalchemy.orm import Session, joinedload, load_only, subqueryload
 
 from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 from montreal_forced_aligner.alignment import CorpusAligner, PretrainedAligner
 from montreal_forced_aligner.alignment.multiprocessing import compile_information_func
+from montreal_forced_aligner.corpus.db import (
+    Corpus,
+    Dictionary,
+    File,
+    SoundFile,
+    Speaker,
+    TextFile,
+    Utterance,
+)
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import TerminalPrinter, comma_join, load_scp, save_scp
+from montreal_forced_aligner.helper import (
+    TerminalPrinter,
+    comma_join,
+    load_configuration,
+    load_scp,
+)
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import (
     KaldiFunction,
@@ -36,39 +52,39 @@ from montreal_forced_aligner.utils import (
 
 if TYPE_CHECKING:
     from argparse import Namespace
+    from dataclasses import dataclass
 
     from .abc import MetaDict
+else:
+    from dataclassy import dataclass
 
 
 __all__ = ["TrainingValidator", "PretrainedValidator"]
 
 
-class TestUtterancesArguments(NamedTuple):
+@dataclass
+class TestUtterancesArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.validator.TestUtterancesFunction`"""
 
-    log_path: str
-    dictionaries: List[str]
     feature_strings: Dict[str, str]
     text_int_paths: Dict[str, str]
     model_path: str
+    disambiguation_symbols_int_path: str
     score_options: MetaDict
-    disambig_int_paths: Dict[str, str]
-    disambig_L_fst_paths: Dict[str, str]
     text_paths: Dict[str, str]
     tree_path: str
     utt2lm_paths: Dict[str, str]
-    word_symbols_paths: Dict[str, str]
-    oov_word: str
     order: int
     method: str
 
 
-class TrainSpeakerLmArguments(NamedTuple):
+@dataclass
+class TrainSpeakerLmArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.validator.TrainSpeakerLmFunction`"""
 
-    log_path: str
-    training_path: str
-    word_symbols_path: str
+    word_symbols_paths: Dict[str, str]
+    speaker_mapping: Dict[str, List[str]]
+    speaker_paths: Dict[str, str]
     oov_word: str
     order: int
     method: str
@@ -103,30 +119,53 @@ class TestUtterancesFunction(KaldiFunction):
     """
 
     def __init__(self, args: TestUtterancesArguments):
-        self.log_path = args.log_path
-        self.dictionaries = args.dictionaries
+        super().__init__(args)
         self.feature_strings = args.feature_strings
         self.text_int_paths = args.text_int_paths
+        self.disambiguation_symbols_int_path = args.disambiguation_symbols_int_path
         self.model_path = args.model_path
         self.score_options = args.score_options
-        self.disambig_L_fst_paths = args.disambig_L_fst_paths
-        self.disambig_int_paths = args.disambig_int_paths
         self.text_paths = args.text_paths
         self.tree_path = args.tree_path
         self.utt2lm_paths = args.utt2lm_paths
-        self.word_symbols_paths = args.word_symbols_paths
-        self.oov_word = args.oov_word
         self.order = args.order
         self.method = args.method
+        self.reversed_word_mapping = {}
+        self.word_symbols_paths = {}
+        self.lexicon_disambig_fst_paths = {}
 
-    def run(self):
+    def run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
+        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        with Session(db_engine) as session:
+            for dict_name in self.feature_strings.keys():
+                d = (
+                    session.query(Dictionary)
+                    .options(
+                        subqueryload(Dictionary.words),
+                        load_only(
+                            Dictionary.words_path,
+                            Dictionary.lexicon_disambig_fst_path,
+                            Dictionary.oov_word,
+                        ),
+                    )
+                    .filter_by(name=dict_name)
+                    .first()
+                )
+
+                self.oov_word = d.oov_word
+                self.word_symbols_paths[dict_name] = d.words_path
+                self.lexicon_disambig_fst_paths[dict_name] = d.lexicon_disambig_fst_path
+
+                self.reversed_word_mapping[dict_name] = {}
+                for w in d.words:
+                    self.reversed_word_mapping[dict_name][w.id] = w.word
         with open(self.log_path, "w") as log_file:
-            for dict_name in self.dictionaries:
+            for dict_name in self.feature_strings.keys():
                 feature_string = self.feature_strings[dict_name]
                 text_int_path = self.text_int_paths[dict_name]
-                disambig_int_path = self.disambig_int_paths[dict_name]
-                disambig_L_fst_path = self.disambig_L_fst_paths[dict_name]
+                disambig_int_path = self.disambiguation_symbols_int_path
+                disambig_L_fst_path = self.lexicon_disambig_fst_paths[dict_name]
                 utt2lm_path = self.utt2lm_paths[dict_name]
                 text_path = self.text_paths[dict_name]
                 word_symbols_path = self.word_symbols_paths[dict_name]
@@ -236,12 +275,16 @@ class TestUtterancesFunction(KaldiFunction):
                     compile_proc.stdin.flush()
                     output = oracle_proc.stdout.readline()
                     output = output.strip().decode("utf8").split(" ")
-                    utterance = output[0]
-                    transcript = [int(x) for x in output[1:]]
+                    utterance = int(output[0].split("-")[-1])
+                    transcript = " ".join(
+                        self.reversed_word_mapping[dict_name][int(x)] for x in output[1:]
+                    )
                     os.remove(mod_path)
                     yield utterance, transcript
 
                 compile_proc.stdin.close()
+                oracle_proc.communicate()
+                self.check_call(oracle_proc)
 
 
 class TrainSpeakerLmFunction(KaldiFunction):
@@ -266,15 +309,10 @@ class TrainSpeakerLmFunction(KaldiFunction):
     """
 
     def __init__(self, args: TrainSpeakerLmArguments):
-        self.log_path = args.log_path
-        self.training_path = args.training_path
-        base_path = os.path.splitext(args.training_path)[0]
-        self.far_path = base_path + ".far"
-        self.cnts_path = base_path + ".cnts"
-        self.mod_path = base_path + ".mod"
-        self.pre_mod_path = base_path + ".pre_mod"
-        self.fst_path = base_path + ".fst"
-        self.word_symbols_path = args.word_symbols_path
+        super().__init__(args)
+        self.word_symbols_paths = args.word_symbols_paths
+        self.speaker_mapping = args.speaker_mapping
+        self.speaker_paths = args.speaker_paths
         self.oov_word = args.oov_word
         self.order = args.order
         self.method = args.method
@@ -283,46 +321,55 @@ class TrainSpeakerLmFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            far_proc = subprocess.Popen(
-                [
-                    "farcompilestrings",
-                    "--fst_type=compact",
-                    f"--unknown_symbol={self.oov_word}",
-                    f"--symbols={self.word_symbols_path}",
-                    "--keep_symbols",
-                    self.training_path,
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-            )
-            count_proc = subprocess.Popen(
-                ["ngramcount", f"--order={self.order}"],
-                stdin=far_proc.stdout,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-            )
-            make_proc = subprocess.Popen(
-                ["ngrammake", "--method=kneser_ney"],
-                stdin=count_proc.stdout,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-            )
-            shrink_proc = subprocess.Popen(
-                [
-                    "ngramshrink",
-                    "--method=relative_entropy",
-                    f"--target_number_of_ngrams={self.target_num_ngrams}",
-                    "--shrink_opt=2",
-                    "--theta=0.001",
-                    "-",
-                    self.mod_path,
-                ],
-                stdin=make_proc.stdout,
-                stderr=log_file,
-            )
-            shrink_proc.communicate()
-            os.remove(self.training_path)
-            yield os.path.exists(self.mod_path)
+
+            for dict_name, speakers in self.speaker_mapping.items():
+                word_symbols_path = self.word_symbols_paths[dict_name]
+                for speaker in speakers:
+                    training_path = self.speaker_paths[speaker]
+                    base_path = os.path.splitext(training_path)[0]
+                    mod_path = base_path + ".mod"
+                    far_proc = subprocess.Popen(
+                        [
+                            "farcompilestrings",
+                            "--fst_type=compact",
+                            f"--unknown_symbol={self.oov_word}",
+                            f"--symbols={word_symbols_path}",
+                            "--keep_symbols",
+                            training_path,
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                    count_proc = subprocess.Popen(
+                        ["ngramcount", f"--order={self.order}"],
+                        stdin=far_proc.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                    make_proc = subprocess.Popen(
+                        ["ngrammake", "--method=kneser_ney"],
+                        stdin=count_proc.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                    shrink_proc = subprocess.Popen(
+                        [
+                            "ngramshrink",
+                            "--method=relative_entropy",
+                            f"--target_number_of_ngrams={self.target_num_ngrams}",
+                            "--shrink_opt=2",
+                            "--theta=0.001",
+                            "-",
+                            mod_path,
+                        ],
+                        stdin=make_proc.stdout,
+                        stderr=log_file,
+                    )
+                    shrink_proc.communicate()
+                    self.check_call(shrink_proc)
+                    assert os.path.exists(mod_path)
+                    os.remove(training_path)
+                    yield os.path.exists(mod_path)
 
 
 class ValidationMixin(CorpusAligner, TranscriberMixin):
@@ -367,71 +414,93 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         self.min_word_count = min_word_count
         self.order = order
         self.method = method
-        self.printer = TerminalPrinter()
-
-    def utt2fst_scp_data(self) -> List[Dict[str, List[Tuple[str, str]]]]:
-        """
-        Generate Kaldi style utt2fst scp data
-
-        Returns
-        -------
-        dict[str, list[tuple[str, str]]]
-            Utterance FSTs per dictionary name
-        """
-        job_data = []
-        for j in self.jobs:
-            data = {x: [] for x in j.current_dictionary_names}
-            for utterance in j.current_utterances:
-                dict_name = utterance.speaker.dictionary_name
-                speaker_lm = os.path.join(self.working_directory, f"{utterance.speaker_name}.mod")
-                data[dict_name].append(
-                    (
-                        utterance.name,
-                        speaker_lm,
-                    )
-                )
-            job_data.append(data)
-        return job_data
+        self.printer = TerminalPrinter(print_function=self.log_info)
 
     def output_utt_fsts(self) -> None:
         """
         Write utterance FSTs
         """
-        utt2fst = self.utt2fst_scp_data()
-        for i, job_data in enumerate(utt2fst):
-            for dict_name, scp in job_data.items():
-                utt2fst_scp_path = os.path.join(
-                    self.split_directory, f"utt2lm.{dict_name}.{i}.scp"
-                )
-                save_scp(scp, utt2fst_scp_path)
+
+        with Session(self.db_engine) as session:
+            for j in self.jobs:
+                for dict_name in j.dictionary_names:
+                    utterances = (
+                        session.query(Utterance)
+                        .join(Utterance.speaker)
+                        .join(Speaker.dictionary)
+                        .options(
+                            joinedload(Utterance.speaker).joinedload(Speaker.dictionary),
+                            load_only(Utterance.id, Utterance.speaker_id),
+                        )
+                        .filter(Speaker.job_id == j.name)
+                        .filter(Dictionary.name == dict_name)
+                        .order_by(Utterance.kaldi_id)
+                    )
+
+                    utt2fst_scp_path = os.path.join(
+                        self.split_directory, f"utt2lm.{dict_name}.{j.name}.scp"
+                    )
+                    with open(utt2fst_scp_path, "w", encoding="utf8") as f:
+                        for u in utterances:
+                            utterance = f"{u.speaker_id}-{u.id}"
+                            speaker_lm = os.path.join(
+                                self.working_directory, f"{u.speaker_id}.mod"
+                            )
+                            f.write(f"{utterance} {speaker_lm}\n")
 
     def train_speaker_lm_arguments(
         self,
     ) -> List[TrainSpeakerLmArguments]:
         """
-        Generate Job arguments for :func:`compile_utterance_train_graphs_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.validator.TrainSpeakerLmFunction`
 
         Returns
         -------
         list[:class:`~montreal_forced_aligner.validator.TrainSpeakerLmArguments`]
             Arguments for processing
         """
-        return [
-            TrainSpeakerLmArguments(
-                os.path.join(self.working_log_directory, f"train_lm.{s.name}.log"),
-                os.path.join(self.working_directory, f"{s.name}.txt"),
-                s.dictionary.words_symbol_path,
-                s.dictionary.oov_word,
-                self.order,
-                self.method,
-                self.target_num_ngrams,
-            )
-            for s in self.speakers
-        ]
+        arguments = []
+        with Session(self.db_engine) as session:
+            for j in self.jobs:
+                speaker_mapping = {}
+                speaker_paths = {}
+                words_symbol_paths = {}
+
+                speakers = (
+                    session.query(Speaker)
+                    .options(
+                        joinedload(Speaker.dictionary, innerjoin=True).load_only(
+                            Dictionary.words_path, Dictionary.name
+                        )
+                    )
+                    .filter(Speaker.job_id == j.name)
+                )
+                for s in speakers:
+                    dict_name = s.dictionary.name
+                    if dict_name not in speaker_mapping:
+                        speaker_mapping[dict_name] = []
+                        words_symbol_paths[dict_name] = s.dictionary.words_path
+                    speaker_mapping[dict_name].append(s.id)
+                    speaker_paths[s.id] = os.path.join(self.working_directory, f"{s.id}.txt")
+                arguments.append(
+                    TrainSpeakerLmArguments(
+                        j.name,
+                        getattr(self, "db_path", ""),
+                        os.path.join(self.working_log_directory, f"train_lm.{j.name}.log"),
+                        words_symbol_paths,
+                        speaker_mapping,
+                        speaker_paths,
+                        self.oov_word,
+                        self.order,
+                        self.method,
+                        self.target_num_ngrams,
+                    )
+                )
+        return arguments
 
     def test_utterances_arguments(self) -> List[TestUtterancesArguments]:
         """
-        Generate Job arguments for :func:`test_utterances_func`
+        Generate Job arguments for :class:`~montreal_forced_aligner.validator.TestUtterancesFunction`
 
         Returns
         -------
@@ -439,28 +508,20 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
-        words_paths = {k: v.words_symbol_path for k, v in self.dictionary_mapping.items()}
-        disambig_paths = {
-            k: self.disambiguation_symbols_int_path for k, v in self.dictionary_mapping.items()
-        }
-        lexicon_fst_paths = {
-            k: v.lexicon_disambig_fst_path for k, v in self.dictionary_mapping.items()
-        }
+
         return [
             TestUtterancesArguments(
-                os.path.join(self.working_log_directory, f"decode.{j.name}.log"),
-                j.current_dictionary_names,
+                j.name,
+                getattr(self, "db_path", ""),
+                os.path.join(self.working_log_directory, f"test_utterances.{j.name}.log"),
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
                 self.model_path,
+                self.disambiguation_symbols_int_path,
                 self.score_options,
-                disambig_paths,
-                lexicon_fst_paths,
                 j.construct_path_dictionary(self.data_directory, "text", "scp"),
                 self.tree_path,
                 j.construct_path_dictionary(self.data_directory, "utt2lm", "scp"),
-                words_paths,
-                self.oov_word,
                 self.order,
                 self.method,
             )
@@ -487,7 +548,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             if self.test_transcriptions:
                 self.write_lexicon_information(write_disambiguation=True)
             if self.ignore_acoustics:
-                self.logger.info("Skipping acoustic feature generation")
+                self.log_info("Skipping acoustic feature generation")
             else:
                 self.generate_features()
             self.calculate_oovs_found()
@@ -495,19 +556,27 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             if not self.ignore_acoustics and self.test_transcriptions:
                 self.initialize_utt_fsts()
             else:
-                self.logger.info("Skipping transcription testing")
+                self.log_info("Skipping transcription testing")
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def analyze_setup(self) -> None:
         """
-        Analyzes the set up process and outputs info to the console
+        Analyzes the setup process and outputs info to the console
         """
         begin = time.time()
-        total_duration = sum(x.duration for x in self.files)
+
+        with Session(self.db_engine) as session:
+            sound_file_count = session.query(SoundFile).count()
+            text_file_count = session.query(TextFile).count()
+            total_duration = session.query(sqlalchemy.func.sum(Utterance.duration)).scalar()
+
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
         self.log_debug(f"Duration calculation took {time.time() - begin}")
 
@@ -518,10 +587,8 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         self.log_debug(f"Ignored count calculation took {time.time() - begin}")
 
         self.printer.print_header("Corpus")
-
-        self.printer.print_green_stat(self.files.sound_file_count, "sound files")
-        self.printer.print_green_stat(self.files.lab_count, "lab files")
-        self.printer.print_green_stat(self.files.textgrid_count, "textgrid files")
+        self.printer.print_green_stat(sound_file_count, "sound files")
+        self.printer.print_green_stat(text_file_count, "text files")
         if len(self.no_transcription_files):
             self.printer.print_yellow_stat(
                 len(self.no_transcription_files),
@@ -534,7 +601,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 len(self.textgrid_read_errors), "read errors for TextGrid files"
             )
 
-        self.printer.print_green_stat(len(self.speakers), "speakers")
+        self.printer.print_green_stat(self.num_speakers, "speakers")
         self.printer.print_green_stat(self.num_utterances, "utterances")
         self.printer.print_green_stat(total_duration, "seconds total duration")
         print()
@@ -543,9 +610,9 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         self.analyze_files_with_no_transcription()
         self.analyze_transcriptions_with_no_wavs()
 
-        if len(self.decode_error_files) or self.files.lab_count:
+        if len(self.decode_error_files):
             self.analyze_unreadable_text_files()
-        if len(self.textgrid_read_errors) or self.files.textgrid_count:
+        if len(self.textgrid_read_errors):
             self.analyze_textgrid_read_errors()
 
         self.printer.print_header("Dictionary")
@@ -557,23 +624,38 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         """
         self.printer.print_sub_header("Out of vocabulary words")
         output_dir = self.output_directory
-        oov_types = self.oovs_found
-        calculate_frequency = not oov_types
         oov_path = os.path.join(output_dir, "oovs_found.txt")
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
 
         total_instances = 0
-        with open(utterance_oov_path, "w", encoding="utf8") as f:
-            for utterance in self.utterances:
-                if not utterance.oovs:
-                    continue
-                total_instances += len(utterance.oovs)
-                f.write(f"{utterance.name} {', '.join(utterance.oovs)}\n")
-                if calculate_frequency:
-                    self.oovs_found.update(utterance.oovs)
+
+        with open(utterance_oov_path, "w", encoding="utf8") as f, Session(
+            self.db_engine
+        ) as session:
+            utterances = (
+                session.query(
+                    File.name,
+                    File.relative_path,
+                    Speaker.name,
+                    Utterance.begin,
+                    Utterance.end,
+                    Utterance.oovs,
+                )
+                .join(Utterance.file)
+                .join(Utterance.speaker)
+                .filter(Utterance.oovs != None)  # noqa
+                .filter(Utterance.oovs != "")
+            )
+
+            for file_name, relative_path, speaker_name, begin, end, oovs in utterances:
+                total_instances += len(oovs)
+                f.write(
+                    f"{relative_path +'/' + file_name}, {speaker_name}: {begin}-{end}: {', '.join(oovs)}\n"
+                )
+                self.oovs_found.update(oovs)
         if self.oovs_found:
             self.save_oovs_found(output_dir)
-            self.printer.print_yellow_stat(len(oov_types), "OOV word types")
+            self.printer.print_yellow_stat(len(self.oovs_found), "OOV word types")
             self.printer.print_yellow_stat(total_instances, "total OOV tokens")
             lines = [
                 "",
@@ -630,26 +712,28 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             self.printer.print_end_section()
             return
         output_dir = self.output_directory
-        missing_features = [x for x in self.utterances if x.ignored]
-        if missing_features:
-            path = os.path.join(output_dir, "missing_features.csv")
-            with open(path, "w") as f:
-                for utt in missing_features:
-                    if utt.begin is not None:
-
-                        f.write(f"{utt.file.wav_path},{utt.begin},{utt.end}\n")
-                    else:
-                        f.write(f"{utt.file.wav_path}\n")
-
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize(len(missing_features), 'red')} utterances missing features. "
-                f"Please see {self.printer.colorize(path, 'bright')} for a list."
+        with Session(self.db_engine) as session:
+            utterances = (
+                session.query(File.name, File.relative_path, Utterance.begin, Utterance.end)
+                .join(Utterance.file)
+                .filter(Utterance.ignored == True)  # noqa
             )
-        else:
-            self.printer.print_info_lines(
-                f"There were {self.printer.colorize('no', 'green')} utterances missing features."
-            )
-        self.printer.print_end_section()
+            if utterances.count():
+                path = os.path.join(output_dir, "missing_features.csv")
+                with open(path, "w") as f:
+                    for file_name, relative_path, begin, end in utterances:
+
+                        f.write(f"{relative_path + '/' + file_name},{begin},{end}\n")
+
+                self.printer.print_info_lines(
+                    f"There were {self.printer.colorize(len(utterances), 'red')} utterances missing features. "
+                    f"Please see {self.printer.colorize(path, 'bright')} for a list."
+                )
+            else:
+                self.printer.print_info_lines(
+                    f"There were {self.printer.colorize('no', 'green')} utterances missing features."
+                )
+            self.printer.print_end_section()
 
     def analyze_files_with_no_transcription(self) -> None:
         """
@@ -759,7 +843,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         :meth:`.AlignMixin.compile_information_arguments`
             Job method for generating arguments for the helper function
         """
-        self.logger.debug("Analyzing alignment information")
+        self.log_debug("Analyzing alignment information")
         compile_info_begin = time.time()
         self.collect_alignments()
         jobs = self.compile_information_arguments()
@@ -792,10 +876,10 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
         self.printer.print_header("Alignment")
         if not avg_like_frames:
-            self.logger.debug(
+            self.log_debug(
                 "No utterances were aligned, this likely indicates serious problems with the aligner."
             )
-            self.printer.print_red_stat(0, f"of {len(self.utterances)} utterances were aligned")
+            self.printer.print_red_stat(0, f"of {self.num_utterances} utterances were aligned")
         else:
             if too_short_count:
                 self.printer.print_red_stat(
@@ -804,7 +888,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             else:
                 self.printer.print_green_stat(0, "utterances were too short to be aligned")
             if beam_too_narrow_count:
-                self.logger.debug(
+                self.log_debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
@@ -815,30 +899,30 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 self.printer.print_green_stat(0, "utterances that need a larger beam to align")
 
             num_utterances = self.num_utterances
-            if unaligned_utts:
-                path = os.path.join(self.output_directory, "unalignable_files.csv")
-                with open(path, "w") as f:
-                    f.write("File path,begin,end,duration,text length\n")
-                    for utt in unaligned_utts:
-                        utterance = self.utterances[utt]
-                        utt_duration = utterance.duration
-                        utt_length_words = utterance.text.count(" ") + 1
-                        if utterance.begin is not None:
-                            f.write(
-                                f"{utterance.file.wav_path},{utterance.begin},{utterance.end},{utt_duration},{utt_length_words}\n"
-                            )
-                        else:
-                            f.write(
-                                f"{utterance.file.wav_path},,,{utt_duration},{utt_length_words}\n"
-                            )
-                self.printer.print_info_lines(
-                    [
-                        f"There were {self.printer.colorize(len(unaligned_utts), 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
-                        f"For details, please see:",
-                        "",
-                        self.printer.indent_string + self.printer.colorize(path, "bright"),
-                    ]
+            with Session(self.db_engine) as session:
+                unaligned_utts = (
+                    session.query(Utterance)
+                    .options(joinedload(Utterance.file).load_only(File.name))
+                    .filter_by(alignment_log_likelihood=None)
                 )
+                unaligned_count = unaligned_utts.count()
+                if unaligned_count:
+                    path = os.path.join(self.output_directory, "unalignable_files.csv")
+                    with open(path, "w") as f:
+                        f.write("file,begin,end,duration,text length\n")
+                        for u in unaligned_utts:
+                            utt_length_words = u.text.count(" ") + 1
+                            f.write(
+                                f"{u.file.name},{u.begin},{u.end},{u.duration},{utt_length_words}\n"
+                            )
+                    self.printer.print_info_lines(
+                        [
+                            f"There were {self.printer.colorize(unaligned_count, 'red')} unaligned utterances out of {self.printer.colorize(self.num_utterances, 'bright')} after initial training. "
+                            f"For details, please see:",
+                            "",
+                            self.printer.indent_string + self.printer.colorize(path, "bright"),
+                        ]
+                    )
 
             self.printer.print_green_stat(
                 num_utterances - beam_too_narrow_count - too_short_count,
@@ -847,15 +931,15 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
-            self.logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        self.logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
+            self.log_debug(f"Average per frame likelihood for alignment: {average_log_like}")
+        self.log_debug(f"Compiling information took {time.time() - compile_info_begin}")
 
     def initialize_utt_fsts(self) -> None:
         """
         Construct utterance FSTs
         """
         if sys.platform != "win32":
-            self.logger.info("Initializing for testing transcriptions...")
+            self.log_info("Initializing for testing transcriptions...")
             self.output_utt_fsts()
 
     @property
@@ -871,20 +955,27 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
     def train_speaker_lms(self) -> None:
         begin = time.time()
+        self.calculate_word_counts()
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        self.logger.info("Compiling per speaker biased language models...")
-        for s in self.speakers:
-            with open(os.path.join(self.working_directory, f"{s}.txt"), "w", encoding="utf8") as f:
-                for u in s.utterances:
-                    text = [
-                        x if self.word_counts[x] >= self.min_word_count else self.oov_word
-                        for x in u.normalized_text
-                    ]
+        self.log_info("Compiling per speaker biased language models...")
+        with Session(self.db_engine) as session:
+            speakers = session.query(Speaker).options(
+                subqueryload(Speaker.utterances).load_only(Utterance.normalized_text)
+            )
+            for s in speakers:
+                with open(
+                    os.path.join(self.working_directory, f"{s.id}.txt"), "w", encoding="utf8"
+                ) as f:
+                    for u in s.utterances:
+                        text = [
+                            x if self.word_counts[x] >= self.min_word_count else self.oov_word
+                            for x in u.normalized_text.split()
+                        ]
 
-                    f.write(" ".join(text) + "\n")
+                        f.write(" ".join(text) + "\n")
         arguments = self.train_speaker_lm_arguments()
-        with tqdm.tqdm(total=self.num_speakers) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -897,9 +988,6 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                     p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                     procs.append(p)
                     p.start()
-                    if i >= self.num_jobs:
-
-                        procs[i - self.num_jobs].join()
                 while True:
                     try:
                         _ = return_queue.get(timeout=1)
@@ -914,12 +1002,12 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                         continue
                     pbar.update(1)
             else:
-                self.logger.debug("Not using multiprocessing...")
+                self.log_debug("Not using multiprocessing...")
                 for args in arguments:
                     function = TrainSpeakerLmFunction(args)
                     for _ in function.run():
                         pbar.update(1)
-        self.logger.debug(f"Compiling speaker language models took {time.time() - begin}")
+        self.log_debug(f"Compiling speaker language models took {time.time() - begin}")
 
     def test_utterance_transcriptions(self) -> None:
         """
@@ -932,26 +1020,23 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             If there were any errors in running Kaldi binaries
         """
         if sys.platform == "win32":
-            self.logger.info("Cannot test transcriptions on Windows, please use Linux or Mac.")
+            self.log_info("Cannot test transcriptions on Windows, please use Linux or Mac.")
             return
-        self.logger.info("Checking utterance transcriptions...")
-        initial_clitics = {
-            x for x in self.clitic_set if re.match(rf"^.*[{''.join(self.clitic_markers)}]$", x)
-        }
-        final_clitics = {
-            x for x in self.clitic_set if re.match(rf"^[{''.join(self.clitic_markers)}].*$", x)
-        }
+        self.log_info("Checking utterance transcriptions...")
 
         try:
             self.train_speaker_lms()
 
-            self.logger.info("Decoding utterances (this will take some time)...")
+            self.log_info("Decoding utterances (this will take some time)...")
 
             begin = time.time()
             log_directory = self.working_log_directory
             os.makedirs(log_directory, exist_ok=True)
             arguments = self.test_utterances_arguments()
-            with tqdm.tqdm(total=self.num_utterances) as pbar:
+            utterance_mapping = []
+            with tqdm.tqdm(
+                total=self.num_utterances, disable=getattr(self, "quiet", False)
+            ) as pbar:
                 if self.use_mp:
                     manager = mp.Manager()
                     error_dict = manager.dict()
@@ -965,7 +1050,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                         p.start()
                     while True:
                         try:
-                            utterance, ints = return_queue.get(timeout=1)
+                            utterance, transcript = return_queue.get(timeout=1)
                             if stopped.stop_check():
                                 continue
                         except Empty:
@@ -976,49 +1061,31 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                                 break
                             continue
                         pbar.update(1)
-                        if not utterance or not ints:
+                        if not utterance or not transcript:
                             continue
-                        utterance = self.utterances[utterance]
-                        speaker = self.speakers[utterance.speaker_name]
-                        lookup = speaker.dictionary.reversed_word_mapping
-                        transcription = []
-                        for i in ints:
-                            w = lookup[int(i)]
-                            if len(transcription) and (
-                                w in final_clitics or transcription[-1] in initial_clitics
-                            ):
-                                transcription[-1] += w
-                                continue
-                            transcription.append(w)
-                        utterance.transcription_text = " ".join(transcription)
+                        utterance_mapping.append(
+                            {"id": utterance, "transcription_text": transcript}
+                        )
                     for p in procs:
                         p.join()
                     if error_dict:
                         for v in error_dict.values():
                             raise v
                 else:
-                    self.logger.debug("Not using multiprocessing...")
+                    self.log_debug("Not using multiprocessing...")
                     for args in arguments:
                         function = TestUtterancesFunction(args)
-                        for utterance, ints in function.run():
-                            utterance = self.utterances[utterance]
-                            speaker = self.speakers[utterance.speaker_name]
-                            lookup = speaker.dictionary.reversed_word_mapping
-                            if not ints:
+                        for utterance, transcript in function.run():
+                            if not utterance or not transcript:
                                 continue
-                            transcription = []
-                            for i in ints:
-                                w = lookup[int(i)]
-                                if len(transcription) and (
-                                    w in final_clitics or transcription[-1] in initial_clitics
-                                ):
-                                    transcription[-1] += w
-                                    continue
-                                transcription.append(w)
-                            utterance.transcription_text = " ".join(transcription)
+                            utterance_mapping.append(
+                                {"id": utterance, "transcription_text": transcript}
+                            )
                             pbar.update(1)
-            self.logger.debug(f"Decoding utterances took {time.time() - begin}")
-            self.logger.info("Finished decoding utterances!")
+            with Session(self.db_engine) as session:
+                session.bulk_update_mappings(Utterance, utterance_mapping)
+            self.log_debug(f"Decoding utterances took {time.time() - begin}")
+            self.log_info("Finished decoding utterances!")
 
             self.printer.print_header("Test transcriptions")
             ser, wer, cer = self.compute_wer()
@@ -1049,8 +1116,11 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
 
@@ -1110,29 +1180,24 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         training_params = []
         use_default = True
         if config_path:
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                for k, v in data.items():
-                    if k == "training":
-                        for t in v:
-                            for k2, v2 in t.items():
-                                if "features" in v2:
-                                    global_params.update(v2["features"])
-                                    del v2["features"]
-                                training_params.append((k2, v2))
-                    elif k == "features":
-                        if "type" in v:
-                            v["feature_type"] = v["type"]
-                            del v["type"]
-                        global_params.update(v)
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
+            data = load_configuration(config_path)
+            for k, v in data.items():
+                if k == "training":
+                    for t in v:
+                        for k2, v2 in t.items():
+                            if "features" in v2:
+                                global_params.update(v2["features"])
+                                del v2["features"]
+                            training_params.append((k2, v2))
+                elif k == "features":
+                    if "type" in v:
+                        v["feature_type"] = v["type"]
+                        del v["type"]
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
                 if training_params:
                     use_default = False
         if use_default:  # default training configuration
@@ -1168,11 +1233,6 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.set_lexicon_word_set(self.corpus_word_set)
             self.log_debug(f"Set up lexicon word set in {time.time() - begin}")
 
-            begin = time.time()
-            for speaker in self.speakers:
-                speaker.set_dictionary(self.get_dictionary(speaker.name))
-            self.log_debug(f"Set dictionaries for speakers in {time.time() - begin}")
-
             self.calculate_oovs_found()
 
             begin = time.time()
@@ -1180,16 +1240,12 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 
             if self.ignore_acoustics:
-                self.logger.info("Skipping acoustic feature generation")
+                self.log_info("Skipping acoustic feature generation")
             else:
 
                 begin = time.time()
                 self.initialize_jobs()
                 self.log_debug(f"Initialized jobs in {time.time() - begin}")
-
-                begin = time.time()
-                self.write_corpus_information()
-                self.log_debug(f"Wrote corpus information in {time.time() - begin}")
 
                 begin = time.time()
                 self.create_corpus_split()
@@ -1212,18 +1268,12 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             self.initialized = True
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
-            raise
+                import logging
 
-    def calculate_oovs_found(self) -> None:
-        """Sum the counts of oovs found in pronunciation dictionaries"""
-        begin = time.time()
-        self.logger.info("Calculating OOVs...")
-        for u in self.utterances:
-            self.oovs_found.update(u.oovs)
-        self.save_oovs_found(self.output_directory)
-        self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
+            raise
 
     def validate(self):
         """
@@ -1280,17 +1330,13 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             self._load_corpus()
             self.set_lexicon_word_set(self.corpus_word_set)
 
-            for speaker in self.speakers:
-                speaker.set_dictionary(self.get_dictionary(speaker.name))
-
             self.calculate_oovs_found()
 
             if self.ignore_acoustics:
-                self.logger.info("Skipping acoustic feature generation")
+                self.log_info("Skipping acoustic feature generation")
             else:
                 self.write_lexicon_information()
                 self.initialize_jobs()
-                self.write_corpus_information()
                 self.create_corpus_split()
                 if self.test_transcriptions:
                     self.write_lexicon_information(write_disambiguation=True)
@@ -1298,17 +1344,23 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                 if self.test_transcriptions:
                     self.initialize_utt_fsts()
                 else:
-                    self.logger.info("Skipping transcription testing")
+                    self.log_info("Skipping transcription testing")
             self.acoustic_model.validate(self)
             self.acoustic_model.export_model(self.working_directory)
-            self.acoustic_model.log_details(self.logger)
+            import logging
+
+            logger = logging.getLogger(self.identifier)
+            self.acoustic_model.log_details(logger)
 
             self.initialized = True
-            self.logger.info("Finished initializing!")
+            self.log_info("Finished initializing!")
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def align(self) -> None:
@@ -1319,30 +1371,33 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")
         if os.path.exists(done_path):
-            self.logger.debug("Alignment already done, skipping.")
+            self.log_debug("Alignment already done, skipping.")
             return
         try:
             log_dir = os.path.join(self.working_directory, "log")
             os.makedirs(log_dir, exist_ok=True)
             self.compile_train_graphs()
 
-            self.logger.debug("Performing first-pass alignment...")
+            self.log_debug("Performing first-pass alignment...")
             self.speaker_independent = True
             self.align_utterances()
             if self.uses_speaker_adaptation:
-                self.logger.debug("Calculating fMLLR for speaker adaptation...")
+                self.log_debug("Calculating fMLLR for speaker adaptation...")
                 self.calc_fmllr()
 
                 self.speaker_independent = False
-                self.logger.debug("Performing second-pass alignment...")
+                self.log_debug("Performing second-pass alignment...")
                 self.align_utterances()
 
         except Exception as e:
             with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
         with open(done_path, "w"):
             pass
@@ -1363,6 +1418,9 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         if self.test_transcriptions:
             self.test_utterance_transcriptions()
             self.transcription_done = True
+            with self.session() as session:
+                session.query(Corpus).update({"transcription_done": True})
+                session.commit()
 
     def analyze_missing_phones(self) -> None:
         """Analyzes dictionary and acoustic model for phones in the dictionary that don't have acoustic models"""

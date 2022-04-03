@@ -6,6 +6,7 @@ Transcription options
 *********************
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "beam", 13, "Beam for decoding"
