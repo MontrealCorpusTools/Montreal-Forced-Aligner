@@ -11,7 +11,6 @@ from abc import ABCMeta
 from queue import Empty
 from typing import Dict, List, Optional
 
-import sqlalchemy
 import tqdm
 from sqlalchemy.orm import Session, joinedload, load_only
 
@@ -710,13 +709,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """Write feats scp file for Kaldi"""
         feats_path = os.path.join(self.corpus_output_directory, "feats.scp")
         with Session(self.db_engine) as session, open(feats_path, "w", encoding="utf8") as f:
-            ids = session.execute(
-                sqlalchemy.select(Utterance.id, Utterance.speaker_id, Utterance.features)
-                .where(Utterance.features is None)
+            utterances = (
+                session.query(Utterance.kaldi_id, Utterance.features)
+                .filter_by(ignored=False)
                 .order_by(Utterance.kaldi_id)
             )
-            for utterance, speaker, features in ids:
-                f.write(f"{speaker}-{utterance} {features}\n")
+            for u_id, features in utterances:
+                f.write(f"{u_id} {features}\n")
 
     def get_feat_dim(self) -> int:
         """
