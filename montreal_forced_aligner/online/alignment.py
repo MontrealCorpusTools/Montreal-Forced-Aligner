@@ -100,14 +100,18 @@ class OnlineAlignmentFunction(KaldiFunction):
     def run(self):
         wav_path = os.path.join(self.working_directory, "wav.scp")
         likelihood_path = os.path.join(self.working_directory, "likelihoods.scp")
-        # feats_path = os.path.join(self.working_directory, "feats.scp")
-        # cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
-        # spk2utt_path = os.path.join(self.working_directory, "spk2utt.scp")
-        # utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
+        feat_path = os.path.join(self.working_directory, "feats.scp")
+        cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
+        utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
         segment_path = os.path.join(self.working_directory, "segments.scp")
         text_int_path = os.path.join(self.working_directory, "text.int")
         lda_mat_path = os.path.join(self.working_directory, "lda.mat")
         fst_path = os.path.join(self.working_directory, "fsts.ark")
+        if self.align_options["boost_silence"] != 1.0:
+            mdl_string = f"gmm-boost-silence --boost={self.align_options['boost_silence']} {self.align_options['optional_silence_csl']} {self.model_path} - |"
+
+        else:
+            mdl_string = self.model_path
         if not os.path.exists(lda_mat_path):
             lda_mat_path = None
         with open(self.log_path, "w") as log_file:
@@ -126,127 +130,150 @@ class OnlineAlignmentFunction(KaldiFunction):
                 env=os.environ,
             )
             proc.communicate()
-            use_pitch = self.pitch_options.pop("use-pitch")
-            mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
-            for k, v in self.mfcc_options.items():
-                mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-            mfcc_base_command += ["ark:-", "ark:-"]
-            seg_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("extract-segments"),
-                    f"scp:{wav_path}",
-                    segment_path,
-                    "ark:-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                env=os.environ,
-            )
-            mfcc_proc = subprocess.Popen(
-                mfcc_base_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=seg_proc.stdout,
-                env=os.environ,
-            )
-            if use_pitch:
-                pitch_base_command = [
-                    thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
-                    "--verbose=2",
-                ]
-                for k, v in self.pitch_options.items():
-                    pitch_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-                    if k == "delta-pitch":
-                        pitch_base_command.append(f"--delta-pitch-noise-stddev={make_safe(v)}")
-                pitch_command = " ".join(pitch_base_command)
-                if os.path.exists(segment_path):
-                    segment_command = f"extract-segments scp:{wav_path} {segment_path} ark:- | "
-                    pitch_input = "ark:-"
+            if not os.path.exists(feat_path):
+                use_pitch = self.pitch_options.pop("use-pitch")
+                mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
+                for k, v in self.mfcc_options.items():
+                    mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
+                mfcc_base_command += ["ark:-", "ark:-"]
+                seg_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("extract-segments"),
+                        f"scp:{wav_path}",
+                        segment_path,
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                mfcc_proc = subprocess.Popen(
+                    mfcc_base_command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=seg_proc.stdout,
+                    env=os.environ,
+                )
+                if use_pitch:
+                    pitch_base_command = [
+                        thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
+                        "--verbose=2",
+                    ]
+                    for k, v in self.pitch_options.items():
+                        pitch_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
+                        if k == "delta-pitch":
+                            pitch_base_command.append(f"--delta-pitch-noise-stddev={make_safe(v)}")
+                    pitch_command = " ".join(pitch_base_command)
+                    if os.path.exists(segment_path):
+                        segment_command = (
+                            f"extract-segments scp:{wav_path} {segment_path} ark:- | "
+                        )
+                        pitch_input = "ark:-"
+                    else:
+                        segment_command = ""
+                        pitch_input = f"scp:{wav_path}"
+                    pitch_feat_string = (
+                        f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
+                    )
+                    length_tolerance = 2
+                    feature_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("paste-feats"),
+                            f"--length-tolerance={length_tolerance}",
+                            "ark:-",
+                            pitch_feat_string,
+                            "ark:-",
+                        ],
+                        stdin=mfcc_proc.stdout,
+                        env=os.environ,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
                 else:
-                    segment_command = ""
-                    pitch_input = f"scp:{wav_path}"
-                pitch_feat_string = (
-                    f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
-                )
-                length_tolerance = 2
-                feature_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("paste-feats"),
-                        f"--length-tolerance={length_tolerance}",
-                        "ark:-",
-                        pitch_feat_string,
-                        "ark:-",
-                    ],
-                    stdin=mfcc_proc.stdout,
+                    feature_proc = mfcc_proc
+                cvmn_proc = subprocess.Popen(
+                    [thirdparty_binary("apply-cmvn-sliding"), "--center", "ark:-", "ark:-"],
+                    stdin=feature_proc.stdout,
                     env=os.environ,
                     stdout=subprocess.PIPE,
                     stderr=log_file,
+                )
+                if lda_mat_path is not None:
+                    splice_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("splice-feats"),
+                            f'--left-context={self.feature_options["splice_left_context"]}',
+                            f'--right-context={self.feature_options["splice_right_context"]}',
+                            "ark:-",
+                            "ark:-",
+                        ],
+                        stdin=cvmn_proc.stdout,
+                        env=os.environ,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                    transform_proc = subprocess.Popen(
+                        [thirdparty_binary("transform-feats"), lda_mat_path, "ark:-", "ark:-"],
+                        stdin=splice_proc.stdout,
+                        env=os.environ,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                elif self.feature_options["uses_deltas"]:
+                    transform_proc = subprocess.Popen(
+                        [thirdparty_binary("add-deltas"), "ark:-", "ark:-"],
+                        stdin=cvmn_proc.stdout,
+                        env=os.environ,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                    )
+                # Features done, alignment
+                align_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-align-compiled"),
+                        f"--transition-scale={self.align_options['transition_scale']}",
+                        f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                        f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                        f"--beam={self.align_options['beam']}",
+                        f"--retry-beam={self.align_options['retry_beam']}",
+                        "--careful=false",
+                        mdl_string,
+                        f"ark:{fst_path}",
+                        "ark:-",
+                        "ark:-",
+                        f"ark,t:{likelihood_path}",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    encoding="utf8",
+                    stdin=transform_proc.stdout,
+                    env=os.environ,
                 )
             else:
-                feature_proc = mfcc_proc
-            cvmn_proc = subprocess.Popen(
-                [thirdparty_binary("apply-cmvn-sliding"), "--center", "ark:-", "ark:-"],
-                stdin=feature_proc.stdout,
-                env=os.environ,
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-            )
-            if lda_mat_path is not None:
-                splice_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("splice-feats"),
-                        f'--left-context={self.feature_options["splice_left_context"]}',
-                        f'--right-context={self.feature_options["splice_right_context"]}',
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=cvmn_proc.stdout,
-                    env=os.environ,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                )
-                transform_proc = subprocess.Popen(
-                    [thirdparty_binary("transform-feats"), lda_mat_path, "ark:-", "ark:-"],
-                    stdin=splice_proc.stdout,
-                    env=os.environ,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                )
-            elif self.feature_options["uses_deltas"]:
-                transform_proc = subprocess.Popen(
-                    [thirdparty_binary("add-deltas"), "ark:-", "ark:-"],
-                    stdin=cvmn_proc.stdout,
-                    env=os.environ,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                )
-            # Features done, alignment
-            if self.align_options["boost_silence"] != 1.0:
-                mdl_string = f"gmm-boost-silence --boost={self.align_options['boost_silence']} {self.align_options['optional_silence_csl']} {self.model_path} - |"
-
-            else:
-                mdl_string = self.model_path
-            align_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("gmm-align-compiled"),
-                    f"--transition-scale={self.align_options['transition_scale']}",
-                    f"--acoustic-scale={self.align_options['acoustic_scale']}",
-                    f"--self-loop-scale={self.align_options['self_loop_scale']}",
-                    f"--beam={self.align_options['beam']}",
-                    f"--retry-beam={self.align_options['retry_beam']}",
-                    "--careful=false",
-                    mdl_string,
-                    f"ark:{fst_path}",
-                    "ark:-",
-                    "ark:-",
-                    f"ark,t:{likelihood_path}",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=log_file,
-                encoding="utf8",
-                stdin=transform_proc.stdout,
-                env=os.environ,
-            )
+                feat_string = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+                if lda_mat_path is not None:
+                    feat_string += f" splice-feats --left-context={self.feature_options['splice_left_context']} --right-context={self.feature_options['splice_right_context']} ark:- ark:- |"
+                    feat_string += f" transform-feats {lda_mat_path} ark:- ark:- |"
+                    align_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("gmm-align-compiled"),
+                            f"--transition-scale={self.align_options['transition_scale']}",
+                            f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                            f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                            f"--beam={self.align_options['beam']}",
+                            f"--retry-beam={self.align_options['retry_beam']}",
+                            "--careful=false",
+                            mdl_string,
+                            f"ark:{fst_path}",
+                            feat_string,
+                            "ark:-",
+                            f"ark,t:{likelihood_path}",
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                        encoding="utf8",
+                        env=os.environ,
+                    )
             lin_proc = subprocess.Popen(
                 [
                     thirdparty_binary("linear-to-nbest"),

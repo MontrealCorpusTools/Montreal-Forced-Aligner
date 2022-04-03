@@ -49,6 +49,7 @@ def test_validate_training_corpus(
     run_validate_corpus(args)
 
 
+@pytest.mark.skip("Outdated models")
 def test_validate_missing_phones(
     multilingual_ipa_tg_corpus_dir,
     german_prosodylab_acoustic_model,

@@ -251,8 +251,12 @@ class File(Base):
         order_by="SpeakerOrdering.index",
         collection_class=ordering_list("index"),
     )
-    text_file: TextFile = relationship("TextFile", back_populates="file", uselist=False)
-    sound_file: SoundFile = relationship("SoundFile", back_populates="file", uselist=False)
+    text_file: TextFile = relationship(
+        "TextFile", back_populates="file", uselist=False, cascade="all, delete-orphan"
+    )
+    sound_file: SoundFile = relationship(
+        "SoundFile", back_populates="file", uselist=False, cascade="all, delete-orphan"
+    )
     utterances = relationship(
         "Utterance",
         back_populates="file",
@@ -285,9 +289,6 @@ class File(Base):
             if s.speaker.name == speaker_name:
                 return True
         return False
-
-    def to_data(self):
-        return File
 
     def save(
         self,

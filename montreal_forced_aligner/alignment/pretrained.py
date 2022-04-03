@@ -367,7 +367,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
             sox_string = utterance.file.sound_file.sound_file_path
         text_int_path = os.path.join(self.working_directory, "text.int")
         with open(text_int_path, "w", encoding="utf8") as f:
-            f.write(f'0 {" ".join(str(x) for x in utterance.normalized_text_int)}\n')
+            f.write(f"{utterance.kaldi_id} {utterance.normalized_text_int}\n")
         if utterance.features:
             feats_path = os.path.join(self.working_directory, "feats.scp")
             with open(feats_path, "w", encoding="utf8") as f:
