@@ -837,7 +837,9 @@ class MfaModel(abc.ABC):
         """Directory that pretrained models are saved in"""
         from .config import get_temporary_directory
 
-        return os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
+        path = os.path.join(get_temporary_directory(), "pretrained_models", cls.model_type)
+        os.makedirs(path, exist_ok=True)
+        return path
 
     @classmethod
     def get_available_models(cls) -> List[str]:
