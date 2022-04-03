@@ -82,12 +82,11 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         os.makedirs(self.output_directory, exist_ok=True)
         self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         if training_configuration is None:
-            training_configuration = TrainableAligner.default_training_configurations
+            training_configuration = TrainableAligner.default_training_configurations()
         for k, v in training_configuration:
             self.add_config(k, v)
 
     @classmethod
-    @property
     def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
         """Default MFA training configuration"""
         training_params = []
@@ -181,7 +180,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             if training_params:
                 use_default = False
         if use_default:  # default training configuration
-            training_params = TrainableAligner.default_training_configurations
+            training_params = TrainableAligner.default_training_configurations()
         if training_params:
             if training_params[0][0] != "monophone":
                 raise ConfigError("The first round of training must be monophone.")
