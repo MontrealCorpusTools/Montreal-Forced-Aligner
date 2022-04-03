@@ -11,7 +11,7 @@ dependencies:
   - pyyaml
   - praatio
   - dataclassy
-  - sqlalchemy
+  - sqlalchemy>=1.4
   - pip
   - pip:
       - sphinxemoji

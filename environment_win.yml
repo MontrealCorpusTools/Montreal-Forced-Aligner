@@ -14,4 +14,4 @@ dependencies:
   - sox
   - praatio
   - biopython
-  - sqlalchemy
+  - sqlalchemy>=1.4
