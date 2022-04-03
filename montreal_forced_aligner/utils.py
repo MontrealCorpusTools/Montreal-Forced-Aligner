@@ -370,16 +370,14 @@ class KaldiProcessWorker(mp.Process):
     ----------
     job_name: int
         Integer number of job
-    job_q: :class:`~multiprocessing.Queue`
-        Job queue to pull arguments from
+    return_q: :class:`~multiprocessing.Queue`
+        Queue for returning results
     function: KaldiFunction
         Multiprocessing function to call on arguments from job_q
-    return_dict: dict
+    error_dict: dict
         Dictionary for collecting errors
     stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check
-    return_info: dict[int, Any], optional
-        Optional dictionary to fill if the function should return information to main thread
     """
 
     def __init__(
@@ -387,7 +385,7 @@ class KaldiProcessWorker(mp.Process):
         job_name: int,
         return_q: mp.Queue,
         function: KaldiFunction,
-        error_dict: dict,
+        error_dict: Dict,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)

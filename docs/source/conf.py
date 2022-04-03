@@ -268,11 +268,8 @@ nitpick_ignore = [
     ("py:class", "CtmErrorDict"),
     ("py:class", "kwargs"),
     ("py:class", "Labels"),
-    ("py:class", "ScpType"),
     ("py:class", "multiprocessing.Value"),
     ("py:class", "praatio.utilities.constants.Interval"),
-    ("py:class", "CorpusMappingType"),
-    ("py:class", "DictionaryEntryType"),
     ("py:class", "montreal_forced_aligner.abc.MetaDict"),
     ("py:class", "multiprocessing.context.Process"),
 ]

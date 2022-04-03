@@ -9,7 +9,7 @@ import os
 import sys
 import traceback
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import sqlalchemy
 import sqlalchemy.engine
@@ -28,15 +28,6 @@ from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.utils import Counter, Stopped
-
-if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
-    from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
-
-    FileInfoDict = Dict[
-        str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
-    ]
-
 
 __all__ = ["AcousticDirectoryParser", "CorpusProcessWorker", "Job"]
 

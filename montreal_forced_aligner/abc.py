@@ -40,39 +40,18 @@ __all__ = [
     "MfaWorker",
     "TopLevelMfaWorker",
     "MetaDict",
-    "MappingType",
     "CtmErrorDict",
     "FileExporterMixin",
     "ModelExporterMixin",
     "TemporaryDirectoryMixin",
     "AdapterMixin",
     "TrainerMixin",
-    "DictionaryEntryType",
-    "ReversedMappingType",
-    "WordsType",
-    "OneToOneMappingType",
-    "OneToManyMappingType",
-    "CorpusMappingType",
-    "ScpType",
     "KaldiFunction",
 ]
 
 # Configuration types
 MetaDict = Dict[str, Any]
 CtmErrorDict: Dict[Tuple[str, int], str]
-
-# Dictionary types
-DictionaryEntryType: List[Dict[str, Union[Tuple[str], float, None, int]]]
-ReversedMappingType: Dict[int, str]
-WordsType: Dict[str, DictionaryEntryType]
-MappingType: Dict[str, int]
-
-# Corpus types
-OneToOneMappingType: Dict[str, str]
-OneToManyMappingType: Dict[str, List[str]]
-
-CorpusMappingType: Union[OneToOneMappingType, OneToManyMappingType]
-ScpType: Union[List[Tuple[str, str]], List[Tuple[str, List[Any]]]]
 
 
 class KaldiFunction(metaclass=abc.ABCMeta):
