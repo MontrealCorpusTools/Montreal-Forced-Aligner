@@ -6,7 +6,7 @@ from montreal_forced_aligner.command_line.classify_speakers import run_classify_
 from montreal_forced_aligner.command_line.mfa import parser
 
 
-@pytest.skip("Speaker diarization functionality disabled.")
+@pytest.mark.skip("Speaker diarization functionality disabled.")
 def test_cluster(
     basic_corpus_dir,
     sick_dict_path,

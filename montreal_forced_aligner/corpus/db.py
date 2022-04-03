@@ -286,6 +286,9 @@ class File(Base):
                 return True
         return False
 
+    def to_data(self):
+        return File
+
     def save(
         self,
         output_directory: typing.Optional[str] = None,
