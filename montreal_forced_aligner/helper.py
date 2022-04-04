@@ -8,7 +8,6 @@ from __future__ import annotations
 import functools
 import itertools
 import json
-import sys
 import typing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
@@ -19,7 +18,7 @@ import yaml
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict, ScpType
+    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict
     from montreal_forced_aligner.data import WordData
     from montreal_forced_aligner.textgrid import CtmInterval
 
@@ -29,7 +28,6 @@ __all__ = [
     "comma_join",
     "make_safe",
     "make_scp_safe",
-    "save_scp",
     "load_scp",
     "load_scp_safe",
     "score_wer",
@@ -541,11 +539,6 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
     CorpusMappingType is either a dictionary of key to value for
     one-to-one mapping case and a dictionary of key to list of values for one-to-many case.
 
-    See Also
-    --------
-    :func:`~montreal_forced_aligner.helper.save_scp`
-        For another function that saves SCPs from lists
-
     Parameters
     ----------
     mapping: CorpusMappingType
@@ -565,47 +558,6 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
             elif not skip_safe:
                 v = make_scp_safe(v)
             f.write(f"{make_scp_safe(k)} {v}\n")
-
-
-def save_scp(
-    scp: ScpType, path: str, sort: Optional[bool] = True, multiline: Optional[bool] = False
-) -> None:
-    """
-    Helper function to save an arbitrary SCP.
-
-    ScpType is either a list of tuples (str, str) for one-to-one mapping files or
-    a list of tuples (str, list) for one-to-many mappings.
-
-    See Also
-    --------
-    :kaldi_docs:`io#io_sec_scp_details`
-        For more information on the SCP format
-
-    Parameters
-    ----------
-    scp: ScpType
-        SCP to save
-    path: str
-        File path
-    sort: bool, optional
-        Flag for whether the output file should be sorted
-    multiline: bool, optional
-        Flag for whether the SCP contains multiline data (i.e., utterance FSTs)
-    """
-    if sys.platform == "win32":
-        newline = ""
-    else:
-        newline = None
-    if not scp:
-        return
-    with open(path, "w", encoding="utf8", newline=newline) as f:
-        if sort:
-            scp = sorted(scp)
-        for line in scp:
-            if multiline:
-                f.write(f"{make_safe(line[0])}\n{make_safe(line[1])}\n")
-            else:
-                f.write(f"{' '.join(map(make_safe, line))}\n")
 
 
 def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:

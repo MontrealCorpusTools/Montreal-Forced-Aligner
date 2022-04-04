@@ -6,12 +6,11 @@ import multiprocessing as mp
 import os
 import re
 import shutil
-import statistics
 import subprocess
 import time
 from abc import abstractmethod
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List
 
 import sqlalchemy.engine
 import tqdm
@@ -25,23 +24,18 @@ from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import align_phones
 from montreal_forced_aligner.models import AcousticModel
-from montreal_forced_aligner.textgrid import process_ctm_line
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
     Stopped,
     log_kaldi_errors,
     parse_logs,
-    run_mp,
-    run_non_mp,
     thirdparty_binary,
 )
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.corpus.multiprocessing import Job
-    from montreal_forced_aligner.textgrid import CtmInterval
 
 
 __all__ = ["AcousticModelTrainingMixin"]
@@ -55,206 +49,6 @@ class AlignmentImprovementArguments(MfaArguments):
     ali_paths: Dict[str, str]
     frame_shift: int
     phone_ctm_paths: Dict[str, str]
-
-
-def compute_alignment_improvement_func(
-    log_path: str,
-    dictionaries: List[str],
-    model_path: str,
-    text_int_paths: Dict[str, str],
-    word_boundary_paths: Dict[str, str],
-    ali_paths: Dict[str, str],
-    frame_shift: int,
-    reversed_phone_mappings: Dict[int, str],
-    positions: List[str],
-    phone_ctm_paths: Dict[str, str],
-) -> None:
-    """
-    Multiprocessing function for computing alignment improvement over training
-
-    See Also
-    --------
-    :meth:`.AcousticModelTrainingMixin.compute_alignment_improvement`
-        Main function that calls this function in parallel
-    :meth:`.AcousticModelTrainingMixin.alignment_improvement_arguments`
-        Job method for generating arguments for the helper function
-    :kaldi_src:`linear-to-nbest`
-        Relevant Kaldi binary
-    :kaldi_src:`lattice-determinize-pruned`
-        Relevant Kaldi binary
-    :kaldi_src:`lattice-align-words`
-        Relevant Kaldi binary
-    :kaldi_src:`lattice-to-phone-lattice`
-        Relevant Kaldi binary
-    :kaldi_src:`nbest-to-ctm`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    model_path: str
-        Path to the acoustic model file
-    text_int_paths: dict[str, str]
-        Dictionary of text int files per dictionary name
-    word_boundary_paths: dict[str, str]
-        Dictionary of word boundary files per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    frame_shift: int
-        Frame shift of feature generation, in ms
-    reversed_phone_mappings: dict[str, dict[int, str]]
-        Mapping of phone IDs to phone labels per dictionary name
-    positions: dict[str, list[str]]
-        Positions per dictionary name
-    phone_ctm_paths: dict[str, str]
-        Dictionary of phone ctm files per dictionary name
-    """
-    try:
-
-        frame_shift = frame_shift / 1000
-        with open(log_path, "w", encoding="utf8") as log_file:
-            for dict_name in dictionaries:
-                text_int_path = text_int_paths[dict_name]
-                ali_path = ali_paths[dict_name]
-                phone_ctm_path = phone_ctm_paths[dict_name]
-                word_boundary_path = word_boundary_paths[dict_name]
-                if os.path.exists(phone_ctm_path):
-                    continue
-
-                lin_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("linear-to-nbest"),
-                        f"ark:{ali_path}",
-                        f"ark:{text_int_path}",
-                        "",
-                        "",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                det_proc = subprocess.Popen(
-                    [thirdparty_binary("lattice-determinize-pruned"), "ark:-", "ark:-"],
-                    stdin=lin_proc.stdout,
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-                align_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-align-words"),
-                        word_boundary_path,
-                        model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=det_proc.stdout,
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-                phone_proc = subprocess.Popen(
-                    [thirdparty_binary("lattice-to-phone-lattice"), model_path, "ark:-", "ark:-"],
-                    stdin=align_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                nbest_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("nbest-to-ctm"),
-                        f"--frame-shift={frame_shift}",
-                        "ark:-",
-                        phone_ctm_path,
-                    ],
-                    stdin=phone_proc.stdout,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                nbest_proc.communicate()
-                mapping = reversed_phone_mappings
-                actual_lines = []
-                with open(phone_ctm_path, "r", encoding="utf8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line == "":
-                            continue
-                        line = line.split(" ")
-                        utt = line[0]
-                        begin = float(line[2])
-                        duration = float(line[3])
-                        end = begin + duration
-                        label = line[4]
-                        try:
-                            label = mapping[int(label)]
-                        except KeyError:
-                            pass
-                        for p in positions:
-                            if label.endswith(p):
-                                label = label[: -1 * len(p)]
-                        actual_lines.append([utt, begin, end, label])
-                with open(phone_ctm_path, "w", encoding="utf8") as f:
-                    for line in actual_lines:
-                        f.write(f"{' '.join(map(str, line))}\n")
-    except Exception as e:
-        raise (Exception(str(e)))
-
-
-def compare_alignments(
-    alignments_one: Dict[str, List[CtmInterval]],
-    alignments_two: Dict[str, List[CtmInterval]],
-    silence_phone: str,
-    oov_phone: str,
-) -> Tuple[Optional[int], Optional[float]]:
-    """
-    Compares two sets of alignments for difference
-
-    See Also
-    --------
-    :meth:`.AcousticModelTrainingMixin.compute_alignment_improvement`
-        Main function that calls this function
-
-    Parameters
-    ----------
-    alignments_one: dict[str, list[tuple[float, float, str]]]
-        First set of alignments
-    alignments_two: dict[str, list[tuple[float, float, str]]]
-        Second set of alignments
-    silence_phone: str
-        Label of optional silence phone
-    oov_phone: str
-        Label of OOV phone
-
-    Returns
-    -------
-    Optional[int]
-        Difference in number of aligned files
-    Optional[float]
-        Mean boundary difference between the two alignments
-    """
-    utterances_aligned_diff = len(alignments_two) - len(alignments_one)
-    utts_one = set(alignments_one.keys())
-    utts_two = set(alignments_two.keys())
-    common_utts = utts_one.intersection(utts_two)
-    differences = []
-    for u in common_utts:
-        one_alignment = alignments_one[u]
-        two_alignment = alignments_two[u]
-        avg_overlap_diff, phone_error_rate = align_phones(
-            one_alignment, two_alignment, silence_phone, set(oov_phone)
-        )
-        if avg_overlap_diff is None:
-            return None, None
-        differences.append(avg_overlap_diff)
-    if differences:
-        mean_difference = statistics.mean(differences)
-    else:
-        mean_difference = None
-    return utterances_aligned_diff, mean_difference
 
 
 class AcousticModelTrainingMixin(
@@ -716,85 +510,6 @@ class AcousticModelTrainingMixin(
             for f in acc_files:
                 os.remove(f)
 
-    def parse_iteration_alignments(
-        self, iteration: Optional[int] = None
-    ) -> Dict[str, List[CtmInterval]]:
-        """
-        Function to parse phone CTMs in a given iteration
-
-        Parameters
-        ----------
-        iteration: int, optional
-            Iteration to compute over
-
-        Returns
-        -------
-        dict[str, list[CtmInterval]]
-            Per utterance CtmIntervals
-        """
-        data = {}
-        for j in self.alignment_improvement_arguments():
-            for phone_ctm_path in j.phone_ctm_paths.values():
-                if iteration is not None:
-                    phone_ctm_path = phone_ctm_path.replace(
-                        f"phone.{self.iteration}", f"phone.{iteration}"
-                    )
-                with open(phone_ctm_path, "r", encoding="utf8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line == "":
-                            continue
-                        interval = process_ctm_line(line)
-                        if interval.utterance not in data:
-                            data[interval.utterance] = []
-                        data[interval.utterance].append(interval)
-        return data
-
-    def compute_alignment_improvement(self) -> None:
-        """
-        Computes aligner improvements in terms of number of aligned files and phone boundaries
-        for debugging purposes
-        """
-        jobs = self.alignment_improvement_arguments()
-        if self.use_mp:
-            run_mp(compute_alignment_improvement_func, jobs, self.working_log_directory)
-        else:
-            run_non_mp(compute_alignment_improvement_func, jobs, self.working_log_directory)
-
-        alignment_diff_path = os.path.join(self.working_directory, "train_change.csv")
-        if self.iteration == 0 or self.iteration not in self.realignment_iterations:
-            return
-        ind = self.realignment_iterations.index(self.iteration)
-        if ind != 0:
-            previous_iteration = self.realignment_iterations[ind - 1]
-        else:
-            previous_iteration = 0
-        try:
-            previous_alignments = self.parse_iteration_alignments(previous_iteration)
-        except FileNotFoundError:
-            return
-        current_alignments = self.parse_iteration_alignments()
-        utterance_aligned_diff, mean_difference = compare_alignments(
-            previous_alignments, current_alignments, self.optional_silence_phone, self.oov_phone
-        )
-        if utterance_aligned_diff:
-            self.log_warning(
-                "Cannot compare alignments, install the biopython package to use this functionality."
-            )
-            return
-        if not os.path.exists(alignment_diff_path):
-            with open(alignment_diff_path, "w", encoding="utf8") as f:
-                f.write(
-                    "iteration,number_aligned,number_previously_aligned,"
-                    "difference_in_utts_aligned,mean_boundary_change\n"
-                )
-        if self.iteration in self.realignment_iterations:
-            with open(alignment_diff_path, "a", encoding="utf8") as f:
-                f.write(
-                    f"{self.iteration},{len(current_alignments)},{len(previous_alignments)},"
-                    f"{utterance_aligned_diff},{mean_difference}\n"
-                )
-
     def align_iteration(self):
         begin = time.time()
         self.align_utterances()
@@ -807,8 +522,6 @@ class AcousticModelTrainingMixin(
         self.log_debug(
             f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
         )
-        if self.debug and False:
-            self.compute_alignment_improvement()
 
     def train_iteration(self):
         """Perform an iteration of training"""

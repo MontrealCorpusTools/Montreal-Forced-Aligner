@@ -358,7 +358,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ) as pbar:
             phone_interval_mappings = []
             word_interval_mappings = []
-            if False and self.use_mp:
+            if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
                 return_queue = manager.Queue()

@@ -67,7 +67,7 @@ def test_transcribe_arpa(
         "--clean",
         "--debug",
         "-v",
-        "--disable_mp",
+        "--use_mp",
         "false",
         "--config_path",
         transcribe_config_path,

@@ -273,27 +273,6 @@ class PronunciationDictionaryMixin(TemporaryDictionaryMixin):
         """Return the number of pronunciations across all words"""
         return sum(len(x.pronunciations) for x in self.words.values())
 
-    def exclude_for_alignment(self, word: str) -> bool:
-        """
-        Check for whether to exclude a word from alignment lexicons (if there is a word set in the dictionary,
-        checks whether the given string is in the word set)
-
-        Parameters
-        ----------
-        word: str
-            Word to check
-
-        Returns
-        -------
-        bool
-            True if there is no word set on the dictionary, or if the word is in the given word set
-        """
-        if self.lexicon_word_set is None:
-            return False
-        if word not in self.lexicon_word_set and word not in self.clitic_set:
-            return True
-        return False
-
     def generate_mappings(self) -> None:
         """
         Generate word mappings from text to integer IDs
