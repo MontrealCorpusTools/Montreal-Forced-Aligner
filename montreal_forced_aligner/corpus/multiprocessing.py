@@ -154,7 +154,7 @@ class CorpusProcessWorker(mp.Process):
         finished_adding: Stopped,
         speaker_characters: Union[int, str],
         sanitize_function: Optional[MultispeakerSanitizationFunction],
-        sample_rate: int,
+        sample_rate: Optional[int],
     ):
         mp.Process.__init__(self)
         self.name = str(name)

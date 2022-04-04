@@ -720,10 +720,10 @@ def sat_train_config_path(config_directory):
 
 
 @pytest.fixture(scope="session")
-def multispeaker_dictionary_config_path(generated_dir, sick_dict_path):
+def multispeaker_dictionary_config_path(generated_dir, sick_dict_path, english_dictionary):
     path = os.path.join(generated_dir, "multispeaker_dictionary.yaml")
     with open(path, "w", encoding="utf8") as f:
-        yaml.safe_dump({"default": "english", "michael": sick_dict_path}, f)
+        yaml.safe_dump({"default": english_dictionary, "michael": sick_dict_path}, f)
     return path
 
 

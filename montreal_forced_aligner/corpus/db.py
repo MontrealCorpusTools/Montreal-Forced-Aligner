@@ -250,6 +250,7 @@ class File(Base):
         back_populates="file",
         order_by="SpeakerOrdering.index",
         collection_class=ordering_list("index"),
+        cascade="all, delete-orphan",
     )
     text_file: TextFile = relationship(
         "TextFile", back_populates="file", uselist=False, cascade="all, delete-orphan"
@@ -262,6 +263,7 @@ class File(Base):
         back_populates="file",
         order_by="Utterance.begin",
         collection_class=ordering_list("begin"),
+        cascade="all, delete-orphan",
     )
 
     @property
