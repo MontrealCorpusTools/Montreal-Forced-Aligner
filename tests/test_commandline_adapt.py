@@ -20,6 +20,8 @@ def test_adapt_basic(
         english_dictionary,
         english_acoustic_model,
         adapted_model_path,
+        "--beam",
+        "100",
         "-t",
         temp_dir,
         "--clean",
@@ -33,20 +35,20 @@ def test_adapt_basic(
 # @pytest.mark.skip(reason='Optimization')
 def test_adapt_multilingual(
     multilingual_ipa_corpus_dir,
-    ipa_speaker_dict_path,
+    mfa_speaker_dict_path,
     generated_dir,
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
-    english_ipa_acoustic_model,
+    english_mfa_acoustic_model,
 ):
     adapted_model_path = os.path.join(generated_dir, "multilingual_adapted.zip")
     output_path = os.path.join(generated_dir, "multilingual_output")
     command = [
         "adapt",
         multilingual_ipa_corpus_dir,
-        ipa_speaker_dict_path,
-        english_ipa_acoustic_model,
+        mfa_speaker_dict_path,
+        english_mfa_acoustic_model,
         adapted_model_path,
         output_path,
         "-t",

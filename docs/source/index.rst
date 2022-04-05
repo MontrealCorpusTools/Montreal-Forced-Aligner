@@ -2,79 +2,77 @@
 Montreal Forced Aligner documentation
 =====================================
 
-.. panels::
-    :card: + intro-card text-center
-    :column: col-lg-6 col-md-6 col-sm-6 col-xs-12 d-flex
+.. grid:: 2
 
-    ---
-    .. raw:: html
+    .. grid-item-card:: Getting started
+       :text-align: center
 
-       <i class="fas fa-running fa-4x i-navigation"></i>
+       :fas:`running;fa-6x i-navigation`
 
-    Getting started
-    ^^^^^^^^^^^^^^^
+       ^^^
 
-    Install the Montreal Forced Aligner and get started with examples and tutorials.
+       Install the Montreal Forced Aligner and get started with examples and tutorials.
 
-    +++
+       +++
 
-    .. link-button:: getting_started
-            :type: ref
-            :text: Install MFA
-            :classes: btn-block btn-primary btn-navigation stretched-link
+       .. button-ref:: getting_started
+          :expand:
+          :color: primary
 
-    ---
-    .. raw:: html
+          Install MFA
 
-       <i class="fas fa-terminal fa-4x i-navigation"></i>
+    .. grid-item-card:: First steps
+       :text-align: center
 
-    First steps
-    ^^^^^^^^^^^
+       :fas:`terminal;fa-6x i-navigation`
 
-    Have a particular use case for MFA?
+       ^^^
 
-    Check out the first steps tutorials.
+       Have a particular use case for MFA?
 
-    +++
+       Check out the first steps tutorials.
 
-    .. link-button:: first_steps
-            :type: ref
-            :text: First steps
-            :classes: btn-block btn-primary btn-navigation stretched-link
+       +++
 
-    ---
-    .. raw:: html
+       .. button-ref:: first_steps
+          :expand:
+          :color: primary
 
-       <i class="fas fa-book-open fa-4x i-navigation"></i>
+          First steps
 
-    User guide
-    ^^^^^^^^^^
+    .. grid-item-card:: User guide
+       :text-align: center
 
-    The User Guide gives more details on input formats, available commands, and details on the various workflows available.
+       :fas:`book-open;fa-6x i-navigation`
 
-    +++
+       ^^^
 
-    .. link-button:: user_guide
-            :type: ref
-            :text: User guide
-            :classes: btn-block btn-primary btn-navigation stretched-link
+       The User Guide gives more details on input formats, available commands, and details on the various workflows available.
 
-    ---
-    .. raw:: html
+       +++
 
-       <i class="fas fa-file-code fa-4x i-navigation"></i>
+       .. button-ref:: user_guide
+          :expand:
+          :color: primary
 
-    API reference
-    ^^^^^^^^^^^^^
+          User guide
 
-    The API guide lists all the inner workings of MFA, the modules and classes that you can import and use in your own scripts and projects, along with details about the Kaldi functionality used.
+    .. grid-item-card:: API reference
+       :text-align: center
 
-    +++
+       :fas:`file-code;fa-6x i-navigation`
 
-    .. link-button:: mfa_api
-            :type: ref
-            :text: Reference guide
-            :classes: btn-block btn-primary btn-navigation stretched-link
+       ^^^
+
+       The API guide lists all the inner workings of MFA, the modules and classes that you can import and use in your own scripts and projects, along with details about the Kaldi functionality used.
+
+       +++
+
+       .. button-ref:: mfa_api
+          :expand:
+          :color: primary
+
+          Reference guide
 
 .. toctree::
    :hidden:
@@ -83,3 +81,4 @@ Montreal Forced Aligner documentation
    User guide <user_guide/index.rst>
    API reference <reference/index.rst>
    Release notes <changelog/index.rst>
+   Pretrained MFA models <https://mfa-models.readthedocs.io/>

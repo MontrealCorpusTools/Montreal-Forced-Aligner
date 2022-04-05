@@ -13,10 +13,10 @@ def test_trainer(sick_dict, sick_corpus, generated_dir):
         dictionary_path=sick_dict,
         temporary_directory=data_directory,
     )
-    assert a.final_identifier == "sat_2"
+    assert a.final_identifier == "sat_4"
     assert a.training_configs[a.final_identifier].subset == 0
-    assert a.training_configs[a.final_identifier].num_leaves == 4200
-    assert a.training_configs[a.final_identifier].max_gaussians == 40000
+    assert a.training_configs[a.final_identifier].num_leaves == 7000
+    assert a.training_configs[a.final_identifier].max_gaussians == 150000
 
 
 def test_sick_mono(
@@ -52,6 +52,20 @@ def test_sick_mono(
     a.export_files(mono_output_directory)
 
 
+def test_pronunciation_training(sick_dict, sick_corpus, generated_dir, pron_train_config_path):
+    data_directory = os.path.join(generated_dir, "temp", "pron_train_test")
+    shutil.rmtree(data_directory, ignore_errors=True)
+    args = argparse.Namespace(use_mp=True, debug=False, verbose=True)
+    a = TrainableAligner(
+        corpus_directory=sick_corpus,
+        dictionary_path=sick_dict,
+        temporary_directory=data_directory,
+        **TrainableAligner.parse_parameters(pron_train_config_path, args=args)
+    )
+    a.train()
+    a.export_model(pron_train_config_path)
+
+
 def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config_path):
     data_directory = os.path.join(generated_dir, "temp", "tri_test")
     shutil.rmtree(data_directory, ignore_errors=True)
@@ -64,6 +78,22 @@ def test_sick_tri(sick_dict, sick_corpus, generated_dir, tri_train_config_path):
         **TrainableAligner.parse_parameters(tri_train_config_path)
     )
     a.train()
+
+
+def test_pitch_feature_training(sick_dict, sick_corpus, generated_dir, pitch_train_config_path):
+    data_directory = os.path.join(generated_dir, "temp", "tri_pitch_test")
+    shutil.rmtree(data_directory, ignore_errors=True)
+    a = TrainableAligner(
+        corpus_directory=sick_corpus,
+        dictionary_path=sick_dict,
+        temporary_directory=data_directory,
+        debug=True,
+        verbose=True,
+        **TrainableAligner.parse_parameters(pitch_train_config_path)
+    )
+    assert a.use_pitch
+    a.train()
+    assert a.get_feat_dim() == 48
 
 
 def test_sick_lda(sick_dict, sick_corpus, generated_dir, lda_train_config_path):

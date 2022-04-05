@@ -8,33 +8,122 @@ import multiprocessing as mp
 import os
 import sys
 import traceback
-from queue import Empty
-from typing import TYPE_CHECKING, Any, Collection, Dict, Generator, List, Optional, Set, Union
+from queue import Empty, Queue
+from typing import Dict, Optional, Union
 
-from montreal_forced_aligner.corpus.classes import (
+import sqlalchemy
+import sqlalchemy.engine
+from sqlalchemy.orm import Session
+
+from montreal_forced_aligner.corpus.classes import FileData
+from montreal_forced_aligner.corpus.db import (
+    Dictionary,
     File,
-    FileCollection,
-    SpeakerCollection,
+    SoundFile,
+    Speaker,
+    SpeakerOrdering,
     Utterance,
-    UtteranceCollection,
 )
+from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
-from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
-from montreal_forced_aligner.helper import output_mapping
-from montreal_forced_aligner.utils import Stopped
+from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
+from montreal_forced_aligner.utils import Counter, Stopped
 
-if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import OneToManyMappingType, OneToOneMappingType
-    from montreal_forced_aligner.corpus.helper import SoundFileInfoDict
-
-    FileInfoDict = Dict[
-        str, Union[str, SoundFileInfoDict, OneToOneMappingType, OneToManyMappingType]
-    ]
-    from montreal_forced_aligner.corpus.classes import Speaker
-    from montreal_forced_aligner.dictionary import PronunciationDictionaryMixin
+__all__ = ["AcousticDirectoryParser", "CorpusProcessWorker", "Job"]
 
 
-__all__ = ["CorpusProcessWorker", "Job"]
+class AcousticDirectoryParser(mp.Process):
+    """
+    Worker for processing directories for acoustic sound files
+
+    Parameters
+    ----------
+    corpus_directory: str
+        Directory to parse
+    job_queue: Queue
+        Queue to add file names to
+    audio_directory: str
+        Directory with additional audio files
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Check for whether to exit early
+    finished_adding: :class:`~montreal_forced_aligner.utils.Stopped`
+        Check to set when the parser is done adding files to the queue
+    file_counts: :class:`~montreal_forced_aligner.utils.Counter`
+        Counter for the number of total files that the parser has found
+    """
+
+    def __init__(
+        self,
+        corpus_directory: str,
+        job_queue: Queue,
+        audio_directory: str,
+        stopped: Stopped,
+        finished_adding: Stopped,
+        file_counts: Counter,
+    ):
+        mp.Process.__init__(self)
+        self.corpus_directory = corpus_directory
+        self.job_queue = job_queue
+        self.audio_directory = audio_directory
+        self.stopped = stopped
+        self.finished_adding = finished_adding
+        self.file_counts = file_counts
+
+    def run(self) -> None:
+        """
+        Run the corpus loading job
+        """
+
+        use_audio_directory = False
+        all_sound_files = {}
+        if self.audio_directory and os.path.exists(self.audio_directory):
+            use_audio_directory = True
+            for root, _, files in os.walk(self.audio_directory, followlinks=True):
+                exts = find_exts(files)
+                wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
+                other_audio_files = {
+                    k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
+                }
+                all_sound_files.update(other_audio_files)
+                all_sound_files.update(wav_files)
+        for root, _, files in os.walk(self.corpus_directory, followlinks=True):
+            exts = find_exts(files)
+            relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
+
+            if self.stopped.stop_check():
+                break
+            if not use_audio_directory:
+                all_sound_files = {}
+                exts.wav_files = {k: os.path.join(root, v) for k, v in exts.wav_files.items()}
+                exts.other_audio_files = {
+                    k: os.path.join(root, v) for k, v in exts.other_audio_files.items()
+                }
+                all_sound_files.update(exts.other_audio_files)
+                all_sound_files.update(exts.wav_files)
+            for file_name in exts.identifiers:
+                if self.stopped.stop_check():
+                    break
+                wav_path = None
+                transcription_path = None
+                if file_name in all_sound_files:
+                    wav_path = all_sound_files[file_name]
+                if file_name in exts.lab_files:
+                    lab_name = exts.lab_files[file_name]
+                    transcription_path = os.path.join(root, lab_name)
+
+                elif file_name in exts.textgrid_files:
+                    tg_name = exts.textgrid_files[file_name]
+                    transcription_path = os.path.join(root, tg_name)
+                if wav_path is None and transcription_path is None:  # Not a file for MFA
+                    continue
+                if wav_path is None:
+                    continue
+                self.job_queue.put(
+                    (file_name, wav_path, transcription_path, relative_path), timeout=10
+                )
+                self.file_counts.increment()
+
+        self.finished_adding.stop()
 
 
 class CorpusProcessWorker(mp.Process):
@@ -65,6 +154,7 @@ class CorpusProcessWorker(mp.Process):
         finished_adding: Stopped,
         speaker_characters: Union[int, str],
         sanitize_function: Optional[MultispeakerSanitizationFunction],
+        sample_rate: Optional[int],
     ):
         mp.Process.__init__(self)
         self.name = str(name)
@@ -76,12 +166,12 @@ class CorpusProcessWorker(mp.Process):
         self.finished_processing = Stopped()
         self.sanitize_function = sanitize_function
         self.speaker_characters = speaker_characters
+        self.sample_rate = sample_rate
 
     def run(self) -> None:
         """
         Run the corpus loading job
         """
-
         while True:
             try:
                 file_name, wav_path, text_path, relative_path = self.job_q.get(timeout=1)
@@ -93,20 +183,23 @@ class CorpusProcessWorker(mp.Process):
             if self.stopped.stop_check():
                 continue
             try:
-                file = File.parse_file(
+                file = FileData.parse_file(
                     file_name,
                     wav_path,
                     text_path,
                     relative_path,
                     self.speaker_characters,
                     self.sanitize_function,
+                    self.sample_rate,
                 )
 
-                self.return_q.put(file.multiprocessing_data)
+                self.return_q.put(file)
             except TextParseError as e:
                 self.return_dict["decode_error_files"].append(e)
             except TextGridParseError as e:
                 self.return_dict["textgrid_read_errors"][e.file_name] = e
+            except SoundFileError as e:
+                self.return_dict["sound_file_errors"][e.file_name] = e
             except Exception:
                 self.stopped.stop()
                 self.return_dict["error"] = file_name, Exception(
@@ -127,217 +220,39 @@ class Job:
     ----------
     name: int
         Job number is the job's identifier
+    db_engine: sqlalchemy.engine.Engine
+        Database engine to use in looking up relevant information
 
     Attributes
     ----------
-    speakers: list[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
-        List of speakers associated with this job
-    dictionaries: set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
-        Set of dictionaries that the job's speakers use
-    subset_utts: set[:class:`~montreal_forced_aligner.corpus.classes.Utterance`]
-        When trainers are just using a subset of the corpus, the subset of utterances on each job will be set and used to
-        filter the job's utterances
-    subset_speakers: set[:class:`~montreal_forced_aligner.corpus.classes.Speaker`]
-        When subset_utts is set, this property will be calculated as the subset of speakers that the utterances correspond to
-    subset_dictionaries: set[:class:`~montreal_forced_aligner.dictionary.PronunciationDictionary`]
-        Subset of dictionaries that the subset of speakers use
-
+    dictionary_names: list[str]
+        List of dictionary names that the job's speakers use
+    dictionary_ids: list[int]
+        List of dictionary ids that the job's speakers use
     """
 
     name: int
-    speakers: SpeakerCollection
-    dictionaries: Set[PronunciationDictionaryMixin]
 
-    def __init__(self, name: int):
+    def __init__(self, name: int, db_engine: sqlalchemy.engine.Engine):
         self.name = name
-        self.speakers = SpeakerCollection()
-        self.files = FileCollection()
-        self.dictionaries = set()
+        self.db_engine = db_engine
+        self.dictionary_names = []
+        self.dictionary_ids = []
+        with Session(self.db_engine) as session:
+            self.refresh_dictionaries(session)
 
-        self.subset_utts = set()
-        self.subset_files = set()
-        self.subset_speakers = set()
-        self.subset_dictionaries = set()
-
-    def add_speaker(self, speaker: Speaker) -> None:
-        """
-        Add a speaker to a job
-
-        Parameters
-        ----------
-        speaker: :class:`~montreal_forced_aligner.corpus.classes.Speaker`
-            Speaker to add
-        """
-        self.speakers.add_speaker(speaker)
-        for u in speaker.utterances:
-            self.files.add_file(u.file)
-        self.dictionaries.add(speaker.dictionary)
-
-    def set_subset(self, subset_utts: Optional[UtteranceCollection]) -> None:
-        """
-        Set the current subset for the trainer
-
-        Parameters
-        ----------
-        subset_utts: Collection[:class:`~montreal_forced_aligner.corpus.classes.Utterance`], optional
-            Subset of utterances for this job to use
-        """
-        self.subset_utts = set()
-        self.subset_files = set()
-        self.subset_speakers = set()
-        self.subset_dictionaries = set()
-        if subset_utts:
-            for u in subset_utts:
-                if u.speaker not in self.speakers:
-                    continue
-                self.subset_utts.add(u.name)
-                self.subset_speakers.add(u.speaker_name)
-                self.subset_files.add(u.file_name)
-                dict_name = self.speakers[u.speaker_name].dictionary_name
-                if dict_name is not None:
-                    self.subset_dictionaries.add(dict_name)
-
-    def text_scp_data(self) -> Dict[str, Dict[str, str]]:
-        """
-        Generate the job's data for Kaldi's text scp files
-
-        Returns
-        -------
-        dict[str, dict[str, str]]
-            Text for each utterance, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for utt in self.current_utterances:
-            dict_name = utt.speaker.dictionary_name
-            if not utt.text:
-                continue
-            data[dict_name][utt.name] = utt.text
-        return data
-
-    def text_int_scp_data(self) -> Dict[str, Dict[str, str]]:
-        """
-        Generate the job's data for Kaldi's text int scp files
-
-        Returns
-        -------
-        dict[str, dict[str, str]]
-            Text converted to integer IDs for each utterance, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for utt in self.current_utterances:
-            dict_name = utt.speaker.dictionary_name
-            if dict_name is None:
-                continue
-            if not utt.text:
-                continue
-            data[dict_name][utt.name] = " ".join(map(str, utt.text_int_for_scp()))
-            utt.speaker.dictionary.oovs_found.update(utt.oovs)
-        return data
-
-    def wav_scp_data(self) -> Dict[str, str]:
-        """
-        Generate the job's data for Kaldi's wav scp files
-
-        Returns
-        -------
-        dict[str, str]
-            Wav scp strings for each file, per dictionary name
-        """
-        data = {}
-        for file in self.files:
-            if any(u.is_segment for u in file.utterances):  # Segmented file
-                data[file.name] = file.for_wav_scp()
-            else:
-                for utt in file.utterances:
-                    data[utt.name] = file.for_wav_scp()
-        return data
-
-    def utt2spk_scp_data(self) -> Dict[str, Dict[str, str]]:
-        """
-        Generate the job's data for Kaldi's utt2spk scp files
-
-        Returns
-        -------
-        dict[str, dict[str, str]]
-            Utterance to speaker mapping, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for utt in self.current_utterances:
-            dict_name = utt.speaker.dictionary_name
-            data[dict_name][utt.name] = utt.speaker_name
-        return data
-
-    def feat_scp_data(self) -> Dict[str, Dict[str, str]]:
-        """
-        Generate the job's data for Kaldi's feature scp files
-
-        Returns
-        -------
-        dict[str, dict[str, str]]
-            Utterance to feature archive ID mapping, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for utt in self.current_utterances:
-            if utt.features is None:
-                continue
-            dict_name = utt.speaker.dictionary_name
-            data[dict_name][utt.name] = utt.features
-        return data
-
-    def spk2utt_scp_data(self) -> Dict[str, Dict[str, List[str]]]:
-        """
-        Generate the job's data for Kaldi's spk2utt scp files
-
-        Returns
-        -------
-        dict[str, dict[str, list[str]]]
-            Speaker to utterance mapping, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for utt in self.current_utterances:
-            dict_name = utt.speaker.dictionary_name
-            if utt.speaker_name not in data[dict_name]:
-                data[dict_name][utt.speaker_name] = []
-            data[dict_name][utt.speaker_name].append(str(utt))
-        for k, v in data.items():
-            for s, utts in v.items():
-                data[k][s] = sorted(utts)
-        return data
-
-    def cmvn_scp_data(self) -> Dict[str, Dict[str, str]]:
-        """
-        Generate the job's data for Kaldi's CMVN scp files
-
-        Returns
-        -------
-        dict[str, dict[str, str]]
-            Speaker to CMVN mapping, per dictionary name
-        """
-        data = {x: {} for x in self.current_dictionary_names}
-        for s in self.current_speakers:
-            if s.dictionary is None:
-                key = None
-            else:
-                key = s.dictionary_name
-            if s.cmvn:
-                data[key][s.name] = s.cmvn
-        return data
-
-    def segments_scp_data(self) -> Dict[str, List[Any]]:
-        """
-        Generate the job's data for Kaldi's segments scp files
-
-        Returns
-        -------
-        dict[str, list[Any]]
-            Utterance to segment mapping, per dictionary name
-        """
-        data = {}
-        for utt in self.current_utterances:
-            if not utt.is_segment:
-                continue
-            data[utt.name] = utt.segment_for_scp()
-        return data
+    def refresh_dictionaries(self, session):
+        self.dictionary_names = []
+        self.dictionary_ids = []
+        job_dict_query = (
+            session.query(Dictionary.id, Dictionary.name)
+            .join(Speaker.dictionary)
+            .filter(Speaker.job_id == self.name)
+            .distinct()
+        )
+        for dict_id, dict_name in job_dict_query:
+            self.dictionary_names.append(dict_name)
+            self.dictionary_ids.append(dict_id)
 
     def construct_path_dictionary(
         self, directory: str, identifier: str, extension: str
@@ -360,10 +275,15 @@ class Job:
             Path for each dictionary
         """
         output = {}
-        for dict_name in self.current_dictionary_names:
-            output[dict_name] = os.path.join(
-                directory, f"{identifier}.{dict_name}.{self.name}.{extension}"
-            )
+        for dict_name in self.dictionary_names:
+            if dict_name is None:
+                output[dict_name] = os.path.join(
+                    directory, f"{identifier}.{self.name}.{extension}"
+                )
+            else:
+                output[dict_name] = os.path.join(
+                    directory, f"{identifier}.{dict_name}.{self.name}.{extension}"
+                )
         return output
 
     def construct_path(self, directory: str, identifier: str, extension: str) -> str:
@@ -408,59 +328,14 @@ class Job:
             Path for each dictionary
         """
         output = {}
-        for dict_name in self.current_dictionary_names:
+        for dict_name in self.dictionary_names:
             output[dict_name] = os.path.join(directory, f"{identifier}.{dict_name}.{extension}")
         return output
 
     @property
     def dictionary_count(self):
         """Number of dictionaries currently used"""
-        if self.subset_dictionaries:
-            return len(self.subset_dictionaries)
-        return len(self.dictionaries)
-
-    @property
-    def current_dictionaries(self) -> Collection[PronunciationDictionaryMixin]:
-        """Current dictionaries depending on whether a subset is being used"""
-        if self.subset_dictionaries:
-            return [x for x in self.dictionaries if x.name in self.subset_dictionaries]
-        return self.dictionaries
-
-    @property
-    def current_dictionary_names(self) -> List[Optional[str]]:
-        """Current dictionary names depending on whether a subset is being used"""
-        if self.subset_dictionaries:
-            return sorted(self.subset_dictionaries)
-        if self.dictionaries == {None}:
-            return [None]
-        return sorted(x.name for x in self.dictionaries)
-
-    @property
-    def current_speakers(self) -> Generator[Speaker]:
-        """Current dictionary names depending on whether a subset is being used"""
-
-        return self.speakers.subset(self.subset_speakers)
-
-    @property
-    def current_utterances(self) -> Generator[Utterance]:
-        """Current dictionary names depending on whether a subset is being used"""
-        for s in self.current_speakers:
-            for u in s.utterances.subset(self.subset_utts):
-                yield u
-
-    def word_boundary_int_files(self) -> Dict[str, str]:
-        """
-        Generate mapping for dictionaries to word boundary int files
-
-        Returns
-        -------
-        dict[str, str]
-            Per dictionary word boundary int files
-        """
-        data = {}
-        for dictionary in self.current_dictionaries:
-            data[dictionary.name] = os.path.join(dictionary.phones_dir, "word_boundary.int")
-        return data
+        return len(self.dictionary_names)
 
     def output_for_features(self, split_directory: str) -> None:
         """
@@ -472,16 +347,42 @@ class Job:
             Split directory for the corpus
         """
         wav_scp_path = self.construct_path(split_directory, "wav", "scp")
-        if not os.path.exists(wav_scp_path):
-            wav_scp = self.wav_scp_data()
-            output_mapping(wav_scp, wav_scp_path, skip_safe=True)
-
         segments_scp_path = self.construct_path(split_directory, "segments", "scp")
-        if not os.path.exists(segments_scp_path):
-            segments = self.segments_scp_data()
-            output_mapping(segments, segments_scp_path)
+        if os.path.exists(segments_scp_path):
+            return
+        with Session(self.db_engine) as session:
+            with open(wav_scp_path, "w", encoding="utf8") as wav_file:
+                files = (
+                    session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)
+                    .join(File.speakers)
+                    .join(SpeakerOrdering.speaker)
+                    .join(File.sound_file)
+                    .distinct()
+                    .filter(Speaker.job_id == self.name)
+                    .order_by(File.id.cast(sqlalchemy.String))
+                )
+                for f_id, sox_string, sound_file_path in files:
+                    if not sox_string:
+                        sox_string = sound_file_path
+                    wav_file.write(f"{f_id} {sox_string}\n")
 
-    def output_to_directory(self, split_directory: str) -> None:
+            with open(segments_scp_path, "w", encoding="utf8") as segments_file:
+                utterances = (
+                    session.query(
+                        Utterance.kaldi_id,
+                        Utterance.file_id,
+                        Utterance.begin,
+                        Utterance.end,
+                        Utterance.channel,
+                    )
+                    .join(Utterance.speaker)
+                    .filter(Speaker.job_id == self.name)
+                    .order_by(Utterance.kaldi_id)
+                )
+                for u_id, f_id, begin, end, channel in utterances:
+                    segments_file.write(f"{u_id} {f_id} {begin} {end} {channel}\n")
+
+    def output_to_directory(self, split_directory: str, subset=False) -> None:
         """
         Output job information to a directory
 
@@ -490,46 +391,131 @@ class Job:
         split_directory: str
             Directory to output to
         """
+        if self.dictionary_names:
+            for dict_name in self.dictionary_names:
+                dict_pattern = f"{self.name}"
+                if dict_name is not None:
+                    dict_pattern = f"{dict_name}.{self.name}"
+                scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
+                if not os.path.exists(scp_path):
+                    break
+            else:
+                return
+        no_data = []
 
-        spk2utt = self.spk2utt_scp_data()
-        for dict_name, scp in spk2utt.items():
-            spk2utt_scp_path = os.path.join(
-                split_directory, f"spk2utt.{dict_name}.{self.name}.scp"
-            )
+        def _write_current() -> None:
+            """Write the current data to disk"""
+            if not utt2spk:
+                if _current_dict_name is not None:
+                    no_data.append(_current_dict_name)
+                return
+            dict_pattern = f"{self.name}"
+            if _current_dict_name is not None:
+                dict_pattern = f"{_current_dict_name}.{self.name}"
+            scp_path = os.path.join(split_directory, f"spk2utt.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for speaker in sorted(spk2utt.keys()):
+                    utts = " ".join(sorted(spk2utt[speaker]))
+                    f.write(f"{speaker} {utts}\n")
+            scp_path = os.path.join(split_directory, f"cmvn.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for speaker in sorted(cmvns.keys()):
+                    f.write(f"{speaker} {cmvns[speaker]}\n")
 
-            output_mapping(scp, spk2utt_scp_path)
+            scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(utt2spk.keys()):
+                    f.write(f"{utt} {utt2spk[utt]}\n")
+            scp_path = os.path.join(split_directory, f"feats.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(feats.keys()):
+                    f.write(f"{utt} {feats[utt]}\n")
+            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.int.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(text_ints.keys()):
+                    f.write(f"{utt} {text_ints[utt]}\n")
+            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(texts.keys()):
+                    f.write(f"{utt} {texts[utt]}\n")
 
-        feats = self.feat_scp_data()
-        for dict_name, scp in feats.items():
-            feats_scp_path = os.path.join(split_directory, f"feats.{dict_name}.{self.name}.scp")
-            output_mapping(scp, feats_scp_path)
-
-        cmvn = self.cmvn_scp_data()
-        for dict_name, scp in cmvn.items():
-            cmvn_scp_path = os.path.join(split_directory, f"cmvn.{dict_name}.{self.name}.scp")
-            output_mapping(scp, cmvn_scp_path)
-
-        utt2spk = self.utt2spk_scp_data()
-        for dict_name, scp in utt2spk.items():
-            utt2spk_scp_path = os.path.join(
-                split_directory, f"utt2spk.{dict_name}.{self.name}.scp"
-            )
-            output_mapping(scp, utt2spk_scp_path)
-
-        text_scp = self.text_scp_data()
-        for dict_name, scp in text_scp.items():
-            if not scp:
-                continue
-            text_scp_path = os.path.join(split_directory, f"text.{dict_name}.{self.name}.scp")
-            output_mapping(scp, text_scp_path, skip_safe=True)
-
-        text_int = self.text_int_scp_data()
-        for dict_name, scp in text_int.items():
-            if dict_name is None:
-                continue
-            if not scp:
-                continue
-            text_int_scp_path = os.path.join(
-                split_directory, f"text.{dict_name}.{self.name}.int.scp"
-            )
-            output_mapping(scp, text_int_scp_path, skip_safe=True)
+        spk2utt = {}
+        feats = {}
+        cmvns = {}
+        utt2spk = {}
+        text_ints = {}
+        texts = {}
+        _current_dict_name = None
+        with Session(self.db_engine) as session:
+            if not self.dictionary_names:
+                utterances = (
+                    session.query(
+                        Utterance.id,
+                        Utterance.speaker_id,
+                        Utterance.features,
+                        Utterance.normalized_text,
+                        Utterance.normalized_text_int,
+                        Speaker.cmvn,
+                    )
+                    .join(Utterance.speaker)
+                    .filter(Speaker.job_id == self.name)
+                    .filter(Utterance.ignored == False)  # noqa
+                    .order_by(Utterance.kaldi_id)
+                )
+                if subset:
+                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+                for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
+                    utterance = str(u_id)
+                    speaker = str(s_id)
+                    utterance = f"{speaker}-{utterance}"
+                    if speaker not in spk2utt:
+                        spk2utt[speaker] = []
+                    spk2utt[speaker].append(utterance)
+                    utt2spk[utterance] = speaker
+                    feats[utterance] = features
+                    cmvns[speaker] = cmvn
+                    text_ints[utterance] = normalized_text_int
+                    texts[utterance] = normalized_text
+                _write_current()
+                return
+            for i, _current_dict_name in enumerate(self.dictionary_names):
+                dict_id = self.dictionary_ids[i]
+                spk2utt = {}
+                feats = {}
+                cmvns = {}
+                utt2spk = {}
+                text_ints = {}
+                utterances = (
+                    session.query(
+                        Utterance.id,
+                        Utterance.speaker_id,
+                        Utterance.features,
+                        Utterance.normalized_text,
+                        Utterance.normalized_text_int,
+                        Speaker.cmvn,
+                    )
+                    .join(Utterance.speaker)
+                    .filter(Speaker.job_id == self.name)
+                    .filter(Speaker.dictionary_id == dict_id)
+                    .filter(Utterance.ignored == False)  # noqa
+                    .order_by(Utterance.kaldi_id)
+                )
+                if subset:
+                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+                for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
+                    utterance = str(u_id)
+                    speaker = str(s_id)
+                    utterance = f"{speaker}-{utterance}"
+                    if speaker not in spk2utt:
+                        spk2utt[speaker] = []
+                    spk2utt[speaker].append(utterance)
+                    utt2spk[utterance] = speaker
+                    feats[utterance] = features
+                    cmvns[speaker] = cmvn
+                    text_ints[utterance] = normalized_text_int
+                    texts[utterance] = normalized_text
+                _write_current()
+        for d in no_data:
+            ind = self.dictionary_names.index(d)
+            self.dictionary_names.pop(ind)
+            self.dictionary_ids.pop(ind)

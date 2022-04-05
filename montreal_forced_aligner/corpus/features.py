@@ -5,9 +5,11 @@ import os
 import re
 import subprocess
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
@@ -26,31 +28,29 @@ __all__ = [
 ]
 
 
-class VadArguments(NamedTuple):
+class VadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
-    log_path: str
     feats_scp_path: str
     vad_scp_path: str
     vad_options: MetaDict
 
 
-class MfccArguments(NamedTuple):
+class MfccArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
     """
 
-    log_path: str
     wav_path: str
     segment_path: str
     feats_scp_path: str
     mfcc_options: MetaDict
+    pitch_options: MetaDict
 
 
-class CalcFmllrArguments(NamedTuple):
+class CalcFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     feature_strings: Dict[str, str]
     ali_paths: Dict[str, str]
@@ -59,6 +59,17 @@ class CalcFmllrArguments(NamedTuple):
     spk2utt_paths: Dict[str, str]
     trans_paths: Dict[str, str]
     fmllr_options: MetaDict
+
+
+class ExtractIvectorsArguments(MfaArguments):
+    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
+
+    feature_string: str
+    ivector_options: MetaDict
+    ie_path: str
+    ivectors_path: str
+    model_path: str
+    dubm_path: str
 
 
 def make_safe(value: Any) -> str:
@@ -105,20 +116,25 @@ class MfccFunction(KaldiFunction):
         Arguments for the function
     """
 
-    progress_pattern = re.compile(r"^LOG.* Copied (?P<num_utterances>\d+) feature matrices.")
+    progress_pattern = re.compile(r"^LOG.* Processed (?P<num_utterances>\d+) utterances")
 
     def __init__(self, args: MfccArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.wav_path = args.wav_path
         self.segment_path = args.segment_path
         self.feats_scp_path = args.feats_scp_path
         self.mfcc_options = args.mfcc_options
+        self.pitch_options = args.pitch_options
 
     def run(self):
         """Run the function"""
+        processed = 0
         with open(self.log_path, "w") as log_file:
+            use_pitch = self.pitch_options.pop("use-pitch")
             mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
             raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")
+            if os.path.exists(raw_ark_path):
+                return
             for k, v in self.mfcc_options.items():
                 mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
             if os.path.exists(self.segment_path):
@@ -126,7 +142,7 @@ class MfccFunction(KaldiFunction):
                 seg_proc = subprocess.Popen(
                     [
                         thirdparty_binary("extract-segments"),
-                        f"scp,p:{self.wav_path}",
+                        f"scp:{self.wav_path}",
                         self.segment_path,
                         "ark:-",
                     ],
@@ -137,32 +153,90 @@ class MfccFunction(KaldiFunction):
                 comp_proc = subprocess.Popen(
                     mfcc_base_command,
                     stdout=subprocess.PIPE,
-                    stderr=log_file,
+                    stderr=subprocess.PIPE,
                     stdin=seg_proc.stdout,
                     env=os.environ,
                 )
             else:
                 mfcc_base_command += [f"scp,p:{self.wav_path}", "ark:-"]
                 comp_proc = subprocess.Popen(
-                    mfcc_base_command, stdout=subprocess.PIPE, stderr=log_file, env=os.environ
+                    mfcc_base_command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=os.environ,
                 )
-            copy_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("copy-feats"),
+            if use_pitch:
+                pitch_base_command = [
+                    thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
                     "--verbose=2",
-                    "--compress=true",
-                    "ark:-",
-                    f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
-                ],
-                stdin=comp_proc.stdout,
-                stderr=subprocess.PIPE,
-                env=os.environ,
-                encoding="utf8",
-            )
-            for line in copy_proc.stderr:
-                m = self.progress_pattern.match(line.strip())
+                ]
+                for k, v in self.pitch_options.items():
+                    pitch_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
+                    if k == "delta-pitch":
+                        pitch_base_command.append(f"--delta-pitch-noise-stddev={make_safe(v)}")
+                pitch_command = " ".join(pitch_base_command)
+                if os.path.exists(self.segment_path):
+                    segment_command = (
+                        f"extract-segments scp:{self.wav_path} {self.segment_path} ark:- | "
+                    )
+                    pitch_input = "ark:-"
+                else:
+                    segment_command = ""
+                    pitch_input = f"scp:{self.wav_path}"
+                pitch_feat_string = (
+                    f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
+                )
+                length_tolerance = 2
+                paste_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("paste-feats"),
+                        f"--length-tolerance={length_tolerance}",
+                        "ark:-",
+                        pitch_feat_string,
+                        "ark:-",
+                    ],
+                    stdin=comp_proc.stdout,
+                    env=os.environ,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                )
+                copy_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("copy-feats"),
+                        "--verbose=2",
+                        "--compress=true",
+                        "ark:-",
+                        f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
+                    ],
+                    stdin=paste_proc.stdout,
+                    stderr=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
+                )
+            else:
+                copy_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("copy-feats"),
+                        "--verbose=2",
+                        "--compress=true",
+                        "ark:-",
+                        f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
+                    ],
+                    stdin=comp_proc.stdout,
+                    stderr=log_file,
+                    env=os.environ,
+                    encoding="utf8",
+                )
+            for line in comp_proc.stderr:
+                line = line.strip().decode("utf8")
+                log_file.write(line + "\n")
+                m = self.progress_pattern.match(line)
                 if m:
-                    yield int(m.group("num_utterances"))
+                    cur = int(m.group("num_utterances"))
+                    increment = cur - processed
+                    processed = cur
+                    yield increment
+            self.check_call(copy_proc)
 
 
 class ComputeVadFunction(KaldiFunction):
@@ -189,7 +263,7 @@ class ComputeVadFunction(KaldiFunction):
     )
 
     def __init__(self, args: VadArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.feats_scp_path = args.feats_scp_path
         self.vad_scp_path = args.vad_scp_path
         self.vad_options = args.vad_options
@@ -216,6 +290,7 @@ class ComputeVadFunction(KaldiFunction):
                 m = self.progress_pattern.match(line.strip())
                 if m:
                     yield int(m.group("done")), int(m.group("no_feats")), int(m.group("unvoiced"))
+            self.check_call(vad_proc)
 
 
 class CalcFmllrFunction(KaldiFunction):
@@ -250,9 +325,12 @@ class CalcFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(r"^LOG.*For speaker (?P<speaker>.*),.*$")
+    memory_error_pattern = re.compile(
+        r"^ERROR \(gmm-est-fmllr-gpost.*Failed to read vector from stream..*$"
+    )
 
     def __init__(self, args: CalcFmllrArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
         self.ali_paths = args.ali_paths
@@ -266,92 +344,54 @@ class CalcFmllrFunction(KaldiFunction):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                ali_path = self.ali_paths[dict_name]
-                spk2utt_path = self.spk2utt_paths[dict_name]
-                trans_path = self.trans_paths[dict_name]
-                initial = True
-                if os.path.exists(trans_path):
-                    initial = False
-                post_proc = subprocess.Popen(
-                    [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
-                    stderr=log_file,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
+                while True:
+                    feature_string = self.feature_strings[dict_name]
+                    ali_path = self.ali_paths[dict_name]
+                    spk2utt_path = self.spk2utt_paths[dict_name]
+                    trans_path = self.trans_paths[dict_name]
+                    initial = True
+                    if os.path.exists(trans_path):
+                        initial = False
+                    post_proc = subprocess.Popen(
+                        [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
+                        stderr=log_file,
+                        stdout=subprocess.PIPE,
+                        env=os.environ,
+                    )
 
-                weight_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("weight-silence-post"),
-                        "0.0",
-                        self.fmllr_options["silence_csl"],
-                        self.ali_model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stderr=log_file,
-                    stdin=post_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    env=os.environ,
-                )
-
-                temp_trans_path = trans_path + ".tmp"
-                if self.ali_model_path != self.model_path:
-                    post_gpost_proc = subprocess.Popen(
+                    weight_proc = subprocess.Popen(
                         [
-                            thirdparty_binary("gmm-post-to-gpost"),
+                            thirdparty_binary("weight-silence-post"),
+                            "0.0",
+                            self.fmllr_options["silence_csl"],
                             self.ali_model_path,
-                            feature_string,
                             "ark:-",
                             "ark:-",
                         ],
                         stderr=log_file,
-                        stdin=weight_proc.stdout,
+                        stdin=post_proc.stdout,
                         stdout=subprocess.PIPE,
                         env=os.environ,
                     )
-                    est_proc = subprocess.Popen(
-                        [
-                            thirdparty_binary("gmm-est-fmllr-gpost"),
-                            "--verbose=4",
-                            f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
-                            f"--spk2utt=ark:{spk2utt_path}",
-                            self.model_path,
-                            feature_string,
-                            "ark,s,cs:-",
-                            f"ark:{temp_trans_path}",
-                        ],
-                        stderr=subprocess.PIPE,
-                        encoding="utf8",
-                        stdin=post_gpost_proc.stdout,
-                        env=os.environ,
-                    )
 
-                else:
-
-                    if not initial:
-                        temp_composed_trans_path = trans_path + ".cmp.tmp"
-                        est_proc = subprocess.Popen(
+                    temp_trans_path = trans_path + ".tmp"
+                    if self.ali_model_path != self.model_path:
+                        post_gpost_proc = subprocess.Popen(
                             [
-                                thirdparty_binary("gmm-est-fmllr"),
-                                "--verbose=4",
-                                f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
-                                f"--spk2utt=ark:{spk2utt_path}",
-                                self.model_path,
+                                thirdparty_binary("gmm-post-to-gpost"),
+                                self.ali_model_path,
                                 feature_string,
                                 "ark:-",
-                                f"ark:{temp_trans_path}",
+                                "ark:-",
                             ],
-                            stderr=subprocess.PIPE,
-                            encoding="utf8",
+                            stderr=log_file,
                             stdin=weight_proc.stdout,
                             stdout=subprocess.PIPE,
                             env=os.environ,
                         )
-                    else:
                         est_proc = subprocess.Popen(
                             [
-                                thirdparty_binary("gmm-est-fmllr"),
+                                thirdparty_binary("gmm-est-fmllr-gpost"),
                                 "--verbose=4",
                                 f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
                                 f"--spk2utt=ark:{spk2utt_path}",
@@ -362,15 +402,65 @@ class CalcFmllrFunction(KaldiFunction):
                             ],
                             stderr=subprocess.PIPE,
                             encoding="utf8",
-                            stdin=weight_proc.stdout,
+                            stdin=post_gpost_proc.stdout,
                             env=os.environ,
                         )
 
-                for line in est_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield m.group("speaker")
+                    else:
+
+                        if not initial:
+                            temp_composed_trans_path = trans_path + ".cmp.tmp"
+                            est_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("gmm-est-fmllr"),
+                                    "--verbose=4",
+                                    f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
+                                    f"--spk2utt=ark:{spk2utt_path}",
+                                    self.model_path,
+                                    feature_string,
+                                    "ark:-",
+                                    f"ark:{temp_trans_path}",
+                                ],
+                                stderr=subprocess.PIPE,
+                                encoding="utf8",
+                                stdin=weight_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                env=os.environ,
+                            )
+                        else:
+                            est_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("gmm-est-fmllr"),
+                                    "--verbose=4",
+                                    f"--fmllr-update-type={self.fmllr_options['fmllr_update_type']}",
+                                    f"--spk2utt=ark:{spk2utt_path}",
+                                    self.model_path,
+                                    feature_string,
+                                    "ark,s,cs:-",
+                                    f"ark:{trans_path}",
+                                ],
+                                stderr=subprocess.PIPE,
+                                encoding="utf8",
+                                stdin=weight_proc.stdout,
+                                env=os.environ,
+                            )
+
+                    for line in est_proc.stderr:
+                        log_file.write(line)
+                        m = self.progress_pattern.match(line.strip())
+                        if m:
+                            yield m.group("speaker")
+                    try:
+                        self.check_call(est_proc)
+                        break
+                    except KaldiProcessingError:  # Try to recover from Memory exception
+                        with open(self.log_path, "r") as f:
+                            for line in f:
+                                if self.memory_error_pattern.match(line):
+                                    os.remove(trans_path)
+                                    break
+                            else:
+                                raise
                 if not initial:
                     compose_proc = subprocess.Popen(
                         [
@@ -384,6 +474,7 @@ class CalcFmllrFunction(KaldiFunction):
                         env=os.environ,
                     )
                     compose_proc.communicate()
+                    self.check_call(compose_proc)
 
                     os.remove(trans_path)
                     os.remove(temp_trans_path)
@@ -404,8 +495,8 @@ class FeatureConfigMixin:
         number of milliseconds between frames, defaults to 10
     snip_edges : bool
         Flag for enabling Kaldi's snip edges, should be better time precision
-    pitch : bool
-        Flag for including pitch in features, currently nonfunctional, defaults to False
+    use_pitch : bool
+        Flag for including pitch in features, defaults to False
     low_frequency : int
         Frequency floor
     high_frequency : int
@@ -441,8 +532,8 @@ class FeatureConfigMixin:
         feature_type: str = "mfcc",
         use_energy: bool = False,
         frame_shift: int = 10,
+        frame_length: int = 25,
         snip_edges: bool = True,
-        pitch: bool = False,
         low_frequency: int = 20,
         high_frequency: int = 7800,
         sample_frequency: int = 16000,
@@ -458,14 +549,19 @@ class FeatureConfigMixin:
         silence_weight: float = 0.0,
         splice_left_context: int = 3,
         splice_right_context: int = 3,
+        use_pitch: bool = False,
+        min_f0: float = 50,
+        max_f0: float = 500,
+        delta_pitch: float = 0.005,
+        penalty_factor: float = 0.1,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.feature_type = feature_type
         self.use_energy = use_energy
         self.frame_shift = frame_shift
+        self.frame_length = frame_length
         self.snip_edges = snip_edges
-        self.pitch = pitch
         self.low_frequency = low_frequency
         self.high_frequency = high_frequency
         self.sample_frequency = sample_frequency
@@ -481,6 +577,13 @@ class FeatureConfigMixin:
         self.silence_weight = silence_weight
         self.splice_left_context = splice_left_context
         self.splice_right_context = splice_right_context
+
+        # Pitch features
+        self.use_pitch = use_pitch
+        self.min_f0 = min_f0
+        self.max_f0 = max_f0
+        self.delta_pitch = delta_pitch
+        self.penalty_factor = penalty_factor
 
     @property
     def vad_options(self) -> MetaDict:
@@ -522,18 +625,23 @@ class FeatureConfigMixin:
             "type": self.feature_type,
             "use_energy": self.use_energy,
             "frame_shift": self.frame_shift,
+            "frame_length": self.frame_length,
             "snip_edges": self.snip_edges,
             "low_frequency": self.low_frequency,
             "high_frequency": self.high_frequency,
             "sample_frequency": self.sample_frequency,
             "allow_downsample": self.allow_downsample,
             "allow_upsample": self.allow_upsample,
-            "pitch": self.pitch,
             "uses_cmvn": self.uses_cmvn,
             "uses_deltas": self.uses_deltas,
             "uses_voiced": self.uses_voiced,
             "uses_splices": self.uses_splices,
             "uses_speaker_adaptation": self.uses_speaker_adaptation,
+            "use_pitch": self.use_pitch,
+            "min_f0": self.min_f0,
+            "max_f0": self.max_f0,
+            "delta_pitch": self.delta_pitch,
+            "penalty_factor": self.penalty_factor,
         }
         if self.uses_splices:
             options.update(
@@ -556,7 +664,7 @@ class FeatureConfigMixin:
             "fmllr_update_type": self.fmllr_update_type,
             "silence_weight": self.silence_weight,
             "silence_csl": getattr(
-                self, "silence_csl", ""
+                self, "optional_silence_csl", ""
             ),  # If we have silence phones from a dictionary, use them
         }
 
@@ -566,11 +674,27 @@ class FeatureConfigMixin:
         return {
             "use-energy": self.use_energy,
             "frame-shift": self.frame_shift,
+            "frame-length": self.frame_length,
             "low-freq": self.low_frequency,
             "high-freq": self.high_frequency,
             "sample-frequency": self.sample_frequency,
             "allow-downsample": self.allow_downsample,
             "allow-upsample": self.allow_upsample,
+            "snip-edges": self.snip_edges,
+        }
+
+    @property
+    def pitch_options(self) -> MetaDict:
+        """Parameters to use in computing MFCC features."""
+        return {
+            "use-pitch": self.use_pitch,
+            "frame-shift": self.frame_shift,
+            "frame-length": self.frame_length,
+            "min-f0": self.min_f0,
+            "max-f0": self.max_f0,
+            "sample-frequency": self.sample_frequency,
+            "penalty-factor": self.penalty_factor,
+            "delta-pitch": self.delta_pitch,
             "snip-edges": self.snip_edges,
         }
 
@@ -672,18 +796,6 @@ class VadConfigMixin(FeatureConfigMixin):
         }
 
 
-class ExtractIvectorsArguments(NamedTuple):
-    """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
-
-    log_path: str
-    feature_string: str
-    ivector_options: MetaDict
-    ie_path: str
-    ivectors_path: str
-    model_path: str
-    dubm_path: str
-
-
 class ExtractIvectorsFunction(KaldiFunction):
     """
     Multiprocessing function for extracting ivectors.
@@ -714,7 +826,7 @@ class ExtractIvectorsFunction(KaldiFunction):
     progress_pattern = re.compile(r"^LOG.*Ivector norm for speaker (?P<speaker>.+) was.*")
 
     def __init__(self, args: ExtractIvectorsArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.feature_string = args.feature_string
         self.ivector_options = args.ivector_options
         self.ie_path = args.ie_path

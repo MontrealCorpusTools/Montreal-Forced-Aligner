@@ -80,7 +80,7 @@ def test_generator_pretrained(english_g2p_model, temp_dir):
         for w in words:
             f.write(w + "\n")
     gen = PyniniWordListGenerator(
-        g2p_model_path="english_g2p", word_list_path=word_list_path, num_pronunciations=3
+        g2p_model_path=english_g2p_model, word_list_path=word_list_path, num_pronunciations=3
     )
     gen.setup()
     results = gen.generate_pronunciations()

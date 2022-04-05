@@ -19,7 +19,7 @@ See :ref:`g2p_model_training_example` for an example of how to train a G2P model
 
 .. warning::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation_ref` for more details.
+   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
 
 Command reference
 -----------------

@@ -7,10 +7,9 @@
        comma_join
        make_safe
        make_scp_safe
-       save_scp
        load_scp
        load_scp_safe
-       score
+       score_wer
        edit_distance
        output_mapping
        compare_labels

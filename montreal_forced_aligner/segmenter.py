@@ -13,18 +13,18 @@ import multiprocessing as mp
 import os
 import re
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import tqdm
-import yaml
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
-from montreal_forced_aligner.corpus.classes import File, Speaker, Utterance
+from montreal_forced_aligner.corpus.db import File, SpeakerOrdering, Utterance
 from montreal_forced_aligner.corpus.features import VadConfigMixin
-from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.data import MfaArguments, TextFileType
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.helper import load_configuration, load_scp
 from montreal_forced_aligner.utils import (
     KaldiFunction,
     KaldiProcessWorker,
@@ -41,7 +41,7 @@ SegmentationType = List[Dict[str, float]]
 __all__ = ["Segmenter", "SegmentVadFunction", "SegmentVadArguments"]
 
 
-class SegmentVadArguments(NamedTuple):
+class SegmentVadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.segmenter.SegmentVadFunction`"""
 
     vad_path: str
@@ -157,17 +157,15 @@ class SegmentVadFunction(KaldiFunction):
     )
 
     def __init__(self, args: SegmentVadArguments):
+        super().__init__(args)
         self.vad_path = args.vad_path
         self.segmentation_options = args.segmentation_options
 
     def run(self):
         """Run the function"""
 
-        speaker = Speaker("speech")
-
         vad = load_scp(self.vad_path, data_type=int)
         for recording, frames in vad.items():
-            file = File(recording)
             initial_segments = get_initial_segmentation(
                 frames, self.segmentation_options["frame_shift"]
             )
@@ -179,9 +177,7 @@ class SegmentVadFunction(KaldiFunction):
                 self.segmentation_options["snap_boundary_threshold"],
             )
             for seg in merged:
-                yield recording, Utterance(
-                    speaker, file, begin=seg["begin"], end=seg["end"], text="speech"
-                )
+                yield int(recording.split("-")[-1]), seg["begin"], seg["end"]
 
 
 class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevelMfaWorker):
@@ -203,7 +199,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         max_segment_length: float = 30,
         min_pause_duration: float = 0.05,
         snap_boundary_threshold: float = 0.15,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.max_segment_length = max_segment_length
@@ -236,22 +232,17 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """
         global_params = {}
         if config_path and os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                for k, v in data.items():
-                    if k == "features":
-                        if "type" in v:
-                            v["feature_type"] = v["type"]
-                            del v["type"]
-                        global_params.update(v)
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
+            data = load_configuration(config_path)
+            for k, v in data.items():
+                if k == "features":
+                    if "type" in v:
+                        v["feature_type"] = v["type"]
+                        del v["type"]
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
@@ -266,6 +257,9 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """
         return [
             SegmentVadArguments(
+                j.name,
+                getattr(self, "db_path", ""),
+                os.path.join(self.working_log_directory, f"segment_vad.{j.name}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,
             )
@@ -301,7 +295,10 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
         arguments = self.segment_vad_arguments()
         old_utts = set()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+
+        with tqdm.tqdm(
+            total=self.num_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar, Session(self.db_engine) as session:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -315,8 +312,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                     p.start()
                     while True:
                         try:
-                            old_utt, utterance = return_queue.get(timeout=1)
-                            # print(utterance)
+                            utt, begin, end = return_queue.get(timeout=1)
                             if stopped.stop_check():
                                 continue
                         except Empty:
@@ -326,22 +322,24 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                             else:
                                 break
                             continue
-                        if old_utt not in old_utts:
-                            old_utt = self.utterances[old_utt]
-                            file = old_utt.file
-                            if self.ignore_speakers:
-                                if utterance.speaker_name not in self.speakers:
-                                    self.speakers[utterance.speaker_name] = Speaker(
-                                        utterance.speaker_name
-                                    )
-                                speaker = self.speakers[utterance.speaker_name]
-                            else:
-                                speaker = old_utt.speaker
-                            utterance.file = file
-                            utterance.set_speaker(speaker)
-                            self.add_utterance(utterance)
-                            old_utts.add(old_utt)
-                            pbar.update(1)
+                        old_utts.add(utt)
+                        utterance = (
+                            session.query(Utterance)
+                            .options(joinedload(Utterance.speaker), joinedload(Utterance.file))
+                            .get(utt)
+                        )
+                        session.add(
+                            Utterance(
+                                begin=begin,
+                                end=end,
+                                text="speech",
+                                speaker=utterance.speaker,
+                                file=utterance.file,
+                                channel=utterance.channel,
+                                duration=end - begin,
+                            )
+                        )
+                        pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -350,25 +348,29 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             else:
                 for args in arguments:
                     function = SegmentVadFunction(args)
-                    for old_utt, utterance in function.run():
-                        if old_utt not in old_utts:
-                            old_utt = self.utterances[old_utt]
-                            file = old_utt.file
-                            if self.ignore_speakers:
-                                if utterance.speaker_name not in self.speakers:
-                                    self.speakers[utterance.speaker_name] = Speaker(
-                                        utterance.speaker_name
-                                    )
-                                speaker = self.speakers[utterance.speaker_name]
-                            else:
-                                speaker = old_utt.speaker
-                            utterance.file = file
-                            utterance.set_speaker(speaker)
-                            self.add_utterance(utterance)
-                            old_utts.add(old_utt)
-                            pbar.update(1)
-        for u in old_utts:
-            self.delete_utterance(u)
+                    for utt, begin, end in function.run():
+                        old_utts.add(utt)
+                        print(utt)
+                        utterance = (
+                            session.query(Utterance)
+                            .options(joinedload(Utterance.speaker), joinedload(Utterance.file))
+                            .get(utt)
+                        )
+                        print(utterance)
+                        session.add(
+                            Utterance(
+                                begin=begin,
+                                end=end,
+                                text="speech",
+                                speaker=utterance.speaker,
+                                file=utterance.file,
+                                channel=utterance.channel,
+                                duration=end - begin,
+                            )
+                        )
+                        pbar.update(1)
+            session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
+            session.commit()
 
     def setup(self) -> None:
         """Setup segmentation"""
@@ -379,8 +381,11 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             self.load_corpus()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def segment(self) -> None:
@@ -396,7 +401,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         log_directory = os.path.join(self.working_directory, "log")
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info("Classification already done, skipping.")
+            self.log_info("Classification already done, skipping.")
             return
         try:
             self.compute_vad()
@@ -405,8 +410,11 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
             parse_logs(log_directory)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
         with open(done_path, "w"):
             pass
@@ -416,7 +424,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """Backup output directory"""
         return os.path.join(self.workflow_directory, "backup")
 
-    def export_files(self, output_directory: str) -> None:
+    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
         """
         Export the results of segmentation as TextGrids
 
@@ -425,8 +433,16 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         output_directory: str
             Directory to save segmentation TextGrids
         """
+        if output_format is None:
+            output_format = TextFileType.TEXTGRID.value
         if not self.overwrite and os.path.exists(output_directory):
             output_directory = os.path.join(self.working_directory, "transcriptions")
         os.makedirs(output_directory, exist_ok=True)
-        for f in self.files:
-            f.save(output_directory, text_type=TextFileType.TEXTGRID)
+        with self.session() as session:
+            for f in session.query(File).options(
+                subqueryload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
+                joinedload(File.sound_file, innerjoin=True),
+                joinedload(File.text_file, innerjoin=True),
+                subqueryload(File.speakers).joinedload(SpeakerOrdering.speaker, innerjoin=True),
+            ):
+                f.save(output_directory, output_format=output_format)

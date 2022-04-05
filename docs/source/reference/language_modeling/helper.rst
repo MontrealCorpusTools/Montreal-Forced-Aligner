@@ -7,3 +7,5 @@ Helper functionality
    :toctree: generated/
 
    LmTrainerMixin -- Mixin for language model training
+   LmCorpusTrainerMixin -- Mixin for language model training on a corpus
+   LmDictionaryCorpusTrainerMixin -- Mixin for language model training on a corpus with a pronunciation dictionary

@@ -3,12 +3,11 @@
     .. autosummary::
        :toctree: generated/
 
+       MfaArguments
        TextFileType
        SoundFileType
        SoundFileInformation
        PhoneSetType
-       Word
+       WordData
        Pronunciation
-       UtteranceData
-       FileData
        CtmInterval -- Data class for representing intervals in Kaldi's CTM files

@@ -61,10 +61,10 @@ Pronunciation probability functionality
 Helper
 ------
 
-.. currentmodule:: montreal_forced_aligner.alignment.pretrained
+.. currentmodule:: montreal_forced_aligner.alignment.multiprocessing
 
 .. autosummary::
    :toctree: generated/
 
-   generate_pronunciations_func
+   GeneratePronunciationsFunction
    GeneratePronunciationsArguments

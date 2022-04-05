@@ -25,6 +25,7 @@ def test_configure(
     assert GLOBAL_CONFIG == {
         "clean": False,
         "verbose": False,
+        "quiet": False,
         "debug": False,
         "overwrite": False,
         "terminal_colors": True,
@@ -56,6 +57,7 @@ def test_configure(
     assert GLOBAL_CONFIG == {
         "clean": True,
         "verbose": True,
+        "quiet": False,
         "debug": False,
         "overwrite": False,
         "terminal_colors": True,
@@ -76,6 +78,7 @@ def test_configure(
     assert GLOBAL_CONFIG == {
         "clean": False,
         "verbose": False,
+        "quiet": False,
         "debug": False,
         "overwrite": False,
         "terminal_colors": True,

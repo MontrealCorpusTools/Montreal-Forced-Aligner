@@ -20,7 +20,7 @@ Helper
 .. autosummary::
   :toctree: generated/
 
-   compile_utterance_train_graphs_func
-   test_utterances_func
-   CompileUtteranceTrainGraphsArguments
+   TrainSpeakerLmFunction
+   TrainSpeakerLmArguments
+   TestUtterancesFunction
    TestUtterancesArguments

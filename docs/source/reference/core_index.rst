@@ -8,6 +8,7 @@ This sections contains the core objects that are used as input to any top level 
    :maxdepth: 1
 
    corpus/index
+   database/index
    dictionary/index
    acoustic_modeling/index
    g2p_modeling/index

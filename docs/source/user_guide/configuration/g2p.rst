@@ -10,6 +10,7 @@ Global options
 
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
    :escape: '
 
@@ -28,6 +29,7 @@ G2P training options
 In addition to the parameters above, the following parameters are used as part of training a G2P model.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "order", 7, "Ngram order of the G2P Model"

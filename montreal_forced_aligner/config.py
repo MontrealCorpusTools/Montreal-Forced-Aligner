@@ -21,6 +21,7 @@ __all__ = [
     "generate_config_path",
     "generate_command_history_path",
     "load_command_history",
+    "get_temporary_directory",
     "update_command_history",
     "update_global_config",
     "load_global_config",
@@ -202,6 +203,7 @@ def load_global_config() -> Dict[str, Any]:
     default_config = {
         "clean": False,
         "verbose": False,
+        "quiet": False,
         "debug": False,
         "overwrite": False,
         "terminal_colors": True,

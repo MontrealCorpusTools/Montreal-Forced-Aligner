@@ -1,6 +1,4 @@
 
-.. _`Conda forge`: https://conda-forge.org/
-
 ***************
 Getting started
 ***************
@@ -9,58 +7,54 @@ Getting started
 Installation
 ------------
 
-.. panels::
-    :card: + install-card
-    :column: col-lg-6 col-md-6 col-sm-12 col-xs-12 p-3
+.. grid:: 2
 
-    Installing with conda
-    ^^^^^^^^^^^^^^^^^^^^^
+    .. grid-item-card:: Installing with conda
+       :text-align: center
+       :columns: 12
 
-    MFA is now on `Conda forge`_
-    and can be installed with Anaconda or Miniconda:
+       MFA is now on :xref:`conda_forge` and can be installed with Anaconda or Miniconda:
 
-    +++
+       .. code-block:: bash
 
-    .. code-block:: bash
+          conda config --add channels conda-forge
+          conda install montreal-forced-aligner
 
-        conda config --add channels conda-forge
-        conda install montreal-forced-aligner
+       +++
 
-    +++
+       .. button-link:: https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html
+          :color: primary
+          :expand:
 
-    .. link-button:: https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html
-            :type: url
-            :text: Install Conda
-            :classes: btn-block btn-primary btn-navigation
+          Install Conda
 
 
-    ---
+    .. grid-item-card:: In-depth instructions
+       :text-align: center
 
-    In-depth instructions
-    ^^^^^^^^^^^^^^^^^^^^^
+       Want to learn more about installing? Want to use G2P commands on Windows?
 
-    Want to learn more about installing? Want to use G2P commands on Windows?
+       +++
 
-    +++
+       .. button-ref:: installation
+          :expand:
+          :color: primary
 
-    .. link-button:: installation
-            :type: ref
-            :text: To the installation guide
-            :classes: btn-block btn-primary btn-navigation stretched-link
-
-    ---
-    :column: col-12 p-3
-
-    First steps
-    ^^^^^^^^^^^
-
-    First time using MFA? Want a walkthrough of a specific use case?
+          To the installation guide
 
 
-    .. link-button:: first_steps
-            :type: ref
-            :text: First steps
-            :classes: btn-block btn-primary btn-navigation
+    .. grid-item-card:: First steps
+       :text-align: center
+
+       First time using MFA? Want a walk-through of a specific use case?
+
+       +++
+
+       .. button-ref:: first_steps
+          :expand:
+          :color: primary
+
+          First steps
 
 
 .. toctree::

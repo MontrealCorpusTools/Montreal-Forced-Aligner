@@ -5,11 +5,10 @@ import pytest
 
 from montreal_forced_aligner.command_line.model import (
     ModelTypeNotSupportedError,
-    PretrainedModelNotFoundError,
-    list_downloadable_models,
+    RemoteModelNotFoundError,
     run_model,
 )
-from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel
+from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel, ModelManager
 
 
 class DummyArgs(Namespace):
@@ -20,26 +19,36 @@ class DummyArgs(Namespace):
 
 
 def test_get_available_languages():
+    manager = ModelManager()
+    manager.refresh_remote()
     model_type = "acoustic"
-    langs = list_downloadable_models(model_type)
-    assert "bulgarian" in langs
-    assert "english" in langs
+    acoustic_models = manager.remote_models[model_type]
+    print(manager.remote_models)
+    assert "archive" not in acoustic_models
+    assert "english_us_arpa" in acoustic_models
 
     model_type = "g2p"
-    langs = list_downloadable_models(model_type)
-    assert "bulgarian_g2p" in langs
+    langs = manager.remote_models[model_type]
+    assert "bulgarian_mfa" in langs
 
     model_type = "dictionary"
-    langs = list_downloadable_models(model_type)
-    assert "english" in langs
-    assert "french_prosodylab" in langs
-    assert "german_prosodylab" in langs
+    langs = manager.remote_models[model_type]
+    assert "english_us_arpa" in langs
+    assert "vietnamese_cv" in langs
+    assert "vietnamese_mfa" in langs
 
 
 def test_download():
     args = DummyArgs()
     args.action = "download"
-    args.name = "bulgarian"
+    args.name = "sdsdsadad"
+    args.model_type = "acoustic"
+    with pytest.raises(RemoteModelNotFoundError):
+        run_model(args)
+
+    args = DummyArgs()
+    args.action = "download"
+    args.name = "english_us_arpa"
     args.model_type = "acoustic"
 
     run_model(args)
@@ -48,7 +57,7 @@ def test_download():
 
     args = DummyArgs()
     args.action = "download"
-    args.name = "bulgarian_g2p"
+    args.name = "english_us_arpa"
     args.model_type = "g2p"
 
     run_model(args)
@@ -57,7 +66,7 @@ def test_download():
 
     args = DummyArgs()
     args.action = "download"
-    args.name = "english"
+    args.name = "english_us_arpa"
     args.model_type = "dictionary"
 
     run_model(args)
@@ -75,7 +84,7 @@ def test_download():
 def test_inspect_model():
     args = DummyArgs()
     args.action = "inspect"
-    args.name = "english"
+    args.name = "english_us_arpa"
     args.model_type = "acoustic"
     run_model(args)
 
@@ -113,5 +122,5 @@ def test_expected_errors():
     args.action = "download"
     args.name = "not_bulgarian"
     args.model_type = "acoustic"
-    with pytest.raises(PretrainedModelNotFoundError):
+    with pytest.raises(RemoteModelNotFoundError):
         run_model(args)

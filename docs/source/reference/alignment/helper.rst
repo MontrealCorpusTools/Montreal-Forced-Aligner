@@ -23,10 +23,8 @@ Multiprocessing workers and functions
    AlignFunction
    CompileTrainGraphsFunction
    compile_information_func
-   AliToCtmFunction
    AccStatsFunction
-   WordCtmProcessWorker
-   PhoneCtmProcessWorker
+   AlignmentExtractionFunction
    ExportTextGridProcessWorker
 
 
@@ -42,7 +40,5 @@ Multiprocessing argument classes
    AccStatsArguments
    CompileTrainGraphsArguments
    CompileInformationArguments
-   AliToCtmArguments
-   PhoneCtmArguments
-   WordCtmArguments
+   AlignmentExtractionArguments
    ExportTextGridArguments

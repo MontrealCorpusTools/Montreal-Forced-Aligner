@@ -76,8 +76,10 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             model_path = self.model_path
         return [
             AccStatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"map_acc_stats.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "map", "acc"),
@@ -86,7 +88,15 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             for j in self.jobs
         ]
 
-    def acc_stats(self, alignment=False):
+    def acc_stats(self, alignment: bool = False) -> None:
+        """
+        Accumulate stats for the mapped model
+
+        Parameters
+        ----------
+        alignment: bool
+            Flag for whether to accumulate stats for the mapped alignment model
+        """
         arguments = self.map_acc_stats_arguments(alignment)
         if alignment:
             initial_mdl_path = os.path.join(self.working_directory, "0.alimdl")
@@ -96,8 +106,10 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             final_mdl_path = os.path.join(self.working_directory, "final.mdl")
         if not os.path.exists(initial_mdl_path):
             return
-        self.logger.info("Accumulating statistics...")
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        self.log_info("Accumulating statistics...")
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -204,6 +216,16 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         return os.path.join(self.working_directory, "final.mdl")
 
     @property
+    def alignment_model_path(self):
+        """Current acoustic model path"""
+        if not self.adaptation_done:
+            path = os.path.join(self.working_directory, "0.alimdl")
+            if os.path.exists(path) and getattr(self, "speaker_independent", True):
+                return path
+            return self.model_path
+        return super().alignment_model_path
+
+    @property
     def next_model_path(self):
         """Mapped acoustic model path"""
         return os.path.join(self.working_directory, "final.mdl")
@@ -237,7 +259,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         if self.uses_speaker_adaptation:
             self.acc_stats(alignment=True)
 
-        self.logger.debug(f"Mapping models took {time.time() - begin}")
+        self.log_debug(f"Mapping models took {time.time() - begin}")
 
     def adapt(self) -> None:
         """Run the adaptation"""
@@ -245,9 +267,9 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         dirty_path = os.path.join(self.working_directory, "dirty")
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info("Adaptation already done, skipping.")
+            self.log_info("Adaptation already done, skipping.")
             return
-        self.logger.info("Generating initial alignments...")
+        self.log_info("Generating initial alignments...")
         for f in ["final.mdl", "final.alimdl"]:
             p = os.path.join(self.working_directory, f)
             if not os.path.exists(p):
@@ -256,7 +278,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         self.align()
         os.makedirs(self.align_directory, exist_ok=True)
         try:
-            self.logger.info("Adapting pretrained model...")
+            self.log_info("Adapting pretrained model...")
             self.train_map()
             self.export_model(os.path.join(self.working_log_directory, "acoustic_model.zip"))
             shutil.copyfile(
@@ -286,8 +308,11 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
         with open(done_path, "w"):
             pass

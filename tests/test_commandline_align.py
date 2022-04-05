@@ -32,7 +32,7 @@ def test_align_arguments(
         "align",
         basic_corpus_dir,
         english_dictionary,
-        "english",
+        "english_us_arpa",
         os.path.join(generated_dir, "basic_output"),
         "-t",
         temp_dir,
@@ -50,7 +50,6 @@ def test_align_arguments(
 # @pytest.mark.skip(reason='Optimization')
 def test_align_basic(
     basic_corpus_dir,
-    sick_dict_path,
     generated_dir,
     english_dictionary,
     temp_dir,
@@ -62,7 +61,7 @@ def test_align_basic(
         "align",
         basic_corpus_dir,
         english_dictionary,
-        "english",
+        english_acoustic_model,
         output_directory,
         "-t",
         temp_dir,
@@ -101,7 +100,7 @@ def test_align_basic(
         "align",
         basic_corpus_dir,
         english_dictionary,
-        "english",
+        english_acoustic_model,
         output_directory,
         "-t",
         temp_dir,
@@ -124,7 +123,7 @@ def test_align_basic(
         "align",
         basic_corpus_dir,
         english_dictionary,
-        "english",
+        english_acoustic_model,
         output_directory,
         "-t",
         temp_dir,
@@ -146,19 +145,18 @@ def test_align_basic(
 
 def test_align_multilingual(
     multilingual_ipa_corpus_dir,
-    english_uk_ipa_dictionary,
+    english_uk_mfa_dictionary,
     generated_dir,
     temp_dir,
     basic_align_config_path,
-    english_acoustic_model,
-    english_ipa_acoustic_model,
+    english_mfa_acoustic_model,
 ):
 
     command = [
         "align",
         multilingual_ipa_corpus_dir,
-        english_uk_ipa_dictionary,
-        english_ipa_acoustic_model,
+        english_uk_mfa_dictionary,
+        english_mfa_acoustic_model,
         os.path.join(generated_dir, "multilingual"),
         "-t",
         temp_dir,
@@ -174,18 +172,18 @@ def test_align_multilingual(
 
 def test_align_multilingual_speaker_dict(
     multilingual_ipa_corpus_dir,
-    ipa_speaker_dict_path,
+    mfa_speaker_dict_path,
     generated_dir,
     temp_dir,
     basic_align_config_path,
-    english_ipa_acoustic_model,
+    english_mfa_acoustic_model,
 ):
 
     command = [
         "align",
         multilingual_ipa_corpus_dir,
-        ipa_speaker_dict_path,
-        english_ipa_acoustic_model,
+        mfa_speaker_dict_path,
+        english_mfa_acoustic_model,
         os.path.join(generated_dir, "multilingual_speaker_dict"),
         "-t",
         temp_dir,
@@ -201,18 +199,18 @@ def test_align_multilingual_speaker_dict(
 
 def test_align_multilingual_tg_speaker_dict(
     multilingual_ipa_tg_corpus_dir,
-    ipa_speaker_dict_path,
+    mfa_speaker_dict_path,
     generated_dir,
     temp_dir,
     basic_align_config_path,
-    english_ipa_acoustic_model,
+    english_mfa_acoustic_model,
 ):
 
     command = [
         "align",
         multilingual_ipa_tg_corpus_dir,
-        ipa_speaker_dict_path,
-        english_ipa_acoustic_model,
+        mfa_speaker_dict_path,
+        english_mfa_acoustic_model,
         os.path.join(generated_dir, "multilingual_speaker_dict_tg"),
         "-t",
         temp_dir,
@@ -228,19 +226,19 @@ def test_align_multilingual_tg_speaker_dict(
 
 def test_align_split(
     basic_split_dir,
-    english_us_ipa_dictionary,
+    english_us_mfa_dictionary,
     generated_dir,
     temp_dir,
     basic_align_config_path,
     english_acoustic_model,
-    english_ipa_acoustic_model,
+    english_mfa_acoustic_model,
 ):
     audio_dir, text_dir = basic_split_dir
     command = [
         "align",
         text_dir,
-        english_us_ipa_dictionary,
-        english_ipa_acoustic_model,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
         os.path.join(generated_dir, "multilingual"),
         "-t",
         temp_dir,
@@ -258,7 +256,6 @@ def test_align_split(
 
 def test_align_stereo(
     stereo_corpus_dir,
-    sick_dict_path,
     generated_dir,
     english_dictionary,
     temp_dir,
@@ -270,7 +267,7 @@ def test_align_stereo(
         "align",
         stereo_corpus_dir,
         english_dictionary,
-        "english",
+        english_acoustic_model,
         output_dir,
         "-t",
         temp_dir,
@@ -287,3 +284,147 @@ def test_align_stereo(
         os.path.join(output_dir, "michaelandsickmichael.TextGrid"), includeEmptyIntervals=False
     )
     assert len(tg.tierNameList) == 4
+
+
+def test_align_mp3s(
+    mp3_corpus_dir,
+    generated_dir,
+    english_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    english_acoustic_model,
+):
+    output_dir = os.path.join(generated_dir, "mp3_output")
+    command = [
+        "align",
+        mp3_corpus_dir,
+        english_dictionary,
+        english_acoustic_model,
+        output_dir,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    tg = tgio.openTextgrid(
+        os.path.join(output_dir, "common_voice_en_22058267.TextGrid"), includeEmptyIntervals=False
+    )
+    assert len(tg.tierNameList) == 2
+
+
+def test_align_opus(
+    opus_corpus_dir,
+    generated_dir,
+    english_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    english_acoustic_model,
+):
+    output_dir = os.path.join(generated_dir, "opus_output")
+    command = [
+        "align",
+        opus_corpus_dir,
+        english_dictionary,
+        english_acoustic_model,
+        output_dir,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    tg = tgio.openTextgrid(
+        os.path.join(output_dir, "13697_11991_000000.TextGrid"), includeEmptyIntervals=False
+    )
+    assert len(tg.tierNameList) == 2
+
+
+def test_swedish_cv(
+    swedish_dir,
+    generated_dir,
+    swedish_cv_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    swedish_cv_acoustic_model,
+):
+    output_dir = os.path.join(generated_dir, "swedish_cv_output")
+    command = [
+        "align",
+        swedish_dir,
+        swedish_cv_dictionary,
+        swedish_cv_acoustic_model,
+        output_dir,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    output_speaker_dir = os.path.join(output_dir, "se10x016")
+    assert os.path.exists(output_speaker_dir)
+    for file in [
+        "se10x016-08071999-1334_u0016001",
+        "se10x016-08071999-1334_u0016002",
+        "se10x016-08071999-1334_u0016003",
+        "se10x016-08071999-1334_u0016004",
+    ]:
+        tg_path = os.path.join(output_speaker_dir, file + ".TextGrid")
+        assert os.path.exists(tg_path)
+        tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
+        assert len(tg.tierNameList) == 2
+
+
+def test_swedish_mfa(
+    swedish_dir,
+    generated_dir,
+    swedish_cv_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    swedish_cv_acoustic_model,
+):
+    output_dir = os.path.join(generated_dir, "swedish_mfa_output")
+    command = [
+        "align",
+        swedish_dir,
+        swedish_cv_dictionary,
+        swedish_cv_acoustic_model,
+        output_dir,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    output_speaker_dir = os.path.join(output_dir, "se10x016")
+    assert os.path.exists(output_speaker_dir)
+    for file in [
+        "se10x016-08071999-1334_u0016001",
+        "se10x016-08071999-1334_u0016002",
+        "se10x016-08071999-1334_u0016003",
+        "se10x016-08071999-1334_u0016004",
+    ]:
+        tg_path = os.path.join(output_speaker_dir, file + ".TextGrid")
+        assert os.path.exists(tg_path)
+        tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
+        assert len(tg.tierNameList) == 2

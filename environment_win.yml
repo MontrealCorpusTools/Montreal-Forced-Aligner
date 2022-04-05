@@ -9,8 +9,9 @@ dependencies:
   - colorama
   - ansiwrap
   - pyyaml
-  - jsonlines
+  - dataclassy
   - kaldi
   - sox
   - praatio
   - biopython
+  - sqlalchemy>=1.4

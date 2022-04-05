@@ -6,11 +6,12 @@ import os
 import re
 import subprocess
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, NamedTuple
+from typing import TYPE_CHECKING, Dict, List
 
 import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.utils import (
     KaldiFunction,
     KaldiProcessWorker,
@@ -33,10 +34,9 @@ __all__ = [
 ]
 
 
-class TreeStatsArguments(NamedTuple):
+class TreeStatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.tree_stats_func`"""
 
-    log_path: str
     dictionaries: List[str]
     ci_phones: str
     model_path: str
@@ -45,10 +45,9 @@ class TreeStatsArguments(NamedTuple):
     treeacc_paths: Dict[str, str]
 
 
-class ConvertAlignmentsArguments(NamedTuple):
+class ConvertAlignmentsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.triphone.ConvertAlignmentsFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     model_path: str
     tree_path: str
@@ -81,7 +80,7 @@ class ConvertAlignmentsFunction(KaldiFunction):
     )
 
     def __init__(self, args: ConvertAlignmentsArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.model_path = args.model_path
         self.tree_path = args.tree_path
@@ -113,16 +112,11 @@ class ConvertAlignmentsFunction(KaldiFunction):
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield int(m.group("utterances")), int(m.group("failed"))
+                self.check_call(convert_proc)
 
 
 def tree_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    ci_phones: str,
-    model_path: str,
-    feature_strings: Dict[str, str],
-    ali_paths: Dict[str, str],
-    treeacc_paths: Dict[str, str],
+    arguments: TreeStatsArguments,
 ) -> None:
     """
     Multiprocessing function for calculating tree stats for training
@@ -138,31 +132,19 @@ def tree_stats_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    ci_phones: str
-        Colon-separated list of context-independent phones
-    model_path: str
-        Path to the acoustic model file
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ali_paths: dict[str, str]
-        Dictionary of alignment archives per dictionary name
-    treeacc_paths: dict[str, str]
-        Dictionary of accumulated tree stats files per dictionary name
+    arguments: TreeStatsArguments
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            ali_path = ali_paths[dict_name]
-            treeacc_path = treeacc_paths[dict_name]
+    with open(arguments.log_path, "w", encoding="utf8") as log_file:
+        for dict_name in arguments.dictionaries:
+            feature_string = arguments.feature_strings[dict_name]
+            ali_path = arguments.ali_paths[dict_name]
+            treeacc_path = arguments.treeacc_paths[dict_name]
             subprocess.call(
                 [
                     thirdparty_binary("acc-tree-stats"),
-                    f"--ci-phones={ci_phones}",
-                    model_path,
+                    f"--ci-phones={arguments.ci_phones}",
+                    arguments.model_path,
                     feature_string,
                     f"ark:{ali_path}",
                     treeacc_path,
@@ -201,13 +183,20 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         num_leaves: int = 1000,
         max_gaussians: int = 10000,
         cluster_threshold: int = -1,
+        boost_silence: float = 1.0,
+        power: float = 0.25,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.subset = subset
-        self.num_iterations = num_iterations
+        super().__init__(
+            num_iterations=num_iterations,
+            boost_silence=boost_silence,
+            power=power,
+            subset=subset,
+            initial_gaussians=num_leaves,
+            max_gaussians=max_gaussians,
+            **kwargs,
+        )
         self.num_leaves = num_leaves
-        self.max_gaussians = max_gaussians
         self.cluster_threshold = cluster_threshold
 
     def tree_stats_arguments(self) -> List[TreeStatsArguments]:
@@ -224,8 +213,10 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         alignment_model_path = os.path.join(self.previous_aligner.working_directory, "final.mdl")
         return [
             TreeStatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"acc_tree.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 self.worker.context_independent_csl,
                 alignment_model_path,
                 feat_strings[j.name],
@@ -246,11 +237,13 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         return [
             ConvertAlignmentsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"convert_alignments.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 self.model_path,
                 self.tree_path,
-                self.previous_aligner.alignment_model_path,
+                self.previous_aligner.model_path,
                 j.construct_path_dictionary(self.previous_aligner.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
             )
@@ -277,7 +270,9 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         self.log_info("Converting alignments...")
         arguments = self.convert_alignments_arguments()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -329,7 +324,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 continue
             self.realignment_iterations.append(i)
         self.initial_gaussians = self.num_leaves
-        self.current_gaussians = self.num_leaves
+        self.final_gaussian_iteration = self.num_iterations - 10
 
     @property
     def train_type(self) -> str:
@@ -373,7 +368,6 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
 
         jobs = self.tree_stats_arguments()
-
         if self.use_mp:
             run_mp(tree_stats_func, jobs, self.working_log_directory)
         else:
@@ -396,7 +390,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             for f in tree_accs:
                 os.remove(f)
 
-    def _setup_tree(self) -> None:
+    def _setup_tree(self, init_from_previous=False, initial_mix_up=True) -> None:
         """
         Set up the tree for the triphone model
 
@@ -447,7 +441,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 [
                     thirdparty_binary("build-tree"),
                     "--verbose=1",
-                    f"--max-leaves={self.initial_gaussians}",
+                    f"--max-leaves={self.num_leaves}",
                     f"--cluster-thresh={self.cluster_threshold}",
                     treeacc_path,
                     roots_int_path,
@@ -461,31 +455,49 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         log_path = os.path.join(self.working_log_directory, "init_model.log")
         occs_path = os.path.join(self.working_directory, "0.occs")
         mdl_path = self.model_path
+        if init_from_previous:
+            command = [
+                thirdparty_binary("gmm-init-model"),
+                f"--write-occs={occs_path}",
+                tree_path,
+                treeacc_path,
+                topo_path,
+                mdl_path,
+                os.path.join(self.previous_aligner.working_directory, "tree"),
+                os.path.join(self.previous_aligner.working_directory, "final.mdl"),
+            ]
+        else:
+            command = [
+                thirdparty_binary("gmm-init-model"),
+                f"--write-occs={occs_path}",
+                tree_path,
+                treeacc_path,
+                topo_path,
+                mdl_path,
+            ]
         with open(log_path, "w") as log_file:
-            subprocess.call(
-                [
-                    thirdparty_binary("gmm-init-model"),
-                    f"--write-occs={occs_path}",
-                    tree_path,
-                    treeacc_path,
-                    topo_path,
+            subprocess.call(command, stderr=log_file)
+        if initial_mix_up:
+            if init_from_previous:
+                command = [
+                    thirdparty_binary("gmm-mixup"),
+                    f"--mix-up={self.initial_gaussians}",
+                    f"--mix-down={self.initial_gaussians}",
                     mdl_path,
-                ],
-                stderr=log_file,
-            )
-
-        log_path = os.path.join(self.working_log_directory, "mixup.log")
-        with open(log_path, "w") as log_file:
-            subprocess.call(
-                [
+                    occs_path,
+                    mdl_path,
+                ]
+            else:
+                command = [
                     thirdparty_binary("gmm-mixup"),
                     f"--mix-up={self.initial_gaussians}",
                     mdl_path,
                     occs_path,
                     mdl_path,
-                ],
-                stderr=log_file,
-            )
+                ]
+            log_path = os.path.join(self.working_log_directory, "mixup.log")
+            with open(log_path, "w") as log_file:
+                subprocess.call(command, stderr=log_file)
         os.remove(treeacc_path)
         os.rename(occs_path, self.next_occs_path)
         parse_logs(self.working_log_directory)

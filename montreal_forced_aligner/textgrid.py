@@ -12,7 +12,7 @@ from typing import Dict, List
 
 from praatio import textgrid as tgio
 
-from montreal_forced_aligner.data import CtmInterval
+from montreal_forced_aligner.data import CtmInterval, TextFileType
 from montreal_forced_aligner.exceptions import TextGridParseError
 
 __all__ = [
@@ -37,7 +37,7 @@ def process_ctm_line(line: str) -> CtmInterval:
         Extracted data from the line
     """
     line = line.split(" ")
-    utt = line[0]
+    utt = int(line[0].split("-")[-1])
     if len(line) == 5:
         begin = round(float(line[2]), 4)
         duration = float(line[3])
@@ -117,6 +117,7 @@ def export_textgrid(
     output_path: str,
     duration: float,
     frame_shift: int,
+    output_format: str = TextFileType.TEXTGRID.value,
 ) -> None:
     """
     Export aligned file to TextGrid
@@ -183,6 +184,4 @@ def export_textgrid(
         tg.replaceTier(word_tier_name, word_tier)
         tg.replaceTier(phone_tier_name, phone_tier)
     if has_data:
-        tg.save(
-            output_path, includeBlankSpaces=True, format="long_textgrid", reportingMode="error"
-        )
+        tg.save(output_path, includeBlankSpaces=True, format=output_format, reportingMode="error")

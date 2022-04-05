@@ -12,6 +12,7 @@ import typing
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
 from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
 
+import requests
 import yaml
 
 from montreal_forced_aligner.abc import MfaModel, ModelExporterMixin
@@ -19,17 +20,21 @@ from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
+    ModelsConnectionError,
+    PretrainedModelNotFoundError,
     PronunciationAcousticMismatchError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter
 
 if TYPE_CHECKING:
+    from dataclasses import dataclass
     from logging import Logger
 
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.dictionary.pronunciation import DictionaryMixin
     from montreal_forced_aligner.g2p.trainer import G2PTrainer
-
+else:
+    from dataclassy import dataclass
 
 # default format for output
 FORMAT = "zip"
@@ -41,6 +46,8 @@ __all__ = [
     "IvectorExtractorModel",
     "DictionaryModel",
     "G2PModel",
+    "ModelManager",
+    "ModelRelease",
     "MODEL_TYPES",
 ]
 
@@ -327,8 +334,15 @@ class AcousticModel(Archive):
         params["non_silence_phones"] = {x for x in self.meta["phones"]}
         params["oov_phone"] = self.meta["oov_phone"]
         params["optional_silence_phone"] = self.meta["optional_silence_phone"]
-        params["other_noise_phone"] = self.meta["other_noise_phone"]
         params["phone_set_type"] = self.meta["phone_set_type"]
+        params["silence_probability"] = self.meta.get("silence_probability", 0.5)
+        params["initial_silence_probability"] = self.meta.get("initial_silence_probability", 0.5)
+        params["final_non_silence_correction"] = self.meta.get(
+            "final_non_silence_correction", None
+        )
+        params["final_silence_correction"] = self.meta.get("final_silence_correction", None)
+        if "other_noise_phone" in self.meta:
+            params["other_noise_phone"] = self.meta["other_noise_phone"]
         return params
 
     @property
@@ -383,7 +397,7 @@ class AcousticModel(Archive):
                 self._meta["optional_silence_phone"] = "sil"
             if "oov_phone" not in self._meta:
                 self._meta["oov_phone"] = "spn"
-            if "other_noise_phone" not in self._meta:
+            if format == "yaml":
                 self._meta["other_noise_phone"] = "sp"
             if "phone_set_type" not in self._meta:
                 self._meta["phone_set_type"] = "UNKNOWN"
@@ -512,7 +526,7 @@ class AcousticModel(Archive):
             missing_phones = dictionary.meta["phones"] - set(self.meta["phones"])
         else:
             missing_phones = dictionary.non_silence_phones - set(self.meta["phones"])
-        if missing_phones:
+        if missing_phones and missing_phones != {"sp"}:  # Compatibility
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
@@ -576,6 +590,17 @@ class IvectorExtractorModel(Archive):
 
 
 class G2PModel(Archive):
+    """
+    Class for G2P models
+
+    Parameters
+    ----------
+    source: str
+        Path to source archive
+    root_directory: str
+        Path to save exported model
+    """
+
     extensions = [".zip", ".g2p"]
 
     model_type = "g2p"
@@ -695,6 +720,13 @@ class G2PModel(Archive):
 class LanguageModel(Archive):
     """
     Class for MFA language models
+
+    Parameters
+    ----------
+    source: str
+        Path to source archive
+    root_directory: str
+        Path to save exported model
     """
 
     model_type = "language_model"
@@ -806,6 +838,7 @@ class DictionaryModel(MfaModel):
         self.dirname = os.path.join(root_directory, self.name)
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
+        self.oov_probabilities = True
         if not isinstance(phone_set_type, PhoneSetType):
             phone_set_type = PhoneSetType[phone_set_type]
         self.phone_set_type = phone_set_type
@@ -873,6 +906,7 @@ class DictionaryModel(MfaModel):
                             raise ValueError
                     except ValueError:
                         self.silence_probabilities = False
+                self.oov_probabilities = False
         if detect_phone_set:
             self.phone_set_type = max(counts.keys(), key=lambda x: counts[x])
 
@@ -901,12 +935,23 @@ class DictionaryModel(MfaModel):
             self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
         )
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
+        configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}
         if self.phone_set_type.has_base_phone_regex:
-            configuration_data["Dictionary"]["data"]["base_phones"] = {
-                k: sorted(v) for k, v in sorted(dictionary.base_phones.items())
-            }
+            for k, v in sorted(dictionary.base_phones.items()):
+                if k not in configuration_data["Dictionary"]["data"]["detailed_phone_info"]:
+                    configuration_data["Dictionary"]["data"]["detailed_phone_info"][k] = []
+                for p2 in sorted(v, key=lambda x: -dictionary.phone_counts[x]):
+                    detail_string = f"{p2} ({dictionary.phone_counts[p2]})"
+                    configuration_data["Dictionary"]["data"]["detailed_phone_info"][k].append(
+                        detail_string
+                    )
+
         else:
-            configuration_data["Dictionary"]["data"]["base_phones"] = "None"
+            configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}
+            for phone in sorted(dictionary.non_silence_phones):
+                configuration_data["Dictionary"]["data"]["detailed_phone_info"][
+                    phone
+                ] = dictionary.phone_counts[phone]
         if len(dictionary.graphemes) < 50:
             configuration_data["Dictionary"]["data"]["graphemes"] = sorted(dictionary.graphemes)
         else:
@@ -996,3 +1041,211 @@ MODEL_TYPES = {
     "language_model": LanguageModel,
     "ivector": IvectorExtractorModel,
 }
+
+
+@dataclass(slots=True)
+class ModelRelease:
+    """
+    Dataclas for model releases
+
+    Parameters
+    ----------
+    model_name: str
+        Name of the model
+    tag_name: str
+        Tag on GitHub
+    version: str
+        Version of the model
+    download_link: str
+        Link to download the model
+    download_file_name: str
+        File name to save as
+    release_id: int
+        Release ID on GitHub
+    """
+
+    model_name: str
+    tag_name: str
+    version: str
+    download_link: str
+    download_file_name: str
+    release_id: int = None
+
+    @property
+    def release_link(self) -> Optional[str]:
+        """Generate link pointing to the release on GitHub"""
+        if not self.release_id:
+            return None
+        return ModelManager.base_url + f"/{self.release_id}"
+
+
+class ModelManager:
+    """
+    Class for managing the currently available models on the local system and the models available to be downloaded
+    """
+
+    base_url = "https://api.github.com/repos/MontrealCorpusTools/mfa-models/releases"
+
+    def __init__(self):
+        self.local_models = {k: [] for k in MODEL_TYPES.keys()}
+        self.remote_models: Dict[str, Dict[str, ModelRelease]] = {
+            k: {} for k in MODEL_TYPES.keys()
+        }
+        self.synced_remote = False
+        self.printer = TerminalPrinter()
+        self.refresh_local()
+
+    def refresh_local(self) -> None:
+        """Refresh cached information with the latest list of local model"""
+        self.local_models = {
+            model_type: model_class.get_available_models()
+            for model_type, model_class in MODEL_TYPES.items()
+        }
+
+    def refresh_remote(self, token=None) -> None:
+        """Refresh cached information with the latest list of downloadable models"""
+        self.remote_models = {k: {} for k in MODEL_TYPES.keys()}
+        data_count = 100
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if token:
+            headers["Authorization"] = f"token {token}"
+        page = 1
+        while data_count == 100:
+
+            r = requests.get(
+                self.base_url, params={"per_page": 100, "page": page}, headers=headers
+            )
+            if r.status_code >= 400:
+                raise ModelsConnectionError(r.status_code, r.text)
+            data = r.json()
+            data_count = len(data)
+            for d in data:
+                tag = d["tag_name"]
+                model_type, model_name, version = tag.split(
+                    "-"
+                )  # tag format "{model_type}-{model_name}-v{version}"
+                if model_type not in self.remote_models:  # Other releases, archived, etc
+                    continue
+                if (
+                    model_name in self.remote_models[model_type]
+                ):  # Older version than currently tracked
+                    continue
+                if not tag.startswith(model_type):
+                    continue
+                if "archive" in tag:
+                    continue
+                download_url = d["assets"][0]["url"]
+                file_name = d["assets"][0]["name"]
+                self.remote_models[model_type][model_name] = ModelRelease(
+                    model_name, tag, version, download_url, file_name, d["id"]
+                )
+            page += 1
+
+    def has_local_model(self, model_type: str, model_name: str) -> bool:
+        """Check for local model"""
+        return model_name in self.local_models[model_type]
+
+    def print_local_models(self, model_type: typing.Optional[str] = None) -> None:
+        """
+        List all local pretrained models
+
+        Parameters
+        ----------
+        model_type: str, optional
+            Model type, will list models of all model types if None
+        """
+        self.refresh_local()
+        if model_type is None:
+            self.printer.print_information_line("Available local models", "", level=0)
+            for model_type, model_class in MODEL_TYPES.items():
+                names = model_class.get_available_models()
+                if names:
+                    self.printer.print_information_line(model_type, names, value_color="green")
+                else:
+                    self.printer.print_information_line(
+                        model_type, "No models found", value_color="yellow"
+                    )
+        else:
+            self.printer.print_information_line(
+                f"Available local {model_type} models", "", level=0
+            )
+            model_class = MODEL_TYPES[model_type]
+            names = model_class.get_available_models()
+            if names:
+                for name in names:
+                    self.printer.print_information_line("", name, value_color="green", level=1)
+            else:
+                self.printer.print_information_line(
+                    "", "No models found", value_color="yellow", level=1
+                )
+
+    def print_remote_models(self, model_type: typing.Optional[str] = None) -> None:
+        """
+        Print of models available for download
+
+        Parameters
+        ----------
+        model_type: str
+            Model type to look up
+        """
+        if not self.synced_remote:
+            self.refresh_remote()
+        if model_type is None:
+            self.printer.print_information_line("Available models for download", "", level=0)
+            for model_type, release_data in self.remote_models.items():
+                names = sorted(release_data.keys())
+                if names:
+                    self.printer.print_information_line(model_type, names, value_color="green")
+                else:
+                    self.printer.print_information_line(
+                        model_type, "No models found", value_color="red"
+                    )
+        else:
+            self.printer.print_information_line(
+                f"Available {model_type} models for download", "", level=0
+            )
+            names = sorted(self.remote_models[model_type].keys())
+            if names:
+                for name in names:
+                    self.printer.print_information_line("", name, value_color="green", level=1)
+            else:
+                self.printer.print_information_line(
+                    "", "No models found", value_color="yellow", level=1
+                )
+
+    def download_model(
+        self, model_type: str, model_name=typing.Optional[str], token: str = None
+    ) -> None:
+        """
+        Download a model to MFA's temporary directory
+
+        Parameters
+        ----------
+        model_type: str
+            Model type
+        model_name: str
+            Name of model
+        """
+        if not model_name:
+            return self.print_remote_models(model_type)
+        if not self.synced_remote:
+            self.refresh_remote()
+        if model_name not in self.remote_models[model_type]:
+            raise PretrainedModelNotFoundError(
+                model_name, model_type, sorted(self.remote_models[model_type].keys())
+            )
+        release = self.remote_models[model_type][model_name]
+        headers = {"Accept": "application/octet-stream"}
+        if token:
+            headers["Authorization"] = f"token {token}"
+        r = requests.get(release.download_link, headers=headers)
+        if r.status_code >= 400:
+            raise ModelsConnectionError(r.status_code, r.text)
+        with open(
+            os.path.join(
+                MODEL_TYPES[model_type].pretrained_directory(), release.download_file_name
+            ),
+            "wb",
+        ) as f:
+            f.write(r.content)
+        self.refresh_local()

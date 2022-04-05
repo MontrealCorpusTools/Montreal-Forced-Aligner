@@ -1,21 +1,29 @@
 """Class definition for TrainableIvectorExtractor"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import shutil
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import yaml
-
-from ..abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
-from ..acoustic_modeling.base import AcousticModelTrainingMixin
-from ..corpus.features import IvectorConfigMixin
-from ..corpus.ivector_corpus import IvectorCorpusMixin
-from ..exceptions import ConfigError, KaldiProcessingError
-from ..models import IvectorExtractorModel
-from ..utils import log_kaldi_errors, parse_logs, run_mp, run_non_mp, thirdparty_binary
+from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.corpus.features import IvectorConfigMixin
+from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
+from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
+from montreal_forced_aligner.helper import load_configuration
+from montreal_forced_aligner.models import IvectorExtractorModel
+from montreal_forced_aligner.utils import (
+    KaldiFunction,
+    KaldiProcessWorker,
+    Stopped,
+    log_kaldi_errors,
+    parse_logs,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -25,7 +33,14 @@ __all__ = [
     "DubmTrainer",
     "IvectorTrainer",
     "IvectorModelTrainingMixin",
-    "acc_ivector_stats_func",
+    "GmmGselectFunction",
+    "GmmGselectArguments",
+    "GaussToPostFunction",
+    "GaussToPostArguments",
+    "AccGlobalStatsFunction",
+    "AccGlobalStatsArguments",
+    "AccIvectorStatsFunction",
+    "AccIvectorStatsArguments",
 ]
 
 
@@ -74,60 +89,45 @@ class IvectorModelTrainingMixin(AcousticModelTrainingMixin):
         ivector_extractor.dump(basename)
 
 
-class GmmGselectArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`"""
+class GmmGselectArguments(MfaArguments):
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GmmGselectFunction`"""
 
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    feature_string: str
     ivector_options: MetaDict
     dubm_model: str
-    gselect_paths: Dict[str, str]
+    gselect_path: str
 
 
-class AccGlobalStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`"""
+class AccGlobalStatsArguments(MfaArguments):
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsFunction`"""
 
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    feature_string: str
     ivector_options: MetaDict
-    gselect_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
-    dubm_path: str
+    gselect_path: str
+    acc_path: str
+    dubm_model: str
 
 
-class GaussToPostArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`"""
+class GaussToPostArguments(MfaArguments):
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.GaussToPostFunction`"""
 
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    feature_string: str
     ivector_options: MetaDict
-    post_paths: Dict[str, str]
-    dubm_path: str
+    post_path: str
+    dubm_model: str
 
 
-class AccIvectorStatsArguments(NamedTuple):
-    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`"""
+class AccIvectorStatsArguments(MfaArguments):
+    """Arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsFunction`"""
 
-    log_path: str
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    feature_string: str
     ivector_options: MetaDict
     ie_path: str
-    post_paths: Dict[str, str]
-    acc_init_paths: Dict[str, str]
+    post_path: str
+    acc_init_path: str
 
 
-def gmm_gselect_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    dubm_options: MetaDict,
-    dubm_path: str,
-    gselect_paths: Dict[str, str],
-) -> None:
+class GmmGselectFunction(KaldiFunction):
     """
     Multiprocessing function for selecting GMM indices.
 
@@ -144,28 +144,25 @@ def gmm_gselect_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    dubm_options: dict[str, Any]
-        Options for DUBM training
-    dubm_path: str
-        Path to the DUBM file
-    gselect_paths: dict[str, str]
-        Dictionary of gselect archives per dictionary name
+    args: :class:`~montreal_forced_aligner.ivector.trainer.GmmGselectArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            gselect_path = gselect_paths[dict_name]
+
+    def __init__(self, args: GmmGselectArguments):
+        super().__init__(args)
+        self.feature_string = args.feature_string
+        self.ivector_options = args.ivector_options
+        self.dubm_model = args.dubm_model
+        self.gselect_path = args.gselect_path
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
-                    f"--n={dubm_options['subsample']}",
-                    feature_string,
+                    f"--n={self.ivector_options['subsample']}",
+                    self.feature_string,
                     "ark:-",
                 ],
                 stdout=subprocess.PIPE,
@@ -176,10 +173,10 @@ def gmm_gselect_func(
             gselect_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-gselect"),
-                    f"--n={dubm_options['num_gselect']}",
-                    dubm_path,
+                    f"--n={self.ivector_options['num_gselect']}",
+                    self.dubm_model,
                     "ark:-",
-                    f"ark:{gselect_path}",
+                    f"ark:{self.gselect_path}",
                 ],
                 stdin=subsample_feats_proc.stdout,
                 stderr=log_file,
@@ -188,14 +185,7 @@ def gmm_gselect_func(
             gselect_proc.communicate()
 
 
-def gauss_to_post_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ivector_options: MetaDict,
-    post_paths: Dict[str, str],
-    dubm_path: str,
-):
+class GaussToPostFunction(KaldiFunction):
     """
     Multiprocessing function to get posteriors during UBM training.
 
@@ -214,29 +204,28 @@ def gauss_to_post_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ivector_options: dict[str, Any]
-        Options for ivector extractor training
-    post_paths: dict[str, str]
-        Dictionary of posterior archives per dictionary name
-    dubm_path: str
-        Path to the DUBM file
+    args: :class:`~montreal_forced_aligner.ivector.trainer.GaussToPostArguments`
+        Arguments for the function
     """
-    modified_posterior_scale = ivector_options["posterior_scale"] * ivector_options["subsample"]
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            post_path = post_paths[dict_name]
+
+    def __init__(self, args: GaussToPostArguments):
+        super().__init__(args)
+        self.feature_string = args.feature_string
+        self.ivector_options = args.ivector_options
+        self.dubm_model = args.dubm_model
+        self.post_path = args.post_path
+
+    def run(self):
+        """Run the function"""
+        modified_posterior_scale = (
+            self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
+        )
+        with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
-                    f"--n={ivector_options['subsample']}",
-                    feature_string,
+                    f"--n={self.ivector_options['subsample']}",
+                    self.feature_string,
                     "ark:-",
                 ],
                 stdout=subprocess.PIPE,
@@ -246,9 +235,9 @@ def gauss_to_post_func(
             gmm_global_get_post_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-get-post"),
-                    f"--n={ivector_options['num_gselect']}",
-                    f"--min-post={ivector_options['min_post']}",
-                    dubm_path,
+                    f"--n={self.ivector_options['num_gselect']}",
+                    f"--min-post={self.ivector_options['min_post']}",
+                    self.dubm_model,
                     "ark:-",
                     "ark:-",
                 ],
@@ -262,7 +251,7 @@ def gauss_to_post_func(
                     thirdparty_binary("scale-post"),
                     "ark:-",
                     str(modified_posterior_scale),
-                    f"ark:{post_path}",
+                    f"ark:{self.post_path}",
                 ],
                 stdin=gmm_global_get_post_proc.stdout,
                 stderr=log_file,
@@ -271,15 +260,7 @@ def gauss_to_post_func(
             scale_post_proc.communicate()
 
 
-def acc_global_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    dubm_options: MetaDict,
-    gselect_paths: Dict[str, str],
-    acc_paths: Dict[str, str],
-    dubm_path: str,
-) -> None:
+class AccGlobalStatsFunction(KaldiFunction):
     """
     Multiprocessing function for accumulating global model stats.
 
@@ -296,31 +277,26 @@ def acc_global_stats_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    dubm_options: dict[str, Any]
-        Options for DUBM training
-    gselect_paths: dict[str, str]
-        Dictionary of gselect archives per dictionary name
-    acc_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
-    dubm_path: str
-        Path to the DUBM file
+    args: :class:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            gselect_path = gselect_paths[dict_name]
-            acc_path = acc_paths[dict_name]
+
+    def __init__(self, args: AccGlobalStatsArguments):
+        super().__init__(args)
+        self.feature_string = args.feature_string
+        self.ivector_options = args.ivector_options
+        self.dubm_model = args.dubm_model
+        self.gselect_path = args.gselect_path
+        self.acc_path = args.acc_path
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
-                    f"--n={dubm_options['subsample']}",
-                    feature_string,
+                    f"--n={self.ivector_options['subsample']}",
+                    self.feature_string,
                     "ark:-",
                 ],
                 stdout=subprocess.PIPE,
@@ -330,10 +306,10 @@ def acc_global_stats_func(
             gmm_global_acc_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-acc-stats"),
-                    f"--gselect=ark:{gselect_path}",
-                    dubm_path,
+                    f"--gselect=ark:{self.gselect_path}",
+                    self.dubm_model,
                     "ark:-",
-                    acc_path,
+                    self.acc_path,
                 ],
                 stderr=log_file,
                 stdin=subsample_feats_proc.stdout,
@@ -342,15 +318,7 @@ def acc_global_stats_func(
             gmm_global_acc_proc.communicate()
 
 
-def acc_ivector_stats_func(
-    log_path: str,
-    dictionaries: List[str],
-    feature_strings: Dict[str, str],
-    ivector_options: MetaDict,
-    ie_path: str,
-    post_paths: Dict[str, str],
-    acc_init_paths: Dict[str, str],
-) -> None:
+class AccIvectorStatsFunction(KaldiFunction):
     """
     Multiprocessing function that accumulates stats for ivector training.
 
@@ -367,31 +335,26 @@ def acc_ivector_stats_func(
 
     Parameters
     ----------
-    log_path: str
-        Path to save log output
-    dictionaries: list[str]
-        List of dictionary names
-    feature_strings: dict[str, str]
-        Dictionary of feature strings per dictionary name
-    ivector_options: dict[str, Any]
-        Options for ivector extractor training
-    ie_path: str
-        Path to the ivector extractor file
-    post_paths: dict[str, str]
-        Dictionary of posterior archives per dictionary name
-    acc_init_paths: dict[str, str]
-        Dictionary of accumulated stats files per dictionary name
+    args: :class:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsArguments`
+        Arguments for the function
     """
-    with open(log_path, "w", encoding="utf8") as log_file:
-        for dict_name in dictionaries:
-            feature_string = feature_strings[dict_name]
-            post_path = post_paths[dict_name]
-            acc_init_path = acc_init_paths[dict_name]
+
+    def __init__(self, args: AccIvectorStatsArguments):
+        super().__init__(args)
+        self.feature_string = args.feature_string
+        self.ivector_options = args.ivector_options
+        self.ie_path = args.ie_path
+        self.post_path = args.post_path
+        self.acc_init_path = args.acc_init_path
+
+    def run(self):
+        """Run the function"""
+        with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
-                    f"--n={ivector_options['subsample']}",
-                    feature_string,
+                    f"--n={self.ivector_options['subsample']}",
+                    self.feature_string,
                     "ark:-",
                 ],
                 stdout=subprocess.PIPE,
@@ -402,10 +365,10 @@ def acc_ivector_stats_func(
                 [
                     thirdparty_binary("ivector-extractor-acc-stats"),
                     "--num-threads=1",
-                    ie_path,
+                    self.ie_path,
                     "ark:-",
-                    f"ark:{post_path}",
-                    acc_init_path,
+                    f"ark:{self.post_path}",
+                    self.acc_init_path,
                 ],
                 stdin=subsample_feats_proc.stdout,
                 stderr=log_file,
@@ -486,7 +449,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
     def gmm_gselect_arguments(self) -> List[GmmGselectArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.GmmGselectFunction`
 
         Returns
         -------
@@ -496,12 +459,13 @@ class DubmTrainer(IvectorModelTrainingMixin):
         feat_strings = self.construct_feature_proc_strings()
         return [
             GmmGselectArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"gmm_gselect.{j.name}.log"),
-                j.current_dictionary_names,
                 feat_strings[j.name],
                 self.dubm_options,
                 self.model_path,
-                j.construct_path_dictionary(self.working_directory, "gselect", "ark"),
+                j.construct_path(self.working_directory, "gselect", "ark"),
             )
             for j in self.jobs
         ]
@@ -510,7 +474,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self,
     ) -> List[AccGlobalStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsFunction`
 
 
         Returns
@@ -521,17 +485,16 @@ class DubmTrainer(IvectorModelTrainingMixin):
         feat_strings = self.construct_feature_proc_strings()
         return [
             AccGlobalStatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(
                     self.working_log_directory,
                     f"acc_global_stats.{self.iteration}.{j.name}.log",
                 ),
-                j.current_dictionary_names,
                 feat_strings[j.name],
                 self.dubm_options,
-                j.construct_path_dictionary(self.working_directory, "gselect", "ark"),
-                j.construct_path_dictionary(
-                    self.working_directory, f"global.{self.iteration}", "acc"
-                ),
+                j.construct_path(self.working_directory, "gselect", "ark"),
+                j.construct_path(self.working_directory, f"global.{self.iteration}", "acc"),
                 self.model_path,
             )
             for j in self.jobs
@@ -543,7 +506,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.ivector.trainer.gmm_gselect_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.GmmGselectFunction`
             Multiprocessing helper function for each job
         :meth:`.DubmTrainer.gmm_gselect_arguments`
             Job method for generating arguments for the helper function
@@ -551,11 +514,34 @@ class DubmTrainer(IvectorModelTrainingMixin):
             Reference Kaldi script
 
         """
-        jobs = self.gmm_gselect_arguments()
+        begin = time.time()
+        self.log_info("Selecting gaussians...")
+        arguments = self.gmm_gselect_arguments()
+
         if self.use_mp:
-            run_mp(gmm_gselect_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(arguments):
+                function = GmmGselectFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
+
         else:
-            run_non_mp(gmm_gselect_func, jobs, self.working_log_directory)
+            self.log_debug("Not using multiprocessing...")
+            for args in arguments:
+                function = GmmGselectFunction(args)
+                function.run()
+
+            self.log_debug(f"Gaussian selection took {time.time() - begin}")
 
     def _trainer_initialization(self, initial_alignment_directory: Optional[str] = None) -> None:
         """DUBM training initialization"""
@@ -574,15 +560,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             )
         num_gauss_init = int(self.initial_gaussian_proportion * int(self.num_gaussians))
         log_path = os.path.join(log_directory, "gmm_init.log")
-        all_feats_path = os.path.join(self.corpus_output_directory, "feats.scp")
         feature_string = self.construct_base_feature_string(all_feats=True)
-        with open(all_feats_path, "w") as outf:
-            for i in self.jobs:
-                feat_paths = i.construct_path_dictionary(self.data_directory, "feats", "scp")
-                for p in feat_paths.values():
-                    with open(p) as inf:
-                        for line in inf:
-                            outf.write(line)
         self.iteration = 1
         with open(log_path, "w") as log_file:
             gmm_init_proc = subprocess.Popen(
@@ -609,7 +587,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.ivector.trainer.acc_global_stats_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.AccGlobalStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.DubmTrainer.acc_global_stats_arguments`
             Job method for generating arguments for the helper function
@@ -619,11 +597,34 @@ class DubmTrainer(IvectorModelTrainingMixin):
             Reference Kaldi script
 
         """
-        jobs = self.acc_global_stats_arguments()
+        begin = time.time()
+        self.log_info("Accumulating global stats...")
+        arguments = self.acc_global_stats_arguments()
+
         if self.use_mp:
-            run_mp(acc_global_stats_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(arguments):
+                function = AccGlobalStatsFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
+
         else:
-            run_non_mp(acc_global_stats_func, jobs, self.working_log_directory)
+            self.log_debug("Not using multiprocessing...")
+            for args in arguments:
+                function = AccGlobalStatsFunction(args)
+                function.run()
+
+        self.log_debug(f"Accumulating stats took {time.time() - begin}")
 
         # Don't remove low-count Gaussians till the last tier,
         # or gselect info won't be valid anymore
@@ -634,8 +635,8 @@ class DubmTrainer(IvectorModelTrainingMixin):
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
         with open(log_path, "w") as log_file:
             acc_files = []
-            for j in jobs:
-                acc_files.extend(j.acc_paths.values())
+            for j in arguments:
+                acc_files.append(j.acc_path)
             sum_proc = subprocess.Popen(
                 [thirdparty_binary("gmm-global-sum-accs"), "-"] + acc_files,
                 stderr=log_file,
@@ -739,7 +740,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
     def acc_ivector_stats_arguments(self) -> List[AccIvectorStatsArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsFunction`
 
         Returns
         -------
@@ -749,13 +750,14 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         feat_strings = self.construct_feature_proc_strings()
         arguments = [
             AccIvectorStatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"ivector_acc.{j.name}.log"),
-                j.current_dictionary_names,
                 feat_strings[j.name],
                 self.ivector_options,
                 self.ie_path,
-                j.construct_path_dictionary(self.working_directory, "post", "ark"),
-                j.construct_path_dictionary(self.working_directory, "ivector", "acc"),
+                j.construct_path(self.working_directory, "post", "ark"),
+                j.construct_path(self.working_directory, "ivector", "acc"),
             )
             for j in self.jobs
         ]
@@ -794,7 +796,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
     def gauss_to_post_arguments(self) -> List[GaussToPostArguments]:
         """
-        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`
+        Generate Job arguments for :func:`~montreal_forced_aligner.ivector.trainer.GaussToPostFunction`
 
         Returns
         -------
@@ -804,11 +806,12 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         feat_strings = self.construct_feature_proc_strings()
         return [
             GaussToPostArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"gauss_to_post.{j.name}.log"),
-                j.current_dictionary_names,
                 feat_strings[j.name],
                 self.ivector_options,
-                j.construct_path_dictionary(self.working_directory, "post", "ark"),
+                j.construct_path(self.working_directory, "post", "ark"),
                 self.dubm_path,
             )
             for j in self.jobs
@@ -820,18 +823,41 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.ivector.trainer.gauss_to_post_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.GaussToPostFunction`
             Multiprocessing helper function for each job
         :meth:`.IvectorTrainer.gauss_to_post_arguments`
             Job method for generating arguments for the helper function
         :kaldi_steps_sid:`train_ivector_extractor`
             Reference Kaldi script
         """
-        jobs = self.gauss_to_post_arguments()
+        begin = time.time()
+        self.log_info("Extracting posteriors...")
+        arguments = self.gauss_to_post_arguments()
+
         if self.use_mp:
-            run_mp(gauss_to_post_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(arguments):
+                function = GaussToPostFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
+
         else:
-            run_non_mp(gauss_to_post_func, jobs, self.working_log_directory)
+            self.log_debug("Not using multiprocessing...")
+            for args in arguments:
+                function = GaussToPostFunction(args)
+                function.run()
+
+        self.log_debug(f"Extracting posteriors took {time.time() - begin}")
 
     @property
     def train_type(self) -> str:
@@ -884,7 +910,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         See Also
         --------
-        :func:`~montreal_forced_aligner.ivector.trainer.acc_ivector_stats_func`
+        :func:`~montreal_forced_aligner.ivector.trainer.AccIvectorStatsFunction`
             Multiprocessing helper function for each job
         :meth:`.IvectorTrainer.acc_ivector_stats_arguments`
             Job method for generating arguments for the helper function
@@ -896,18 +922,41 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             Reference Kaldi script
         """
 
-        jobs = self.acc_ivector_stats_arguments()
+        begin = time.time()
+        self.log_info("Accumulating ivector stats...")
+        arguments = self.acc_ivector_stats_arguments()
+
         if self.use_mp:
-            run_mp(acc_ivector_stats_func, jobs, self.working_log_directory)
+            manager = mp.Manager()
+            error_dict = manager.dict()
+            return_queue = manager.Queue()
+            stopped = Stopped()
+            procs = []
+            for i, args in enumerate(arguments):
+                function = AccIvectorStatsFunction(args)
+                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join()
+            if error_dict:
+                for v in error_dict.values():
+                    raise v
+
         else:
-            run_non_mp(acc_ivector_stats_func, jobs, self.working_log_directory)
+            self.log_debug("Not using multiprocessing...")
+            for args in arguments:
+                function = AccIvectorStatsFunction(args)
+                function.run()
+
+        self.log_debug(f"Accumulating stats took {time.time() - begin}")
 
         log_path = os.path.join(self.working_log_directory, f"sum_acc.{self.iteration}.log")
         acc_path = os.path.join(self.working_directory, f"acc.{self.iteration}")
         with open(log_path, "w", encoding="utf8") as log_file:
             accinits = []
-            for j in jobs:
-                accinits.extend(j.acc_init_paths.values())
+            for j in arguments:
+                accinits.append(j.acc_init_path)
             sum_accs_proc = subprocess.Popen(
                 [thirdparty_binary("ivector-extractor-sum-accs"), "--parallel=true"]
                 + accinits
@@ -1007,8 +1056,11 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             self.load_corpus()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
         self.initialized = True
 
@@ -1071,7 +1123,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
                 self.current_model.export_model(trainer.working_directory)
             trainer.train()
             previous = trainer
-        self.logger.info(f"Completed training in {time.time()-begin} seconds!")
+        self.log_info(f"Completed training in {time.time()-begin} seconds!")
 
     def export_model(self, output_model_path: str) -> None:
         """
@@ -1083,7 +1135,8 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             Path to save ivector extractor model
         """
         self.training_configs[self.final_identifier].export_model(output_model_path)
-        self.logger.info(f"Saved model to {output_model_path}")
+
+        self.log_info(f"Saved model to {output_model_path}")
 
     @classmethod
     def parse_parameters(
@@ -1113,30 +1166,25 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         training_params = []
         use_default = True
         if config_path is not None:
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                training_params = []
-                for k, v in data.items():
-                    if k == "training":
-                        for t in v:
-                            for k2, v2 in t.items():
-                                if "features" in v2:
-                                    global_params.update(v2["features"])
-                                    del v2["features"]
-                                training_params.append((k2, v2))
-                    elif k == "features":
-                        if "type" in v:
-                            v["feature_type"] = v["type"]
-                            del v["type"]
-                        global_params.update(v)
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
+            data = load_configuration(config_path)
+            training_params = []
+            for k, v in data.items():
+                if k == "training":
+                    for t in v:
+                        for k2, v2 in t.items():
+                            if "features" in v2:
+                                global_params.update(v2["features"])
+                                del v2["features"]
+                            training_params.append((k2, v2))
+                elif k == "features":
+                    if "type" in v:
+                        v["feature_type"] = v["type"]
+                        del v["type"]
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
                 if training_params:
                     use_default = False
         if use_default:  # default training configuration

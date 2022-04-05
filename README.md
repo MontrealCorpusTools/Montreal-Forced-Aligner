@@ -31,13 +31,15 @@ in your environment of choice.
 If you'd like to install a local version of MFA or want to use the development set up, the easiest way is first create the dev environment from the yaml in the repo root directory:
 
 ```
-conda create -n mfa-dev -f environment.yml  # or environment_win.yml on Windows
+conda env create -n mfa-dev -f environment.yml  # Linux or mac
+conda env create -n mfa-dev -f environment_win.yml  #  Windows
 ```
 
 Alternatively, the dependencies can be installed via:
 
 ```
-conda install -c conda-forge python=3.8 kaldi sox librosa biopython praatio tqdm requests colorama pyyaml  # and pynini if on Linux or Mac
+conda install -c conda-forge python=3.8 kaldi sox librosa biopython praatio tqdm requests colorama pyyaml  # All platforms
+conda install -c conda-forge pynini openfst baumwelch ngram  # Additional dependencies to install on Linux or Mac
 ```
 
 MFA can be installed in develop mode via:

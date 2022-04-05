@@ -15,7 +15,7 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
         "g2p",
-        "english_g2p",
+        english_g2p_model,
         basic_corpus_dir,
         output_path,
         "-t",
@@ -43,7 +43,7 @@ def test_generate_pretrained_threshold(
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
         "g2p",
-        "english_g2p",
+        english_g2p_model,
         basic_corpus_dir,
         output_path,
         "-t",

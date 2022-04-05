@@ -5,20 +5,21 @@ Helper functions
 """
 from __future__ import annotations
 
-import dataclasses
 import functools
 import itertools
 import json
-import sys
+import typing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 import ansiwrap
+import dataclassy
 import numpy
+import yaml
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict, ScpType
-    from montreal_forced_aligner.dictionary.pronunciation import Word
+    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict
+    from montreal_forced_aligner.data import WordData
     from montreal_forced_aligner.textgrid import CtmInterval
 
 
@@ -27,7 +28,6 @@ __all__ = [
     "comma_join",
     "make_safe",
     "make_scp_safe",
-    "save_scp",
     "load_scp",
     "load_scp_safe",
     "score_wer",
@@ -38,6 +38,31 @@ __all__ = [
     "overlap_scoring",
     "align_phones",
 ]
+
+
+def load_configuration(config_path: str) -> Dict[str, Any]:
+    """
+    Load a configuration file
+
+    Parameters
+    ----------
+    config_path: str
+        Path to yaml or json configuration file
+
+    Returns
+    -------
+    dict[str, Any]
+        Configuration dictionary
+    """
+    data = {}
+    with open(config_path, "r", encoding="utf8") as f:
+        if config_path.endswith(".yaml"):
+            data = yaml.load(f, Loader=yaml.SafeLoader)
+        elif config_path.endswith(".json"):
+            data = json.load(f)
+    if not data:
+        return {}
+    return data
 
 
 def parse_old_features(config: MetaDict) -> MetaDict:
@@ -83,6 +108,11 @@ class TerminalPrinter:
     """
     Helper class to output colorized text
 
+    Parameters
+    ----------
+    print_function: Callable, optional
+        Function to print information, defaults to :func:`print`
+
     Attributes
     ----------
     colors: dict[str, str]
@@ -90,7 +120,11 @@ class TerminalPrinter:
         if the global terminal_colors flag is set to False)
     """
 
-    def __init__(self):
+    def __init__(self, print_function: typing.Callable = None):
+        if print_function is not None:
+            self.print_function = print_function
+        else:
+            self.print_function = print
         from .config import load_global_config
 
         c = load_global_config()
@@ -195,12 +229,12 @@ class TerminalPrinter:
             Section header string
         """
         self.indent_level = 0
-        print()
+        self.print_function()
         underline = "*" * len(header)
-        print(self.colorize(underline, "bright"))
-        print(self.colorize(header, "bright"))
-        print(self.colorize(underline, "bright"))
-        print()
+        self.print_function(self.colorize(underline, "bright"))
+        self.print_function(self.colorize(header, "bright"))
+        self.print_function(self.colorize(underline, "bright"))
+        self.print_function()
         self.indent_level += 1
 
     def print_sub_header(self, header: str) -> None:
@@ -213,15 +247,15 @@ class TerminalPrinter:
             Subsection header string
         """
         underline = "=" * len(header)
-        print(self.indent_string + self.colorize(header, "bright"))
-        print(self.indent_string + self.colorize(underline, "bright"))
-        print()
+        self.print_function(self.indent_string + self.colorize(header, "bright"))
+        self.print_function(self.indent_string + self.colorize(underline, "bright"))
+        self.print_function()
         self.indent_level += 1
 
     def print_end_section(self) -> None:
         """Mark the end of a section"""
         self.indent_level -= 1
-        print()
+        self.print_function()
 
     def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
         """
@@ -265,7 +299,7 @@ class TerminalPrinter:
             lines = [lines]
         lines = self.format_info_lines(lines)
         for line in lines:
-            print(line)
+            self.print_function(line)
 
     def print_green_stat(self, stat: Any, text: str) -> None:
         """
@@ -278,7 +312,7 @@ class TerminalPrinter:
         text: str
             Other text to follow statistic
         """
-        print(self.indent_string + f"{self.colorize(stat, 'green')} {text}")
+        self.print_function(self.indent_string + f"{self.colorize(stat, 'green')} {text}")
 
     def print_yellow_stat(self, stat, text) -> None:
         """
@@ -291,7 +325,7 @@ class TerminalPrinter:
         text: str
             Other text to follow statistic
         """
-        print(self.indent_string + f"{self.colorize(stat, 'yellow')} {text}")
+        self.print_function(self.indent_string + f"{self.colorize(stat, 'yellow')} {text}")
 
     def print_red_stat(self, stat, text) -> None:
         """
@@ -304,7 +338,7 @@ class TerminalPrinter:
         text: str
             Other text to follow statistic
         """
-        print(self.indent_string + f"{self.colorize(stat, 'red')} {text}")
+        self.print_function(self.indent_string + f"{self.colorize(stat, 'red')} {text}")
 
     def colorize(self, text: Any, color: str) -> str:
         """
@@ -349,7 +383,7 @@ class TerminalPrinter:
             self.print_information_line(k, value, key_color, value_color, starting_level)
             if isinstance(v, dict):
                 self.print_block(v, starting_level=starting_level + 1)
-        print()
+        self.print_function()
 
     def print_config(self, configuration: MetaDict) -> None:
         """
@@ -397,7 +431,7 @@ class TerminalPrinter:
         if key_color is None:
             key_color = "bright"
         if value_color is None:
-            value_color = "yellow"
+            value_color = "cyan"
             if isinstance(value, bool):
                 if value:
                     value_color = "green"
@@ -413,7 +447,7 @@ class TerminalPrinter:
             key = f" {key}:"
             subsequent_indent += " " * (len(key))
 
-        print(
+        self.print_function(
             ansiwrap.fill(
                 f"{self.colorize(key, key_color)} {value}",
                 width=self.width,
@@ -477,7 +511,7 @@ def make_scp_safe(string: str) -> str:
     str
         Escaped text
     """
-    return string.replace(" ", "_MFASPACE_")
+    return str(string).replace(" ", "_MFASPACE_")
 
 
 def load_scp_safe(string: str) -> str:
@@ -505,11 +539,6 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
     CorpusMappingType is either a dictionary of key to value for
     one-to-one mapping case and a dictionary of key to list of values for one-to-many case.
 
-    See Also
-    --------
-    :func:`~montreal_forced_aligner.helper.save_scp`
-        For another function that saves SCPs from lists
-
     Parameters
     ----------
     mapping: CorpusMappingType
@@ -529,47 +558,6 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
             elif not skip_safe:
                 v = make_scp_safe(v)
             f.write(f"{make_scp_safe(k)} {v}\n")
-
-
-def save_scp(
-    scp: ScpType, path: str, sort: Optional[bool] = True, multiline: Optional[bool] = False
-) -> None:
-    """
-    Helper function to save an arbitrary SCP.
-
-    ScpType is either a list of tuples (str, str) for one-to-one mapping files or
-    a list of tuples (str, list) for one-to-many mappings.
-
-    See Also
-    --------
-    :kaldi_docs:`io#io_sec_scp_details`
-        For more information on the SCP format
-
-    Parameters
-    ----------
-    scp: ScpType
-        SCP to save
-    path: str
-        File path
-    sort: bool, optional
-        Flag for whether the output file should be sorted
-    multiline: bool, optional
-        Flag for whether the SCP contains multiline data (i.e., utterance FSTs)
-    """
-    if sys.platform == "win32":
-        newline = ""
-    else:
-        newline = None
-    if not scp:
-        return
-    with open(path, "w", encoding="utf8", newline=newline) as f:
-        if sort:
-            scp = sorted(scp)
-        for line in scp:
-            if multiline:
-                f.write(f"{make_safe(line[0])}\n{make_safe(line[1])}\n")
-            else:
-                f.write(f"{' '.join(map(make_safe, line))}\n")
 
 
 def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
@@ -657,18 +645,16 @@ def edit_distance(x: List[str], y: List[str]) -> int:
     return int(table[-1][-1])
 
 
-def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
+def score_g2p(gold: WordData, hypo: WordData) -> Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
     Parameters
     ----------
-    gold: Labels
+    gold: WordData
         The reference labels
-    hypo: Labels
+    hypo: WordData
         The hypothesized labels
-    multiple_hypotheses: bool
-        Flag for whether the hypotheses contain multiple
 
     Returns
     -------
@@ -683,7 +669,7 @@ def score_g2p(gold: Word, hypo: Word) -> Tuple[int, int]:
     edits = 100000
     best_length = 100000
     for (g, h) in itertools.product(gold.pronunciations, hypo.pronunciations):
-        e = edit_distance(g.pronunciation, h.pronunciation)
+        e = edit_distance(g, h)
         if e < edits:
             edits = e
             best_length = len(g)
@@ -800,22 +786,20 @@ def overlap_scoring(
 class EnhancedJSONEncoder(json.JSONEncoder):
     """JSON serialization"""
 
-    def default(self, o):
-        if dataclasses.is_dataclass(o):
-            return dataclasses.asdict(o)
+    def default(self, o: Any) -> Any:
+        """Get the dictionary of a dataclass"""
+        if dataclassy.functions.is_dataclass_instance(o):
+            return dataclassy.asdict(o)
         if isinstance(o, set):
             return list(o)
-        return dataclasses.asdict(o)
-
-
-def jsonl_encoder(obj):
-    return json.dumps(obj, cls=EnhancedJSONEncoder)
+        return dataclassy.asdict(o)
 
 
 def align_phones(
     ref: List[CtmInterval],
     test: List[CtmInterval],
     silence_phone: str,
+    ignored_phones: typing.Set[str] = None,
     custom_mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[float, float]:
     """
@@ -828,8 +812,10 @@ def align_phones(
         List of CTM intervals as reference
     test: list[:class:`~montreal_forced_aligner.data.CtmInterval`]
         List of CTM intervals to compare to reference
-    silence_phones: set[str]
-        Set of silence phones (these are ignored in the final calculation)
+    silence_phone: str
+        Silence phone (these are ignored in the final calculation)
+    oov_phone: str
+        OOV phone (ignored in the final calculation)
     custom_mapping: dict[str, str], optional
         Mapping of phones to treat as matches even if they have different symbols
 
@@ -842,12 +828,25 @@ def align_phones(
     """
     from Bio import pairwise2
 
+    if ignored_phones is None:
+        ignored_phones = set()
     if custom_mapping is None:
         score_func = functools.partial(overlap_scoring, silence_phone=silence_phone)
     else:
         score_func = functools.partial(
             overlap_scoring, silence_phone=silence_phone, mapping=custom_mapping
         )
+        coalesced_phones = {tuple(x.split()) for x in custom_mapping.keys() if " " in x}
+        if coalesced_phones:
+            for cp in coalesced_phones:
+                custom_mapping["".join(cp)] = custom_mapping[" ".join(cp)]
+            coalesced = []
+            for t in test:
+                if coalesced and (coalesced[-1].label, t.label) in coalesced_phones:
+                    coalesced[-1].label += t.label
+                    coalesced[-1].end = t.end
+                    continue
+                coalesced.append(t)
     alignments = pairwise2.align.globalcs(
         ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
     )
@@ -860,17 +859,19 @@ def align_phones(
         for i, sa in enumerate(a.seqA):
             sb = a.seqB[i]
             if sa == "-":
-                if sb.label != silence_phone:
+                if sb.label not in ignored_phones:
                     num_insertions += 1
                 else:
                     continue
             elif sb == "-":
-                if sa.label != silence_phone:
+                if sa.label not in ignored_phones:
                     num_deletions += 1
                 else:
                     continue
             else:
-                overlap_sum += abs(sa.begin - sb.begin) + abs(sa.end - sb.end)
+                if sa.label in ignored_phones:
+                    continue
+                overlap_sum += (abs(sa.begin - sb.begin) + abs(sa.end - sb.end)) / 2
                 overlap_count += 1
                 if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
                     num_substitutions += 1

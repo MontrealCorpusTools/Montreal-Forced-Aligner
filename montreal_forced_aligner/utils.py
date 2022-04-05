@@ -18,6 +18,7 @@ import ansiwrap
 from colorama import Fore, Style
 
 from montreal_forced_aligner.abc import KaldiFunction
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError, ThirdpartyError
 from montreal_forced_aligner.models import MODEL_TYPES
 
@@ -25,6 +26,7 @@ __all__ = [
     "thirdparty_binary",
     "log_kaldi_errors",
     "guess_model_type",
+    "get_mfa_version",
     "parse_logs",
     "CustomFormatter",
     "Counter",
@@ -347,7 +349,10 @@ class ProcessWorker(mp.Process):
             return
         self.job_q.task_done()
         try:
-            result = self.function(*arguments)
+            if isinstance(arguments, MfaArguments):
+                result = self.function(arguments)
+            else:
+                result = self.function(*arguments)
             if self.return_info is not None:
                 self.return_info[self.job_name] = result
         except Exception:
@@ -365,16 +370,14 @@ class KaldiProcessWorker(mp.Process):
     ----------
     job_name: int
         Integer number of job
-    job_q: :class:`~multiprocessing.Queue`
-        Job queue to pull arguments from
+    return_q: :class:`~multiprocessing.Queue`
+        Queue for returning results
     function: KaldiFunction
         Multiprocessing function to call on arguments from job_q
-    return_dict: dict
+    error_dict: dict
         Dictionary for collecting errors
     stopped: :class:`~montreal_forced_aligner.utils.Stopped`
         Stop check
-    return_info: dict[int, Any], optional
-        Optional dictionary to fill if the function should return information to main thread
     """
 
     def __init__(
@@ -382,7 +385,7 @@ class KaldiProcessWorker(mp.Process):
         job_name: int,
         return_q: mp.Queue,
         function: KaldiFunction,
-        error_dict: dict,
+        error_dict: Dict,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)
@@ -402,14 +405,17 @@ class KaldiProcessWorker(mp.Process):
                 self.return_q.put(result)
         except Exception:
             self.stopped.stop()
-            self.error_dict[self.job_name] = Exception(traceback.format_exception(*sys.exc_info()))
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            self.error_dict[self.job_name] = Exception(
+                "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            )
         finally:
             self.finished.stop()
 
 
 def run_non_mp(
     function: Callable,
-    argument_list: List[Tuple[Any, ...]],
+    argument_list: List[Union[Tuple[Any, ...], MfaArguments]],
     log_directory: str,
     return_info: bool = False,
 ) -> Optional[Dict[Any, Any]]:
@@ -435,18 +441,24 @@ def run_non_mp(
     if return_info:
         info = {}
         for i, args in enumerate(argument_list):
-            info[i] = function(*args)
+            if isinstance(args, MfaArguments):
+                info[i] = function(args)
+            else:
+                info[i] = function(*args)
         parse_logs(log_directory)
         return info
 
     for args in argument_list:
-        function(*args)
+        if isinstance(args, MfaArguments):
+            function(args)
+        else:
+            function(*args)
     parse_logs(log_directory)
 
 
 def run_mp(
     function: Callable,
-    argument_list: List[Tuple[Any, ...]],
+    argument_list: List[Union[Tuple[Any, ...], MfaArguments]],
     log_directory: str,
     return_info: bool = False,
 ) -> Optional[Dict[int, Any]]:
@@ -458,7 +470,7 @@ def run_mp(
     function: Callable
         Multiprocessing function to apply
     argument_list: list
-        List of arguments for each job
+        Arguments for each job
     log_directory: str
         Directory that all log information from the processes goes to
     return_info: dict, optional

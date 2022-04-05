@@ -13,7 +13,7 @@ Forced alignment is a technique to take an orthographic transcription of
 an audio file and generate a time-aligned version using a pronunciation
 dictionary to look up phones for words.
 
-Many languages have :ref:`pretrained_acoustic_models` available for download and use.
+Many languages have :xref:`pretrained_acoustic_models` available for download and use.
 
 .. note::
 
@@ -103,14 +103,19 @@ Citation
 ========
 
 McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
-Montreal Forced Aligner [Computer program]. Version 0.9.0,
-retrieved 17 January 2017 from http://montrealcorpustools.github.io/Montreal-Forced-Aligner/.
-
-Or:
-
-McAuliffe, Michael, Michaela Socolof, Sarah Mihuc, Michael Wagner, and Morgan Sonderegger (2017).
 Montreal Forced Aligner: trainable text-speech alignment using Kaldi. In
 *Proceedings of the 18th Conference of the International Speech Communication Association*. :download:`Paper PDF <../_static/MFA_paper_Interspeech2017.pdf>`
+
+.. code-block:: bibtex
+
+   @inproceedings{mcauliffe17_interspeech,
+     author={McAuliffe, Michael and Socolof, Michaela and Mihuc, Sarah and Wagner, Michael and Sonderegger, Morgan},
+     title={{Montreal Forced Aligner: Trainable Text-Speech Alignment Using Kaldi}},
+     year=2017,
+     booktitle={Proc. Interspeech 2017},
+     pages={498--502},
+     doi={10.21437/Interspeech.2017-1386}
+   }
 
 
 Funding
@@ -122,7 +127,8 @@ We acknowledge funding from Social Sciences and Humanities Research Council (SSH
    :hidden:
 
    commands
-   formats/index
+   corpus_structure
+   dictionary
    data_validation
    workflows/index
    configuration/index

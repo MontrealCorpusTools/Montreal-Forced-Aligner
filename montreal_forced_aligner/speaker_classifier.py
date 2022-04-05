@@ -9,12 +9,10 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, List, Optional
 
-import yaml
-
 from .abc import FileExporterMixin, TopLevelMfaWorker
 from .corpus.ivector_corpus import IvectorCorpusMixin
 from .exceptions import KaldiProcessingError
-from .helper import load_scp
+from .helper import load_configuration, load_scp
 from .models import IvectorExtractorModel
 from .utils import log_kaldi_errors
 
@@ -80,22 +78,17 @@ class SpeakerClassifier(
         """
         global_params = {}
         if config_path and os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                for k, v in data.items():
-                    if k == "features":
-                        if "type" in v:
-                            v["feature_type"] = v["type"]
-                            del v["type"]
-                        global_params.update(v)
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
+            data = load_configuration(config_path)
+            for k, v in data.items():
+                if k == "features":
+                    if "type" in v:
+                        v["feature_type"] = v["type"]
+                        del v["type"]
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
@@ -132,7 +125,7 @@ class SpeakerClassifier(
         self.check_previous_run()
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info("Classification already done, skipping initialization.")
+            self.log_info("Classification already done, skipping initialization.")
             return
         log_dir = os.path.join(self.working_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
@@ -142,8 +135,11 @@ class SpeakerClassifier(
             self.extract_ivectors()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def load_ivectors(self) -> None:
@@ -162,7 +158,7 @@ class SpeakerClassifier(
         """
         Cluster utterances based on their ivectors
         """
-        self.logger.error(
+        self.log_error(
             "Speaker diarization functionality is currently under construction and not working in the current version."
         )
         raise NotImplementedError(

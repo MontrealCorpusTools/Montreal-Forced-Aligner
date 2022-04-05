@@ -11,6 +11,7 @@ from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
 import tqdm
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.alignment.multiprocessing import (
     AlignArguments,
@@ -20,6 +21,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     CompileTrainGraphsFunction,
     compile_information_func,
 )
+from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
 
@@ -114,18 +116,19 @@ class AlignMixin(DictionaryMixin):
             Arguments for processing
         """
         args = []
+        lexicon_fst_paths = {}
+        if hasattr(self, "lexicon_fst_paths"):
+            lexicon_fst_paths = self.lexicon_fst_paths
         for j in self.jobs:
-            lexicon_fst_paths = {
-                dictionary.name: dictionary.lexicon_fst_path
-                for dictionary in j.current_dictionaries
-            }
             model_path = self.model_path
             if not os.path.exists(model_path):
                 model_path = self.alignment_model_path
             args.append(
                 CompileTrainGraphsArguments(
+                    j.name,
+                    getattr(self, "db_path", ""),
                     os.path.join(self.working_log_directory, f"compile_train_graphs.{j.name}.log"),
-                    j.current_dictionary_names,
+                    j.dictionary_names,
                     os.path.join(self.working_directory, "tree"),
                     model_path,
                     j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
@@ -155,10 +158,14 @@ class AlignMixin(DictionaryMixin):
                 )
             else:
                 log_path = os.path.join(self.working_log_directory, f"align.{j.name}.log")
+            if not getattr(self, "speaker_independent", True):
+                log_path = log_path.replace(".log", ".fmllr.log")
             args.append(
                 AlignArguments(
+                    j.name,
+                    getattr(self, "db_path", ""),
                     log_path,
-                    j.current_dictionary_names,
+                    j.dictionary_names,
                     j.construct_path_dictionary(self.working_directory, "fsts", "scp"),
                     feat_strings[j.name],
                     self.alignment_model_path,
@@ -186,12 +193,20 @@ class AlignMixin(DictionaryMixin):
                 )
             else:
                 log_path = os.path.join(self.working_log_directory, f"align.{j.name}.log")
-            args.append(CompileInformationArguments(log_path))
+            args.append(
+                CompileInformationArguments(
+                    j.name,
+                    getattr(self, "db_path", ""),
+                    os.path.join(self.working_log_directory, f"compile_information.{j.name}.log"),
+                    log_path,
+                )
+            )
         return args
 
     @property
     def align_options(self) -> MetaDict:
         """Options for use in aligning"""
+
         return {
             "transition_scale": self.transition_scale,
             "acoustic_scale": self.acoustic_scale,
@@ -213,6 +228,11 @@ class AlignMixin(DictionaryMixin):
             "retry_beam": self.retry_beam,
         }
 
+    @property
+    def num_current_utterances(self):
+        """Number of current utterances"""
+        return getattr(self, "num_utterances", 0)
+
     def compile_train_graphs(self) -> None:
         """
         Multiprocessing function that compiles training graphs for utterances.
@@ -231,10 +251,12 @@ class AlignMixin(DictionaryMixin):
         begin = time.time()
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        self.logger.info("Compiling training graphs...")
+        self.log_info("Compiling training graphs...")
         error_sum = 0
         arguments = self.compile_train_graphs_arguments()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -266,17 +288,15 @@ class AlignMixin(DictionaryMixin):
                     for v in error_dict.values():
                         raise v
             else:
-                self.logger.debug("Not using multiprocessing...")
+                self.log_debug("Not using multiprocessing...")
                 for args in arguments:
                     function = CompileTrainGraphsFunction(args)
                     for done, errors in function.run():
                         pbar.update(done + errors)
                         error_sum += errors
         if error_sum:
-            self.logger.warning(
-                f"Compilation of training graphs failed for {error_sum} utterances."
-            )
-        self.logger.debug(f"Compiling training graphs took {time.time() - begin}")
+            self.log_warning(f"Compilation of training graphs failed for {error_sum} utterances.")
+        self.log_debug(f"Compiling training graphs took {time.time() - begin}")
 
     def align_utterances(self) -> None:
         """
@@ -294,67 +314,72 @@ class AlignMixin(DictionaryMixin):
             Reference Kaldi script
         """
         begin = time.time()
-        self.unaligned_files = set()
-        self.logger.info("Generating alignments...")
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
-            if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(self.align_arguments()):
-                    function = AlignFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        utterance, log_likelihood = return_queue.get(timeout=1)
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    if hasattr(self, "utterances"):
-                        if hasattr(self, "frame_shift"):
-                            num_frames = int(
-                                self.utterances[utterance].duration * self.frame_shift
-                            )
-                        else:
-                            num_frames = self.utterances[utterance].duration
-                        self.utterances[utterance].alignment_log_likelihood = (
-                            log_likelihood / num_frames
-                        )
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                self.logger.debug("Not using multiprocessing...")
-                for args in self.align_arguments():
-                    function = AlignFunction(args)
-                    for utterance, log_likelihood in function.run():
-                        if hasattr(self, "utterances"):
-                            if hasattr(self, "frame_shift"):
-                                num_frames = int(
-                                    self.utterances[utterance].duration * self.frame_shift
-                                )
+        self.log_info("Generating alignments...")
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
+            with Session(self.db_engine) as session:
+                utterances = session.query(Utterance).filter(
+                    Utterance.alignment_log_likelihood != None  # noqa
+                )
+                if hasattr(self, "subset"):
+                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+                utterances.update({"alignment_log_likelihood": None})
+                update_mappings = []
+                if self.use_mp:
+                    manager = mp.Manager()
+                    error_dict = manager.dict()
+                    return_queue = manager.Queue()
+                    stopped = Stopped()
+                    procs = []
+                    for i, args in enumerate(self.align_arguments()):
+                        function = AlignFunction(args)
+                        p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                        procs.append(p)
+                        p.start()
+                    while True:
+                        try:
+                            utterance, log_likelihood = return_queue.get(timeout=1)
+                            if stopped.stop_check():
+                                continue
+                        except Empty:
+                            for proc in procs:
+                                if not proc.finished.stop_check():
+                                    break
                             else:
-                                num_frames = self.utterances[utterance].duration
-                            self.utterances[utterance].alignment_log_likelihood = (
-                                log_likelihood / num_frames
-                            )
+                                break
+                            continue
+                        update_mappings.append(
+                            {"id": utterance, "alignment_log_likelihood": log_likelihood}
+                        )
                         pbar.update(1)
+                    for p in procs:
+                        p.join()
+                    if error_dict:
+                        for v in error_dict.values():
+                            raise v
 
-        self.compile_information()
-        self.logger.debug(f"Alignment round took {time.time() - begin}")
+                else:
+                    self.log_debug("Not using multiprocessing...")
+                    for args in self.align_arguments():
+                        function = AlignFunction(args)
+                        for utterance, log_likelihood in function.run():
+                            update_mappings.append(
+                                {"id": utterance, "alignment_log_likelihood": log_likelihood}
+                            )
+                            pbar.update(1)
+                session.bulk_update_mappings(Utterance, update_mappings)
+                session.query(Utterance).filter(
+                    Utterance.alignment_log_likelihood != None  # noqa
+                ).update(
+                    {
+                        Utterance.alignment_log_likelihood: Utterance.alignment_log_likelihood
+                        / Utterance.num_frames
+                    },
+                    synchronize_session="fetch",
+                )
+                session.commit()
+                self.log_debug(f"Alignment round took {time.time() - begin}")
 
     def compile_information(self):
         """
@@ -396,33 +421,42 @@ class AlignMixin(DictionaryMixin):
                 average_logdet_frames += data["logdet_frames"]
                 average_logdet_sum += data["logdet"] * data["logdet_frames"]
 
-        if hasattr(self, "utterances"):
+        if hasattr(self, "db_engine"):
             csv_path = os.path.join(self.working_directory, "alignment_log_likelihood.csv")
-            with open(csv_path, "w", newline="", encoding="utf8") as f:
+            with open(csv_path, "w", newline="", encoding="utf8") as f, Session(
+                self.db_engine
+            ) as session:
                 writer = csv.writer(f)
-                writer.writerow(["utterance", "loglikelihood"])
-                for u in self.utterances:
-                    writer.writerow([u.name, u.alignment_log_likelihood])
+                writer.writerow(["file", "begin", "end", "speaker", "loglikelihood"])
+                utterances = self.utterances(session).filter(
+                    Utterance.alignment_log_likelihood != None  # noqa
+                )
+                if hasattr(self, "subset"):
+                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+                for u in utterances:
+                    writer.writerow(
+                        [u.file.name, u.begin, u.end, u.speaker.name, u.alignment_log_likelihood]
+                    )
 
         if not avg_like_frames:
-            self.logger.warning(
+            self.log_warning(
                 "No files were aligned, this likely indicates serious problems with the aligner."
             )
         else:
             if too_short_count:
-                self.logger.debug(
+                self.log_debug(
                     f"There were {too_short_count} utterances that were too short to be aligned."
                 )
             if beam_too_narrow_count:
-                self.logger.debug(
+                self.log_debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
-            self.logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        self.logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
+            self.log_debug(f"Average per frame likelihood for alignment: {average_log_like}")
+        self.log_debug(f"Compiling information took {time.time() - compile_info_begin}")
 
     @property
     @abstractmethod
@@ -445,6 +479,6 @@ class AlignMixin(DictionaryMixin):
     def alignment_model_path(self) -> str:
         """Acoustic model file path for speaker-independent alignment"""
         path = os.path.join(self.working_directory, "final.alimdl")
-        if os.path.exists(path):
+        if os.path.exists(path) and getattr(self, "speaker_independent", True):
             return path
         return self.model_path

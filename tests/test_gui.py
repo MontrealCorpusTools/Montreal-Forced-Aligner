@@ -14,7 +14,7 @@ def test_save_text_lab(
         temporary_directory=output_directory,
     )
     corpus._load_corpus()
-    corpus.files["michael_acoustic_corpus"].save()
+    corpus.get_file(name="acoustic_corpus").save()
 
 
 def test_file_properties(
@@ -28,10 +28,11 @@ def test_file_properties(
         temporary_directory=output_directory,
     )
     corpus._load_corpus()
-    assert corpus.files["michaelandsickmichael"].num_channels == 2
-    assert corpus.files["michaelandsickmichael"].num_speakers == 2
-    assert corpus.files["michaelandsickmichael"].num_utterances == 7
-    x, y = corpus.files["michaelandsickmichael"].normalized_waveform()
+    file = corpus.get_file(name="michaelandsickmichael")
+    assert file.sound_file.num_channels == 2
+    assert file.num_speakers == 2
+    assert file.num_utterances == 7
+    x, y = file.sound_file.normalized_waveform()
     assert y.shape[0] == 2
 
 
@@ -43,4 +44,4 @@ def test_flac_tg(flac_tg_corpus_dir, generated_dir):
         temporary_directory=output_directory,
     )
     corpus._load_corpus()
-    corpus.files["61-70968-0000"].save()
+    corpus.get_file(name="61-70968-0000").save()

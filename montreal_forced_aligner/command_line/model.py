@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import TYPE_CHECKING, List, Optional, Union
-
-import requests
+from typing import TYPE_CHECKING, Optional
 
 from montreal_forced_aligner.config import get_temporary_directory
 from montreal_forced_aligner.data import PhoneSetType
@@ -15,9 +13,9 @@ from montreal_forced_aligner.exceptions import (
     ModelTypeNotSupportedError,
     MultipleModelTypesFoundError,
     PretrainedModelNotFoundError,
+    RemoteModelNotFoundError,
 )
-from montreal_forced_aligner.helper import TerminalPrinter
-from montreal_forced_aligner.models import MODEL_TYPES, Archive
+from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager
 from montreal_forced_aligner.utils import guess_model_type
 
 if TYPE_CHECKING:
@@ -25,97 +23,11 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "list_downloadable_models",
-    "download_model",
-    "list_model",
     "inspect_model",
     "validate_args",
     "save_model",
     "run_model",
 ]
-
-
-def list_downloadable_models(model_type: str) -> List[str]:
-    """
-    Generate a list of models available for download
-
-    Parameters
-    ----------
-    model_type: str
-        Model type to look up
-
-    Returns
-    -------
-    list[str]
-        Names of models
-    """
-    url = f"https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/{model_type}/index.txt"
-    r = requests.get(url)
-    if r.status_code == 404:
-        raise Exception(f'Could not find model type "{model_type}"')
-    out = r.text
-    return out.split("\n")
-
-
-def download_model(model_type: str, name: str) -> None:
-    """
-    Download a model to MFA's temporary directory
-
-    Parameters
-    ----------
-    model_type: str
-        Model type
-    name: str
-        Name of model
-    """
-    if not name:
-        downloadable = "\n".join(f"  - {x}" for x in list_downloadable_models(model_type))
-        print(f"Available models to download for {model_type}:\n\n{downloadable}")
-        return
-    try:
-        model_class = MODEL_TYPES[model_type]
-        extension = model_class.extensions[0]
-        os.makedirs(model_class.pretrained_directory(), exist_ok=True)
-        out_path = model_class.get_pretrained_path(name, enforce_existence=False)
-    except KeyError:
-        raise NotImplementedError(
-            f"{model_type} models are not currently supported for downloading"
-        )
-    url = f"https://github.com/MontrealCorpusTools/mfa-models/raw/main/{model_type}/{name}{extension}"
-
-    r = requests.get(url)
-    with open(out_path, "wb") as f:
-        f.write(r.content)
-
-
-def list_model(model_type: Union[str, None]) -> None:
-    """
-    List all local pretrained models
-
-    Parameters
-    ----------
-    model_type: str, optional
-        Model type, will list models of all model types if None
-    """
-    printer = TerminalPrinter()
-    if model_type is None:
-        printer.print_information_line("Available models for use", "", level=0)
-        for model_type, model_class in MODEL_TYPES.items():
-            names = model_class.get_available_models()
-            if names:
-                printer.print_information_line(model_type, names, value_color="green")
-            else:
-                printer.print_information_line(model_type, "No models found", value_color="yellow")
-    else:
-        printer.print_information_line(f"Available models for use {model_type}", "", level=0)
-        model_class = MODEL_TYPES[model_type]
-        names = model_class.get_available_models()
-        if names:
-            for name in names:
-
-                printer.print_information_line("", name, value_color="green", level=1)
-        else:
-            printer.print_information_line("", "No models found", value_color="yellow", level=1)
 
 
 def inspect_model(path: str) -> None:
@@ -195,9 +107,13 @@ def validate_args(args: Namespace) -> None:
         elif args.model_type:
             args.model_type = args.model_type.lower()
         if args.name:
-            available_languages = list_downloadable_models(args.model_type)
+            manager = ModelManager()
+            manager.refresh_remote()
+            available_languages = manager.remote_models[args.model_type]
             if args.name not in available_languages:
-                raise PretrainedModelNotFoundError(args.name, args.model_type, available_languages)
+                raise RemoteModelNotFoundError(
+                    args.name, args.model_type, list(available_languages.keys())
+                )
     elif args.action == "list":
         if args.model_type and args.model_type.lower() not in MODEL_TYPES:
             raise ModelTypeNotSupportedError(args.model_type, MODEL_TYPES)
@@ -248,10 +164,11 @@ def run_model(args: Namespace) -> None:
         Parsed command line arguments
     """
     validate_args(args)
-    if args.action == "download":
-        download_model(args.model_type, args.name)
+    manager = ModelManager()
+    if args.action == "download" and args.name:
+        manager.download_model(args.model_type, args.name)
     elif args.action == "list":
-        list_model(args.model_type)
+        manager.print_local_models(args.model_type)
     elif args.action == "inspect":
         inspect_model(args.name)
     elif args.action == "save":

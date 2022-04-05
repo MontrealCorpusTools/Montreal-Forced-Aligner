@@ -5,32 +5,66 @@ Data classes
 """
 from __future__ import annotations
 
-import dataclasses
+import collections
 import enum
 import itertools
 import re
 import typing
 
-from praatio.utilities.constants import Interval
+import dataclassy
+from praatio.utilities.constants import Interval, TextgridFormats
 
 from .exceptions import CtmError
 
+if typing.TYPE_CHECKING:
+    from dataclasses import dataclass
+else:
+    from dataclassy import dataclass
+
 __all__ = [
+    "MfaArguments",
     "CtmInterval",
-    "UtteranceData",
-    "FileData",
     "TextFileType",
     "SoundFileType",
     "PhoneSetType",
+    "WordData",
+    "Pronunciation",
+    "PronunciationProbabilityCounter",
 ]
+
+
+@dataclass(slots=True)
+class MfaArguments:
+    """
+    Base class for argument classes for MFA functions
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_path: str
+        Path to connect to database for getting necessary information
+    log_path: str
+        Path to save logging information during the run
+    """
+
+    job_name: int
+    db_path: str
+    log_path: str
 
 
 class TextFileType(enum.Enum):
     """Enum for types of text files"""
 
-    NONE = 0
-    TEXTGRID = 1
-    LAB = 2
+    NONE = "none"
+    TEXTGRID = TextgridFormats.SHORT_TEXTGRID
+    LONG_TEXTGRID = TextgridFormats.LONG_TEXTGRID
+    LAB = "lab"
+    JSON = TextgridFormats.JSON
+
+    def __str__(self):
+        """Name of phone set"""
+        return self.value
 
 
 class SoundFileType(enum.Enum):
@@ -41,11 +75,37 @@ class SoundFileType(enum.Enum):
     SOX = 2
 
 
-def voiceless_variants(base_phone):
+def voiceless_variants(base_phone) -> typing.Set[str]:
+    """
+    Generate variants of voiceless IPA phones
+
+    Parameters
+    ----------
+    base_phone: str
+        Voiceless IPA phone
+
+    Returns
+    -------
+    set[str]
+        Set of base_phone plus variants
+    """
     return {base_phone + d for d in ["", "ʱ", "ʼ", "ʰ", "ʲ", "ʷ", "ˠ", "ˀ", "̚", "͈"]}
 
 
-def voiced_variants(base_phone):
+def voiced_variants(base_phone) -> typing.Set[str]:
+    """
+    Generate variants of voiced IPA phones
+
+    Parameters
+    ----------
+    base_phone: str
+        Voiced IPA phone
+
+    Returns
+    -------
+    set[str]
+        Set of base_phone plus variants
+    """
     return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
         d + base_phone for d in ["ⁿ"]
     }
@@ -65,11 +125,13 @@ class PhoneSetType(enum.Enum):
         return self.name
 
     @property
-    def has_base_phone_regex(self):
+    def has_base_phone_regex(self) -> bool:
+        """Check for whether a base phone regex is available"""
         return self is PhoneSetType.IPA or self is PhoneSetType.ARPA or self is PhoneSetType.PINYIN
 
     @property
     def regex_detect(self) -> typing.Optional[re.Pattern]:
+        """Pattern for detecting a phone set type"""
         if self is PhoneSetType.ARPA:
             return re.compile(r"[A-Z]{2}[012]")
         elif self is PhoneSetType.PINYIN:
@@ -80,40 +142,150 @@ class PhoneSetType(enum.Enum):
             )
         return None
 
-    def get_base_phone(self, phone: str):
-        if self.has_base_phone_regex:
-            return self.base_phone_regex.sub("", phone)
-        return phone
+    @property
+    def suprasegmental_phone_regex(self) -> typing.Optional[re.Pattern]:
+        """Regex for creating base phones"""
+        if self is PhoneSetType.IPA:
+            return re.compile(r"([ː̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ʱʰʲ̚ʼ͈ˈ̣ᵝ]+)")
+        return None
 
     @property
     def base_phone_regex(self) -> typing.Optional[re.Pattern]:
+        """Regex for creating base phones"""
         if self is PhoneSetType.ARPA:
             return re.compile(r"[012]")
         elif self is PhoneSetType.PINYIN:
             return re.compile(r"[12345]")
         elif self is PhoneSetType.IPA:
-            return re.compile(r"([ː˩˨˧˦˥̪̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]+)")
+            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ˈ]+)")
         return None
 
     @property
-    def extra_short_phones(self) -> typing.Set[str]:
-        if self is PhoneSetType.ARPA:
-            return {"AH0", "IH0", "ER0", "UH0"}
-        elif self is PhoneSetType.IPA:
-            return {"ʔ", "ə", "ɚ", "ɾ", "p̚", "t̚", "k̚"}
+    def voiceless_obstruents(self):
+        """Voiceless obstruents for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "p",
+                "t",
+                "ʈ",
+                "k",
+                "c",
+                "q",
+                "f",
+                "s",
+                "ʂ",
+                "s̪",
+                "ɕ",
+                "x",
+                "ç",
+                "ɸ",
+                "χ",
+                "ʃ",
+                "h",
+                "ʜ",
+                "ħ",
+                "ʡ",
+                "ʔ",
+                "θ",
+                "ɬ",
+                "ɧ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"P", "T", "CH", "SH", "S", "F", "TH", "HH", "K"}
         return set()
 
     @property
-    def affricate_phones(self) -> typing.Set[str]:
-        if self is PhoneSetType.ARPA:
-            return {"CH", "JH"}
-        if self is PhoneSetType.PINYIN:
-            return {"z", "zh", "j", "c", "ch", "q"}
+    def voiced_obstruents(self):
+        """Voiced obstruents for the phone set"""
         if self is PhoneSetType.IPA:
-            affricates = set()
-            for p in {
+            return {
+                "b",
+                "d",
+                "g",
+                "ɖ",
+                "ɡ",
+                "ɟ",
+                "ɢ",
+                "v",
+                "z̪",
+                "z",
+                "ʐ",
+                "ʑ",
+                "ɣ",
+                "ʁ",
+                "ʢ",
+                "ʕ",
+                "ʒ",
+                "ʝ",
+                "ɦ",
+                "ð",
+                "ɮ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"B", "D", "DH", "JH", "ZH", "Z", "V", "DH", "G"}
+        return set()
+
+    @property
+    def implosive_obstruents(self):
+        """Implosive obstruents for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɓ", "ɗ", "ʄ", "ɠ", "ʛ", "ᶑ", "ɗ̪"}
+        return set()
+
+    @property
+    def stops(self):
+        """Stops for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "p",
+                "t",
+                "t̪",
+                "ʈ",
+                "c",
+                "k",
+                "q",
+                "kp",
+                "pk",
+                "b",
+                "d",
+                "d̪",
+                "ɖ",
+                "ɟ",
+                "ɡ",
+                "ɢ",
+                "bɡ",
+                "ɡb",
+                "ɓ",
+                "ɗ",
+                "ʄ",
+                "ɠ",
+                "ʛ",
+                "ᶑ",
+                "ɗ̪",
+                "ʔ",
+                "ʡ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"B", "D", "P", "T", "G", "K"}
+        return set()
+
+    @property
+    def sibilants(self):
+        """Sibilants for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"s", "s̪", "ʃ", "ʂ", "ɕ", "z", "z̪", "ʒ", "ʑ", "ʐ", "ɧ"}
+        elif self is PhoneSetType.ARPA:
+            return {"SH", "S", "ZH", "Z"}
+        return set()
+
+    @property
+    def affricates(self):
+        """Affricates for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
                 "pf",
                 "ts",
+                "t̪s̪",
                 "tʃ",
                 "tɕ",
                 "tʂ",
@@ -121,10 +293,8 @@ class PhoneSetType(enum.Enum):
                 "cç",
                 "kx",
                 "tç",
-            }:
-                affricates |= voiceless_variants(p)
-            for p in {
                 "dz",
+                "d̪z̪",
                 "dʒ",
                 "dʑ",
                 "dʐ",
@@ -132,56 +302,473 @@ class PhoneSetType(enum.Enum):
                 "ɟʝ",
                 "ɡɣ",
                 "dʝ",
-            }:
-                affricates |= voiced_variants(p)
-            return affricates
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"JH", "CH"}
         return set()
 
     @property
-    def stop_phones(self) -> typing.Set[str]:
-        if self is PhoneSetType.ARPA:
-            return {"B", "D", "G"}
-        if self is PhoneSetType.PINYIN:
-            return {"b", "d", "g"}
+    def fricatives(self):
+        """Fricatives for the phone set"""
         if self is PhoneSetType.IPA:
-            stops = set()
-            for p in {"p", "t", "ʈ", "c", "k", "q"}:
-                stops |= voiceless_variants(p)
-            for p in {"b", "d", "ɖ", "ɟ", "ɡ", "ɢ"}:
-                stops |= voiced_variants(p)
-            return stops
+            return {
+                "f",
+                "v",
+                "ç",
+                "ʝ",
+                "ħ",
+                "ɧ",
+                "θ",
+                "ð",
+                "ʁ",
+                "ʢ",
+                "ʕ",
+                "χ",
+                "ʜ",
+                "ʢ",
+                "ɦ",
+                "h",
+                "ɸ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {
+                "V",
+                "DH",
+                "HH",
+                "F",
+                "TH",
+            }
+        return set()
+
+    @property
+    def laterals(self):
+        """Laterals for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"l", "ɫ", "ʟ", "ʎ", "l̪"}
+        elif self is PhoneSetType.ARPA:
+            return {"L"}
+        return set()
+
+    @property
+    def nasals(self):
+        """Nasals for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɲ", "ŋ", "m", "n", "ɳ", "ɴ", "ɱ", "ŋm", "n̪"}
+        elif self is PhoneSetType.ARPA:
+            return {"M", "N", "NG"}
+        return set()
+
+    @property
+    def trills(self):
+        """Trills for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʙ", "r", "ʀ", "r̝"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def taps(self):
+        """Taps for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɾ", "ɽ", "ⱱ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def lateral_taps(self):
+        """Lateral taps for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɭ", "ɺ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def lateral_fricatives(self):
+        """Lateral fricatives for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɬ", "ɮ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def approximants(self):
+        """Approximants for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɹ", "ɻ", "ʋ", "ʍ"} | self.glides
+        elif self is PhoneSetType.ARPA:
+            return {"R"} | self.glides
+        return set()
+
+    @property
+    def glides(self):
+        """Glides for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"j", "w", "w̃", "j̃", "ɥ", "ɰ", "ɥ̃", "ɰ̃", "j̰"}
+        elif self is PhoneSetType.ARPA:
+            return {"Y", "W"}
+        return set()
+
+    @property
+    def nasal_approximants(self):
+        """Nasal approximants for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"w̃", "j̃", "ɥ̃", "ɰ̃"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def labials(self):
+        """Labials for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"b", "p", "m", "ɸ", "β", "ɓ", "w", "ʍ"}
+        elif self is PhoneSetType.ARPA:
+            return {"B", "P", "M", "W"}
+        return set()
+
+    @property
+    def labiodental(self):
+        """Labiodentals for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"f", "v", "ʋ", "ⱱ", "ɱ", "pf"}
+        elif self is PhoneSetType.ARPA:
+            return {"F", "V"}
+        return set()
+
+    @property
+    def dental(self):
+        """Dentals for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ð", "θ", "t̪", "d̪", "s̪", "z̪", "t̪s̪", "d̪z̪", "n̪", "l̪", "ɗ̪"}
+        elif self is PhoneSetType.ARPA:
+            return {"DH", "TH"}
+        return set()
+
+    @property
+    def alveolar(self):
+        """Alveolars for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "t",
+                "d",
+                "s",
+                "z",
+                "n",
+                "r",
+                "l",
+                "ɹ",
+                "ɾ",
+                "ɬ",
+                "ɮ",
+                "ɫ",
+                "ts",
+                "dz",
+                "ɗ",
+                "ɺ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"T", "D", "S", "Z", "N", "R", "L"}
+        return set()
+
+    @property
+    def retroflex(self):
+        """Retroflexes for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʈ", "ʂ", "ʐ", "ɖ", "ɽ", "ɻ", "ɭ", "ɳ", "ʈʂ", "ɖʐ", "ᶑ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def alveopalatal(self):
+        """Alveopalatals for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʒ", "ʃ", "dʒ", "tʃ"}
+        elif self is PhoneSetType.ARPA:
+            return {"ZH", "SH", "JH", "CH"}
+        return set()
+
+    @property
+    def palatalized(self):
+        """Palatalized phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            palatals = set()
+            palatals.update(x + "ʲ" for x in self.labials)
+            palatals.update(x + "ʲ" for x in self.labiodental)
+            palatals.update(x + "ʲ" for x in self.dental)
+            palatals.update(x + "ʲ" for x in self.alveolar)
+            palatals.update(x + "ʲ" for x in self.retroflex)
+            palatals.update(x + "ʲ" for x in self.palatal)
+            palatals.update(x + "ʲ" for x in self.velar)
+            palatals.update(x + "ʲ" for x in self.uvular)
+            palatals.update(x + "ʲ" for x in self.pharyngeal)
+            palatals.update(x + "ʲ" for x in self.epiglottal)
+            palatals.update(x + "ʲ" for x in self.glottal)
+            return palatals
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def labialized(self):
+        """Labialized phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            palatals = set()
+            palatals.update(x + "ʷ" for x in self.labials)
+            palatals.update(x + "ʷ" for x in self.labiodental)
+            palatals.update(x + "ʷ" for x in self.dental)
+            palatals.update(x + "ʷ" for x in self.alveolar)
+            palatals.update(x + "ʷ" for x in self.retroflex)
+            palatals.update(x + "ʷ" for x in self.palatal)
+            palatals.update(x + "ʷ" for x in self.velar)
+            palatals.update(x + "ʷ" for x in self.uvular)
+            palatals.update(x + "ʷ" for x in self.pharyngeal)
+            palatals.update(x + "ʷ" for x in self.epiglottal)
+            palatals.update(x + "ʷ" for x in self.glottal)
+            return palatals
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def palatal(self):
+        """Palatal phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ç", "c", "ɕ", "tɕ", "ɟ", "ɟʝ", "ʝ", "ɲ", "ɥ", "j", "ʎ", "ʑ", "dʑ"}
+        elif self is PhoneSetType.ARPA:
+            return {"Y"}
+        return set()
+
+    @property
+    def velar(self):
+        """Velar phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"k", "x", "ɡ", "ɠ", "ɣ", "ɰ", "ŋ"}
+        elif self is PhoneSetType.ARPA:
+            return {"K", "NG", "G"}
+        return set()
+
+    @property
+    def uvular(self):
+        """Uvular phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"q", "ɢ", "ʛ", "χ", "ʀ", "ʁ", "ʟ", "ɴ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def pharyngeal(self):
+        """Pharyngeal phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʕ", "ħ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def epiglottal(self):
+        """Epiglottal phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʡ", "ʢ", "ʜ"}
+        elif self is PhoneSetType.ARPA:
+            return set()
+        return set()
+
+    @property
+    def glottal(self):
+        """Glottal phones for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ʔ", "ɦ", "h"}
+        elif self is PhoneSetType.ARPA:
+            return {"HH"}
+        return set()
+
+    @property
+    def close_vowels(self):
+        """Close vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɪ", "ɨ", "ɪ̈", "ʉ", "ʊ", "i", "ĩ", "ɯ", "y", "u", "ʏ", "ũ"}
+        elif self is PhoneSetType.ARPA:
+            return {"IH", "UH", "IY", "UW"}
+        return set()
+
+    @property
+    def close_mid_vowels(self):
+        """Close-mid vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"e", "ẽ", "ej", "eɪ", "o", "õ", "ow", "oʊ", "ɤ", "ø", "ɵ", "ɘ", "ə", "ɚ", "ʏ̈"}
+        elif self is PhoneSetType.ARPA:
+            return {"EY", "OW", "AH"}
+        return set()
+
+    @property
+    def open_mid_vowels(self):
+        """Open-mid vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɛ", "ɜ", "ɞ", "œ", "ɔ", "ʌ", "ɐ", "æ", "ɛ̈", "ɔ̈", "ɝ"}
+        elif self is PhoneSetType.ARPA:
+            return {"EH", "AE", "ER"}
+        return set()
+
+    @property
+    def open_vowels(self):
+        """Open vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"a", "ã", "ɶ", "ɒ", "ɑ"}
+        elif self is PhoneSetType.ARPA:
+            return {"AO", "AA"}
+        return set()
+
+    @property
+    def front_vowels(self):
+        """Front vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "i",
+                "ĩ",
+                "y",
+                "ɪ",
+                "ʏ",
+                "e",
+                "ẽ",
+                "ɪ",
+                "ʏ",
+                "ɛ̈",
+                "ʏ̈",
+                "ej",
+                "eɪ",
+                "ø",
+                "ɛ",
+                "œ",
+                "æ",
+                "ɶ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"IY", "EY", "EH", "AE", "IH"}
+        return set()
+
+    @property
+    def central_vowels(self):
+        """Central vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɨ", "ʉ", "ɘ", "ɵ", "ə", "ɜ", "ɞ", "ɐ", "ɚ", "ã", "a", "ɝ"}
+        elif self is PhoneSetType.ARPA:
+            return {"UW", "AH", "ER"}
+        return set()
+
+    @property
+    def back_vowels(self):
+        """Back vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {"ɯ", "u", "ũ", "ʊ", "ɔ̈", "ɤ", "o", "õ", "ow", "oʊ", "ʌ", "ɔ", "ɑ", "ɒ"}
+        elif self is PhoneSetType.ARPA:
+            return {"OW", "AO", "AA", "UH"}
+        return set()
+
+    @property
+    def rounded_vowels(self):
+        """Rounded vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "y",
+                "ʏ",
+                "o",
+                "õ",
+                "u",
+                "ʊ",
+                "ow",
+                "oʊ",
+                "ɔ",
+                "ø",
+                "ɵ",
+                "ɞ",
+                "œ",
+                "ɒ",
+                "ɶ",
+                "ʉ",
+                "ʏ̈",
+                "ɔ̈",
+                "ũ",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"OW", "UW", "UH", "AO"}
+        return set()
+
+    @property
+    def unrounded_vowels(self):
+        """Unrounded vowels for the phone set"""
+        if self is PhoneSetType.IPA:
+            return {
+                "i",
+                "ĩ",
+                "e",
+                "ɛ̈",
+                "ej",
+                "ẽ",
+                "ɤ",
+                "eɪ",
+                "ɨ",
+                "ɯ",
+                "ɘ",
+                "ə",
+                "ɚ",
+                "ɪ",
+                "ɪ̈",
+                "ɛ",
+                "ɜ",
+                "ɝ",
+                "ʌ",
+                "ɐ",
+                "ɑ",
+                "æ",
+                "ã",
+                "a",
+            }
+        elif self is PhoneSetType.ARPA:
+            return {"IY", "EY", "EH", "AH", "IH", "ER", "AE", "AA"}
         return set()
 
     @property
     def diphthong_phones(self) -> typing.Set[str]:
+        """Diphthong phones for the phone set type (these will have 5 states in HMM topologies)"""
         if self is PhoneSetType.ARPA:
             return {
+                "AY",
                 "AY0",
                 "AY1",
                 "AY2",
+                "AW",
                 "AW0",
                 "AW1",
                 "AW2",
+                "OY",
                 "OY0",
                 "OY1",
                 "OY2",
-                "EY0",
-                "EY1",
-                "EY2",
-                "OW0",
-                "OW1",
-                "OW2",
             }
         if self is PhoneSetType.IPA or self is PhoneSetType.PINYIN:
-            return {x + y for x, y in itertools.product(self.vowels, self.vowels)}
+            diphthongs = {x + y for x, y in itertools.product(self.vowels, self.vowels)}
+            if self is PhoneSetType.IPA:
+                diphthongs |= {x + y for x, y in itertools.product(self.glides, self.vowels)}
+                diphthongs |= {x + y for x, y in itertools.product(self.vowels, self.glides)}
+
+            return diphthongs
 
         return set()
 
     @property
     def vowels(self):
+        """Vowels for the phone set type"""
         if self is PhoneSetType.PINYIN:
             return {"i", "u", "y", "e", "w", "a", "o", "e", "ü"}
-        if self is PhoneSetType.IPA:
+        elif self is PhoneSetType.ARPA:
+            return {"IH", "UH", "IY", "AE", "UW", "AH", "AO", "AA"}
+        elif self is PhoneSetType.IPA:
             base_vowels = {
                 "i",
                 "u",
@@ -260,74 +847,46 @@ class PhoneSetType(enum.Enum):
 
     @property
     def triphthong_phones(self) -> typing.Set[str]:
+        """Triphthong phones for the phone set type"""
         if self is PhoneSetType.IPA or self is PhoneSetType.PINYIN:
-            return {
+            triphthongs = {
                 x + y + z for x, y, z in itertools.product(self.vowels, self.vowels, self.vowels)
             }
-
+            if self is PhoneSetType.IPA:
+                triphthongs |= {
+                    x + y for x, y in itertools.product(self.glides, self.diphthong_phones)
+                }
+                triphthongs |= {
+                    x + y for x, y in itertools.product(self.diphthong_phones, self.glides)
+                }
+            return triphthongs
         return set()
 
     @property
     def extra_questions(self) -> typing.Dict[str, typing.Set[str]]:
+        """Extra questions for phone clustering in triphone models"""
         extra_questions = {}
         if self is PhoneSetType.ARPA:
-            extra_questions["bilabial_variation"] = {"P", "B"}
-            extra_questions["dental_lenition"] = {"D", "DH"}
-            extra_questions["flapping"] = {"T", "D"}
-            extra_questions["nasal_variation"] = {"M", "N", "NG"}
-            extra_questions["voiceless_sibilant_variation"] = {"CH", "SH", "S"}
-            extra_questions["voiceless_sibilant_variation"] = {"JH", "ZH", "Z"}
-            extra_questions["voiceless_fricative_variation"] = {"F", "TH", "HH", "K"}
-            extra_questions["voiced_fricative_variation"] = {"V", "DH", "HH", "G"}
-            extra_questions["dorsal_variation"] = {"HH", "K", "G"}
-            extra_questions["rhotic_variation"] = {"ER0", "ER1", "ER2", "R"}
+            extra_questions["stops"] = self.stops
+            extra_questions["fricatives"] = self.fricatives
+            extra_questions["sibilants"] = self.sibilants | self.affricates
+            extra_questions["approximants"] = self.approximants
+            extra_questions["laterals"] = self.laterals
+            extra_questions["nasals"] = self.nasals
+            extra_questions["labials"] = self.labials | self.labiodental
+            extra_questions["dental"] = self.dental | self.labiodental
+            extra_questions["coronal"] = self.dental | self.alveolar | self.alveopalatal
+            extra_questions["dorsal"] = self.velar | self.glottal
 
-            extra_questions["low_back_variation"] = {
-                "AO0",
-                "AO1",
-                "AO2",
-                "AA0",
-                "AA1",
-                "AA2",
-            }
-            extra_questions["central_variation"] = {
-                "ER0",
-                "ER1",
-                "ER2",
-                "AH0",
-                "AH1",
-                "AH2",
-                "UH0",
-                "UH1",
-                "UH2",
-                "IH0",
-                "IH1",
-                "IH2",
-            }
-            extra_questions["high_back_variation"] = {
-                "UW1",
-                "UW2",
-                "UW0",
-                "UH1",
-                "UH2",
-                "UH0",
-            }
-            extra_questions["high_front_variation"] = {
-                "IY1",
-                "IY2",
-                "IY0",
-                "IH0",
-                "IH1",
-                "IH2",
-            }
-            extra_questions["mid_front_variation"] = {
-                "EY1",
-                "EY2",
-                "EY0",
-                "EH0",
-                "EH1",
-                "EH2",
-            }
+            extra_questions["unrounded"] = self.unrounded_vowels
+            extra_questions["rounded"] = self.rounded_vowels
+            extra_questions["front"] = self.front_vowels
+            extra_questions["central"] = self.central_vowels
+            extra_questions["back"] = self.back_vowels
+            extra_questions["close"] = self.close_vowels
+            extra_questions["close_mid"] = self.close_mid_vowels
+            extra_questions["open_mid"] = self.open_mid_vowels
+            extra_questions["open"] = self.open_vowels
 
             # extra stress questions
             vowels = [
@@ -374,207 +933,71 @@ class PhoneSetType(enum.Enum):
 
         elif self is PhoneSetType.IPA:
 
-            extra_questions["dental_lenition"] = voiced_variants("ð") | voiced_variants("d")
-            extra_questions["flapping"] = {"d", "t", "ɾ"}
-            extra_questions["glottalization"] = {"t", "ʔ", "t̚"}
-            extra_questions["labial_lenition"] = voiced_variants("β") | voiced_variants("b")
-            extra_questions["velar_lenition"] = voiced_variants("ɣ") | voiced_variants("ɡ")
+            def add_consonant_variants(consonant_set):
+                """Add consonant variants for the given set"""
+                consonants = set()
+                for p in consonant_set:
+                    if p in self.voiceless_obstruents:
+                        consonants |= voiceless_variants(p)
+                    else:
+                        consonants |= voiced_variants(p)
+                return consonants
 
-            nasal_variation = (
-                voiced_variants("m")
-                | voiced_variants("n")
-                | voiced_variants("ɲ")
-                | voiced_variants("ŋ")
+            extra_questions["stops"] = add_consonant_variants(self.stops)
+            extra_questions["fricatives"] = add_consonant_variants(
+                self.fricatives | self.lateral_fricatives
             )
-            nasal_variation |= voiced_variants("ɴ") | voiced_variants("ɳ") | voiced_variants("ɱ")
-            nasal_variation |= voiced_variants("ɰ̃") | voiced_variants("ɾ")
-            extra_questions["nasal_variation"] = nasal_variation
-
-            approximant_variation = (
-                voiced_variants("w")
-                | voiced_variants("ʍ")
-                | voiced_variants("ɰ")
-                | voiced_variants("ɥ")
+            extra_questions["sibilants"] = add_consonant_variants(self.sibilants | self.affricates)
+            extra_questions["approximants"] = add_consonant_variants(self.approximants)
+            extra_questions["laterals"] = add_consonant_variants(self.laterals)
+            extra_questions["nasals"] = add_consonant_variants(
+                self.nasals | self.nasal_approximants
             )
-            approximant_variation |= (
-                voiced_variants("l")
-                | voiced_variants("ɭ")
-                | voiced_variants("ɹ")
-                | voiced_variants("ɫ")
+            extra_questions["trills"] = add_consonant_variants(self.trills | self.taps)
+            extra_questions["labials"] = add_consonant_variants(
+                self.labials | self.labiodental | self.labialized
             )
-            approximant_variation |= (
-                voiced_variants("ɻ") | voiced_variants("ʋ") | voiced_variants("j")
+            extra_questions["dental"] = add_consonant_variants(self.dental | self.labiodental)
+            extra_questions["coronal"] = add_consonant_variants(
+                self.dental | self.alveolar | self.retroflex | self.alveopalatal
             )
-            extra_questions["approximant_variation"] = approximant_variation
-
-            front_glide_variation = {"j", "i", "ɪ", "ɥ", "ʏ", "y"}
-            front_glide_variation |= {x + "̃" for x in front_glide_variation}
-            extra_questions["front_glide_variation"] = front_glide_variation
-
-            back_glide_variation = {"w", "u", "ʊ", "ɰ", "ɯ", "ʍ"}
-            back_glide_variation |= {x + "̃" for x in back_glide_variation}
-            extra_questions["back_glide_variation"] = back_glide_variation
-
-            trill_variation = (
-                voiced_variants("r")
-                | voiced_variants("ɾ")
-                | voiced_variants("ɽ")
-                | voiced_variants("ɽr")
+            extra_questions["dorsal"] = add_consonant_variants(
+                self.palatal | self.velar | self.uvular
             )
-            trill_variation |= voiced_variants("ʁ") | voiced_variants("ʀ") | voiced_variants("ɢ̆")
-            trill_variation |= voiced_variants("ɺ") | voiced_variants("ɭ")
-            extra_questions["trill_variation"] = trill_variation
-
-            extra_questions["syllabic_rhotic_variation"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
-            uvular_variation = (
-                voiced_variants("ʁ") | voiceless_variants("x") | voiceless_variants("χ")
+            extra_questions["palatals"] = add_consonant_variants(
+                self.palatal | self.alveopalatal | self.palatalized
             )
-            uvular_variation |= (
-                voiced_variants("ɣ")
-                | voiceless_variants("h")
-                | voiced_variants("ɰ")
-                | voiced_variants("ʀ")
-            )
-            extra_questions["uvular_variation"] = uvular_variation
-
-            lateral_variation = voiced_variants("l") | voiced_variants("ɫ") | voiced_variants("ʎ")
-            lateral_variation |= (
-                voiced_variants("ʟ")
-                | voiced_variants("ɭ")
-                | voiced_variants("ɮ")
-                | voiceless_variants("ɬ")
-            )
-            extra_questions["lateral_variation"] = lateral_variation
-
-            dorsal_stops = voiceless_variants("k") | voiced_variants("ɡ") | voiced_variants("ɠ")
-            dorsal_stops |= voiceless_variants("c") | voiced_variants("ɟ") | voiced_variants("ʄ")
-            dorsal_stops |= voiceless_variants("q") | voiced_variants("ɢ") | voiced_variants("ʛ")
-            extra_questions["dorsal_stop_variation"] = dorsal_stops
-
-            bilabial_stops = (
-                voiceless_variants("p")
-                | voiced_variants("b")
-                | voiced_variants("ɓ")
-                | voiced_variants("ʙ")
-                | voiced_variants("ⱱ")
-            )
-            extra_questions["bilabial_stop_variation"] = bilabial_stops
-
-            alveolar_stops = voiceless_variants("t") | voiceless_variants("ʈ")
-            alveolar_stops |= (
-                voiced_variants("d")
-                | voiced_variants("ɗ")
-                | voiced_variants("ɖ")
-                | voiced_variants("ᶑ")
-            )
-            extra_questions["alveolar_stop_variation"] = alveolar_stops
-
-            voiceless_fricatives = (
-                voiceless_variants("θ")
-                | voiceless_variants("f")
-                | voiceless_variants("pf")
-                | voiceless_variants("ɸ")
-            )
-            voiceless_fricatives |= (
-                voiceless_variants("ç")
-                | voiceless_variants("x")
-                | voiceless_variants("kx")
-                | voiceless_variants("χ")
-                | voiceless_variants("h")
-            )
-            voiceless_fricatives |= (
-                voiceless_variants("cç")
-                | voiceless_variants("q")
-                | voiceless_variants("qχ")
-                | voiceless_variants("ɬ")
-            )
-            extra_questions["voiceless_fricative_variation"] = voiceless_fricatives
-            voiced_fricatives = voiced_variants("v") | voiced_variants("ð")
-            voiced_fricatives |= voiced_variants("β") | voiced_variants("ʋ") | voiced_variants("ɣ")
-            voiced_fricatives |= (
-                voiced_variants("ɟʝ") | voiced_variants("ʝ") | voiced_variants("ɮ")
+            extra_questions["pharyngeal"] = add_consonant_variants(
+                self.pharyngeal | self.epiglottal | self.glottal
             )
 
-            extra_questions["voiced_fricative_variation"] = voiced_fricatives
-            voiceless_sibilants = (
-                voiceless_variants("s")
-                | voiceless_variants("ʃ")
-                | voiceless_variants("ɕ")
-                | voiceless_variants("ʂ")
+            extra_questions["unrounded"] = add_consonant_variants(self.unrounded_vowels)
+            extra_questions["rounded"] = add_consonant_variants(self.rounded_vowels)
+            extra_questions["front"] = add_consonant_variants(self.front_vowels)
+            extra_questions["central"] = add_consonant_variants(self.central_vowels)
+            extra_questions["back"] = add_consonant_variants(self.back_vowels)
+            extra_questions["close"] = add_consonant_variants(self.close_vowels)
+            extra_questions["close_mid"] = add_consonant_variants(self.close_mid_vowels)
+            extra_questions["open_mid"] = add_consonant_variants(self.open_mid_vowels)
+            extra_questions["open"] = add_consonant_variants(self.open_vowels)
+
+            extra_questions["front_semi_vowels"] = add_consonant_variants(
+                {"j", "i", "ɪ", "ɥ", "ʏ", "y"}
             )
-            voiceless_sibilants |= (
-                voiceless_variants("ts") | voiceless_variants("tʃ") | voiceless_variants("tɕ")
+            extra_questions["back_semi_vowels"] = add_consonant_variants(
+                {"w", "u", "ʊ", "ɰ", "ɯ", "ʍ"}
             )
-            voiceless_sibilants |= voiceless_variants("ʈʂ") | voiceless_variants("tʂ")
-            extra_questions["voiceless_sibilant_variation"] = voiceless_sibilants
+            # Some language specific questions
+            extra_questions["L_vocalization"] = {"ʊ", "ɫ", "u", "ʉ"}
+            extra_questions["ts_z_variation"] = {"ts", "z"}
+            extra_questions["rhotics"] = {"ɹ", "ɝ", "ɚ", "ə", "ʁ", "ɐ"}
+            extra_questions["diphthongs"] = self.diphthong_phones
+            extra_questions["triphthongs"] = self.triphthong_phones
 
-            voiced_sibilants = (
-                voiced_variants("z")
-                | voiced_variants("ʒ")
-                | voiced_variants("ʐ")
-                | voiced_variants("ʑ")
-            )
-            voiced_sibilants |= (
-                voiced_variants("dz")
-                | voiced_variants("dʒ")
-                | voiced_variants("dʐ")
-                | voiced_variants("ɖʐ")
-                | voiced_variants("dʑ")
-            )
-            extra_questions["voiced_sibilant_variation"] = voiced_sibilants
-
-            extra_questions["low_vowel_variation"] = {"a", "ɐ", "ɑ", "ɔ"}
-            extra_questions["mid_back_vowel_variation"] = {"oʊ", "ɤ", "o", "ɔ"}
-            extra_questions["mid_front_variation"] = {"ɛ", "eɪ", "e", "œ", "ø"}
-            extra_questions["high_front_variation"] = {"i", "y", "ɪ", "ʏ", "ɨ", "ʉ"}
-            extra_questions["high_back_variation"] = {"ʊ", "u", "ɯ", "ɨ", "ʉ"}
-            back_diphthong_variation = {"aʊ", "au", "aw", "ɐw"}
-            back_diphthong_variation |= {x + "̃" for x in back_diphthong_variation}
-            extra_questions["back_diphthong_variation"] = back_diphthong_variation
-
-            front_diphthong_variation = {"aɪ", "ai", "aj", "ɐj"}
-            front_diphthong_variation |= {x + "̃" for x in front_diphthong_variation}
-            extra_questions["front_diphthong_variation"] = front_diphthong_variation
-
-            mid_front_diphthong_variation = {
-                "eɪ",
-                "ei",
-                "ej",
-                "ɛɪ",
-                "ɛi",
-                "ɛj",
-            }
-            mid_front_diphthong_variation |= {x + "̃" for x in mid_front_diphthong_variation}
-            extra_questions["mid_front_diphthong_variation"] = mid_front_diphthong_variation
-
-            mid_back_diphthong_variation = {"ow", "ou", "oʊ"}
-            mid_back_diphthong_variation |= {x + "̃" for x in mid_back_diphthong_variation}
-            extra_questions["mid_front_diphthong_variation"] = mid_back_diphthong_variation
-
-            mid_back_front_diphthong_variation = {"oj", "oi", "oɪ", "ɔʏ", "ɔɪ", "ɔj", "ɔi"}
-            mid_back_front_diphthong_variation |= {
-                x + "̃" for x in mid_back_front_diphthong_variation
-            }
-            extra_questions[
-                "mid_back_front_diphthong_variation"
-            ] = mid_back_front_diphthong_variation
-
-            extra_questions["central_variation"] = {
-                "ə",
-                "ɤ",
-                "ɚ",
-                "ʌ",
-                "ʊ",
-                "ɵ",
-                "ɐ",
-                "ɞ",
-                "ɘ",
-                "ɝ",
-            }
         return extra_questions
 
 
-@dataclasses.dataclass
+@dataclass(slots=True)
 class SoundFileInformation:
     """
     Data class for sound file information with format, duration, number of channels, bit depth, and
@@ -590,26 +1013,23 @@ class SoundFileInformation:
         Duration
     sample_rate: int
         Sample rate
-    bit_depth: int
-        Bit depth
     sox_string: str
         String to use for loading with sox
     """
 
-    __slots__ = ["format", "sample_rate", "duration", "num_channels", "bit_depth", "sox_string"]
     format: str
     sample_rate: int
     duration: float
     num_channels: int
-    bit_depth: int
     sox_string: str
 
     @property
     def meta(self) -> typing.Dict[str, typing.Any]:
-        return dataclasses.asdict(self)
+        """Dictionary representation of sound file information"""
+        return dataclassy.asdict(self)
 
 
-@dataclasses.dataclass
+@dataclass(slots=True)
 class FileExtensions:
     """
     Data class for information about the current directory
@@ -628,16 +1048,14 @@ class FileExtensions:
         Mapping of identifiers to other audio files
     """
 
-    __slots__ = ["identifiers", "lab_files", "textgrid_files", "wav_files", "other_audio_files"]
-
-    identifiers: typing.List[str]
+    identifiers: typing.Set[str]
     lab_files: typing.Dict[str, str]
     textgrid_files: typing.Dict[str, str]
     wav_files: typing.Dict[str, str]
     other_audio_files: typing.Dict[str, str]
 
 
-@dataclasses.dataclass
+@dataclass(slots=True)
 class Pronunciation:
     """
     Data class for information about a pronunciation string
@@ -650,53 +1068,56 @@ class Pronunciation:
         Probability of pronunciation
     disambiguation: Optional[int]
         Disambiguation index within a pronunciation dictionary
-    left_silence_probability: Optional[float]
-        Probability of silence before the pronunciation
-    right_silence_probability: Optional[float]
+    silence_after_probability: Optional[float]
         Probability of silence after the pronunciation
+    silence_before_correction: Optional[float]
+        Correction factor for probability of silence before the pronunciation
+    non_silence_before_correction: Optional[float]
+        Correction factor for probability of non-silence before the pronunciation
     """
 
-    __slots__ = [
-        "pronunciation",
-        "probability",
-        "disambiguation",
-        "left_silence_probability",
-        "right_silence_probability",
-    ]
-
     pronunciation: typing.Tuple[str, ...]
-    probability: float
-    disambiguation: typing.Optional[int]
-    left_silence_probability: typing.Optional[float]
-    right_silence_probability: typing.Optional[float]
+    probability: float = 1.0
+    disambiguation: int = None
+    silence_after_probability: float = None
+    silence_before_correction: float = None
+    non_silence_before_correction: float = None
 
     def __hash__(self):
+        """Hash of the pronunciation"""
         return hash(self.pronunciation)
 
     def __len__(self):
+        """Length of pronunciation"""
         return len(self.pronunciation)
 
     def __repr__(self):
+        """Representation"""
         return f"<Pronunciation /{' '.join(self.pronunciation)}/>"
 
     def __bool__(self) -> bool:
+        """Check for phones in the pronunciation"""
         return bool(self.pronunciation)
 
     def __str__(self):
+        """String format"""
         return f"{' '.join(self.pronunciation)}"
 
     def __eq__(self, other: Pronunciation):
+        """Check for whether two pronunciations are equal"""
         return self.pronunciation == other.pronunciation
 
     def __lt__(self, other: Pronunciation):
+        """Check for whether one pronunciation is less than another"""
         return self.pronunciation < other.pronunciation
 
     def __gt__(self, other: Pronunciation):
+        """Check for whether one pronunciation is greater than another"""
         return self.pronunciation > other.pronunciation
 
 
-@dataclasses.dataclass
-class Word:
+@dataclass(slots=True)
+class WordData:
     """
     Data class for information about a word and its pronunciations
 
@@ -704,14 +1125,31 @@ class Word:
     ----------
     orthography: str
         Orthographic string for the word
-    pronunciations: set[:class:`~montreal_forced_aligner.data.Pronunciation`]
-        Set of pronunciations for the word
+    pronunciations: dict[tuple[str, ...], :class:`~montreal_forced_aligner.data.Pronunciation`]
+        Dictionary mapping of pronunciations for the word
     """
 
-    __slots__ = ["orthography", "pronunciations"]
-
     orthography: str
-    pronunciations: typing.Set[Pronunciation]
+    pronunciations: typing.Dict[typing.Tuple[str, ...], Pronunciation]
+
+    def __init__(self, orthography: str, pronunciations: typing.Collection[Pronunciation]):
+        self.orthography = orthography
+        self.pronunciations = {}
+        if isinstance(pronunciations, dict):
+            self.pronunciations.update(pronunciations)
+        else:
+            for p in pronunciations:
+                self.pronunciations[p.pronunciation] = p
+
+    def add_pronunciation(self, pronunciation: Pronunciation) -> None:
+        """Add pronunciation for a word
+
+        Parameters
+        ----------
+        pronunciation: :class:`~montreal_forced_aligner.data.Pronunciation`
+            Pronunciation to add
+        """
+        self.pronunciations[pronunciation.pronunciation] = pronunciation
 
     def __repr__(self) -> str:
         """Word object representation"""
@@ -726,99 +1164,73 @@ class Word:
         """Number of pronunciations"""
         return len(self.pronunciations)
 
+    def __getitem__(self, item: typing.Tuple[str, ...]) -> Pronunciation:
+        return self.pronunciations[item]
+
     def __iter__(self) -> typing.Generator[Pronunciation]:
         """Iterator over pronunciations"""
-        for p in self.pronunciations:
+        for p in self.pronunciations.values():
             yield p
 
 
-@dataclasses.dataclass
-class UtteranceData:
+@dataclass(slots=True)
+class PronunciationProbabilityCounter:
     """
-    Data class for utterance information
+    Data class for count information used in pronunciation probability modeling
 
     Parameters
     ----------
-    speaker_name: str
-        Speaker name
-    file_name: str
-        File name
-    begin: float, optional
-        Begin timestamp
-    end: float, optional
-        End timestamp
-    channel: int, optional
-        Sound file channel
-    text: str, optional
-        Utterance text
-    normalized_text: list[str]
-        Normalized utterance text, with compounds and clitics split up
-    oovs: set[str]
-        Set of words not found in a look up
+    ngram_counts: collections.defaultdict
+        Counts of ngrams
+    word_pronunciation_counts: collections.defaultdict
+        Counts of word pronunciations
+    silence_following_counts: collections.Counter
+        Counts of silence following pronunciation
+    non_silence_following_counts: collections.Counter
+        Counts of non-silence following pronunciation
+    silence_before_counts: collections.Counter
+        Counts of silence before pronunciation
+    non_silence_before_counts: collections.Counter
+        Counts of non-silence before pronunciation
+
     """
 
-    __slots__ = [
-        "speaker_name",
-        "file_name",
-        "begin",
-        "end",
-        "channel",
-        "text",
-        "normalized_text",
-        "oovs",
-    ]
-    speaker_name: str
-    file_name: str
-    begin: typing.Optional[float]
-    end: typing.Optional[float]
-    channel: typing.Optional[int]
-    text: typing.Optional[str]
-    normalized_text: typing.List[str]
-    oovs: typing.Set[str]
+    ngram_counts: collections.defaultdict = dataclassy.factory(collections.defaultdict)
+    word_pronunciation_counts: collections.defaultdict = dataclassy.factory(
+        collections.defaultdict
+    )
+    silence_following_counts: collections.Counter = dataclassy.factory(collections.Counter)
+    non_silence_following_counts: collections.Counter = dataclassy.factory(collections.Counter)
+    silence_before_counts: collections.Counter = dataclassy.factory(collections.Counter)
+    non_silence_before_counts: collections.Counter = dataclassy.factory(collections.Counter)
+
+    def __post_init__(self):
+        """Initialize default dictionaries"""
+        self.ngram_counts = collections.defaultdict(collections.Counter)
+        self.word_pronunciation_counts = collections.defaultdict(collections.Counter)
+
+    def add_counts(self, other_counter: PronunciationProbabilityCounter) -> None:
+        """
+        Combine counts of two :class:`~montreal_forced_aligner.data.PronunciationProbabilityCounter`
+
+        Parameters
+        ----------
+        other_counter: :class:`~montreal_forced_aligner.data.PronunciationProbabilityCounter`
+            Other object with pronunciation probability counts
+        """
+        for k, v in other_counter.ngram_counts.items():
+            self.ngram_counts[k]["silence"] += v["silence"]
+            self.ngram_counts[k]["non_silence"] += v["non_silence"]
+        for k, v in other_counter.word_pronunciation_counts.items():
+            for k2, v2 in v.items():
+                self.word_pronunciation_counts[k][k2] += v2
+        self.silence_following_counts.update(other_counter.silence_following_counts)
+        self.non_silence_following_counts.update(other_counter.non_silence_following_counts)
+        self.silence_before_counts.update(other_counter.silence_before_counts)
+        self.non_silence_before_counts.update(other_counter.non_silence_before_counts)
 
 
-@dataclasses.dataclass
-class FileData:
-    """
-    Data class for file information
-
-    Parameters
-    ----------
-    name: str
-        File name
-    wav_path: str, optional
-        Path to sound file
-    text_path: str, optional
-        Path to sound file
-    relative_path: str
-        Path relative to corpus root directory
-    wav_info: dict[str, Any]
-        Information dictionary about the sound file
-    speaker_ordering: list[str]
-        List of speakers in the file
-    utterances: list[:class:`~montreal_forced_aligner.data.UtteranceData`]
-        Utterance data for the file
-    """
-
-    __slots__ = [
-        "name",
-        "wav_path",
-        "text_path",
-        "relative_path",
-        "wav_info",
-        "speaker_ordering",
-        "utterances",
-    ]
-    name: str
-    wav_path: typing.Optional[str]
-    text_path: typing.Optional[str]
-    relative_path: str
-    wav_info: SoundFileInformation
-    speaker_ordering: typing.List[str]
-    utterances: typing.List[UtteranceData]
-
-
-@dataclasses.dataclass
+@dataclass(slots=True)
 class CtmInterval:
     """
     Data class for intervals derived from CTM files
@@ -835,14 +1247,13 @@ class CtmInterval:
         Utterance ID that the interval belongs to
     """
 
-    __slots__ = ["begin", "end", "label", "utterance"]
-
     begin: float
     end: float
     label: str
-    utterance: str
+    utterance: int
 
     def __lt__(self, other: CtmInterval):
+        """Sorting function for CtmIntervals"""
         return self.begin < other.begin
 
     def __post_init__(self):
@@ -856,21 +1267,6 @@ class CtmInterval:
         """
         if self.end < -1 or self.begin == 1000000:
             raise CtmError(self)
-
-    def __add__(self, o: str):
-        return self.label + o
-
-    def shift_times(self, offset: float):
-        """
-        Shift times of the interval based on some offset (i.e., segments in Kaldi)
-
-        Parameters
-        ----------
-        offset: float
-            Offset to add to the interval's begin and end
-        """
-        self.begin += offset
-        self.end += offset
 
     def to_tg_interval(self) -> Interval:
         """

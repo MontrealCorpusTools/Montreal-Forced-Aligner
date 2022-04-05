@@ -6,7 +6,10 @@ import re
 import subprocess
 from typing import TYPE_CHECKING, Generator
 
+from sqlalchemy.orm import Session, load_only
+
 from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -15,7 +18,14 @@ from montreal_forced_aligner.models import LanguageModel
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
-__all__ = ["LmCorpusTrainer", "LmTrainerMixin", "LmArpaTrainer", "LmDictionaryCorpusTrainer"]
+__all__ = [
+    "LmCorpusTrainerMixin",
+    "LmTrainerMixin",
+    "MfaLmArpaTrainer",
+    "LmDictionaryCorpusTrainerMixin",
+    "MfaLmCorpusTrainer",
+    "MfaLmDictionaryCorpusTrainer",
+]
 
 
 class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
@@ -151,7 +161,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
         model.dump(basename)
 
 
-class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
+class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
     """
     Top-level worker to train a language model from a text corpus
 
@@ -177,24 +187,24 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
     def __init__(self, count_threshold: int = 1, **kwargs):
         super().__init__(**kwargs)
         self.count_threshold = count_threshold
+        self.large_perplexity = None
+        self.medium_perplexity = None
+        self.small_perplexity = None
 
-    def setup(self) -> None:
-        """Set up language model training"""
-        if self.initialized:
-            return
-        os.makedirs(self.working_log_directory, exist_ok=True)
-        self._load_corpus()
+    @property
+    def sym_path(self):
+        """Internal path to symbols file"""
+        return os.path.join(self.working_directory, "lm.sym")
 
-        with open(self.training_path, "w", encoding="utf8") as f:
-            for text in self.normalized_text_iter(self.count_threshold):
-                f.write(f"{text}\n")
+    @property
+    def far_path(self):
+        """Internal path to FAR file"""
+        return os.path.join(self.working_directory, "lm.far")
 
-        self.save_oovs_found(self.working_directory)
-
-        subprocess.call(
-            ["ngramsymbols", f"--OOV_symbol={self.oov_word}", self.training_path, self.sym_path]
-        )
-        self.initialized = True
+    @property
+    def cnts_path(self):
+        """Internal path to counts file"""
+        return os.path.join(self.working_directory, "lm.cnts")
 
     @property
     def training_path(self):
@@ -202,35 +212,27 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         return os.path.join(self.working_directory, "training.txt")
 
     @property
-    def sym_path(self):
-        """Internal path to symbols file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.sym")
-
-    @property
-    def far_path(self):
-        """Internal path to FAR file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
-
-    @property
-    def cnts_path(self):
-        """Internal path to counts file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.cnts")
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Language model trainer identifier"""
-        return "train_lm_corpus"
-
-    @property
     def meta(self) -> MetaDict:
         """Metadata information for the language model"""
+        from datetime import datetime
+
         from ..utils import get_mfa_version
 
         return {
-            "type": "ngram",
+            "architecture": "ngram",
             "order": self.order,
             "method": self.method,
+            "train_date": str(datetime.now()),
             "version": get_mfa_version(),
+            "training": {
+                "num_words": sum(self.word_counts.values()),
+                "num_oovs": sum(self.oovs_found.values()),
+            },
+            "evaluation_training": {
+                "large_perplexity": self.large_perplexity,
+                "medium_perplexity": self.medium_perplexity,
+                "small_perplexity": self.small_perplexity,
+            },
         }
 
     def evaluate(self) -> None:
@@ -268,10 +270,13 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
                 m = re.search(r"(\d+) OOVs", line)
                 if m:
                     num_oovs = m.group(0)
-                m = re.search(r"perplexity = ([\d.]+)", line)
+                m = re.search(r"perplexity = (?P<perplexity>[\d.]+)", line)
                 if m:
-                    perplexity = m.group(0)
-
+                    perplexity = float(m.group("perplexity"))
+            self.large_perplexity = perplexity
+            self.num_sentences = num_sentences
+            self.num_words = num_words
+            self.num_oovs = num_oovs
             self.log_info(f"{num_sentences} sentences, {num_words} words, {num_oovs} oovs")
             self.log_info(f"Perplexity of large model: {perplexity}")
 
@@ -290,9 +295,10 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
 
             perplexity = None
             for line in stdout.splitlines():
-                m = re.search(r"perplexity = ([\d.]+)", line)
+                m = re.search(r"perplexity = (?P<perplexity>[\d.]+)", line)
                 if m:
-                    perplexity = m.group(0)
+                    perplexity = float(m.group("perplexity"))
+            self.medium_perplexity = perplexity
             self.log_info(f"Perplexity of medium model: {perplexity}")
             perplexity_proc = subprocess.Popen(
                 [
@@ -309,9 +315,10 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
 
             perplexity = None
             for line in stdout.splitlines():
-                m = re.search(r"perplexity = ([\d.]+)", line)
+                m = re.search(r"perplexity = (?P<perplexity>[\d.]+)", line)
                 if m:
-                    perplexity = m.group(0)
+                    perplexity = float(m.group("perplexity"))
+            self.small_perplexity = perplexity
             self.log_info(f"Perplexity of small model: {perplexity}")
 
     def normalized_text_iter(self, min_count: int = 1) -> Generator:
@@ -329,16 +336,15 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
             Normalized text
         """
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
-        for u in self.utterances:
-            normalized = u.normalized_text
-            if not normalized:
-                normalized = u.text.split()
-            yield " ".join(x if x not in unk_words else self.oov_word for x in normalized)
 
-    def train(self) -> None:
-        """
-        Train a language model
-        """
+        with Session(self.db_engine) as session:
+            utterances = session.query(Utterance).options(load_only(Utterance.normalized_text))
+            for u in utterances:
+                text = u.normalized_text.split()
+                yield " ".join(x if x not in unk_words else self.oov_word for x in text)
+
+    def train_large_lm(self) -> None:
+        """Train a large language model"""
         self.log_info("Beginning training large ngram model...")
         subprocess.check_call(
             [
@@ -362,19 +368,23 @@ class LmCorpusTrainer(LmTrainerMixin, TextCorpusMixin, TopLevelMfaWorker):
         )
         assert os.path.exists(self.mod_path)
         self.log_info("Done!")
-
         subprocess.check_call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
         assert os.path.exists(self.large_arpa_path)
 
         self.log_info("Large ngam model created!")
 
+    def train(self) -> None:
+        """
+        Train a language model
+        """
+        self.train_large_lm()
         self.prune_large_language_model()
         self.evaluate()
 
 
-class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmCorpusTrainer):
+class LmDictionaryCorpusTrainerMixin(MultispeakerDictionaryMixin, LmCorpusTrainerMixin):
     """
-    Top-level worker to train a language model and incorporate a pronunciation dictionary for marking words as OOV
+    Mixin class for training a language model and incorporate a pronunciation dictionary for marking words as OOV
 
     See Also
     --------
@@ -384,31 +394,13 @@ class LmDictionaryCorpusTrainer(MultispeakerDictionaryMixin, LmCorpusTrainer):
         For dictionary parsing parameters
     """
 
-    def setup(self) -> None:
-        """Set up language model training"""
-        if self.initialized:
-            return
-        os.makedirs(self.working_log_directory, exist_ok=True)
-        self.dictionary_setup()
-        self._load_corpus()
-        self.set_lexicon_word_set(self.corpus_word_set)
-        self.write_lexicon_information()
-
-        with open(self.training_path, "w", encoding="utf8") as f:
-            for text in self.normalized_text_iter(self.count_threshold):
-                f.write(f"{text}\n")
-
-        self.save_oovs_found(self.working_directory)
-
-        self.initialized = True
-
     @property
     def sym_path(self):
         """Internal path to symbols file"""
         return os.path.join(self.default_dictionary.dictionary_output_directory, "words.txt")
 
 
-class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
+class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
     """
     Top-level worker to convert an existing ARPA-format language model to MFA format
 
@@ -439,18 +431,22 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
 
     @property
     def data_directory(self) -> str:
+        """Data directory"""
         return ""
 
     @property
     def workflow_identifier(self) -> str:
+        """Workflow identifier"""
         return "train_lm_from_arpa"
 
     @property
     def data_source_identifier(self) -> str:
+        """Data source identifier"""
         return os.path.splitext(os.path.basename(self.arpa_path))[0]
 
     @property
     def meta(self) -> MetaDict:
+        """Metadata information for the trainer"""
         return {}
 
     def train(self) -> None:
@@ -468,3 +464,66 @@ class LmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         self.log_info("Large ngam model parsed!")
 
         self.prune_large_language_model()
+
+
+class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWorker):
+    """
+    Top-level worker to train a language model and incorporate a pronunciation dictionary for marking words as OOV
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.language_modeling.trainer.LmTrainerMixin`
+        For language model training parsing parameters
+    :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin`
+        For dictionary parsing parameters
+    """
+
+    def setup(self) -> None:
+        """Set up language model training"""
+        if self.initialized:
+            return
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.dictionary_setup()
+        self._load_corpus()
+        self.set_lexicon_word_set(self.corpus_word_set)
+        self.write_lexicon_information()
+
+        with open(self.training_path, "w", encoding="utf8") as f:
+            for text in self.normalized_text_iter(self.count_threshold):
+                f.write(f"{text}\n")
+
+        self.save_oovs_found(self.working_directory)
+
+        self.initialized = True
+
+    @property
+    def workflow_identifier(self) -> str:
+        """Language model trainer identifier"""
+        return "train_lm_corpus_dictionary"
+
+
+class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
+    """
+    Trainer class for generating a language model from a corpus
+    """
+
+    def setup(self) -> None:
+        """Set up language model training"""
+        if self.initialized:
+            return
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self._load_corpus()
+
+        with open(self.training_path, "w", encoding="utf8") as f:
+            for text in self.normalized_text_iter(self.count_threshold):
+                f.write(f"{text}\n")
+
+        subprocess.call(
+            ["ngramsymbols", f"--OOV_symbol={self.oov_word}", self.training_path, self.sym_path]
+        )
+        self.initialized = True
+
+    @property
+    def workflow_identifier(self) -> str:
+        """Language model trainer identifier"""
+        return "train_lm_corpus"

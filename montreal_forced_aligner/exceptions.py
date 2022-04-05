@@ -173,6 +173,16 @@ class ModelLoadError(ModelError):
         ]
 
 
+class ModelsConnectionError(ModelError):
+    """
+    Exception during connecting to online repo for downloading models
+    """
+
+    def __init__(self, response_code, response_text: str):
+        super().__init__("")
+        self.message_lines = [f"The response returned code {response_code}:  {response_text}"]
+
+
 # Dictionary Errors
 
 
@@ -279,7 +289,7 @@ class TextGridParseError(CorpusReadError):
     Parameters
     ----------
     file_name: str
-        File name that had the error
+        File name
     error: str
         Error in TextGrid file
     """
@@ -304,6 +314,32 @@ class SoxError(CorpusReadError):
     """
 
     pass
+
+
+class SoundFileError(CorpusReadError):
+    """
+    Class for errors in sound files
+
+    Parameters
+    ----------
+    file_name: str
+        File name
+    error: str
+        Error in TextGrid file
+    """
+
+    def __init__(self, file_name: str, error: str):
+        super().__init__("")
+        self.file_name = file_name
+        self.error = error
+        self.message_lines.extend(
+            [
+                f"Reading {self.printer.emphasized_text(file_name)} has the following error:",
+                "",
+                "",
+                self.error,
+            ]
+        )
 
 
 # Aligner Errors
@@ -472,6 +508,42 @@ class PretrainedModelNotFoundError(ArgumentError):
         if available:
             available = [f"{self.printer.pass_text(x)}" for x in available]
             self.message_lines.append(f"Available: {comma_join(available)}.")
+
+
+class RemoteModelNotFoundError(ArgumentError):
+    """
+    Exception class for not finding a specified pretrained model
+
+    Parameters
+    ----------
+    name: str
+        Model name
+    model_type: str, optional
+        Model type searched
+    available: list[str], optional
+        List of models that were found
+    """
+
+    def __init__(
+        self, name: str, model_type: Optional[str] = None, available: Optional[List[str]] = None
+    ):
+        super().__init__("")
+        extra = ""
+        if model_type:
+            extra += f" for {model_type}"
+        self.message_lines = [
+            f'Could not find a model named "{self.printer.error_text(name)}"{extra}.'
+        ]
+        if available:
+            available = [f"{self.printer.pass_text(x)}" for x in available]
+            self.message_lines.append(f"Available: {comma_join(available)}.")
+        self.message_lines.append(
+            "You can see all available models either on https://mfa-models.readthedocs.io/en/latest/ or https://github.com/MontrealCorpusTools/mfa-models/releases."
+        )
+        if model_type:
+            self.message_lines.append(
+                f"If you're looking for a model from 1.0, please see https://github.com/MontrealCorpusTools/mfa-models/releases/tag/{model_type}-archive-v1.0."
+            )
 
 
 class MultipleModelTypesFoundError(ArgumentError):

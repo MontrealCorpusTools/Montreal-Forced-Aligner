@@ -23,7 +23,5 @@ Command line functions
     run_create_segments
     run_classify_speakers
     run_model
-    list_model
     save_model
     inspect_model
-    download_model

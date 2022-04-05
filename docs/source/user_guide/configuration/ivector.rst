@@ -15,6 +15,7 @@ Diagonal UBM training
 For the Kaldi recipe that DUBM training is based on, see :kaldi_steps_sid:`train_diag_ubm`.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "num_iterations", 4, "Number of iterations for training UBM"
@@ -34,6 +35,7 @@ Ivector training
 For the Kaldi recipe that ivector training is based on, see :kaldi_steps_sid:`train_ivector_extractor`.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "ivector_dimension", 128, "Dimension of extracted ivectors"

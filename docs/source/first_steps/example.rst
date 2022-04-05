@@ -33,7 +33,7 @@ Example 1: Aligning LibriSpeech (English)
 Set up
 ------
 
-1. Ensure you have installed MFA via :ref:`installation_ref`.
+1. Ensure you have installed MFA via :ref:`installation`.
 2. Ensure you have downloaded the pretrained model via :code:`mfa model download acoustic english`
 3. Download the prepared LibriSpeech dataset (`LibriSpeech data set`_) and extract it somewhere on your computer
 4. Download the LibriSpeech lexicon (`LibriSpeech lexicon`_) and save it somewhere on your computer
@@ -69,7 +69,7 @@ Example 2: Generate Mandarin dictionary
 Set up
 ------
 
-1. Ensure you have installed MFA via :ref:`installation_ref`.
+1. Ensure you have installed MFA via :ref:`installation`.
 2. Ensure you have downloaded the pretrained model via :code:`mfa model download g2p mandarin_pinyin_g2p`
 3. Download the prepared Mandarin dataset from (`example Mandarin corpus`_) and extract it somewhere on your computer
 
@@ -102,7 +102,7 @@ Example 3: Train Mandarin G2P model
 Set up
 ------
 
-1. Ensure you have installed MFA via :ref:`installation_ref`.
+1. Ensure you have installed MFA via :ref:`installation`.
 2. Download the prepared Mandarin dictionary from (`example Mandarin dictionary`_)
 
 In the same environment that you've installed MFA, enter the following command into the terminal:

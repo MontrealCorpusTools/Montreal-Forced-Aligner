@@ -7,24 +7,27 @@ from __future__ import annotations
 
 import csv
 import itertools
+import logging
 import multiprocessing as mp
 import os
-import re
 import shutil
 import subprocess
 import sys
 import time
-from abc import abstractmethod
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import tqdm
-import yaml
+from praatio import textgrid
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
+from montreal_forced_aligner.corpus.db import File, SoundFile, Speaker, SpeakerOrdering, Utterance
+from montreal_forced_aligner.data import TextgridFormats
 from montreal_forced_aligner.exceptions import KaldiProcessingError, PlatformError
-from montreal_forced_aligner.helper import parse_old_features, score_wer
+from montreal_forced_aligner.helper import load_configuration, parse_old_features, score_wer
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
@@ -119,21 +122,161 @@ class TranscriberMixin:
         self.language_model_weight = language_model_weight
         self.word_insertion_penalty = word_insertion_penalty
 
-    @abstractmethod
-    def create_decoding_graph(self) -> None:
-        """Create decoding graph for use in transcription"""
-        ...
+    def save_transcription_evaluation(self, output_directory: str) -> None:
+        """
+        Save transcription evaluation to an output directory
 
-    @abstractmethod
-    def transcribe(self) -> None:
-        """Perform transcription"""
-        ...
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save evaluation
+        """
+        output_path = os.path.join(output_directory, "transcription_evaluation.csv")
+        with open(output_path, "w", newline="", encoding="utf8") as f, Session(
+            self.db_engine
+        ) as session:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "file",
+                    "speaker",
+                    "begin",
+                    "end",
+                    "duration",
+                    "word_count",
+                    "oov_count",
+                    "gold_transcript",
+                    "hypothesis",
+                    "WER",
+                    "CER",
+                ]
+            )
+            utterances = (
+                session.query(
+                    Speaker.name,
+                    File.name,
+                    Utterance.begin,
+                    Utterance.end,
+                    Utterance.duration,
+                    Utterance.normalized_text,
+                    Utterance.transcription_text,
+                    Utterance.oovs,
+                    Utterance.word_error_rate,
+                    Utterance.character_error_rate,
+                )
+                .join(Utterance.speaker)
+                .join(Utterance.file)
+                .filter(Utterance.normalized_text != None)  # noqa
+                .filter(Utterance.normalized_text != "")
+            )
 
-    @property
-    @abstractmethod
-    def model_path(self) -> str:
-        """Acoustic model file path"""
-        ...
+            for (
+                speaker,
+                file,
+                begin,
+                end,
+                duration,
+                text,
+                transcription_text,
+                oovs,
+                word_error_rate,
+                character_error_rate,
+            ) in utterances:
+                word_count = text.count(" ") + 1
+                oov_count = oovs.count(" ") + 1
+                writer.writerow(
+                    [
+                        file,
+                        speaker,
+                        begin,
+                        end,
+                        duration,
+                        word_count,
+                        oov_count,
+                        text,
+                        transcription_text,
+                        word_error_rate,
+                        character_error_rate,
+                    ]
+                )
+
+    def compute_wer(self):
+        """
+        Evaluates the transcripts if there are reference transcripts
+
+        Raises
+        ------
+        :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
+            If there were any errors in running Kaldi binaries
+        """
+        if not hasattr(self, "db_engine"):
+            raise Exception("Must be used as part of a class with a database engine")
+        self.log_info("Evaluating transcripts...")
+        # Sentence-level measures
+        incorrect = 0
+        total_count = 0
+        # Word-level measures
+        total_word_edits = 0
+        total_word_length = 0
+
+        # Character-level measures
+        total_character_edits = 0
+        total_character_length = 0
+
+        indices = []
+        to_comp = []
+
+        update_mappings = []
+        with Session(self.db_engine) as session:
+            utterances = session.query(Utterance).filter(Utterance.normalized_text != None)  # noqa
+            for utt in utterances:
+                g = utt.normalized_text.split()
+                total_count += 1
+                total_word_length += len(g)
+                character_length = len("".join(g))
+                total_character_length += character_length
+
+                if not utt.transcription_text:
+                    incorrect += 1
+                    total_word_edits += len(g)
+                    total_character_edits += character_length
+                    update_mappings.append(
+                        {"id": utt.id, "word_error_rate": 1.0, "character_error_rate": 1.0}
+                    )
+                    continue
+
+                h = utt.transcription_text.split()
+                if g != h:
+                    indices.append(utt.id)
+                    to_comp.append((g, h))
+                    incorrect += 1
+                else:
+                    update_mappings.append(
+                        {"id": utt.id, "word_error_rate": 0.0, "character_error_rate": 0.0}
+                    )
+
+            with mp.Pool(self.num_jobs) as pool:
+                gen = pool.starmap(score_wer, to_comp)
+                for i, (word_edits, word_length, character_edits, character_length) in enumerate(
+                    gen
+                ):
+                    utt_id = indices[i]
+                    update_mappings.append(
+                        {
+                            "id": utt_id,
+                            "word_error_rate": word_edits / word_length,
+                            "character_error_rate": character_edits / character_length,
+                        }
+                    )
+                    total_word_edits += word_edits
+                    total_character_edits += character_edits
+
+            session.bulk_update_mappings(Utterance, update_mappings)
+            session.commit()
+        ser = incorrect / total_count
+        wer = total_word_edits / total_word_length
+        cer = total_character_edits / total_character_length
+        return ser, wer, cer
 
     @property
     def decode_options(self) -> MetaDict:
@@ -260,21 +403,22 @@ class Transcriber(
         """
         global_params = {}
         if config_path and os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                data = parse_old_features(data)
-                for k, v in data.items():
-                    if k == "features":
-                        global_params.update(v)
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
+            data = load_configuration(config_path)
+            data = parse_old_features(data)
+            for k, v in data.items():
+                if k == "features":
+                    global_params.update(v)
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
+
         global_params.update(cls.parse_args(args, unknown_args))
+        if hasattr(args, "language_model_weight") and args.language_model_weight is not None:
+            global_params["min_language_model_weight"] = args.language_model_weight
+            global_params["max_language_model_weight"] = args.language_model_weight + 1
+        if hasattr(args, "word_insertion_penalty") and args.word_insertion_penalty is not None:
+            global_params["word_insertion_penalties"] = [args.word_insertion_penalty]
         return global_params
 
     def setup(self) -> None:
@@ -285,7 +429,7 @@ class Transcriber(
         os.makedirs(self.working_log_directory, exist_ok=True)
         check = self.check_previous_run()
         if check:
-            self.logger.debug(
+            self.log_debug(
                 "There were some differences in the current run compared to the last one. "
                 "This may cause issues, run with --clean, if you hit an error."
             )
@@ -303,10 +447,11 @@ class Transcriber(
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
-        self.acoustic_model.log_details(self.logger)
+        logger = logging.getLogger(self.identifier)
+        self.acoustic_model.log_details(logger)
         self.create_decoding_graph()
         self.initialized = True
-        self.logger.debug(f"Setup for transcription in {time.time() - begin} seconds")
+        self.log_debug(f"Setup for transcription in {time.time() - begin} seconds")
 
     def create_hclgs_arguments(self) -> Dict[str, CreateHclgArguments]:
         """
@@ -320,6 +465,8 @@ class Transcriber(
         args = {}
         for dict_name, dictionary in self.dictionary_mapping.items():
             args[dict_name] = CreateHclgArguments(
+                dict_name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.model_directory, "log", f"hclg.{dict_name}.log"),
                 self.model_directory,
                 os.path.join(self.model_directory, "{file_name}" + f".{dict_name}.fst"),
@@ -348,8 +495,10 @@ class Transcriber(
         feat_string = self.construct_feature_proc_strings()
         return [
             DecodeArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"decode.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_string[j.name],
                 self.decode_options,
                 self.alignment_model_path,
@@ -371,8 +520,10 @@ class Transcriber(
         """
         return [
             ScoreArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.evaluation_directory, f"score.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 self.score_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
@@ -394,8 +545,10 @@ class Transcriber(
         """
         return [
             LmRescoreArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"lm_rescore.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 self.lm_rescore_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
@@ -416,8 +569,10 @@ class Transcriber(
         """
         return [
             CarpaLmRescoreArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"carpa_lm_rescore.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
                 j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
@@ -447,8 +602,10 @@ class Transcriber(
         feat_strings = self.construct_feature_proc_strings()
         return [
             InitialFmllrArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"initial_fmllr.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -471,8 +628,10 @@ class Transcriber(
         feat_strings = self.construct_feature_proc_strings()
         return [
             LatGenFmllrArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"lat_gen_fmllr.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 self.model_path,
                 self.decode_options,
@@ -495,8 +654,10 @@ class Transcriber(
         feat_strings = self.construct_feature_proc_strings()
         return [
             FinalFmllrArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"final_fmllr.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -519,8 +680,10 @@ class Transcriber(
         feat_strings = self.construct_feature_proc_strings()
         return [
             FmllrRescoreArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"fmllr_rescore.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -612,7 +775,7 @@ class Transcriber(
 
         dict_arguments = self.create_hclgs_arguments()
         dict_arguments = list(dict_arguments.values())
-        self.logger.info("Generating HCLG.fst...")
+        self.log_info("Generating HCLG.fst...")
         if self.use_mp:
             manager = mp.Manager()
             error_dict = manager.dict()
@@ -624,7 +787,9 @@ class Transcriber(
                 p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=len(dict_arguments)) as pbar:
+            with tqdm.tqdm(
+                total=len(dict_arguments), disable=getattr(self, "quiet", False)
+            ) as pbar:
                 while True:
                     try:
                         result, hclg_path = return_queue.get(timeout=1)
@@ -650,7 +815,9 @@ class Transcriber(
         else:
             for args in dict_arguments:
                 function = CreateHclgFunction(args)
-                with tqdm.tqdm(total=len(dict_arguments)) as pbar:
+                with tqdm.tqdm(
+                    total=len(dict_arguments), disable=getattr(self, "quiet", False)
+                ) as pbar:
                     for result, hclg_path in function.run():
                         if result:
                             self.log_debug(f"Done generating {hclg_path}!")
@@ -675,7 +842,7 @@ class Transcriber(
         """
         done_path = os.path.join(self.model_directory, "done")
         if os.path.exists(done_path):
-            self.logger.info("Graph construction already done, skipping!")
+            self.log_info("Graph construction already done, skipping!")
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         self.write_lexicon_information(write_disambiguation=True)
@@ -687,13 +854,13 @@ class Transcriber(
         small_arpa_path = self.language_model.small_arpa_path
         medium_arpa_path = self.language_model.medium_arpa_path
         if not os.path.exists(small_arpa_path) or not os.path.exists(medium_arpa_path):
-            self.logger.warning(
+            self.log_warning(
                 "Creating small and medium language models from scratch, this may take some time. "
                 "Running `mfa train_lm` on the ARPA file will remove this warning."
             )
             if sys.platform == "win32":
                 raise PlatformError("ngram")
-            self.logger.info("Parsing large ngram model...")
+            self.log_info("Parsing large ngram model...")
             mod_path = os.path.join(self.model_directory, "base_lm.mod")
             new_carpa_path = os.path.join(self.model_directory, "base_lm.arpa")
             with open(big_arpa_path, "r", encoding="utf8") as inf, open(
@@ -705,7 +872,7 @@ class Transcriber(
             subprocess.call(["ngramread", "--ARPA", big_arpa_path, mod_path])
 
             if not os.path.exists(small_arpa_path):
-                self.logger.info(
+                self.log_info(
                     "Generating small model from the large ARPA with a pruning threshold of 3e-7"
                 )
                 prune_thresh_small = 0.0000003
@@ -722,7 +889,7 @@ class Transcriber(
                 subprocess.call(["ngramprint", "--ARPA", small_mod_path, small_arpa_path])
 
             if not os.path.exists(medium_arpa_path):
-                self.logger.info(
+                self.log_info(
                     "Generating medium model from the large ARPA with a pruning threshold of 1e-7"
                 )
                 prune_thresh_medium = 0.0000001
@@ -744,8 +911,11 @@ class Transcriber(
             with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def score(self) -> None:
@@ -759,7 +929,9 @@ class Transcriber(
         :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreArguments`
             Arguments for function
         """
-        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+        with tqdm.tqdm(
+            total=self.num_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar, open(
             os.path.join(self.evaluation_directory, "score_costs.csv"), "w", encoding="utf8"
         ) as log_file:
             log_file.write("utterance,graph_cost,acoustic_cost,total_cost,num_frames\n")
@@ -837,7 +1009,7 @@ class Transcriber(
                     self.word_insertion_penalties,
                 )
             )
-            with tqdm.tqdm(total=len(evaluations)) as pbar:
+            with tqdm.tqdm(total=len(evaluations), disable=getattr(self, "quiet", False)) as pbar:
                 for lmwt, wip in evaluations:
                     pbar.update(1)
                     self.language_model_weight = lmwt
@@ -878,9 +1050,9 @@ class Transcriber(
         :meth:`.Transcriber.initial_fmllr_arguments`
             Arguments for function
         """
-        self.logger.info("Calculating initial fMLLR transforms...")
+        self.log_info("Calculating initial fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -918,7 +1090,7 @@ class Transcriber(
                         sum_errors += no_gpost + other_errors
                         pbar.update(done + no_gpost + other_errors)
             if sum_errors:
-                self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+                self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
     def lat_gen_fmllr(self):
         """
@@ -931,8 +1103,10 @@ class Transcriber(
         :meth:`.Transcriber.lat_gen_fmllr_arguments`
             Arguments for function
         """
-        self.logger.info("Regenerating lattices with fMLLR transforms...")
-        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+        self.log_info("Regenerating lattices with fMLLR transforms...")
+        with tqdm.tqdm(
+            total=self.num_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar, open(
             os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
             "w",
             encoding="utf8",
@@ -986,9 +1160,9 @@ class Transcriber(
         :meth:`.Transcriber.final_fmllr_arguments`
             Arguments for function
         """
-        self.logger.info("Calculating final fMLLR transforms...")
+        self.log_info("Calculating final fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -1026,7 +1200,7 @@ class Transcriber(
                         sum_errors += no_gpost + other_errors
                         pbar.update(done + no_gpost + other_errors)
             if sum_errors:
-                self.logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+                self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
     def fmllr_rescore(self):
         """
@@ -1039,9 +1213,9 @@ class Transcriber(
         :meth:`.Transcriber.fmllr_rescore_arguments`
             Arguments for function
         """
-        self.logger.info("Rescoring fMLLR lattices with final transform...")
+        self.log_info("Rescoring fMLLR lattices with final transform...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -1079,7 +1253,7 @@ class Transcriber(
                         sum_errors += errors
                         pbar.update(done + errors)
             if sum_errors:
-                self.logger.warning(f"{errors} utterances had errors on calculating fMLLR.")
+                self.log_warning(f"{errors} utterances had errors on calculating fMLLR.")
 
     def transcribe_fmllr(self) -> None:
         """
@@ -1126,8 +1300,10 @@ class Transcriber(
         :meth:`.Transcriber.decode_arguments`
             Arguments for function
         """
-        self.logger.info("Generating lattices...")
-        with tqdm.tqdm(total=self.num_utterances) as pbar, open(
+        self.log_info("Generating lattices...")
+        with tqdm.tqdm(
+            total=self.num_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar, open(
             os.path.join(self.working_log_directory, "decode_log_like.csv"), "w", encoding="utf8"
         ) as log_file:
             log_file.write("utterance,log_likelihood,num_frames\n")
@@ -1179,7 +1355,7 @@ class Transcriber(
         :meth:`.Transcriber.lm_rescore_arguments`
             Arguments for function
         """
-        self.logger.info("Rescoring lattices with medium G.fst...")
+        self.log_info("Rescoring lattices with medium G.fst...")
         if self.use_mp:
             manager = mp.Manager()
             error_dict = manager.dict()
@@ -1191,11 +1367,12 @@ class Transcriber(
                 p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=self.num_utterances) as pbar:
+            with tqdm.tqdm(
+                total=self.num_utterances, disable=getattr(self, "quiet", False)
+            ) as pbar:
                 while True:
                     try:
                         succeeded, failed = return_queue.get(timeout=1)
-                        # print(utterance)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1216,7 +1393,7 @@ class Transcriber(
         else:
             for args in self.lm_rescore_arguments():
                 function = LmRescoreFunction(args)
-                with tqdm.tqdm(total=self.num_jobs) as pbar:
+                with tqdm.tqdm(total=self.num_jobs, disable=getattr(self, "quiet", False)) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
                             self.log_warning("Some lattices failed to be rescored")
@@ -1233,7 +1410,7 @@ class Transcriber(
         :meth:`.Transcriber.carpa_lm_rescore_arguments`
             Arguments for function
         """
-        self.logger.info("Rescoring lattices with large G.carpa...")
+        self.log_info("Rescoring lattices with large G.carpa...")
         if self.use_mp:
             manager = mp.Manager()
             error_dict = manager.dict()
@@ -1245,11 +1422,12 @@ class Transcriber(
                 p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
                 procs.append(p)
                 p.start()
-            with tqdm.tqdm(total=self.num_utterances) as pbar:
+            with tqdm.tqdm(
+                total=self.num_utterances, disable=getattr(self, "quiet", False)
+            ) as pbar:
                 while True:
                     try:
                         succeeded, failed = return_queue.get(timeout=1)
-                        # print(utterance)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1270,7 +1448,9 @@ class Transcriber(
         else:
             for args in self.carpa_lm_rescore_arguments():
                 function = CarpaLmRescoreFunction(args)
-                with tqdm.tqdm(total=self.num_utterances) as pbar:
+                with tqdm.tqdm(
+                    total=self.num_utterances, disable=getattr(self, "quiet", False)
+                ) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
                             self.log_warning("Some lattices failed to be rescored")
@@ -1294,7 +1474,7 @@ class Transcriber(
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        self.logger.info("Beginning transcription...")
+        self.log_info("Beginning transcription...")
         done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")
         try:
@@ -1303,20 +1483,23 @@ class Transcriber(
 
                 self.decode()
                 if self.uses_speaker_adaptation:
-                    self.logger.info("Performing speaker adjusted transcription...")
+                    self.log_info("Performing speaker adjusted transcription...")
                     self.transcribe_fmllr()
                 else:
                     self.lm_rescore()
                     self.carpa_lm_rescore()
             else:
-                self.logger.info("Transcription already done, skipping!")
+                self.log_info("Transcription already done, skipping!")
             self.score_transcriptions()
         except Exception as e:
             with open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def evaluate(self):
@@ -1328,125 +1511,33 @@ class Transcriber(
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        self.logger.info("Evaluating transcripts...")
+        self.log_info("Evaluating transcripts...")
         self._load_transcripts()
-        # Sentence-level measures
-        incorrect = 0
-        total_count = 0
-        # Word-level measures
-        total_word_edits = 0
-        total_word_length = 0
-
-        # Character-level measures
-        total_character_edits = 0
-        total_character_length = 0
-
-        issues = {}
-        indices = []
-        to_comp = []
-        for utterance in self.utterances:
-            utt_name = utterance.name
-            if not utterance.text:
-                continue
-
-            g = self.split_regex.split(utterance.text)
-
-            total_count += 1
-            total_word_length += len(g)
-            character_length = len("".join(g))
-            total_character_length += character_length
-
-            if not utterance.transcription_text:
-                incorrect += 1
-                total_word_edits += len(g)
-                total_character_edits += character_length
-                issues[utt_name] = [g, "", 1, 1]
-                continue
-
-            h = utterance.transcription_text.split()
-            if g != h:
-                issues[utt_name] = [g, h]
-                indices.append(utt_name)
-                to_comp.append((g, h))
-                incorrect += 1
-            else:
-                issues[utt_name] = [g, h, 0, 0]
-        with mp.Pool(self.num_jobs) as pool:
-            gen = pool.starmap(score_wer, to_comp)
-            for i, (word_edits, word_length, character_edits, character_length) in enumerate(gen):
-                issues[indices[i]].append(word_edits / word_length)
-                issues[indices[i]].append(character_edits / character_length)
-                total_word_edits += word_edits
-                total_character_edits += character_edits
-        output_path = os.path.join(self.evaluation_directory, "transcription_evaluation.csv")
-        with open(output_path, "w", newline="", encoding="utf8") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "utterance",
-                    "file",
-                    "speaker",
-                    "duration",
-                    "word_count",
-                    "oov_count",
-                    "gold_transcript",
-                    "hypothesis",
-                    "WER",
-                    "CER",
-                ]
-            )
-            for utt in sorted(issues.keys()):
-                g, h, wer, cer = issues[utt]
-                utterance = self.utterances[utt]
-                utterance.word_error_rate = wer
-                utterance.character_error_rate = cer
-                speaker = utterance.speaker_name
-                file = utterance.file_name
-                duration = utterance.duration
-                word_count = len(utterance.text.split())
-                oov_count = len(utterance.oovs)
-                g = " ".join(g)
-                h = " ".join(h)
-                writer.writerow(
-                    [utt, file, speaker, duration, word_count, oov_count, g, h, wer, cer]
-                )
-        ser = 100 * incorrect / total_count
-        wer = 100 * total_word_edits / total_word_length
-        cer = 100 * total_character_edits / total_character_length
-        self.logger.info(f"SER: {ser:.2f}%, WER: {wer:.2f}%, CER: {cer:.2f}%")
+        ser, wer, cer = self.compute_wer()
+        self.log_info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
         return ser, wer
 
     def _load_transcripts(self):
         """Load transcripts from Kaldi temporary files"""
-        initial_clitics = {
-            x for x in self.clitic_set if re.match(rf"^.*[{''.join(self.clitic_markers)}]$", x)
-        }
-        final_clitics = {
-            x for x in self.clitic_set if re.match(rf"^[{''.join(self.clitic_markers)}].*$", x)
-        }
-        for score_args in self.score_arguments():
-            for tra_path in score_args.tra_paths.values():
-
-                with open(tra_path, "r", encoding="utf8") as f:
-                    for line in f:
-                        t = line.strip().split(" ")
-                        utt = t[0]
-                        utterance = self.utterances[utt]
-                        speaker = utterance.speaker
-                        lookup = speaker.dictionary.reversed_word_mapping
-                        ints = t[1:]
-                        if not ints:
-                            continue
-                        transcription = []
-                        for i in ints:
-                            w = lookup[int(i)]
-                            if len(transcription) and (
-                                w in final_clitics or transcription[-1] in initial_clitics
-                            ):
-                                transcription[-1] += w
+        with Session(self.db_engine) as session:
+            for score_args in self.score_arguments():
+                for dict_name, tra_path in score_args.tra_paths.items():
+                    records = []
+                    lookup = self.dictionary_mapping[dict_name].reversed_word_mapping
+                    with open(tra_path, "r", encoding="utf8") as f:
+                        for line in f:
+                            t = line.strip().split(" ")
+                            utt = int(t[0].split("-")[-1])
+                            ints = t[1:]
+                            if not ints:
                                 continue
-                            transcription.append(w)
-                        utterance.transcription_text = " ".join(transcription)
+                            records.append(
+                                {
+                                    "id": utt,
+                                    "transcription_text": " ".join(lookup[int(x)] for x in ints),
+                                }
+                            )
+                    session.bulk_update_mappings(Utterance, records)
 
     def export_files(self, output_directory: str) -> None:
         """
@@ -1461,12 +1552,46 @@ class Transcriber(
             output_directory = os.path.join(self.working_directory, "transcriptions")
         os.makedirs(output_directory, exist_ok=True)
         self._load_transcripts()
-        for file in self.files:
-            if len(file.utterances) == 0:
-                self.logger.debug(f"Could not find any utterances for {file.name}")
-            file.save(output_directory, save_transcription=True)
-        if self.evaluation_mode:
-            shutil.copyfile(
-                os.path.join(self.evaluation_directory, "transcription_evaluation.csv"),
-                os.path.join(output_directory, "transcription_evaluation.csv"),
+        with Session(self.db_engine) as session:
+            files = session.query(File).options(
+                selectinload(File.utterances),
+                selectinload(File.speakers).selectinload(SpeakerOrdering.speaker),
+                joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
             )
+            for file in files:
+                utterance_count = len(file.utterances)
+                duration = file.sound_file.duration
+
+                if utterance_count == 0:
+                    self.log_debug(f"Could not find any utterances for {file.name}")
+                elif (
+                    utterance_count == 1
+                    and file.utterances[0].begin == 0
+                    and file.utterances[0].end == duration
+                ):
+                    output_format = "lab"
+                else:
+                    output_format = TextgridFormats.SHORT_TEXTGRID
+                output_path = construct_output_path(
+                    file.name, file.relative_path, output_directory, output_format=output_format
+                )
+                data = file.construct_transcription_tiers()
+                if output_format == "lab":
+                    for intervals in data.values():
+                        with open(output_path, "w", encoding="utf8") as f:
+                            f.write(intervals[0].label)
+                else:
+
+                    tg = textgrid.Textgrid()
+                    tg.maxTimestamp = duration
+                    for speaker in file.speakers:
+                        speaker = speaker.speaker.name
+                        intervals = data[speaker]
+                        tier = textgrid.IntervalTier(
+                            speaker, [x.to_tg_interval() for x in intervals], minT=0, maxT=duration
+                        )
+
+                        tg.addTier(tier)
+                    tg.save(output_path, includeBlankSpaces=True, format=output_format)
+        if self.evaluation_mode:
+            self.save_transcription_evaluation(output_directory)

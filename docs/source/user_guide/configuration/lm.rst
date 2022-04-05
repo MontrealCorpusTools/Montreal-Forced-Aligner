@@ -9,6 +9,7 @@ See also the :ref:`configuration_dictionary` for the options that control how te
 
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "order", 3, "Order of language model"

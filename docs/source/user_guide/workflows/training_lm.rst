@@ -8,7 +8,7 @@ MFA has a utility function for training ARPA-format ngram :term:`language models
 
 .. warning::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation_ref` for more details.
+   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
 
 Command reference
 -----------------

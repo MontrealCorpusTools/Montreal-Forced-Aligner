@@ -5,12 +5,12 @@
 
        KaldiFunction
        MfaModel -- Base model type for MFA
-       MfaCorpusClass
        MfaWorker -- Base worker class for MFA
        TopLevelMfaWorker -- MFA workers that have acoustic models
        TrainerMixin -- Trainer type interface
        TemporaryDirectoryMixin -- Trainer type interface
        AdapterMixin -- Trainer type interface
+       ExporterMixin -- Abstract exporter type interface
        FileExporterMixin -- File exporter type interface
        ModelExporterMixin -- Model exporter type interface
 

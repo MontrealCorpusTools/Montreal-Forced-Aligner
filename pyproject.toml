@@ -33,7 +33,7 @@ exclude = [
     "setup.py",
     "docs"
 ]
-verbose = 0
+verbose = 100
 omit-covered-files = false
 quiet = false
 generate-badge = "docs/source/_static"

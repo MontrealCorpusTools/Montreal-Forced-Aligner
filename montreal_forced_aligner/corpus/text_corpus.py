@@ -7,9 +7,12 @@ import sys
 import time
 from queue import Empty
 
+from sqlalchemy.orm import Session
+
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
 from montreal_forced_aligner.corpus.base import CorpusMixin
-from montreal_forced_aligner.corpus.classes import File
+from montreal_forced_aligner.corpus.classes import FileData
+from montreal_forced_aligner.corpus.db import File
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -27,16 +30,21 @@ class TextCorpusMixin(CorpusMixin):
         For corpus parsing parameters
     """
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        with Session(self.db_engine) as session:
+            file = session.query(File).limit(1).first()
+            if file:
+                self.imported = True
+
     def _load_corpus_from_source_mp(self) -> None:
         """
         Load a corpus using multiprocessing
         """
         if self.stopped is None:
             self.stopped = Stopped()
-        try:
-            sanitize_function = self.sanitize_function
-        except AttributeError:
-            sanitize_function = None
+        sanitize_function = getattr(self, "sanitize_function", None)
         begin_time = time.time()
         manager = mp.Manager()
         job_queue = manager.Queue()
@@ -56,6 +64,7 @@ class TextCorpusMixin(CorpusMixin):
                 finished_adding,
                 self.speaker_characters,
                 sanitize_function,
+                sample_rate=0,
             )
             procs.append(p)
             p.start()
@@ -102,7 +111,7 @@ class TextCorpusMixin(CorpusMixin):
                         break
                     continue
 
-                self.add_file(File.load_from_mp_data(file))
+                self.add_file(file)
 
             if "error" in return_dict:
                 raise return_dict["error"][1]
@@ -162,10 +171,7 @@ class TextCorpusMixin(CorpusMixin):
         begin_time = time.time()
         self.stopped = False
 
-        try:
-            sanitize_function = self.sanitize_function
-        except AttributeError:
-            sanitize_function = None
+        sanitize_function = getattr(self, "sanitize_function", None)
         for root, _, files in os.walk(self.corpus_directory, followlinks=True):
             exts = find_exts(files)
             relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
@@ -183,7 +189,7 @@ class TextCorpusMixin(CorpusMixin):
                 else:
                     continue
                 try:
-                    file = File.parse_file(
+                    file = FileData.parse_file(
                         file_name,
                         wav_path,
                         transcription_path,
@@ -239,14 +245,11 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         Load the corpus
         """
         self.dictionary_setup()
+
         self._load_corpus()
         self.set_lexicon_word_set(self.corpus_word_set)
         self.write_lexicon_information()
-
-        for speaker in self.speakers:
-            speaker.set_dictionary(self.get_dictionary(speaker.name))
         self.initialize_jobs()
-        self.write_corpus_information()
         self.create_corpus_split()
 
 
@@ -274,10 +277,6 @@ class TextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     def __init__(self, num_jobs=3, **kwargs):
         super().__init__(**kwargs)
         self.num_jobs = num_jobs
-
-    def load_corpus(self) -> None:
-        """Load the corpus"""
-        self._load_corpus()
 
     @property
     def identifier(self) -> str:

@@ -37,7 +37,8 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
     )
     try:
         aligner.align()
-        aligner.export_files(args.output_directory)
+        output_format = getattr(args, "output_format", None)
+        aligner.export_files(args.output_directory, output_format=output_format)
         if getattr(args, "reference_directory", ""):
             mapping = None
             if getattr(args, "custom_mapping_path", ""):

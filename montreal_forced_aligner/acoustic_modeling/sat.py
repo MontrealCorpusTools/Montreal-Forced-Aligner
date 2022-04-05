@@ -8,11 +8,12 @@ import shutil
 import subprocess
 import time
 from queue import Empty
-from typing import Dict, List, NamedTuple
+from typing import Dict, List
 
 import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import (
     KaldiFunction,
@@ -26,10 +27,9 @@ from montreal_forced_aligner.utils import (
 __all__ = ["SatTrainer", "AccStatsTwoFeatsFunction", "AccStatsTwoFeatsArguments"]
 
 
-class AccStatsTwoFeatsArguments(NamedTuple):
+class AccStatsTwoFeatsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.sat.AccStatsTwoFeatsFunction`"""
 
-    log_path: str
     dictionaries: List[str]
     ali_paths: Dict[str, str]
     acc_paths: Dict[str, str]
@@ -62,12 +62,8 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
 
     progress_pattern = re.compile(r"^LOG \(gmm-acc-stats-twofeats.* Average like for this file.*")
 
-    done_pattern = re.compile(
-        r"^LOG \(gmm-acc-stats-twofeats.*Done (?P<utterances>\d+) files, (?P<no_posteriors>\d+) with no posteriors, (?P<no_second_features>\d+) with no second features, (?P<errors>\d+) with other errors.$"
-    )
-
     def __init__(self, args: AccStatsTwoFeatsArguments):
-        self.log_path = args.log_path
+        super().__init__(args)
         self.dictionaries = args.dictionaries
         self.ali_paths = args.ali_paths
         self.acc_paths = args.acc_paths
@@ -108,13 +104,8 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield 1, 0, 0, 0
-                    else:
-                        m = self.done_pattern.match(line.strip())
-                        if m:
-                            yield int(m.group("utterances")), int(m.group("no_posteriors")), int(
-                                m.group("no_second_features")
-                            ), int(m.group("errors"))
+                        yield True
+                self.check_call(acc_proc)
 
 
 class SatTrainer(TriphoneTrainer):
@@ -149,6 +140,7 @@ class SatTrainer(TriphoneTrainer):
         num_leaves: int = 2500,
         max_gaussians: int = 15000,
         power: float = 0.2,
+        quick: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -157,6 +149,8 @@ class SatTrainer(TriphoneTrainer):
         self.max_gaussians = max_gaussians
         self.power = power
         self.fmllr_iterations = []
+        self.quick = quick
+        self.graph_batch_size = 0
 
     def acc_stats_two_feats_arguments(self) -> List[AccStatsTwoFeatsArguments]:
         """
@@ -171,8 +165,10 @@ class SatTrainer(TriphoneTrainer):
         si_feat_strings = self.worker.construct_feature_proc_strings(speaker_independent=True)
         return [
             AccStatsTwoFeatsArguments(
+                j.name,
+                getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.name}.log"),
-                j.current_dictionary_names,
+                j.dictionary_names,
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
                 self.model_path,
@@ -183,17 +179,23 @@ class SatTrainer(TriphoneTrainer):
         ]
 
     def calc_fmllr(self) -> None:
-        self.worker.calc_fmllr()
+        self.worker.calc_fmllr(iteration=self.iteration)
 
     def compute_calculated_properties(self) -> None:
         """Generate realignment iterations, initial gaussians, and fMLLR iterations based on configuration"""
         super().compute_calculated_properties()
         self.fmllr_iterations = []
-        max_fmllr_iter = int(self.num_iterations / 2) - 1
-        for i in range(1, max_fmllr_iter):
-            if i < max_fmllr_iter / 2 and i % 2 == 0:
-                self.fmllr_iterations.append(i)
-        self.fmllr_iterations.append(max_fmllr_iter)
+        if not self.quick:
+            self.fmllr_iterations = [2, 4, 6, 12]
+        else:
+            self.realignment_iterations = [10, 15]
+            self.fmllr_iterations = [2, 6, 12]
+            self.graph_batch_size = 750
+            self.final_gaussian_iteration = self.num_iterations - 5
+            self.power = 0.0
+            self.initial_gaussians = int(self.max_gaussians / 2)
+            if self.initial_gaussians < self.num_leaves:
+                self.initial_gaussians = self.num_leaves
 
     def _trainer_initialization(self) -> None:
         """Speaker adapted training initialization"""
@@ -205,30 +207,37 @@ class SatTrainer(TriphoneTrainer):
                 os.path.join(self.previous_aligner.working_directory, "lda.mat"),
                 os.path.join(self.working_directory, "lda.mat"),
             )
+        for j in self.jobs:
+            for path in j.construct_path_dictionary(
+                self.previous_aligner.working_directory, "trans", "ark"
+            ).values():
+                if os.path.exists(path):
+                    break
+            else:
+                continue
+            break
+        else:
+            self.speaker_independent = True
+            self.worker.speaker_independent = True
+            self.calc_fmllr()
+        self.speaker_independent = False
+        self.worker.speaker_independent = False
+        for j in self.jobs:
+            transform_paths = j.construct_path_dictionary(
+                self.previous_aligner.working_directory, "trans", "ark"
+            )
+            output_paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
+            for k, path in transform_paths.items():
+                shutil.copy(path, output_paths[k])
         self.tree_stats()
-        self._setup_tree()
-
-        self.compile_train_graphs()
+        self._setup_tree(init_from_previous=self.quick, initial_mix_up=self.quick)
 
         self.convert_alignments()
+
+        self.compile_train_graphs()
         os.rename(self.model_path, self.next_model_path)
 
         self.iteration = 1
-
-        if os.path.exists(os.path.join(self.previous_aligner.working_directory, "trans.0.ark")):
-            for j in self.jobs:
-                for path in j.construct_path_dictionary(
-                    self.previous_aligner.working_directory, "trans", "ark"
-                ).values():
-                    shutil.copy(
-                        path,
-                        path.replace(
-                            self.previous_aligner.working_directory, self.working_directory
-                        ),
-                    )
-        else:
-            self.worker.current_trainer = self
-            self.calc_fmllr()
         parse_logs(self.working_log_directory)
 
     def finalize_training(self) -> None:
@@ -242,15 +251,17 @@ class SatTrainer(TriphoneTrainer):
         """
         try:
             self.create_align_model()
+            self.uses_speaker_adaptation = True
             super().finalize_training()
-            shutil.copy(
-                os.path.join(self.working_directory, f"{self.num_iterations+1}.alimdl"),
-                os.path.join(self.working_directory, "final.alimdl"),
-            )
+            assert self.alignment_model_path.endswith("final.alimdl")
+            assert os.path.exists(self.alignment_model_path)
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     def train_iteration(self) -> None:
@@ -261,15 +272,14 @@ class SatTrainer(TriphoneTrainer):
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
-            self.align_utterances()
-            if self.debug:
-                self.compute_alignment_improvement()
+            self.align_iteration()
         if self.iteration in self.fmllr_iterations:
             self.calc_fmllr()
 
         self.acc_stats()
+
         parse_logs(self.working_log_directory)
-        if self.iteration < self.final_gaussian_iteration:
+        if self.iteration <= self.final_gaussian_iteration:
             self.increment_gaussians()
         self.iteration += 1
 
@@ -299,11 +309,13 @@ class SatTrainer(TriphoneTrainer):
         :kaldi_steps:`train_sat`
             Reference Kaldi script
         """
-        self.logger.info("Creating alignment model for speaker-independent features...")
+        self.log_info("Creating alignment model for speaker-independent features...")
         begin = time.time()
 
         arguments = self.acc_stats_two_feats_arguments()
-        with tqdm.tqdm(total=self.num_utterances) as pbar:
+        with tqdm.tqdm(
+            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+        ) as pbar:
             if self.use_mp:
                 manager = mp.Manager()
                 error_dict = manager.dict()
@@ -317,12 +329,7 @@ class SatTrainer(TriphoneTrainer):
                     p.start()
                 while True:
                     try:
-                        (
-                            num_utterances,
-                            no_posteriors,
-                            no_second_features,
-                            errors,
-                        ) = return_queue.get(timeout=1)
+                        _ = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -332,7 +339,7 @@ class SatTrainer(TriphoneTrainer):
                         else:
                             break
                         continue
-                    pbar.update(num_utterances + no_posteriors + no_second_features + errors)
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -341,13 +348,8 @@ class SatTrainer(TriphoneTrainer):
             else:
                 for args in arguments:
                     function = AccStatsTwoFeatsFunction(args)
-                    for (
-                        num_utterances,
-                        no_posteriors,
-                        no_second_features,
-                        errors,
-                    ) in function.run():
-                        pbar.update(num_utterances + no_posteriors + no_second_features + errors)
+                    for _ in function.run():
+                        pbar.update(1)
 
         log_path = os.path.join(self.working_log_directory, "align_model_est.log")
         with open(log_path, "w", encoding="utf8") as log_file:
@@ -361,15 +363,25 @@ class SatTrainer(TriphoneTrainer):
                 stdout=subprocess.PIPE,
                 env=os.environ,
             )
-            est_proc = subprocess.Popen(
+            est_command = [
+                thirdparty_binary("gmm-est"),
+                "--remove-low-count-gaussians=false",
+            ]
+            if not self.quick:
+                est_command.append(f"--power={self.power}")
+            else:
+                est_command.append(
+                    f"--write-occs={os.path.join(self.working_directory, 'final.occs')}"
+                )
+            est_command.extend(
                 [
-                    thirdparty_binary("gmm-est"),
-                    "--remove-low-count-gaussians=false",
-                    f"--power={self.power}",
                     self.model_path,
                     "-",
                     self.model_path.replace(".mdl", ".alimdl"),
-                ],
+                ]
+            )
+            est_proc = subprocess.Popen(
+                est_command,
                 stdin=sum_proc.stdout,
                 stderr=log_file,
                 env=os.environ,
@@ -379,4 +391,4 @@ class SatTrainer(TriphoneTrainer):
         if not self.debug:
             for f in acc_files:
                 os.remove(f)
-        self.logger.debug(f"Alignment model creation took {time.time() - begin}")
+        self.log_debug(f"Alignment model creation took {time.time() - begin}")

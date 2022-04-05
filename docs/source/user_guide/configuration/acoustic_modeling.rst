@@ -22,11 +22,12 @@ For the Kaldi recipe that monophone training is based on, see :kaldi_steps:`trai
 
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
    "num_iterations", 40, "Number of training iterations"
-   "max_gaussians", 40, "Total number of gaussians"
+   "max_gaussians", 1000, "Total number of gaussians"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
 
 
@@ -41,6 +42,7 @@ Triphone training options
 For the Kaldi recipe that triphone training is based on, see :kaldi_steps:`train_deltas`.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
@@ -54,9 +56,10 @@ For the Kaldi recipe that triphone training is based on, see :kaldi_steps:`train
 LDA training options
 --------------------
 
-For the Kaldi recipe that LDA training is based on, see:kaldi_steps:`train_lda_mllt`.
+For the Kaldi recipe that LDA training is based on, see :kaldi_steps:`train_lda_mllt`.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
@@ -75,9 +78,10 @@ will be performed halfway through the training iterations.
 Speaker-adapted training (SAT) options
 --------------------------------------
 
-For the Kaldi recipe that SAT training is based on, see:kaldi_steps:`train_sat`.
+For the Kaldi recipe that SAT training is based on, see :kaldi_steps:`train_sat`.
 
 .. csv-table::
+   :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
    "subset", 0, "Number of utterances to use (0 uses the full corpus)"
@@ -88,10 +92,23 @@ For the Kaldi recipe that SAT training is based on, see:kaldi_steps:`train_sat`.
    "cluster_threshold", -1, "Threshold for clustering leaves in decision tree"
    "silence_weight", 0.0, "Weight on silence in fMLLR estimation"
    "fmllr_update_type", "full", "Type of fMLLR estimation"
+   "optional", "False", "Flag for whether a training block will be skipped if the size of the corpus is smaller than the subset"
+   "quick", "False", "Based on :kaldi_steps:`train_quick`, performs fewer rounds of fMLLR estimation"
 
 
 fMLLR estimation will be performed every other iteration for the first quarter of iterations, and then one final fMLLR estimation
 will be performed halfway through the training iterations.
+
+Pronunciation probability modeling options
+-------------------------------------------
+
+For the Kaldi recipe that pronunciation probability training is based on, see :kaldi_steps:`get_prons`.  Dictionaries can be trained on new datasets using pretrained models as well.  The current default training regime does two rounds of pronunciation probability modeling, after the second and third SAT blocks.
+
+.. csv-table::
+   :widths: 20, 20, 60
+   :header: "Parameter", "Default value", "Notes"
+
+   "silence_probabilities", "True", "Flag for whether to compute probabilities of silence before and after each word's pronunciation, in addition to the pronunciation probability"
 
 
 .. _default_training_config:
@@ -109,55 +126,73 @@ The below configuration file shows the equivalent of the current 2.0 training re
    features:
      type: "mfcc"
      use_energy: false
+     use_pitch: true
      frame_shift: 10
 
    training:
      - monophone:
+         subset: 10000
          num_iterations: 40
          max_gaussians: 1000
-         subset: 2000
          boost_silence: 1.25
 
      - triphone:
+         subset: 20000
          num_iterations: 35
          num_leaves: 2000
          max_gaussians: 10000
          cluster_threshold: -1
-         subset: 5000
          boost_silence: 1.25
          power: 0.25
 
      - lda:
+         subset: 20000
          num_leaves: 2500
          max_gaussians: 15000
-         subset: 10000
          num_iterations: 35
-         features:
-             splice_left_context: 3
-             splice_right_context: 3
 
      - sat:
-         num_leaves: 2500
-         max_gaussians: 15000
-         power: 0.2
-         silence_weight: 0.0
-         fmllr_update_type: "full"
-         subset: 10000
-
-     - sat:
+         subset: 50000
          num_leaves: 4200
          max_gaussians: 40000
          power: 0.2
          silence_weight: 0.0
          fmllr_update_type: "full"
-         subset: 30000
+
+     - pronunciation_probabilities:
+         subset: 50000
+         silence_probabilities: true
+
+     - sat:
+         subset: 150000
+         num_leaves: 5000
+         max_gaussians: 100000
+         power: 0.2
+         silence_weight: 0.0
+         fmllr_update_type: "full"
+
+     - pronunciation_probabilities:
+         subset: 150000
+         silence_probabilities: true
+         optional: true # Skipped if the corpus is smaller than the subset
+
+     - sat:
+         subset: 0
+         quick: true # Performs fewer fMLLR estimation
+         num_iterations: 20
+         num_leaves: 7000
+         max_gaussians: 150000
+         power: 0.2
+         silence_weight: 0.0
+         fmllr_update_type: "full"
+         optional: true # Skipped if the corpus is smaller than the previous subset
 
 .. _1.0_training_config:
 
 Training configuration for 1.0
 ------------------------------
 
-The below configuration matches the training procedure used in models trained in version 1.0.  Note the lack of an LDA block, and only one SAT training block, as well as the lack of subsets in initial training blocks to speed up overall training.
+The below configuration matches the training procedure used in models trained in version 1.0.  Note the lack of an LDA block, and only one SAT training block, as well as the lack of subsets in initial training blocks.
 
 .. code-block:: yaml
 

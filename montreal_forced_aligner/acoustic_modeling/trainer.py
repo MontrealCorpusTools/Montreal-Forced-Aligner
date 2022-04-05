@@ -5,12 +5,10 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import yaml
-
 from montreal_forced_aligner.abc import ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import parse_old_features
+from montreal_forced_aligner.helper import load_configuration, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
 from montreal_forced_aligner.utils import log_kaldi_errors
 
@@ -31,8 +29,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     ----------
     training_configuration : list[tuple[str, dict[str, Any]]]
         Training identifiers and parameters for training blocks
-    detect_phone_set: bool
-        Flag for auto-detecting phone sets for use in building triphone trees
+    phone_set_type: str
+        Type of phone set to use for acoustic modeling
 
     See Also
     --------
@@ -84,15 +82,56 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         os.makedirs(self.output_directory, exist_ok=True)
         self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
         if training_configuration is None:
-            training_configuration = [
-                ("monophone", {}),
-                ("triphone", {}),
-                ("lda", {}),
-                ("sat", {}),
-                ("sat", {"subset": 0, "num_leaves": 4200, "max_gaussians": 40000}),
-            ]
+            training_configuration = TrainableAligner.default_training_configurations()
         for k, v in training_configuration:
             self.add_config(k, v)
+
+    @classmethod
+    def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
+        """Default MFA training configuration"""
+        training_params = []
+        training_params.append(("monophone", {"subset": 10000, "boost_silence": 1.25}))
+        training_params.append(
+            (
+                "triphone",
+                {
+                    "subset": 20000,
+                    "boost_silence": 1.25,
+                    "num_leaves": 2000,
+                    "max_gaussians": 10000,
+                },
+            )
+        )
+        training_params.append(
+            ("lda", {"subset": 20000, "num_leaves": 2500, "max_gaussians": 15000})
+        )
+        training_params.append(
+            ("sat", {"subset": 20000, "num_leaves": 2500, "max_gaussians": 15000})
+        )
+        training_params.append(
+            ("sat", {"subset": 50000, "num_leaves": 4200, "max_gaussians": 40000})
+        )
+        training_params.append(("pronunciation_probabilities", {"subset": 50000}))
+        training_params.append(
+            ("sat", {"subset": 150000, "num_leaves": 5000, "max_gaussians": 100000})
+        )
+        training_params.append(
+            ("pronunciation_probabilities", {"subset": 150000, "optional": True})
+        )
+        training_params.append(
+            (
+                "sat",
+                {
+                    "subset": 0,
+                    "num_leaves": 7000,
+                    "optional": True,
+                    "max_gaussians": 150000,
+                    "num_iterations": 20,
+                    "quick": True,
+                },
+            )
+        )
+        return training_params
 
     @classmethod
     def parse_parameters(
@@ -122,37 +161,26 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         training_params = []
         use_default = True
         if config_path:
-            with open(config_path, "r", encoding="utf8") as f:
-                data = yaml.load(f, Loader=yaml.SafeLoader)
-                training_params = []
-                for k, v in data.items():
-                    if k == "training":
-                        for t in v:
-                            for k2, v2 in t.items():
-                                if "features" in v2:
-                                    global_params.update(parse_old_features(v2["features"]))
-                                    del v2["features"]
-                                training_params.append((k2, v2))
-                    elif k == "features":
-                        global_params.update(parse_old_features(v))
-                    else:
-                        if v is None and k in {
-                            "punctuation",
-                            "compound_markers",
-                            "clitic_markers",
-                        }:
-                            v = []
-                        global_params[k] = v
-                if training_params:
-                    use_default = False
+            data = load_configuration(config_path)
+            training_params = []
+            for k, v in data.items():
+                if k == "training":
+                    for t in v:
+                        for k2, v2 in t.items():
+                            if "features" in v2:
+                                global_params.update(parse_old_features(v2["features"]))
+                                del v2["features"]
+                            training_params.append((k2, v2))
+                elif k == "features":
+                    global_params.update(parse_old_features(v))
+                else:
+                    if v is None and k in cls.nullable_fields:
+                        v = []
+                    global_params[k] = v
+            if training_params:
+                use_default = False
         if use_default:  # default training configuration
-            training_params.append(("monophone", {}))
-            training_params.append(("triphone", {}))
-            training_params.append(("lda", {}))
-            training_params.append(("sat", {}))
-            training_params.append(
-                ("sat", {"subset": 0, "num_leaves": 4200, "max_gaussians": 40000})
-            )
+            training_params = TrainableAligner.default_training_configurations()
         if training_params:
             if training_params[0][0] != "monophone":
                 raise ConfigError("The first round of training must be monophone.")
@@ -162,17 +190,23 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
 
     def setup(self) -> None:
         """Setup for acoustic model training"""
+
         if self.initialized:
             return
         self.check_previous_run()
         try:
             self.load_corpus()
             for config in self.training_configs.values():
+                if isinstance(config, str):
+                    continue
                 config.non_silence_phones = self.non_silence_phones
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
         self.initialized = True
 
@@ -216,6 +250,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         from montreal_forced_aligner.acoustic_modeling.lda import LdaTrainer
         from montreal_forced_aligner.acoustic_modeling.monophone import MonophoneTrainer
+        from montreal_forced_aligner.acoustic_modeling.pronunciation_probabilities import (  # noqa
+            PronunciationProbabilityTrainer,
+        )
         from montreal_forced_aligner.acoustic_modeling.sat import SatTrainer
         from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 
@@ -242,6 +279,16 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         elif train_type == "sat":
             p = {k: v for k, v in p.items() if k in SatTrainer.get_configuration_parameters()}
             config = SatTrainer(identifier=identifier, worker=self, **p)
+        elif train_type == "pronunciation_probabilities":
+            p = {
+                k: v
+                for k, v in p.items()
+                if k in PronunciationProbabilityTrainer.get_configuration_parameters()
+            }
+            previous_trainer = self.training_configs[list(self.training_configs.keys())[-1]]
+            config = PronunciationProbabilityTrainer(
+                identifier=identifier, previous_trainer=previous_trainer, worker=self, **p
+            )
         else:
             raise ConfigError(f"Invalid training type '{train_type}' in config file")
 
@@ -256,8 +303,18 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         output_model_path : str
             Path to save acoustic model
         """
+        if "pronunciation_probabilities" in self.training_configs:
+            export_directory = os.path.dirname(output_model_path)
+            silence_probs = self.training_configs[
+                "pronunciation_probabilities"
+            ].silence_probabilities
+            for dict_name, dictionary in self.dictionary_mapping.items():
+                output_dictionary_path = os.path.join(export_directory, dict_name + ".dict")
+                dictionary.export_lexicon(
+                    output_dictionary_path, probability=True, silence_probabilities=silence_probs
+                )
         self.training_configs[self.final_identifier].export_model(output_model_path)
-        self.logger.info(f"Saved model to {output_model_path}")
+        self.log_info(f"Saved model to {output_model_path}")
 
     @property
     def backup_output_directory(self) -> Optional[str]:
@@ -271,23 +328,24 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """Tree path of the final model"""
         return self.training_configs[self.final_identifier].tree_path
 
-    def train(self, generate_final_alignments: bool = True) -> None:
+    def train(self) -> None:
         """
         Run through the training configurations to produce a final acoustic model
-
-        Parameters
-        ----------
-        generate_final_alignments: bool
-            Flag for whether final alignments should be generated at the end of training, defaults to True
         """
         self.setup()
         previous = None
         begin = time.time()
+        self.write_training_information()
         for trainer in self.training_configs.values():
-            if trainer.subset < len(self.utterances):
+            if self.current_subset is None and trainer.optional:
+                self.log_info(
+                    "Exiting training early to save time as the corpus is below the subset size for later training stages"
+                )
+                break
+            if trainer.subset < self.num_utterances:
                 self.current_subset = trainer.subset
             else:
-                self.current_subset = 0
+                self.current_subset = None
                 trainer.subset = 0
             if previous is not None:
                 self.current_aligner = previous
@@ -296,25 +354,46 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                     previous.exported_model_path, self.working_directory
                 )
                 self.align()
-            trainer.train()
+            if trainer.identifier.startswith("pronunciation_probabilities"):
+                trainer.train_pronunciation_probabilities()
+            else:
+                trainer.train()
             previous = trainer
-        self.logger.info(f"Completed training in {time.time()-begin} seconds!")
+            self.final_identifier = trainer.identifier
+        self.log_info(f"Completed training in {time.time()-begin} seconds!")
 
-        if generate_final_alignments:
-            self.current_subset = None
-            self.current_aligner = previous
-            os.makedirs(self.working_log_directory, exist_ok=True)
-            self.current_acoustic_model = AcousticModel(
-                previous.exported_model_path, self.working_directory
-            )
-            self.align()
-            self.collect_alignments()
+        self.current_subset = None
+        self.current_aligner = previous
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        self.current_acoustic_model = AcousticModel(
+            previous.exported_model_path, self.working_directory
+        )
+
+    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
+        """
+        Export a TextGrid file for every sound file in the dataset
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save to
+        """
+        self.align()
+        super(TrainableAligner, self).export_files(output_directory, output_format)
 
     @property
-    def num_utterances(self) -> int:
-        if self.current_subset and self.current_subset < len(self.utterances):
+    def num_current_utterances(self) -> int:
+        """Number of utterances in the current subset"""
+        if self.current_subset and self.current_subset < self.num_utterances:
             return self.current_subset
-        return super().num_utterances
+        return self.num_utterances
+
+    @property
+    def align_options(self) -> MetaDict:
+        """Alignment options"""
+        if self.current_aligner is not None:
+            return self.current_aligner.align_options
+        return super().align_options
 
     def align(self) -> None:
         """
@@ -333,18 +412,33 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(done_path):
-            self.logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
+            self.log_debug(f"Skipping {self.current_aligner.identifier} alignments")
             return
         try:
             self.current_acoustic_model.export_model(self.working_directory)
             self.compile_train_graphs()
             self.align_utterances()
+            if self.current_acoustic_model.meta["features"]["uses_speaker_adaptation"]:
+
+                arguments = self.calc_fmllr_arguments()
+                missing_transforms = False
+                for arg in arguments:
+                    for path in arg.trans_paths.values():
+                        if not os.path.exists(path):
+                            missing_transforms = True
+                if missing_transforms:
+                    self.speaker_independent = True
+                    assert self.alignment_model_path.endswith(".alimdl")
+                    self.calc_fmllr()
+                self.speaker_independent = False
+                assert self.alignment_model_path.endswith(".mdl")
+                self.align_utterances()
             if self.current_subset:
-                self.logger.debug(
+                self.log_debug(
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on {self.current_subset} utterances"
                 )
             else:
-                self.logger.debug(
+                self.log_debug(
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
                 )
             self.compile_information()
@@ -352,15 +446,18 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 pass
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                log_kaldi_errors(e.error_logs, self.logger)
-                e.update_log_file(self.logger)
+                import logging
+
+                logger = logging.getLogger(self.identifier)
+                log_kaldi_errors(e.error_logs, logger)
+                e.update_log_file(logger)
             raise
 
     @property
     def alignment_model_path(self) -> str:
         """Current alignment model path"""
         path = os.path.join(self.working_directory, "final.alimdl")
-        if os.path.exists(path):
+        if os.path.exists(path) and self.speaker_independent:
             return path
         return self.model_path
 

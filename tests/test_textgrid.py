@@ -7,10 +7,10 @@ from montreal_forced_aligner.textgrid import CtmInterval
 
 
 @pytest.mark.skip
-def test_mapping(english_us_ipa_dictionary, generated_dir):
+def test_mapping(english_us_mfa_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "textgrid_tests")
     dictionary = MultispeakerDictionary(
-        dictionary_path=english_us_ipa_dictionary,
+        dictionary_path=english_us_mfa_dictionary,
         position_dependent_phones=False,
         multilingual_ipa=True,
         temporary_directory=output_directory,

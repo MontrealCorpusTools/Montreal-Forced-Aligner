@@ -68,7 +68,7 @@ def test_lda_mllt_config(sick_corpus, sick_dict, temp_dir):
     assert am_trainer.align_options["retry_beam"] == 40
     config = LdaTrainer(identifier="lda", worker=am_trainer)
     config.compute_calculated_properties()
-    assert config.mllt_iterations == [2, 4, 6, 16]
+    assert config.mllt_iterations == [2, 4, 6, 12]
     am_trainer.cleanup()
 
 
@@ -180,17 +180,4 @@ def test_load(sick_corpus, sick_dict, temp_dir, config_directory):
     path = os.path.join(config_directory, "out_of_order_config.yaml")
     with pytest.raises(ConfigError):
         params = TrainableAligner.parse_parameters(path)
-    am_trainer.cleanup()
-
-
-def test_multilingual_ipa(sick_corpus, sick_dict, temp_dir, config_directory):
-
-    path = os.path.join(config_directory, "basic_ipa_config.yaml")
-    params = TrainableAligner.parse_parameters(path)
-    am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
-        temporary_directory=temp_dir,
-        **params
-    )
     am_trainer.cleanup()
