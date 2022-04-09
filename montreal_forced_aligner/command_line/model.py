@@ -167,6 +167,8 @@ def run_model(args: Namespace) -> None:
     manager = ModelManager()
     if args.action == "download" and args.name:
         manager.download_model(args.model_type, args.name)
+    elif args.action == "download":
+        manager.print_remote_models(args.model_type)
     elif args.action == "list":
         manager.print_local_models(args.model_type)
     elif args.action == "inspect":

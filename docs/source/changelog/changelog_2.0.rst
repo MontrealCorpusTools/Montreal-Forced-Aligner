@@ -10,6 +10,12 @@
 Release candidates
 ==================
 
+2.0.0rc5
+--------
+
+- Fixed a bug where a list of downloadable models wasn't getting output for commands like ``mfa models download acoustic``
+- Added option to specify ``--output_format`` for exporting alignments for ``short_textgrids`` (the default to save space), ``long_textgrids`` (original behavior), or ``json``
+
 2.0.0rc4
 --------
 
@@ -23,7 +29,7 @@ Release candidates
 - Refactored quotations and clitic markers, so if there happens to be a word like ``kid'``, MFA can recover the word ``kid`` from it.  If there is no word entry for ``kid`` or ``kid'`` is in the dictionary, the apostrophe will be kept.
 - Refactored the ``--test_transcription`` functionality of :ref:`validating_data` to use small language models built from all transcripts of a speaker, mixed with an even smaller language model per utterance, following :kaldi_steps:`cleanup/make_biased_lm_graphs`.
 - Refactored how internal storage is done to use a sqlite database rather than having everything in memory.  Bigger corpora should not need as much memory when aligning/training.
-- Fixed an issue in lexicon construction where explicit silences were not being respected
+- Fixed an issue in lexicon construction where explicit silences were not being respected (:github_issue:`392`)
 - Fixed an issue in training where initial gaussians were not being properly used
 - Changed the behavior of assigning speakers to jobs, so that it now tries to balance the number of utterances across jobs
 - Changed the default topology to allow for more variable length phones (minimum duration is now one frame, 10ms by default)
@@ -32,6 +38,9 @@ Release candidates
 - Added a ``[bracketed]`` word that will capture any transcriptions like ``[wor-]`` or ``<hes->``, as these are typically restarts, hesitations, speech errors, etc that have separate characteristics compared to a word that happen to not be in the dictionary.  The same phone is used for both, but having a separate word symbol allows silence probabilities to be modelled separately.
 - Added words for ``[laugh]`` and ``[laughter]`` to capture laughter annotations as separate from both OOV ``<unk>`` items and ``[bracketed]`` words.  As with ``[bracketed]``, the laughter words use the same ``spn`` phone, but allow for separate silence probabilities.
 - Fixed a bug where models trained in earlier version were not correctly reporting their phone set (:github_issue:`422`)
+- Fixed a bug where TextGrids were never exported to the specified output directory with out ``--overwrite`` (:github_issue:`408`)
+- Fixed a bug where spaces in sound file names would throw an error for that file (:github_issue:`407`)
+
 
 2.0.0rc3
 --------

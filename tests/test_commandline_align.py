@@ -165,6 +165,8 @@ def test_align_multilingual(
         "-q",
         "--clean",
         "--debug",
+        "--output_format",
+        "long_textgrid",
     ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
@@ -192,6 +194,8 @@ def test_align_multilingual_speaker_dict(
         "-q",
         "--clean",
         "--debug",
+        "--output_format",
+        "json",
     ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
