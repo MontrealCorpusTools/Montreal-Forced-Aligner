@@ -282,6 +282,13 @@ def create_parser() -> ArgumentParser:
         default="",
         help="YAML file for mapping phones across phone sets in evaluations",
     )
+    align_parser.add_argument(
+        "--output_format",
+        type=str,
+        default="short_textgrid",
+        choices=["short_textgrid", "long_textgrid", "json"],
+        help="Format for aligned output files",
+    )
     add_global_options(align_parser, textgrid_output=True)
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
@@ -322,6 +329,13 @@ def create_parser() -> ArgumentParser:
         type=str,
         default="",
         help="Audio directory root to use for finding audio files",
+    )
+    adapt_parser.add_argument(
+        "--output_format",
+        type=str,
+        default="short_textgrid",
+        choices=["short_textgrid", "long_textgrid", "json"],
+        help="Format for aligned output files",
     )
     add_global_options(adapt_parser, textgrid_output=True)
 
@@ -373,6 +387,13 @@ def create_parser() -> ArgumentParser:
         help="Enable extra decision tree modeling based on the phone set",
         default="UNKNOWN",
         choices=["AUTO", "IPA", "ARPA", "PINYIN"],
+    )
+    train_parser.add_argument(
+        "--output_format",
+        type=str,
+        default="short_textgrid",
+        choices=["short_textgrid", "long_textgrid", "json"],
+        help="Format for aligned output files",
     )
     add_global_options(train_parser, textgrid_output=True)
 
