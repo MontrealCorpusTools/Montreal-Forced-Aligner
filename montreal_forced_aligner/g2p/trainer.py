@@ -11,21 +11,19 @@ import re
 import shutil
 import statistics
 import subprocess
-import sys
 import time
-import traceback
 from typing import Any, Dict, List, NamedTuple, Optional, Set
 
 import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.data import WordData
-from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
-from montreal_forced_aligner.exceptions import PyniniAlignmentError
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlignmentError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.helper import score_g2p
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import Counter, Stopped
+from montreal_forced_aligner.utils import Stopped
 
 try:
     import pynini
@@ -78,21 +76,17 @@ class RandomStartWorker(mp.Process):
         self,
         job_name: int,
         job_q: mp.Queue,
-        return_dict: dict,
+        return_queue: mp.Queue,
         log_file: str,
-        error_dict: dict,
-        counter: Counter,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
         self.job_q = job_q
-        self.return_dict = return_dict
+        self.return_queue = return_queue
         self.log_file = log_file
-        self.error_dict = error_dict
-        self.counter = counter
         self.stopped = stopped
-        self.finished_signal = Stopped()
+        self.finished = Stopped()
 
     def run(self) -> None:
         """Run the random start worker"""
@@ -102,7 +96,6 @@ class RandomStartWorker(mp.Process):
                     args = self.job_q.get(timeout=1)
                 except queue.Empty:
                     break
-                self.job_q.task_done()
                 if self.stopped.stop_check():
                     continue
                 try:
@@ -145,7 +138,7 @@ class RandomStartWorker(mp.Process):
                                 match = re.match(r"INFO: Iteration \d+: (-?\d*(\.\d*)?)", line)
                                 assert match, line
                                 likelihood = float(match.group(1))
-                                self.counter.increment()
+                                self.return_queue.put(1)
                             with open(likelihood_path, "w") as f:
                                 f.write(str(likelihood))
                         log_file.write(
@@ -154,14 +147,13 @@ class RandomStartWorker(mp.Process):
                     else:
                         with open(likelihood_path, "r") as f:
                             likelihood = f.read().strip()
-                    self.return_dict[fst_path] = likelihood
+                    self.return_queue.put((fst_path, likelihood))
                 except Exception:
                     self.stopped.stop()
-                    self.finished_signal.stop()
-                    self.error_dict[args.idx] = args, Exception(
-                        traceback.format_exception(*sys.exc_info())
-                    )
-        self.finished_signal.stop()
+                    e = KaldiProcessingError([self.log_file])
+                    e.job_name = self.job_name
+                    self.return_queue.put(e)
+        self.finished.stop()
         return
 
 
@@ -184,8 +176,6 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         For base MFA parameters
     :class:`~montreal_forced_aligner.abc.TrainerMixin`
         For base trainer parameters
-    :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
-        For pronunciation dictionary parameters
 
     Attributes
     ----------
@@ -216,7 +206,7 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self.g2p_validation_phones = set()
 
 
-class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
+class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
     """
     Top-level G2P trainer that uses Pynini functionality
 
@@ -334,8 +324,9 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
         """Setup for G2P training"""
         if self.initialized:
             return
+        self.initialize_database()
+        self.dictionary_setup()
         os.makedirs(self.working_log_directory, exist_ok=True)
-        self.g2p_training_dictionary: Dict[str, WordData] = self.actual_words
         self.initialize_training()
         self.initialized = True
 
@@ -356,11 +347,11 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
             "architecture": self.architecture,
             "train_date": str(datetime.now()),
             "phones": sorted(self.non_silence_phones),
-            "graphemes": self.graphemes,
+            "graphemes": self.g2p_training_graphemes,
             "evaluation": {},
             "training": {
                 "num_words": len(self.g2p_training_dictionary),
-                "num_graphemes": len(self.graphemes),
+                "num_graphemes": len(self.g2p_training_graphemes),
                 "num_phones": len(self.non_silence_phones),
             },
         }
@@ -379,64 +370,66 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
         random.seed(self.seed)
-        if self.evaluation_mode:
-            word_dict = self.g2p_training_dictionary
-            words = sorted(word_dict.keys())
-            total_items = len(words)
-            validation_items = int(total_items * self.validation_proportion)
-            validation_words = random.sample(words, validation_items)
-            self.g2p_training_dictionary = {
-                k: v for k, v in word_dict.items() if k not in validation_words
-            }
-            self.g2p_validation_dictionary = {
-                k: v for k, v in word_dict.items() if k in validation_words
-            }
-            if self.debug:
-                with open(
-                    os.path.join(self.working_directory, "validation_set.txt"),
-                    "w",
-                    encoding="utf8",
-                ) as f:
-                    for word in self.g2p_validation_dictionary:
-                        f.write(word + "\n")
+        with self.session() as session:
+            self.g2p_training_dictionary = self.actual_words(session)
+            if self.evaluation_mode:
+                word_dict = self.g2p_training_dictionary
+                words = sorted(word_dict.keys())
+                total_items = len(words)
+                validation_items = int(total_items * self.validation_proportion)
+                validation_words = random.sample(words, validation_items)
+                self.g2p_training_dictionary = {
+                    k: v for k, v in word_dict.items() if k not in validation_words
+                }
+                self.g2p_validation_dictionary = {
+                    k: v for k, v in word_dict.items() if k in validation_words
+                }
+                if self.debug:
+                    with open(
+                        os.path.join(self.working_directory, "validation_set.txt"),
+                        "w",
+                        encoding="utf8",
+                    ) as f:
+                        for word in self.g2p_validation_dictionary:
+                            f.write(word + "\n")
 
-        if not os.path.exists(self.sym_path):
-            phones_path = os.path.join(self.working_directory, "phones_only.txt")
-            with open(self.input_path, "w", encoding="utf8") as f2, open(
-                phones_path, "w", encoding="utf8"
-            ) as phonef:
-                for word, v in self.g2p_training_dictionary.items():
-                    if re.match(r"\W", word) is not None:
-                        continue
-                    self.g2p_training_graphemes.update(word)
-                    for v2 in v:
-                        self.g2p_training_phones.update(v2.pronunciation)
-                        f2.write(f"{word}\t{' '.join(v2.pronunciation)}\n")
-                        phonef.write(f"{' '.join(v2.pronunciation)}\n")
-            subprocess.call(["ngramsymbols", phones_path, self.sym_path])
-            if not self.debug:
-                os.remove(phones_path)
-        self.log_debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
-        self.log_debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
-        if self.evaluation_mode:
-            for k, v in self.g2p_validation_dictionary.items():
-                self.g2p_validation_graphemes.update(k)
-                for v2 in v:
-                    self.g2p_validation_phones.update(v2.pronunciation)
-            self.log_debug(
-                f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
-            )
-            self.log_debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
-            grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
-            phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
-            if grapheme_diff:
-                self.log_warning(
-                    f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
+            if not os.path.exists(self.sym_path):
+                phones_path = os.path.join(self.working_directory, "phones_only.txt")
+                with open(self.input_path, "w", encoding="utf8") as f2, open(
+                    phones_path, "w", encoding="utf8"
+                ) as phonef:
+                    for word, v in self.g2p_training_dictionary.items():
+                        if re.match(r"\W", word) is not None:
+                            continue
+                        self.g2p_training_graphemes.update(word)
+                        for v2 in v.pronunciations:
+                            self.g2p_training_phones.update(v2.pronunciation.split())
+                            f2.write(f"{word}\t{v2.pronunciation}\n")
+                            phonef.write(f"{v2.pronunciation}\n")
+                subprocess.call(["ngramsymbols", phones_path, self.sym_path])
+                if not self.debug:
+                    os.remove(phones_path)
+            self.log_debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
+            self.log_debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
+            if self.evaluation_mode:
+                for k, v in self.g2p_validation_dictionary.items():
+                    self.g2p_validation_graphemes.update(k)
+                    for v2 in v.pronunciations:
+                        self.g2p_validation_phones.update(v2.pronunciation.split())
+                self.log_debug(
+                    f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
                 )
-            if phone_diff:
-                self.log_warning(
-                    f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
-                )
+                self.log_debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
+                grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
+                phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
+                if grapheme_diff:
+                    self.log_warning(
+                        f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
+                    )
+                if phone_diff:
+                    self.log_warning(
+                        f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
+                    )
 
     def clean_up(self) -> None:
         """
@@ -662,60 +655,54 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
             stopped = Stopped()
             num_commands = len(starts)
             job_queue = mp.JoinableQueue()
-
+            fst_likelihoods = {}
             # Actually runs starts.
             self.log_info("Calculating alignments...")
             begin = time.time()
-            max_value = num_commands * self.num_iterations
             with tqdm.tqdm(
                 total=num_commands * self.num_iterations, disable=getattr(self, "quiet", False)
             ) as pbar:
                 for start in starts:
                     job_queue.put(start)
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_dict = manager.dict()
+                error_dict = {}
+                return_queue = mp.Queue()
                 procs = []
-                counter = Counter()
                 for i in range(self.num_jobs):
                     log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
                     p = RandomStartWorker(
                         i,
                         job_queue,
-                        return_dict,
+                        return_queue,
                         log_path,
-                        error_dict,
-                        counter,
                         stopped,
                     )
                     procs.append(p)
                     p.start()
 
-                value = 0
-                last_value = 0
-                if len(self.g2p_training_dictionary) > 100000:
-                    sleep_increment = 10
-                else:
-                    sleep_increment = 2
-                while value < max_value:
-                    time.sleep(sleep_increment)
-                    if stopped.stop_check():
-                        break
-                    for proc in procs:
-                        if not proc.finished_signal.stop_check():
+                while True:
+                    try:
+                        result = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except queue.Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
                             break
+                        continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    if isinstance(result, int):
+                        pbar.update(result)
                     else:
-                        break
-                    value = counter.value()
-                    if value != last_value:
-                        pbar.update(value - last_value)
-                        last_value = value
-                job_queue.join()
+                        fst_likelihoods[result[0]] = result[1]
                 for p in procs:
                     p.join()
             if error_dict:
                 raise PyniniAlignmentError(error_dict)
-            (best_fst, best_likelihood) = min(return_dict.items(), key=operator.itemgetter(1))
+            (best_fst, best_likelihood) = min(fst_likelihoods.items(), key=operator.itemgetter(1))
             self.log_info(f"Best likelihood: {best_likelihood}")
             self.log_debug(
                 f"Ran {self.random_starts} random starts in {time.time() - begin} seconds"
@@ -823,6 +810,7 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
         hyp_pron_count = 0
         gold_pron_count = 0
         for word, gold in self.g2p_validation_dictionary.items():
+            gold = WordData(word, set(tuple(x.pronunciation.split()) for x in gold.pronunciations))
             if word not in hypothesis_values:
                 incorrect += 1
                 gold_length = statistics.mean(len(x) for x in gold.pronunciations)
@@ -839,8 +827,8 @@ class PyniniTrainer(PronunciationDictionaryMixin, G2PTrainer, TopLevelMfaWorker)
                 incorrect += 1
                 to_comp.append((gold, hyp))  # Multiple hypotheses to compare
             self.log_debug(f"For the word {word}: gold is {gold}, hypothesized are: {hyp}")
-            hyp_pron_count += len(hyp)
-            gold_pron_count += len(gold)
+            hyp_pron_count += len(hyp.pronunciations)
+            gold_pron_count += len(gold.pronunciations)
         self.log_debug(
             f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
             f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."

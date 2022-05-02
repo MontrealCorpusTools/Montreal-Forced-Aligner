@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from montreal_forced_aligner.abc import ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.db import Dictionary
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
@@ -196,6 +197,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.check_previous_run()
         try:
             self.load_corpus()
+            self.write_training_information()
             for config in self.training_configs.values():
                 if isinstance(config, str):
                     continue
@@ -305,23 +307,22 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         if "pronunciation_probabilities" in self.training_configs:
             export_directory = os.path.dirname(output_model_path)
+            os.makedirs(export_directory, exist_ok=True)
             silence_probs = self.training_configs[
                 "pronunciation_probabilities"
             ].silence_probabilities
-            for dict_name, dictionary in self.dictionary_mapping.items():
-                output_dictionary_path = os.path.join(export_directory, dict_name + ".dict")
-                dictionary.export_lexicon(
-                    output_dictionary_path, probability=True, silence_probabilities=silence_probs
-                )
+            with self.session() as session:
+                for (d_id,) in session.query(Dictionary.id):
+                    base_name = self.dictionary_base_names[d_id]
+                    output_dictionary_path = os.path.join(export_directory, base_name)
+                    self.export_lexicon(
+                        d_id,
+                        output_dictionary_path,
+                        probability=True,
+                        silence_probabilities=silence_probs,
+                    )
         self.training_configs[self.final_identifier].export_model(output_model_path)
         self.log_info(f"Saved model to {output_model_path}")
-
-    @property
-    def backup_output_directory(self) -> Optional[str]:
-        """Backup directory if overwriting files is not allowed"""
-        if self.overwrite:
-            return None
-        return os.path.join(self.working_directory, "textgrids")
 
     @property
     def tree_path(self) -> str:
@@ -335,7 +336,6 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         self.setup()
         previous = None
         begin = time.time()
-        self.write_training_information()
         for trainer in self.training_configs.values():
             if self.current_subset is None and trainer.optional:
                 self.log_info(

@@ -6,8 +6,6 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import sys
-import traceback
 from queue import Empty, Queue
 from typing import Dict, Optional, Union
 
@@ -16,15 +14,8 @@ import sqlalchemy.engine
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.corpus.classes import FileData
-from montreal_forced_aligner.corpus.db import (
-    Dictionary,
-    File,
-    SoundFile,
-    Speaker,
-    SpeakerOrdering,
-    Utterance,
-)
 from montreal_forced_aligner.corpus.helper import find_exts
+from montreal_forced_aligner.db import File, SoundFile, Speaker, SpeakerOrdering, Utterance
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
 from montreal_forced_aligner.utils import Counter, Stopped
@@ -118,9 +109,7 @@ class AcousticDirectoryParser(mp.Process):
                     continue
                 if wav_path is None:
                     continue
-                self.job_queue.put(
-                    (file_name, wav_path, transcription_path, relative_path), timeout=10
-                )
+                self.job_queue.put((file_name, wav_path, transcription_path, relative_path))
                 self.file_counts.increment()
 
         self.finished_adding.stop()
@@ -148,7 +137,6 @@ class CorpusProcessWorker(mp.Process):
         self,
         name: int,
         job_q: mp.Queue,
-        return_dict: dict,
         return_q: mp.Queue,
         stopped: Stopped,
         finished_adding: Stopped,
@@ -159,7 +147,6 @@ class CorpusProcessWorker(mp.Process):
         mp.Process.__init__(self)
         self.name = str(name)
         self.job_q = job_q
-        self.return_dict = return_dict
         self.return_q = return_q
         self.stopped = stopped
         self.finished_adding = finished_adding
@@ -179,7 +166,6 @@ class CorpusProcessWorker(mp.Process):
                 if self.finished_adding.stop_check():
                     break
                 continue
-            self.job_q.task_done()
             if self.stopped.stop_check():
                 continue
             try:
@@ -192,19 +178,16 @@ class CorpusProcessWorker(mp.Process):
                     self.sanitize_function,
                     self.sample_rate,
                 )
-
                 self.return_q.put(file)
             except TextParseError as e:
-                self.return_dict["decode_error_files"].append(e)
+                self.return_q.put(("decode_error_files", e))
             except TextGridParseError as e:
-                self.return_dict["textgrid_read_errors"][e.file_name] = e
+                self.return_q.put(("textgrid_read_errors", e))
             except SoundFileError as e:
-                self.return_dict["sound_file_errors"][e.file_name] = e
-            except Exception:
+                self.return_q.put(("sound_file_errors", e))
+            except Exception as e:
                 self.stopped.stop()
-                self.return_dict["error"] = file_name, Exception(
-                    traceback.format_exception(*sys.exc_info())
-                )
+                self.return_q.put(("error", e))
         self.finished_processing.stop()
         return
 
@@ -225,8 +208,6 @@ class Job:
 
     Attributes
     ----------
-    dictionary_names: list[str]
-        List of dictionary names that the job's speakers use
     dictionary_ids: list[int]
         List of dictionary ids that the job's speakers use
     """
@@ -236,23 +217,23 @@ class Job:
     def __init__(self, name: int, db_engine: sqlalchemy.engine.Engine):
         self.name = name
         self.db_engine = db_engine
-        self.dictionary_names = []
         self.dictionary_ids = []
         with Session(self.db_engine) as session:
             self.refresh_dictionaries(session)
 
-    def refresh_dictionaries(self, session):
-        self.dictionary_names = []
-        self.dictionary_ids = []
+    def refresh_dictionaries(self, session: Session) -> None:
+        """
+        Refresh the dictionaries that will be processed by this job
+
+        Parameters
+        ----------
+        session: :class:`~sqlalchemy.orm.session.Session`
+            Session to use for refreshing
+        """
         job_dict_query = (
-            session.query(Dictionary.id, Dictionary.name)
-            .join(Speaker.dictionary)
-            .filter(Speaker.job_id == self.name)
-            .distinct()
+            session.query(Speaker.dictionary_id).filter(Speaker.job_id == self.name).distinct()
         )
-        for dict_id, dict_name in job_dict_query:
-            self.dictionary_names.append(dict_name)
-            self.dictionary_ids.append(dict_id)
+        self.dictionary_ids = [x[0] for x in job_dict_query]
 
     def construct_path_dictionary(
         self, directory: str, identifier: str, extension: str
@@ -275,14 +256,12 @@ class Job:
             Path for each dictionary
         """
         output = {}
-        for dict_name in self.dictionary_names:
-            if dict_name is None:
-                output[dict_name] = os.path.join(
-                    directory, f"{identifier}.{self.name}.{extension}"
-                )
+        for dict_id in self.dictionary_ids:
+            if dict_id is None:
+                output[dict_id] = os.path.join(directory, f"{identifier}.{self.name}.{extension}")
             else:
-                output[dict_name] = os.path.join(
-                    directory, f"{identifier}.{dict_name}.{self.name}.{extension}"
+                output[dict_id] = os.path.join(
+                    directory, f"{identifier}.{dict_id}.{self.name}.{extension}"
                 )
         return output
 
@@ -328,16 +307,16 @@ class Job:
             Path for each dictionary
         """
         output = {}
-        for dict_name in self.dictionary_names:
-            output[dict_name] = os.path.join(directory, f"{identifier}.{dict_name}.{extension}")
+        for dict_id in self.dictionary_ids:
+            output[dict_id] = os.path.join(directory, f"{identifier}.{dict_id}.{extension}")
         return output
 
     @property
     def dictionary_count(self):
         """Number of dictionaries currently used"""
-        return len(self.dictionary_names)
+        return len(self.dictionary_ids)
 
-    def output_for_features(self, split_directory: str) -> None:
+    def output_for_features(self, split_directory: str, session) -> None:
         """
         Output the necessary files for Kaldi to generate features
 
@@ -350,39 +329,38 @@ class Job:
         segments_scp_path = self.construct_path(split_directory, "segments", "scp")
         if os.path.exists(segments_scp_path):
             return
-        with Session(self.db_engine) as session:
-            with open(wav_scp_path, "w", encoding="utf8") as wav_file:
-                files = (
-                    session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)
-                    .join(File.speakers)
-                    .join(SpeakerOrdering.speaker)
-                    .join(File.sound_file)
-                    .distinct()
-                    .filter(Speaker.job_id == self.name)
-                    .order_by(File.id.cast(sqlalchemy.String))
-                )
-                for f_id, sox_string, sound_file_path in files:
-                    if not sox_string:
-                        sox_string = sound_file_path
-                    wav_file.write(f"{f_id} {sox_string}\n")
+        with open(wav_scp_path, "w", encoding="utf8") as wav_file:
+            files = (
+                session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)
+                .join(File.speakers)
+                .join(SpeakerOrdering.speaker)
+                .join(File.sound_file)
+                .distinct()
+                .filter(Speaker.job_id == self.name)
+                .order_by(File.id.cast(sqlalchemy.String))
+            )
+            for f_id, sox_string, sound_file_path in files:
+                if not sox_string:
+                    sox_string = sound_file_path
+                wav_file.write(f"{f_id} {sox_string}\n")
 
-            with open(segments_scp_path, "w", encoding="utf8") as segments_file:
-                utterances = (
-                    session.query(
-                        Utterance.kaldi_id,
-                        Utterance.file_id,
-                        Utterance.begin,
-                        Utterance.end,
-                        Utterance.channel,
-                    )
-                    .join(Utterance.speaker)
-                    .filter(Speaker.job_id == self.name)
-                    .order_by(Utterance.kaldi_id)
+        with open(segments_scp_path, "w", encoding="utf8") as segments_file:
+            utterances = (
+                session.query(
+                    Utterance.kaldi_id,
+                    Utterance.file_id,
+                    Utterance.begin,
+                    Utterance.end,
+                    Utterance.channel,
                 )
-                for u_id, f_id, begin, end, channel in utterances:
-                    segments_file.write(f"{u_id} {f_id} {begin} {end} {channel}\n")
+                .join(Utterance.speaker)
+                .filter(Speaker.job_id == self.name)
+                .order_by(Utterance.kaldi_id)
+            )
+            for u_id, f_id, begin, end, channel in utterances:
+                segments_file.write(f"{u_id} {f_id} {begin} {end} {channel}\n")
 
-    def output_to_directory(self, split_directory: str, subset=False) -> None:
+    def output_to_directory(self, split_directory: str, session, subset=False) -> None:
         """
         Output job information to a directory
 
@@ -391,11 +369,11 @@ class Job:
         split_directory: str
             Directory to output to
         """
-        if self.dictionary_names:
-            for dict_name in self.dictionary_names:
+        if self.dictionary_ids:
+            for dict_id in self.dictionary_ids:
                 dict_pattern = f"{self.name}"
-                if dict_name is not None:
-                    dict_pattern = f"{dict_name}.{self.name}"
+                if dict_id is not None:
+                    dict_pattern = f"{dict_id}.{self.name}"
                 scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
                 if not os.path.exists(scp_path):
                     break
@@ -406,12 +384,12 @@ class Job:
         def _write_current() -> None:
             """Write the current data to disk"""
             if not utt2spk:
-                if _current_dict_name is not None:
-                    no_data.append(_current_dict_name)
+                if _current_dict_id is not None:
+                    no_data.append(_current_dict_id)
                 return
             dict_pattern = f"{self.name}"
-            if _current_dict_name is not None:
-                dict_pattern = f"{_current_dict_name}.{self.name}"
+            if _current_dict_id is not None:
+                dict_pattern = f"{_current_dict_id}.{self.name}"
             scp_path = os.path.join(split_directory, f"spk2utt.{dict_pattern}.scp")
             with open(scp_path, "w", encoding="utf8") as f:
                 for speaker in sorted(spk2utt.keys()):
@@ -445,77 +423,79 @@ class Job:
         utt2spk = {}
         text_ints = {}
         texts = {}
-        _current_dict_name = None
-        with Session(self.db_engine) as session:
-            if not self.dictionary_names:
-                utterances = (
-                    session.query(
-                        Utterance.id,
-                        Utterance.speaker_id,
-                        Utterance.features,
-                        Utterance.normalized_text,
-                        Utterance.normalized_text_int,
-                        Speaker.cmvn,
-                    )
-                    .join(Utterance.speaker)
-                    .filter(Speaker.job_id == self.name)
-                    .filter(Utterance.ignored == False)  # noqa
-                    .order_by(Utterance.kaldi_id)
+        _current_dict_id = None
+        if not self.dictionary_ids:
+            utterances = (
+                session.query(
+                    Utterance.id,
+                    Utterance.speaker_id,
+                    Utterance.features,
+                    Utterance.normalized_text,
+                    Utterance.normalized_text_int,
+                    Speaker.cmvn,
                 )
-                if subset:
-                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
-                for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
-                    utterance = str(u_id)
-                    speaker = str(s_id)
-                    utterance = f"{speaker}-{utterance}"
-                    if speaker not in spk2utt:
-                        spk2utt[speaker] = []
-                    spk2utt[speaker].append(utterance)
-                    utt2spk[utterance] = speaker
-                    feats[utterance] = features
-                    cmvns[speaker] = cmvn
-                    text_ints[utterance] = normalized_text_int
-                    texts[utterance] = normalized_text
-                _write_current()
-                return
-            for i, _current_dict_name in enumerate(self.dictionary_names):
-                dict_id = self.dictionary_ids[i]
-                spk2utt = {}
-                feats = {}
-                cmvns = {}
-                utt2spk = {}
-                text_ints = {}
-                utterances = (
-                    session.query(
-                        Utterance.id,
-                        Utterance.speaker_id,
-                        Utterance.features,
-                        Utterance.normalized_text,
-                        Utterance.normalized_text_int,
-                        Speaker.cmvn,
-                    )
-                    .join(Utterance.speaker)
-                    .filter(Speaker.job_id == self.name)
-                    .filter(Speaker.dictionary_id == dict_id)
-                    .filter(Utterance.ignored == False)  # noqa
-                    .order_by(Utterance.kaldi_id)
+                .join(Utterance.speaker)
+                .filter(Speaker.job_id == self.name)
+                .filter(Utterance.ignored == False)  # noqa
+                .order_by(Utterance.kaldi_id)
+            )
+            if subset:
+                utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+            for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
+                utterance = str(u_id)
+                speaker = str(s_id)
+                utterance = f"{speaker}-{utterance}"
+                if speaker not in spk2utt:
+                    spk2utt[speaker] = []
+                spk2utt[speaker].append(utterance)
+                utt2spk[utterance] = speaker
+                feats[utterance] = features
+                cmvns[speaker] = cmvn
+                text_ints[utterance] = normalized_text_int
+                texts[utterance] = normalized_text
+            _write_current()
+            return
+        for _current_dict_id in self.dictionary_ids:
+            spk2utt = {}
+            feats = {}
+            cmvns = {}
+            utt2spk = {}
+            text_ints = {}
+            utterances = (
+                session.query(
+                    Utterance.kaldi_id,
+                    Utterance.speaker_id,
+                    Utterance.features,
+                    Utterance.normalized_text,
+                    Utterance.normalized_text_int,
+                    Speaker.cmvn,
                 )
-                if subset:
-                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
-                for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
-                    utterance = str(u_id)
-                    speaker = str(s_id)
-                    utterance = f"{speaker}-{utterance}"
-                    if speaker not in spk2utt:
-                        spk2utt[speaker] = []
-                    spk2utt[speaker].append(utterance)
-                    utt2spk[utterance] = speaker
-                    feats[utterance] = features
-                    cmvns[speaker] = cmvn
-                    text_ints[utterance] = normalized_text_int
-                    texts[utterance] = normalized_text
-                _write_current()
+                .join(Utterance.speaker)
+                .filter(Speaker.job_id == self.name)
+                .filter(Speaker.dictionary_id == _current_dict_id)
+                .filter(Utterance.ignored == False)  # noqa
+                .order_by(Utterance.kaldi_id)
+            )
+            if subset:
+                utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+            for (
+                utterance,
+                s_id,
+                features,
+                normalized_text,
+                normalized_text_int,
+                cmvn,
+            ) in utterances:
+                speaker = str(s_id)
+                if speaker not in spk2utt:
+                    spk2utt[speaker] = []
+                spk2utt[speaker].append(utterance)
+                utt2spk[utterance] = speaker
+                feats[utterance] = features
+                cmvns[speaker] = cmvn
+                text_ints[utterance] = normalized_text_int
+                texts[utterance] = normalized_text
+            _write_current()
         for d in no_data:
-            ind = self.dictionary_names.index(d)
-            self.dictionary_names.pop(ind)
+            ind = self.dictionary_ids.index(d)
             self.dictionary_ids.pop(ind)

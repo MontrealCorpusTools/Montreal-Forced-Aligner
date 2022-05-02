@@ -84,7 +84,8 @@ class ExitHooks(object):
             "date": BEGIN_DATE,
             "version": get_mfa_version(),
         }
-
+        if "github_token" in history_data["command"]:
+            return
         if self.exit_code is not None:
             history_data["exit_code"] = self.exit_code
             history_data["exception"] = ""
@@ -285,7 +286,7 @@ def create_parser() -> ArgumentParser:
     align_parser.add_argument(
         "--output_format",
         type=str,
-        default="short_textgrid",
+        default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
@@ -333,7 +334,7 @@ def create_parser() -> ArgumentParser:
     adapt_parser.add_argument(
         "--output_format",
         type=str,
-        default="short_textgrid",
+        default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
@@ -391,7 +392,7 @@ def create_parser() -> ArgumentParser:
     train_parser.add_argument(
         "--output_format",
         type=str,
-        default="short_textgrid",
+        default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
@@ -518,6 +519,17 @@ def create_parser() -> ArgumentParser:
         "will list all available languages",
         type=str,
         nargs="?",
+    )
+    model_download_parser.add_argument(
+        "--github_token",
+        type=str,
+        default="",
+        help="Personal access token to use for requests to GitHub to increase rate limit",
+    )
+    model_download_parser.add_argument(
+        "--ignore_cache",
+        action="store_true",
+        help="Flag to ignore existing downloaded models and force a re-download",
     )
     help_message = "List of saved models"
     model_list_parser = model_subparsers.add_parser(

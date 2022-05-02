@@ -9,5 +9,7 @@
        SoundFileInformation
        PhoneSetType
        WordData
-       Pronunciation
+       WordType
+       PhoneType
+       PronunciationProbabilityCounter
        CtmInterval -- Data class for representing intervals in Kaldi's CTM files

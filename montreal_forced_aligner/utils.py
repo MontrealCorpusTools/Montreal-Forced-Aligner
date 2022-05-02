@@ -9,8 +9,8 @@ import logging
 import multiprocessing as mp
 import os
 import shutil
+import subprocess
 import sys
-import traceback
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -70,6 +70,14 @@ def check_third_party():
     bin_path = shutil.which("compute-mfcc-feats")
     if bin_path is None:
         raise ThirdpartyError("compute-mfcc-feats")
+
+    p = subprocess.run(["fstcompile", "--help"], capture_output=True, text=True)
+    if p.returncode == 1 and p.stderr:
+        raise ThirdpartyError("fstcompile", open_fst=True, error_text=p.stderr)
+
+    p = subprocess.run(["compute-mfcc-feats", "--help"], capture_output=True, text=True)
+    if p.returncode == 1 and p.stderr:
+        raise ThirdpartyError("compute-mfcc-feats", error_text=p.stderr)
 
 
 def thirdparty_binary(binary_name: str) -> str:
@@ -251,10 +259,10 @@ class Counter(object):
         self.val = mp.Value("i", init_val)
         self.lock = mp.Lock()
 
-    def increment(self) -> None:
+    def increment(self, value=1) -> None:
         """Increment the counter"""
         with self.lock:
-            self.val.value += 1
+            self.val.value += value
 
     def value(self) -> int:
         """Get the current value of the counter"""
@@ -327,39 +335,38 @@ class ProcessWorker(mp.Process):
         job_name: int,
         job_q: mp.Queue,
         function: Callable,
-        return_dict: dict,
+        return_q: mp.Queue,
         stopped: Stopped,
-        return_info: Optional[Dict[int, Any]] = None,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
         self.function = function
         self.job_q = job_q
-        self.return_dict = return_dict
-        self.return_info = return_info
+        self.return_q = return_q
         self.stopped = stopped
+        self.finished_processing = Stopped()
 
     def run(self) -> None:
         """
         Run through the arguments in the queue apply the function to them
         """
-        try:
-            arguments = self.job_q.get(timeout=1)
-        except Empty:
-            return
-        self.job_q.task_done()
-        try:
-            if isinstance(arguments, MfaArguments):
-                result = self.function(arguments)
-            else:
-                result = self.function(*arguments)
-            if self.return_info is not None:
-                self.return_info[self.job_name] = result
-        except Exception:
-            self.stopped.stop()
-            self.return_dict["error"] = arguments, Exception(
-                traceback.format_exception(*sys.exc_info())
-            )
+        while True:
+            try:
+                arguments = self.job_q.get(timeout=1)
+            except Empty:
+                self.finished_processing.stop()
+                break
+            try:
+                if isinstance(arguments, MfaArguments):
+                    result = self.function(arguments)
+                else:
+                    result = self.function(*arguments)
+                self.return_q.put((self.job_name, result))
+            except Exception as e:
+                self.stopped.stop()
+                if isinstance(e, KaldiProcessingError):
+                    e.job_name = self.job_name
+                self.return_q.put((self.job_name, e))
 
 
 class KaldiProcessWorker(mp.Process):
@@ -385,14 +392,12 @@ class KaldiProcessWorker(mp.Process):
         job_name: int,
         return_q: mp.Queue,
         function: KaldiFunction,
-        error_dict: Dict,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_name = job_name
         self.function = function
         self.return_q = return_q
-        self.error_dict = error_dict
         self.stopped = stopped
         self.finished = Stopped()
 
@@ -403,12 +408,11 @@ class KaldiProcessWorker(mp.Process):
         try:
             for result in self.function.run():
                 self.return_q.put(result)
-        except Exception:
+        except Exception as e:
             self.stopped.stop()
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.error_dict[self.job_name] = Exception(
-                "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-            )
+            if isinstance(e, KaldiProcessingError):
+                e.job_name = self.job_name
+            self.return_q.put(e)
         finally:
             self.finished.stop()
 
@@ -481,25 +485,39 @@ def run_mp(
     os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
     os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
     stopped = Stopped()
-    manager = mp.Manager()
-    job_queue = manager.Queue()
-    return_dict = manager.dict()
-    info = None
-    if return_info:
-        info = manager.dict()
+    job_queue = mp.Queue()
+    return_queue = mp.Queue()
+    error_dict = {}
+    info = {}
     for a in argument_list:
         job_queue.put(a)
     procs = []
     for i in range(len(argument_list)):
-        p = ProcessWorker(i, job_queue, function, return_dict, stopped, info)
+        p = ProcessWorker(i, job_queue, function, return_queue, stopped)
         procs.append(p)
         p.start()
 
+    while True:
+        try:
+            job_name, result = return_queue.get(timeout=1)
+            if stopped.stop_check():
+                continue
+        except Empty:
+            for proc in procs:
+                if not proc.finished_processing.stop_check():
+                    break
+            else:
+                break
+            continue
+        if isinstance(result, KaldiProcessingError):
+            error_dict[job_name] = result
+            continue
+        info[job_name] = result
     for p in procs:
         p.join()
-    if "error" in return_dict:
-        _, exc = return_dict["error"]
-        raise exc
+    if error_dict:
+        for v in error_dict.values():
+            raise v
 
     parse_logs(log_directory)
     if return_info:

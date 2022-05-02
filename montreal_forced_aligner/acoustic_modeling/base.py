@@ -20,9 +20,8 @@ from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMi
 from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.db import Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import (
@@ -39,16 +38,6 @@ if TYPE_CHECKING:
 
 
 __all__ = ["AcousticModelTrainingMixin"]
-
-
-class AlignmentImprovementArguments(MfaArguments):
-    """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`"""
-
-    model_path: str
-    text_int_paths: Dict[str, str]
-    ali_paths: Dict[str, str]
-    frame_shift: int
-    phone_ctm_paths: Dict[str, str]
 
 
 class AcousticModelTrainingMixin(
@@ -124,6 +113,10 @@ class AcousticModelTrainingMixin(
         self.realignment_iterations = []  # Gets set later
         self.final_gaussian_iteration = 0  # Gets set later
 
+    @property
+    def db_path(self):
+        return self.worker.db_path
+
     def acc_stats_arguments(self) -> List[AccStatsArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
@@ -137,37 +130,13 @@ class AcousticModelTrainingMixin(
         return [
             AccStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                self.db_path,
                 os.path.join(self.working_directory, "log", f"acc.{self.iteration}.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, str(self.iteration), "acc"),
                 self.model_path,
-            )
-            for j in self.jobs
-        ]
-
-    def alignment_improvement_arguments(self) -> List[AlignmentImprovementArguments]:
-        """
-        Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.base.compute_alignment_improvement_func`
-
-        Returns
-        -------
-        list[:class:`~montreal_forced_aligner.acoustic_modeling.base.AlignmentImprovementArguments`]
-            Arguments for processing
-        """
-        return [
-            AlignmentImprovementArguments(
-                j.name,
-                getattr(self, "db_path", ""),
-                os.path.join(self.working_log_directory, f"alignment_analysis.{j.name}.log"),
-                self.model_path,
-                j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(
-                    self.working_directory, f"phone.{self.iteration}", "ctm"
-                ),
             )
             for j in self.jobs
         ]
@@ -247,10 +216,9 @@ class AcousticModelTrainingMixin(
         """Top-level worker's DB engine"""
         return self.worker.db_engine
 
-    @property
-    def disambiguation_symbols_int_path(self) -> str:
-        """Path to the disambiguation int file"""
-        return self.worker.disambiguation_symbols_int_path
+    def session(self, **kwargs) -> sqlalchemy.orm.session.Session:
+        """Top-level worker's DB engine"""
+        return self.worker.session(**kwargs)
 
     def construct_feature_proc_strings(
         self, speaker_independent: bool = False
@@ -261,11 +229,6 @@ class AcousticModelTrainingMixin(
     def construct_base_feature_string(self, all_feats: bool = False) -> str:
         """Top-level worker's base feature string"""
         return self.worker.construct_base_feature_string(all_feats)
-
-    @property
-    def lexicon_fst_paths(self) -> Dict[str, str]:
-        """Get the lexicon fst paths of the worker"""
-        return self.worker.lexicon_fst_paths
 
     @property
     def data_directory(self) -> str:
@@ -409,19 +372,18 @@ class AcousticModelTrainingMixin(
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = AccStatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        num_utterances, errors = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -431,6 +393,10 @@ class AcousticModelTrainingMixin(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    num_utterances, errors = result
                     pbar.update(num_utterances + errors)
                 for p in procs:
                     p.join()
@@ -638,7 +604,7 @@ class AcousticModelTrainingMixin(
 
         from ..utils import get_mfa_version
 
-        with Session(self.db_engine) as session:
+        with self.worker.session() as session:
             summary = session.query(
                 func.count(Utterance.id),
                 func.sum(Utterance.duration),

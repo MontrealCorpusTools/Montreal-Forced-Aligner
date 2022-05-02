@@ -16,6 +16,8 @@ class DummyArgs(Namespace):
         self.action = ""
         self.model_type = ""
         self.name = ""
+        self.github_token = ""
+        self.ignore_cache = False
 
 
 def test_get_available_languages():
@@ -72,6 +74,14 @@ def test_download():
     run_model(args)
 
     assert os.path.exists(DictionaryModel.get_pretrained_path(args.name))
+
+    args = DummyArgs()
+    args.action = "download"
+    args.name = ""
+    args.ignore_cache = True
+    args.model_type = "dictionary"
+
+    run_model(args)
 
     args = DummyArgs()
     args.action = "download"

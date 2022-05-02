@@ -4,13 +4,12 @@ from __future__ import annotations
 import collections
 import multiprocessing as mp
 import os
-import shutil
 import time
 from queue import Empty
 from typing import List, Optional
 
 import tqdm
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
@@ -22,11 +21,24 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
     construct_output_path,
-    construct_output_tiers,
 )
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.corpus.db import Corpus, File, PhoneInterval, WordInterval
-from montreal_forced_aligner.data import PronunciationProbabilityCounter, TextFileType
+from montreal_forced_aligner.data import CtmInterval, PronunciationProbabilityCounter, TextFileType
+from montreal_forced_aligner.db import (
+    Corpus,
+    Dictionary,
+    File,
+    PhoneInterval,
+    Pronunciation,
+    SoundFile,
+    Speaker,
+    TextFile,
+    Utterance,
+    Word,
+    WordInterval,
+    WordType,
+)
+from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.textgrid import export_textgrid, output_textgrid_writing_errors
 from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped
 
@@ -78,9 +90,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         return arguments
 
-    def export_textgrid_arguments(self) -> List[ExportTextGridArguments]:
+    def export_textgrid_arguments(self, output_format) -> List[ExportTextGridArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
+
+        Parameters
+        ----------
+        output_format: str, optional
+            Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
 
         Returns
         -------
@@ -94,15 +111,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 os.path.join(self.working_log_directory, f"export_textgrids.{j.name}.log"),
                 self.frame_shift,
                 self.export_output_directory,
-                self.backup_output_directory,
+                output_format,
             )
             for j in self.jobs
         ]
-
-    @property
-    def backup_output_directory(self) -> Optional[str]:
-        """Backup directory if overwriting is not allowed"""
-        return None
 
     def generate_pronunciations_arguments(
         self,
@@ -148,10 +160,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Reference Kaldi script
         """
 
-        def format_probability(probability_value):
+        def format_probability(probability_value: float) -> float:
+            """Format a probability to have two decimal places and be between 0.01 and 0.99"""
             return min(max(round(probability_value, 2), 0.01), 0.99)
 
-        def format_correction(correction_value):
+        def format_correction(correction_value: float) -> float:
+            """Format a probability correction value to have two decimal places and be  greater than 0.01"""
             correction_value = round(correction_value, 2)
             if correction_value == 0:
                 correction_value = 0.01
@@ -159,8 +173,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         begin = time.time()
         dictionary_counters = {
-            dict_name: PronunciationProbabilityCounter()
-            for dict_name in self.dictionary_mapping.keys()
+            dict_id: PronunciationProbabilityCounter() for dict_id in self.dictionary_lookup.keys()
         }
         self.log_info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
@@ -168,19 +181,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = GeneratePronunciationsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        dict_name, utterance_counter = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -190,7 +202,11 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         else:
                             break
                         continue
-                    dictionary_counters[dict_name].add_counts(utterance_counter)
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    dict_id, utterance_counter = result
+                    dictionary_counters[dict_id].add_counts(utterance_counter)
                     pbar.update(1)
                 for p in procs:
                     p.join()
@@ -201,8 +217,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 self.log_debug("Not using multiprocessing...")
                 for args in arguments:
                     function = GeneratePronunciationsFunction(args)
-                    for dict_name, utterance_counter in function.run():
-                        dictionary_counters[dict_name].add_counts(utterance_counter)
+                    for dict_id, utterance_counter in function.run():
+                        dictionary_counters[dict_id].add_counts(utterance_counter)
                         pbar.update(1)
 
         initial_key = ("<s>", "")
@@ -216,30 +232,37 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             os.path.join(self.working_log_directory, "pronunciation_probability_calculation.log"),
             "w",
             encoding="utf8",
-        ) as log_file:
-            for dict_name, counter in dictionary_counters.items():
-                dictionary = self.dictionary_mapping[dict_name]
-                log_file.write(f"For {dict_name}:\n")
-                floored_pronunciations = []
-                for w, pron_counts in counter.word_pronunciation_counts.items():
+        ) as log_file, self.session() as session:
+            dictionaries = session.query(Dictionary.id)
+            dictionary_mappings = []
+            for (d_id,) in dictionaries:
+                counter = dictionary_counters[d_id]
+                log_file.write(f"For {d_id}:\n")
+                words = (
+                    session.query(Word.word)
+                    .filter(Word.dictionary_id == d_id)
+                    .filter(Word.word_type != WordType.silence)
+                )
+                pronunciations = (
+                    session.query(Word.word, Pronunciation.pronunciation, Pronunciation.id)
+                    .join(Pronunciation.word)
+                    .filter(Word.dictionary_id == d_id)
+                    .filter(Word.word_type != WordType.silence)
+                )
+                pron_mapping = {}
+                for w, p, p_id in pronunciations:
+                    pron_mapping[(w, p)] = {"id": p_id}
                     if w in {initial_key[0], final_key[0], self.silence_word}:
                         continue
-                    for p in dictionary.words[w]:  # Add one smoothing
-                        pron_counts[p.pronunciation] += 1
+                    counter.word_pronunciation_counts[w][p] += 1  # Add one smoothing
+                for (w,) in words:
+                    if w in {initial_key[0], final_key[0], self.silence_word}:
+                        continue
+                    pron_counts = counter.word_pronunciation_counts[w]
                     max_value = max(pron_counts.values())
-                    log_file.write(f"{w} max value: {max_value}\n")
-                    for p in dictionary.words[w]:
-                        c = pron_counts[p.pronunciation]
-                        p.probability = format_probability(c / max_value)
-                        if p.probability == 0.01:
-                            floored_pronunciations.append((w, p.pronunciation))
-                self.log_debug(
-                    f"The following word/pronunciation combos had near zero probability "
-                    f"and could likely be removed from {dict_name}:"
-                )
-                self.log_debug(
-                    "  " + ", ".join(f'{w} /{" ".join(p)}/' for w, p in floored_pronunciations)
-                )
+                    for p, c in pron_counts.items():
+                        pron_mapping[(w, p)]["probability"] = format_probability(c / max_value)
+
                 if not compute_silence_probabilities:
                     log_file.write("Skipping silence calculations")
                     continue
@@ -247,29 +270,21 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 non_silence_count = sum(counter.non_silence_before_counts.values())
                 log_file.write(f"Total silence count was {silence_count}\n")
                 log_file.write(f"Total non silence count was {non_silence_count}\n")
-                dictionary.silence_probability = silence_count / (
-                    silence_count + non_silence_count
-                )
-                silence_prob_sum += dictionary.silence_probability
+                silence_probability = silence_count / (silence_count + non_silence_count)
+                silence_prob_sum += silence_probability
                 silence_probabilities = {}
-                for w_p, count in counter.silence_following_counts.items():
-                    w_p_silence_count = count + (dictionary.silence_probability * lambda_2)
-                    w_p_non_silence_count = counter.non_silence_following_counts[w_p] + (
-                        (1 - dictionary.silence_probability) * lambda_2
+                for w, p, _ in pronunciations:
+                    count = counter.silence_following_counts[(w, p)]
+                    w_p_silence_count = count + (silence_probability * lambda_2)
+                    w_p_non_silence_count = counter.non_silence_following_counts[(w, p)] + (
+                        (1 - silence_probability) * lambda_2
                     )
                     prob = format_probability(
                         w_p_silence_count / (w_p_silence_count + w_p_non_silence_count)
                     )
-                    silence_probabilities[w_p] = prob
-                    if w_p[0] not in {initial_key[0], final_key[0], self.silence_word}:
-                        pron = dictionary.words[w_p[0]][w_p[1]]
-                        pron.silence_after_probability = prob
-                        log_file.write(
-                            f"{w_p[0], w_p[1]} silence after: {w_p_silence_count}\tnon silence after: {w_p_non_silence_count}\n"
-                        )
-                        log_file.write(
-                            f"{w_p[0], w_p[1]} silence after prob: {pron.silence_after_probability}\n"
-                        )
+                    silence_probabilities[(w, p)] = prob
+                    if w not in {initial_key[0], final_key[0], self.silence_word}:
+                        pron_mapping[(w, p)]["silence_after_probability"] = prob
                 lambda_3 = 2
                 bar_count_silence_wp = collections.defaultdict(float)
                 bar_count_non_silence_wp = collections.defaultdict(float)
@@ -284,63 +299,61 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     if w_p[0] in {initial_key[0], final_key[0], self.silence_word}:
                         continue
                     non_silence_count = counter.non_silence_before_counts[w_p]
-                    pron = dictionary.words[w_p[0]][w_p[1]]
-                    pron.silence_before_correction = format_correction(
+                    pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
                         (silence_count + lambda_3) / (bar_count_silence_wp[w_p] + lambda_3)
                     )
 
-                    pron.non_silence_before_correction = format_correction(
+                    pron_mapping[(w, p)]["non_silence_before_correction"] = format_correction(
                         (non_silence_count + lambda_3) / (bar_count_non_silence_wp[w_p] + lambda_3)
                     )
-                    log_file.write(
-                        f"{w_p[0], w_p[1]} silence count: {silence_count}\tnon silence count: {non_silence_count}\n"
-                    )
-                    log_file.write(
-                        f"{w_p[0], w_p[1]} silence count: {pron.silence_before_correction}\tnon silence before correction: {pron.non_silence_before_correction}\n"
-                    )
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
-                    dictionary.silence_probability * lambda_2
+                    silence_probability * lambda_2
                 )
                 initial_non_silence_count = counter.non_silence_before_counts[initial_key] + (
-                    (1 - dictionary.silence_probability) * lambda_2
+                    (1 - silence_probability) * lambda_2
                 )
-                dictionary.initial_silence_probability = format_probability(
+                initial_silence_probability = format_probability(
                     initial_silence_count / (initial_silence_count + initial_non_silence_count)
                 )
 
-                dictionary.final_silence_correction = format_correction(
+                final_silence_correction = format_correction(
                     (counter.silence_before_counts[final_key] + lambda_3)
                     / (bar_count_silence_wp[final_key] + lambda_3)
                 )
 
-                dictionary.final_non_silence_correction = format_correction(
+                final_non_silence_correction = format_correction(
                     (counter.non_silence_before_counts[final_key] + lambda_3)
                     / (bar_count_non_silence_wp[final_key] + lambda_3)
                 )
-                initial_silence_prob_sum += dictionary.initial_silence_probability
-                final_silence_correction_sum += dictionary.final_silence_correction
-                final_non_silence_correction_sum += dictionary.final_non_silence_correction
-        if compute_silence_probabilities:
-            self.silence_probability = silence_prob_sum / len(self.dictionary_mapping)
-            self.initial_silence_probability = initial_silence_prob_sum / len(
-                self.dictionary_mapping
-            )
-            self.final_silence_correction = final_silence_correction_sum / len(
-                self.dictionary_mapping
-            )
-            self.final_non_silence_correction = final_non_silence_correction_sum / len(
-                self.dictionary_mapping
-            )
+                initial_silence_prob_sum += initial_silence_probability
+                final_silence_correction_sum += final_silence_correction
+                final_non_silence_correction_sum += final_non_silence_correction
+                dictionary_mappings.append(
+                    {
+                        "id": d_id,
+                        "silence_probability": silence_probability,
+                        "initial_silence_probability": initial_silence_probability,
+                        "final_silence_correction": final_silence_correction,
+                        "final_non_silence_correction": final_non_silence_correction,
+                    }
+                )
+            if compute_silence_probabilities:
+                self.silence_probability = silence_prob_sum / self.num_dictionaries
+                self.initial_silence_probability = initial_silence_prob_sum / self.num_dictionaries
+                self.final_silence_correction = (
+                    final_silence_correction_sum / self.num_dictionaries
+                )
+                self.final_non_silence_correction = (
+                    final_non_silence_correction_sum / self.num_dictionaries
+                )
+            session.bulk_update_mappings(Pronunciation, pron_mapping.values())
+            session.bulk_update_mappings(Dictionary, dictionary_mappings)
+            session.commit()
         self.log_debug(f"Alignment round took {time.time() - begin}")
 
     def _collect_alignments(self):
         """
         Process alignment archives to extract word or phone alignments
-
-        Parameters
-        ----------
-        output_format: str, optional
-            Format to save alignments, one of 'long_textgrids', 'short_textgrids' (the default), or 'json', passed to praatio
 
         See Also
         --------
@@ -353,25 +366,24 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         self.log_info("Collecting phone and word alignments from alignment lattices...")
         jobs = self.alignment_extraction_arguments()  # Phone CTM jobs
-        with Session(self.db_engine) as session, tqdm.tqdm(
+        with self.session() as session, tqdm.tqdm(
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar:
             phone_interval_mappings = []
             word_interval_mappings = []
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(jobs):
                     function = AlignmentExtractionFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        utterance, word_intervals, phone_intervals = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -381,7 +393,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         else:
                             break
                         continue
-
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    utterance, word_intervals, phone_intervals = result
                     for interval in phone_intervals:
                         phone_interval_mappings.append(
                             {
@@ -432,12 +447,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                             )
 
                         pbar.update(1)
-            session.bulk_insert_mappings(PhoneInterval, phone_interval_mappings)
-            session.bulk_insert_mappings(WordInterval, word_interval_mappings)
-            session.commit()
-        self.alignment_done = True
-        with self.session() as session:
+            self.alignment_done = True
             session.query(Corpus).update({"alignment_done": True})
+            session.bulk_insert_mappings(
+                PhoneInterval, phone_interval_mappings, return_defaults=False, render_nulls=True
+            )
+            session.bulk_insert_mappings(
+                WordInterval, word_interval_mappings, return_defaults=False, render_nulls=True
+            )
             session.commit()
 
     def collect_alignments(self) -> None:
@@ -464,7 +481,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         Parameters
         ----------
         output_format: str, optional
-            Format to save alignments, one of 'long_textgrids', 'short_textgrids' (the default), or 'json', passed to praatio
+            Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
         """
         if not self.alignment_done:
             self._collect_alignments()
@@ -473,16 +490,25 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         with tqdm.tqdm(total=self.num_files, disable=getattr(self, "quiet", False)) as pbar:
 
-            with Session(self.db_engine) as session:
-                files = session.query(File).options(joinedload(File.sound_file))
+            with self.session() as session:
+                files = (
+                    session.query(
+                        File.id,
+                        File.name,
+                        File.relative_path,
+                        SoundFile.duration,
+                        TextFile.text_file_path,
+                    )
+                    .join(File.sound_file)
+                    .join(File.text_file)
+                )
                 if self.use_mp:
-                    manager = mp.Manager()
-                    textgrid_errors = manager.dict()
                     stopped = Stopped()
 
-                    finished_processing = Stopped()
-                    for_write_queue = mp.JoinableQueue()
-                    export_args = self.export_textgrid_arguments()
+                    finished_adding = Stopped()
+                    for_write_queue = mp.Queue()
+                    return_queue = mp.Queue()
+                    export_args = self.export_textgrid_arguments(output_format)
                     exported_file_count = Counter()
                     export_procs = []
                     self.db_engine.dispose()
@@ -490,47 +516,77 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         export_proc = ExportTextGridProcessWorker(
                             self.db_path,
                             for_write_queue,
+                            return_queue,
                             stopped,
-                            finished_processing,
-                            textgrid_errors,
-                            output_format,
-                            self.export_output_directory,
+                            finished_adding,
                             export_args[j.name],
                             exported_file_count,
                         )
                         export_proc.start()
                         export_procs.append(export_proc)
                     try:
-                        for f in files:
-                            for_write_queue.put(
-                                (f.id, f.name, f.relative_path, f.sound_file.duration)
-                            )
-                        last_value = 0
-                        while exported_file_count.value() < self.num_files - 2:
-                            new_value = exported_file_count.value()
-                            if new_value != last_value:
-                                pbar.update(new_value - last_value)
-                                last_value = new_value
-                            time.sleep(5)
+                        for args in files:
+                            for_write_queue.put(args)
+                        finished_adding.stop()
+                        while True:
+                            try:
+                                result = return_queue.get(timeout=1)
+                                if self.stopped.stop_check():
+                                    continue
+                            except Empty:
+                                for proc in export_procs:
+                                    if not proc.finished_processing.stop_check():
+                                        break
+                                else:
+                                    break
+                                continue
+                            if isinstance(result, int):
+                                pbar.update(1)
+                            else:
+                                export_errors[result[0]] = result[1]
                     except Exception:
                         stopped.stop()
                         raise
                     finally:
-                        finished_processing.stop()
 
-                        for_write_queue.join()
                         for i in range(self.num_jobs):
                             export_procs[i].join()
-                        export_errors.update(textgrid_errors)
                 else:
                     self.log_debug("Not using multiprocessing for TextGrid export")
 
-                    for f in files:
+                    for file_id, name, relative_path, duration, text_file_path in files:
                         output_path = construct_output_path(
-                            f.name, f.relative_path, self.export_output_directory
+                            name,
+                            relative_path,
+                            self.export_output_directory,
+                            text_file_path,
+                            output_format,
                         )
-                        data = construct_output_tiers(session, f.id)
-                        export_textgrid(data, output_path, f.sound_file.duration, self.frame_shift)
+                        utterances = (
+                            session.query(Utterance)
+                            .options(
+                                joinedload(Utterance.speaker, innerjoin=True).load_only(
+                                    Speaker.name
+                                ),
+                                selectinload(Utterance.phone_intervals),
+                                selectinload(Utterance.word_intervals),
+                            )
+                            .filter(Utterance.file_id == file_id)
+                        )
+                        data = {}
+                        for utt in utterances:
+                            if utt.speaker.name not in data:
+                                data[utt.speaker.name] = {"words": [], "phones": []}
+                            for wi in utt.word_intervals:
+                                data[utt.speaker.name]["words"].append(
+                                    CtmInterval(wi.begin, wi.end, wi.label, utt.id)
+                                )
+
+                            for pi in utt.phone_intervals:
+                                data[utt.speaker.name]["phones"].append(
+                                    CtmInterval(pi.begin, pi.end, pi.label, utt.id)
+                                )
+                        export_textgrid(data, output_path, duration, self.frame_shift)
                         pbar.update(1)
 
         if export_errors:
@@ -551,17 +607,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ----------
         output_directory: str
             Directory to save to
+        output_format: str, optional
+            Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
         """
         if output_format is None:
             output_format = TextFileType.TEXTGRID.value
         self.export_output_directory = output_directory
-        if self.backup_output_directory and os.path.exists(self.backup_output_directory):
-            shutil.rmtree(self.backup_output_directory, ignore_errors=True)
-        if os.path.exists(self.export_output_directory) and not self.overwrite:
-            self.export_output_directory = self.backup_output_directory
-            self.log_debug(
-                f"Not overwriting existing directory, exporting to {self.export_output_directory}"
-            )
 
         self.log_info(f"Exporting TextGrids to {self.export_output_directory}...")
         os.makedirs(self.export_output_directory, exist_ok=True)

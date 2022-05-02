@@ -13,6 +13,7 @@ from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsFunction,
     IvectorConfigMixin,
 )
+from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
 
 __all__ = ["IvectorCorpusMixin"]
@@ -89,19 +90,18 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         arguments = self.extract_ivectors_arguments()
         with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = ExtractIvectorsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        _ = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -112,6 +112,9 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                             break
                         continue
                     pbar.update(1)
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
                 for p in procs:
                     p.join()
                 if error_dict:

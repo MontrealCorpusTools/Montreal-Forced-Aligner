@@ -6,11 +6,9 @@ import re
 import subprocess
 from typing import TYPE_CHECKING, Generator
 
-from sqlalchemy.orm import Session, load_only
-
 from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
-from montreal_forced_aligner.corpus.db import Utterance
 from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
+from montreal_forced_aligner.db import Dictionary, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.models import LanguageModel
@@ -337,10 +335,10 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         """
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
 
-        with Session(self.db_engine) as session:
-            utterances = session.query(Utterance).options(load_only(Utterance.normalized_text))
-            for u in utterances:
-                text = u.normalized_text.split()
+        with self.session() as session:
+            utterances = session.query(Utterance.normalized_text)
+            for (normalized_text,) in utterances:
+                text = normalized_text.split()
                 yield " ".join(x if x not in unk_words else self.oov_word for x in text)
 
     def train_large_lm(self) -> None:
@@ -397,7 +395,10 @@ class LmDictionaryCorpusTrainerMixin(MultispeakerDictionaryMixin, LmCorpusTraine
     @property
     def sym_path(self):
         """Internal path to symbols file"""
-        return os.path.join(self.default_dictionary.dictionary_output_directory, "words.txt")
+        with self.session() as session:
+            default_dictionary = session.query(Dictionary).get(self._default_dictionary_id)
+            words_path = default_dictionary.words_symbol_path
+        return words_path
 
 
 class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
@@ -485,7 +486,6 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.dictionary_setup()
         self._load_corpus()
-        self.set_lexicon_word_set(self.corpus_word_set)
         self.write_lexicon_information()
 
         with open(self.training_path, "w", encoding="utf8") as f:

@@ -24,7 +24,7 @@ training:
       power: 0.25
 
   - sat:
-      num_iterations: 15
+      num_iterations: 12
       num_leaves: 2000
       max_gaussians: 10000
       power: 0.2

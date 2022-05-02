@@ -93,7 +93,7 @@ def parse_aligned_textgrid(
             continue
         m = phone_tier_pattern.match(tier_name)
         if m:
-            speaker_name = m.groups()[0]
+            speaker_name = m.groups()[0].strip()
         elif root_speaker:
             speaker_name = root_speaker
         else:
@@ -107,7 +107,7 @@ def parse_aligned_textgrid(
             begin, end = round(begin, 4), round(end, 4)
             if end - begin < 0.01:
                 continue
-            interval = CtmInterval(begin, end, text, speaker_name)
+            interval = CtmInterval(begin, end, text, 0)
             data[speaker_name].append(interval)
     return data
 

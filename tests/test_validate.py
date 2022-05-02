@@ -13,18 +13,17 @@ def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_diction
         phone_set_type="ARPA",
     )
     validator.setup()
-    d = validator.default_dictionary
     assert validator.phone_set_type.name == "ARPA"
-    assert d.extra_questions_mapping
-    assert d.phone_set_type.name == "ARPA"
-    for k, v in d.extra_questions_mapping.items():
+    assert validator.extra_questions_mapping
+    assert validator.phone_set_type.name == "ARPA"
+    for k, v in validator.extra_questions_mapping.items():
         print(k)
         print(v)
         assert len(v) == len(set(v))
-    assert all("0" in x for x in d.extra_questions_mapping["stress_0"])
-    assert all("1" in x for x in d.extra_questions_mapping["stress_1"])
-    assert all("2" in x for x in d.extra_questions_mapping["stress_2"])
-    assert "fricatives" in d.extra_questions_mapping
+    assert all("0" in x for x in validator.extra_questions_mapping["stress_0"])
+    assert all("1" in x for x in validator.extra_questions_mapping["stress_1"])
+    assert all("2" in x for x in validator.extra_questions_mapping["stress_2"])
+    assert "fricatives" in validator.extra_questions_mapping
     fricatives = [
         x + p
         for x, p in itertools.product(
@@ -35,22 +34,22 @@ def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_diction
                 "F",
                 "TH",
             },
-            d.positions,
+            validator.positions,
         )
     ]
-    assert all(x in d.extra_questions_mapping["fricatives"] for x in fricatives)
-    assert set(d.extra_questions_mapping["close"]) == {
+    assert all(x in validator.extra_questions_mapping["fricatives"] for x in fricatives)
+    assert set(validator.extra_questions_mapping["close"]) == {
         x + p
         for x, p in itertools.product(
             {"IH", "UH", "IY", "UW"},
-            d.positions,
+            validator.positions,
         )
     }
-    assert set(d.extra_questions_mapping["close_mid"]) == {
+    assert set(validator.extra_questions_mapping["close_mid"]) == {
         x + p
         for x, p in itertools.product(
             {"EY", "OW", "AH"},
-            d.positions,
+            validator.positions,
         )
     }
 
@@ -66,20 +65,19 @@ def test_training_validator_ipa(
         phone_set_type="IPA",
     )
     validator.setup()
-    d = validator.default_dictionary
     assert validator.phone_set_type.name == "IPA"
-    assert d.extra_questions_mapping
-    assert d.phone_set_type.name == "IPA"
-    for k, v in d.extra_questions_mapping.items():
+    assert validator.extra_questions_mapping
+    assert validator.phone_set_type.name == "IPA"
+    for k, v in validator.extra_questions_mapping.items():
         print(k)
         print(v)
         assert len(v) == len(set(v))
-    assert "dental" in d.extra_questions_mapping
+    assert "dental" in validator.extra_questions_mapping
     dental = {
         x + p
         for x, p in itertools.product(
             {"f", "v", "θ", "ð"},
-            d.positions,
+            validator.positions,
         )
     }
-    assert all(x in d.extra_questions_mapping["dental"] for x in dental)
+    assert all(x in validator.extra_questions_mapping["dental"] for x in dental)

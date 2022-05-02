@@ -79,7 +79,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"map_acc_stats.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "map", "acc"),
@@ -99,10 +99,10 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         """
         arguments = self.map_acc_stats_arguments(alignment)
         if alignment:
-            initial_mdl_path = os.path.join(self.working_directory, "0.alimdl")
-            final_mdl_path = os.path.join(self.working_directory, "0.alimdl")
+            initial_mdl_path = os.path.join(self.working_directory, "unadapted.alimdl")
+            final_mdl_path = os.path.join(self.working_directory, "final.alimdl")
         else:
-            initial_mdl_path = os.path.join(self.working_directory, "0.mdl")
+            initial_mdl_path = os.path.join(self.working_directory, "unadapted.mdl")
             final_mdl_path = os.path.join(self.working_directory, "final.mdl")
         if not os.path.exists(initial_mdl_path):
             return
@@ -111,19 +111,18 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = AccStatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        num_utterances, errors = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -133,6 +132,10 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    num_utterances, errors = result
                     pbar.update(num_utterances + errors)
                 for p in procs:
                     p.join()
@@ -212,14 +215,14 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     def model_path(self):
         """Current acoustic model path"""
         if not self.adaptation_done:
-            return os.path.join(self.working_directory, "0.mdl")
+            return os.path.join(self.working_directory, "unadapted.mdl")
         return os.path.join(self.working_directory, "final.mdl")
 
     @property
     def alignment_model_path(self):
         """Current acoustic model path"""
         if not self.adaptation_done:
-            path = os.path.join(self.working_directory, "0.alimdl")
+            path = os.path.join(self.working_directory, "unadapted.alimdl")
             if os.path.exists(path) and getattr(self, "speaker_independent", True):
                 return path
             return self.model_path
@@ -274,7 +277,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             p = os.path.join(self.working_directory, f)
             if not os.path.exists(p):
                 continue
-            os.rename(p, os.path.join(self.working_directory, f.replace("final", "0")))
+            os.rename(p, os.path.join(self.working_directory, f.replace("final", "unadapted")))
         self.align()
         os.makedirs(self.align_directory, exist_ok=True)
         try:
@@ -347,7 +350,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         basename, _ = os.path.splitext(filename)
         acoustic_model = AcousticModel.empty(basename, root_directory=self.working_log_directory)
         acoustic_model.add_meta_file(self)
-        acoustic_model.add_model(self.align_directory)
+        acoustic_model.add_model(self.working_directory)
         if directory:
             os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(output_model_path)

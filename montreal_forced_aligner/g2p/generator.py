@@ -6,21 +6,19 @@ import multiprocessing as mp
 import os
 import queue
 import re
-import sys
 import time
-import traceback
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
-from montreal_forced_aligner.dictionary.pronunciation import Pronunciation, WordData
+from montreal_forced_aligner.data import WordData
 from montreal_forced_aligner.exceptions import G2PError, PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
 from montreal_forced_aligner.helper import comma_join
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import Counter, Stopped
+from montreal_forced_aligner.utils import Stopped
 
 try:
     import pynini
@@ -141,20 +139,16 @@ class RewriterWorker(mp.Process):
     def __init__(
         self,
         job_q: mp.Queue,
-        return_dict: Dict[str, List[Tuple[str, ...]]],
-        error_dict: Dict[str, Exception],
+        return_queue: mp.Queue,
         rewriter: Rewriter,
-        counter: Counter,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)
         self.job_q = job_q
-        self.return_dict = return_dict
-        self.error_dict = error_dict
+        self.return_queue = return_queue
         self.rewriter = rewriter
-        self.counter = counter
         self.stopped = stopped
-        self.finished_signal = Stopped()
+        self.finished = Stopped()
 
     def run(self) -> None:
         """Run the rewriting function"""
@@ -163,20 +157,17 @@ class RewriterWorker(mp.Process):
                 word = self.job_q.get(timeout=1)
             except queue.Empty:
                 break
-            self.job_q.task_done()
             if self.stopped.stop_check():
                 continue
             try:
                 rep = self.rewriter(word)
-                self.return_dict[word] = rep
+                self.return_queue.put((word, rep))
             except rewrite.Error:
                 pass
-            except Exception:  # noqa
+            except Exception as e:  # noqa
                 self.stopped.stop()
-                self.finished_signal.stop()
-                self.error_dict[word] = Exception(traceback.format_exception(*sys.exc_info()))
-            self.counter.increment()
-        self.finished_signal.stop()
+                self.return_queue.put(e)
+        self.finished.stop()
         return
 
 
@@ -229,8 +220,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
         """
         pronunciations = {}
         for word in self.words_to_g2p:
-            pronunciation = Pronunciation(tuple(word), 1, None, None, None, None)
-            pronunciations[word] = WordData(word, {pronunciation})
+            pronunciations[word] = WordData(word, {tuple(word)})
         return pronunciations
 
 
@@ -292,35 +282,34 @@ class PyniniGenerator(G2PTopLevelMixin):
 
         num_words = len(self.words_to_g2p)
         begin = time.time()
-        last_value = 0
         missing_graphemes = set()
         self.log_info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
         if num_words < 30 or self.num_jobs < 2:
-            for word in self.words_to_g2p:
-                w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
-                missing_graphemes = missing_graphemes | m
-                if self.strict_graphemes and m:
-                    skipped_words += 1
-                    continue
-                if not w:
-                    skipped_words += 1
-                    continue
-                try:
-                    pron = rewriter(w)
-                except rewrite.Error:
-                    continue
-                to_return[word] = WordData(
-                    w, {Pronunciation(p, 1, None, None, None, None) for p in pron if p}
+            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
+                for word in self.words_to_g2p:
+                    w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
+                    pbar.update(1)
+                    missing_graphemes = missing_graphemes | m
+                    if self.strict_graphemes and m:
+                        skipped_words += 1
+                        continue
+                    if not w:
+                        skipped_words += 1
+                        continue
+                    try:
+                        pron = rewriter(w)
+                    except rewrite.Error:
+                        continue
+                    to_return[word] = WordData(w, {p for p in pron if p})
+                self.log_debug(
+                    f"Skipping {skipped_words} words for containing the following graphemes: "
+                    f"{comma_join(sorted(missing_graphemes))}"
                 )
-            self.log_debug(
-                f"Skipping {skipped_words} words for containing the following graphemes: "
-                f"{comma_join(sorted(missing_graphemes))}"
-            )
         else:
             stopped = Stopped()
-            job_queue = mp.JoinableQueue()
+            job_queue = mp.Queue()
             for word in self.words_to_g2p:
                 w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
                 missing_graphemes = missing_graphemes | m
@@ -335,43 +324,39 @@ class PyniniGenerator(G2PTopLevelMixin):
                 f"Skipping {skipped_words} words for containing the following graphemes: "
                 f"{comma_join(sorted(missing_graphemes))}"
             )
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_dict = manager.dict()
+            error_dict = {}
+            return_dict = {}
+            return_queue = mp.Queue()
             procs = []
-            counter = Counter()
             for _ in range(self.num_jobs):
                 p = RewriterWorker(
                     job_queue,
-                    return_dict,
-                    error_dict,
+                    return_queue,
                     rewriter,
-                    counter,
                     stopped,
                 )
                 procs.append(p)
                 p.start()
-            value = 0
             num_words -= skipped_words
-            if num_words > 10000:
-                sleep_increment = 10
-            else:
-                sleep_increment = 2
             with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
-                while value < num_words:
-                    time.sleep(sleep_increment)
-                    if stopped.stop_check():
-                        break
-                    value = counter.value()
-                    if value != last_value:
-                        pbar.update(value - last_value)
-                        last_value = value
+                while True:
+                    try:
+                        word, result = return_queue.get(timeout=1)
+                        if stopped.stop_check():
+                            continue
+                    except queue.Empty:
                         for proc in procs:
-                            if not proc.finished_signal.stop_check():
+                            if not proc.finished.stop_check():
                                 break
                         else:
                             break
-            job_queue.join()
+                        continue
+                    pbar.update(1)
+                    if isinstance(result, Exception):
+                        error_dict[word] = result
+                        continue
+                    return_dict[word] = result
+
             for p in procs:
                 p.join()
             if error_dict:
@@ -380,7 +365,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 if w in return_dict:
                     to_return[w] = WordData(
                         w,
-                        {Pronunciation(p, 1, None, None, None, None) for p in return_dict[w] if p},
+                        {p for p in return_dict[w] if p},
                     )
         self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return

@@ -3,6 +3,15 @@ __pycache__/
 *.py[cod]
 *.exe
 *.zip
+*.txt
+*.lab
+*.dict
+!tests/data/dictionaries/*.dict
+!tests/data/dictionaries/*.txt
+!tests/data/lab/*.txt
+!tests/data/lab/*.lab
+!tests/data/am/*.zip
+!tests/data/lm/*.zip
 report.txt
 
 .idea/
@@ -72,18 +81,14 @@ docs/build/
 # PyBuilder
 target/
 
-*.exe
 
 *.dll
 
-\.pytest_cache/
+.pytest_cache/
 
 docs/source/api/
 
-montreal_forced_aligner/_version.py
-/docs/source/reference/generated/
-<<<<<<< main
-
-docs/source/reference/multiprocessing/generated/
 
 *.lprof
+
+*.pclprof

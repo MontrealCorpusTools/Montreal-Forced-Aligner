@@ -16,13 +16,13 @@ from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import tqdm
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from sqlalchemy.orm import joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
-from montreal_forced_aligner.corpus.db import File, SpeakerOrdering, Utterance
 from montreal_forced_aligner.corpus.features import VadConfigMixin
 from montreal_forced_aligner.data import MfaArguments, TextFileType
+from montreal_forced_aligner.db import File, SpeakerOrdering, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, load_scp
 from montreal_forced_aligner.utils import (
@@ -295,24 +295,24 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
 
         arguments = self.segment_vad_arguments()
         old_utts = set()
+        new_utts = []
 
         with tqdm.tqdm(
             total=self.num_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar, Session(self.db_engine) as session:
+        ) as pbar, self.session() as session:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = SegmentVadFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                     while True:
                         try:
-                            utt, begin, end = return_queue.get(timeout=1)
+                            result = return_queue.get(timeout=1)
                             if stopped.stop_check():
                                 continue
                         except Empty:
@@ -322,23 +322,36 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                             else:
                                 break
                             continue
+                        if isinstance(result, KaldiProcessingError):
+                            error_dict[result.job_name] = result
+                            continue
+                        utt, begin, end = result
                         old_utts.add(utt)
-                        utterance = (
-                            session.query(Utterance)
-                            .options(joinedload(Utterance.speaker), joinedload(Utterance.file))
-                            .get(utt)
-                        )
-                        session.add(
-                            Utterance(
-                                begin=begin,
-                                end=end,
-                                text="speech",
-                                speaker=utterance.speaker,
-                                file=utterance.file,
-                                channel=utterance.channel,
-                                duration=end - begin,
+                        channel, speaker_id, file_id = (
+                            session.query(
+                                Utterance.channel, Utterance.speaker_id, Utterance.file_id
                             )
+                            .filter(Utterance.id == utt)
+                            .first()
                         )
+                        new_utts.append(
+                            {
+                                "begin": begin,
+                                "end": end,
+                                "text": "speech",
+                                "speaker_id": speaker_id,
+                                "file_id": file_id,
+                                "oovs": "",
+                                "normalized_text": "",
+                                "normalized_text_int": "",
+                                "features": "",
+                                "in_subset": False,
+                                "ignored": False,
+                                "channel": channel,
+                                "duration": end - begin,
+                            }
+                        )
+
                         pbar.update(1)
                 for p in procs:
                     p.join()
@@ -350,26 +363,35 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                     function = SegmentVadFunction(args)
                     for utt, begin, end in function.run():
                         old_utts.add(utt)
-                        print(utt)
-                        utterance = (
-                            session.query(Utterance)
-                            .options(joinedload(Utterance.speaker), joinedload(Utterance.file))
-                            .get(utt)
-                        )
-                        print(utterance)
-                        session.add(
-                            Utterance(
-                                begin=begin,
-                                end=end,
-                                text="speech",
-                                speaker=utterance.speaker,
-                                file=utterance.file,
-                                channel=utterance.channel,
-                                duration=end - begin,
+                        channel, speaker_id, file_id = (
+                            session.query(
+                                Utterance.channel, Utterance.speaker_id, Utterance.file_id
                             )
+                            .filter(Utterance.id == utt)
+                            .first()
+                        )
+                        new_utts.append(
+                            {
+                                "begin": begin,
+                                "end": end,
+                                "text": "speech",
+                                "speaker_id": speaker_id,
+                                "file_id": file_id,
+                                "oovs": "",
+                                "normalized_text": "",
+                                "normalized_text_int": "",
+                                "features": "",
+                                "in_subset": False,
+                                "ignored": False,
+                                "channel": channel,
+                                "duration": end - begin,
+                            }
                         )
                         pbar.update(1)
             session.query(Utterance).filter(Utterance.id.in_(old_utts)).delete()
+            session.bulk_insert_mappings(
+                Utterance, new_utts, return_defaults=False, render_nulls=True
+            )
             session.commit()
 
     def setup(self) -> None:
@@ -419,11 +441,6 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         with open(done_path, "w"):
             pass
 
-    @property
-    def backup_output_directory(self) -> str:
-        """Backup output directory"""
-        return os.path.join(self.workflow_directory, "backup")
-
     def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
         """
         Export the results of segmentation as TextGrids
@@ -435,14 +452,12 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         """
         if output_format is None:
             output_format = TextFileType.TEXTGRID.value
-        if not self.overwrite and os.path.exists(output_directory):
-            output_directory = os.path.join(self.working_directory, "transcriptions")
         os.makedirs(output_directory, exist_ok=True)
         with self.session() as session:
             for f in session.query(File).options(
-                subqueryload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
+                selectinload(File.utterances).joinedload(Utterance.speaker, innerjoin=True),
                 joinedload(File.sound_file, innerjoin=True),
                 joinedload(File.text_file, innerjoin=True),
-                subqueryload(File.speakers).joinedload(SpeakerOrdering.speaker, innerjoin=True),
+                selectinload(File.speakers).joinedload(SpeakerOrdering.speaker, innerjoin=True),
             ):
                 f.save(output_directory, output_format=output_format)

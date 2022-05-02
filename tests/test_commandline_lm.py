@@ -49,7 +49,7 @@ def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_
 
 
 def test_train_lm_dictionary(
-    basic_split_dir, sick_dict_path, temp_dir, generated_dir, basic_train_lm_config_path
+    basic_split_dir, basic_dict_path, temp_dir, generated_dir, basic_train_lm_config_path
 ):
     if sys.platform == "win32":
         pytest.skip("LM training not supported on Windows.")
@@ -62,7 +62,7 @@ def test_train_lm_dictionary(
         "-t",
         temp_dir,
         "--dictionary_path",
-        sick_dict_path,
+        basic_dict_path,
         "--config_path",
         basic_train_lm_config_path,
         "-q",

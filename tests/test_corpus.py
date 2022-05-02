@@ -9,7 +9,7 @@ from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.helper import get_wav_info
 from montreal_forced_aligner.corpus.text_corpus import TextCorpus
 from montreal_forced_aligner.data import TextFileType
-from montreal_forced_aligner.dictionary.pronunciation import Pronunciation
+from montreal_forced_aligner.db import OovWord, Word
 
 
 def test_mp3(mp3_test_path):
@@ -33,12 +33,14 @@ def test_speaker_word_set(
         temporary_directory=temp_dir,
     )
     corpus.load_corpus()
-    dictionary = corpus.get_dictionary("speaker_one")
-    assert dictionary.lookup("chad-like") == ["chad", "like"]
-    assert dictionary.oov_int not in dictionary.to_int("chad-like")
+    sanitize = corpus.sanitize_function
+    split, san = sanitize.get_functions_for_speaker("speaker_one")
+    sp = san.split_clitics("chad-like")
+    assert len(sp) > 1
+    assert san.oov_word not in sp
 
 
-def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
+def test_add(basic_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
@@ -59,10 +61,10 @@ def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
             relative_path="",
             wav_path=None,
         )
-        new_utterance = UtteranceData(new_speaker, new_file_name, text="blah blah")
+        new_utterance = UtteranceData(new_speaker, new_file_name, 0, 1, text="blah blah")
         assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
-        corpus.add_file(new_file, session)
+        corpus.add_file(new_file)
         corpus.add_utterance(new_utterance, session)
         session.commit()
 
@@ -72,27 +74,6 @@ def test_add(basic_corpus_dir, sick_dict_path, generated_dir):
     print(utts[0].id)
     corpus.delete_utterance(utts[0].id)
     assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
-
-
-def test_basic(basic_dict_path, basic_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory, ignore_errors=True)
-    corpus = AcousticCorpusWithPronunciations(
-        corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
-        use_mp=False,
-        temporary_directory=output_directory,
-    )
-    corpus.load_corpus()
-
-    for speaker in corpus.speakers():
-        assert (
-            speaker.dictionary.words_path == corpus.get_dictionary(speaker.name).words_symbol_path
-        )
-        assert speaker.dictionary.clitic_marker == corpus.clitic_markers[0]
-        assert speaker.dictionary.oov_word == corpus.get_dictionary(speaker.name).oov_word
-    assert corpus.get_feat_dim() == 39
 
 
 def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir):
@@ -149,14 +130,14 @@ def test_text_corpus_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_
     assert corpus.num_utterances > 0
 
 
-def test_extra(sick_dict, extra_corpus_dir, generated_dir):
+def test_extra(basic_dict_path, extra_corpus_dir, generated_dir):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=extra_corpus_dir,
-        dictionary_path=sick_dict,
+        dictionary_path=basic_dict_path,
         use_mp=False,
         num_jobs=2,
         temporary_directory=output_directory,
@@ -393,44 +374,77 @@ def test_subset(multilingual_ipa_corpus_dir, generated_dir):
     assert os.path.exists(s)
 
 
-def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
+def test_weird_words(weird_words_dir, generated_dir, basic_dict_path):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=weird_words_dir,
-        dictionary_path=sick_dict_path,
+        dictionary_path=basic_dict_path,
         use_mp=True,
         temporary_directory=output_directory,
     )
     corpus.load_corpus()
-    assert "i’m" not in corpus.default_dictionary.words
-    assert "’m" not in corpus.default_dictionary.words
-    assert Pronunciation(("ay", "m", "ih")) in corpus.default_dictionary.words["i'm"]
-    assert Pronunciation(("ay", "m")) in corpus.default_dictionary.words["i'm"]
-    assert Pronunciation(("m",)) in corpus.default_dictionary.words["'m"]
-    print(corpus.utterances())
-    weird_words = corpus.get_utterances(file="weird_words")[0]
-    print(weird_words.text)
-    print(weird_words.oovs)
-    print(corpus.oovs_found)
-    assert all(
-        x in corpus.oovs_found
-        for x in {
-            "ajfish",
-            "asds-asda",
-            "sdasd",
-            "[me_really]",
-            "[me____really]",
-            "[me_really]",
-            "<s>",
-            "<_s>",
-        }
-    )
+    with corpus.session() as session:
+        w = (
+            session.query(Word)
+            .filter(Word.dictionary_id == corpus._default_dictionary_id)
+            .filter(Word.word == "i’m")
+            .first()
+        )
+        assert w is None
+        w = (
+            session.query(Word)
+            .filter(Word.dictionary_id == corpus._default_dictionary_id)
+            .filter(Word.word == "’m")
+            .first()
+        )
+        assert w is None
+        w = (
+            session.query(Word)
+            .filter(Word.dictionary_id == corpus._default_dictionary_id)
+            .filter(Word.word == "i'm")
+            .first()
+        )
+        pronunciations = [x.pronunciation for x in w.pronunciations]
+        assert "ay m ih" in pronunciations
+        assert "ay m" in pronunciations
+        w = (
+            session.query(Word)
+            .filter(Word.dictionary_id == corpus._default_dictionary_id)
+            .filter(Word.word == "'m")
+            .first()
+        )
+        pronunciations = [x.pronunciation for x in w.pronunciations]
+        assert "m" in pronunciations
+        print(corpus.utterances())
+        weird_words = corpus.get_utterances(file="weird_words")[0]
+        print(weird_words.text)
+        print(weird_words.oovs)
+        oovs = [
+            x[0]
+            for x in session.query(OovWord.word).filter(
+                OovWord.dictionary_id == corpus._default_dictionary_id
+            )
+        ]
+        print(oovs)
+        assert all(
+            x in oovs
+            for x in {
+                "ajfish",
+                "asds-asda",
+                "sdasd",
+                "[me_really]",
+                "[me____really]",
+                "[me_really]",
+                "<s>",
+                "<_s>",
+            }
+        )
     assert (
         weird_words.text
-        == "i'm talking-ajfish me-really [me_really] [me_really] [me____really] asds-asda sdasd-me <s> <_s>"
+        == "i’m talking-ajfish me-really [me-really] [me'really] [me_??_really] asds-asda sdasd-me <s> </s>"
     )
     assert weird_words.normalized_text.split() == [
         "i'm",
@@ -448,23 +462,20 @@ def test_weird_words(weird_words_dir, generated_dir, sick_dict_path):
         "<_s>",
     ]
     assert weird_words.normalized_text_int.split()[-1] == str(
-        corpus.default_dictionary.bracketed_int
+        corpus.word_mapping(corpus._default_dictionary_id)[corpus.bracketed_word]
     )
-    corpus.set_lexicon_word_set(corpus.corpus_word_set)
-    for w in ["i'm", "this'm", "sdsdsds'm", "'m"]:
-        _ = corpus.default_dictionary.to_int(w)
-    print(corpus.oovs_found)
-    assert "'m" not in corpus.oovs_found
+    print(oovs)
+    assert "'m" not in oovs
 
 
-def test_punctuated(punctuated_dir, generated_dir, sick_dict_path):
+def test_punctuated(punctuated_dir, generated_dir, basic_dict_path):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
-        dictionary_path=sick_dict_path,
+        dictionary_path=basic_dict_path,
         use_mp=True,
         temporary_directory=output_directory,
     )
@@ -473,14 +484,16 @@ def test_punctuated(punctuated_dir, generated_dir, sick_dict_path):
     print(corpus.utterances())
 
     punctuated = corpus.get_utterances(file="punctuated")[0]
-    assert punctuated.text == "oh yes they they you know they love her' and so' 'i mean 'you"
+    assert (
+        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+    )
     assert (
         punctuated.normalized_text == "oh yes they they you know they love her' and so i mean 'you"
     )
 
 
 def test_alternate_punctuation(
-    punctuated_dir, generated_dir, sick_dict_path, different_punctuation_config_path
+    punctuated_dir, generated_dir, basic_dict_path, different_punctuation_config_path
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
@@ -493,19 +506,23 @@ def test_alternate_punctuation(
     params["use_mp"] = True
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
-        dictionary_path=sick_dict_path,
+        dictionary_path=basic_dict_path,
         temporary_directory=output_directory,
         **params,
     )
     corpus.load_corpus()
     punctuated = corpus.get_utterances(file="punctuated")[0]
-    assert punctuated.text == "oh yes, they they, you know, they love her and so i mean you"
+    assert (
+        punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
+    )
 
 
-def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctuation_config_path):
+def test_no_punctuation(
+    punctuated_dir, generated_dir, basic_dict_path, no_punctuation_config_path
+):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = os.path.join(generated_dir, "corpus_tests", "no_punctuation")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
@@ -514,7 +531,7 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
     params["use_mp"] = True
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
-        dictionary_path=sick_dict_path,
+        dictionary_path=basic_dict_path,
         temporary_directory=output_directory,
         **params,
     )
@@ -523,6 +540,8 @@ def test_no_punctuation(punctuated_dir, generated_dir, sick_dict_path, no_punctu
     assert not corpus.clitic_markers
     corpus.load_corpus()
     punctuated = corpus.get_utterances(file="punctuated")[0]
+    print(corpus.punctuation)
+    print(corpus.word_break_markers)
     assert (
         punctuated.text == "oh yes, they - they, you know, they love her' and so' 'i mean... ‘you"
     )
@@ -567,7 +586,7 @@ def test_xsampa_corpus(
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = os.path.join(generated_dir, "corpus_tests", "xsampa")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
@@ -585,5 +604,5 @@ def test_xsampa_corpus(
     xsampa = corpus.get_utterances(file="xsampa")[0]
     assert (
         xsampa.text
-        == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k".lower()
+        == r"@bUr\tOU {bstr\{kt {bSaIr\ Abr\utseIzi {br\@geItIN @bor\n {b3kr\Ambi {bI5s@`n Ar\g thr\Ip@5eI Ar\dvAr\k"
     )

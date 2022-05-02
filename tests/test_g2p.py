@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.g2p.generator import (
     PyniniCorpusGenerator,
     PyniniWordListGenerator,
@@ -20,19 +20,19 @@ def test_clean_up_word():
     assert m == {"+"}
 
 
-def test_check_bracketed(sick_dict):
+def test_check_bracketed(basic_dict_path):
     """Checks if the brackets are removed correctly and handling an empty string works"""
     word_set = ["uh", "(the)", "sick", "<corpus>", "[a]", "{cold}", ""]
     expected_result = ["uh", "sick", ""]
-    dictionary_config = PronunciationDictionary(dictionary_path=sick_dict)
+    dictionary_config = MultispeakerDictionary(dictionary_path=basic_dict_path)
     assert [x for x in word_set if not dictionary_config.check_bracketed(x)] == expected_result
 
 
-def test_training(sick_dict_path, sick_g2p_model_path, temp_dir):
+def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")
     trainer = PyniniTrainer(
-        dictionary_path=sick_dict_path,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         random_starts=1,
         num_iterations=5,
@@ -41,22 +41,22 @@ def test_training(sick_dict_path, sick_g2p_model_path, temp_dir):
     trainer.setup()
 
     trainer.train()
-    trainer.export_model(sick_g2p_model_path)
-    model = G2PModel(sick_g2p_model_path, root_directory=temp_dir)
+    trainer.export_model(basic_g2p_model_path)
+    model = G2PModel(basic_g2p_model_path, root_directory=temp_dir)
     assert model.meta["version"] == get_mfa_version()
     assert model.meta["architecture"] == "pynini"
     assert model.meta["phones"] == trainer.non_silence_phones
-    assert model.meta["graphemes"] == trainer.graphemes
+    assert model.meta["graphemes"] == trainer.g2p_training_graphemes
     trainer.cleanup()
 
 
-def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output, temp_dir):
+def test_generator(basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")
     output_directory = os.path.join(temp_dir, "g2p_tests")
     gen = PyniniCorpusGenerator(
-        g2p_model_path=sick_g2p_model_path,
-        corpus_directory=sick_corpus,
+        g2p_model_path=basic_g2p_model_path,
+        corpus_directory=basic_corpus_dir,
         temporary_directory=output_directory,
     )
 
@@ -64,8 +64,8 @@ def test_generator(sick_g2p_model_path, sick_corpus, g2p_sick_output, temp_dir):
     assert not gen.g2p_model.validate(gen.corpus_word_set)
     assert gen.g2p_model.validate([x for x in gen.corpus_word_set if not gen.check_bracketed(x)])
 
-    gen.export_pronunciations(g2p_sick_output)
-    assert os.path.exists(g2p_sick_output)
+    gen.export_pronunciations(g2p_basic_output)
+    assert os.path.exists(g2p_basic_output)
     gen.cleanup()
 
 
@@ -85,5 +85,5 @@ def test_generator_pretrained(english_g2p_model, temp_dir):
     gen.setup()
     results = gen.generate_pronunciations()
     print(results)
-    assert len(results["petted"]) == 3
+    assert len(results["petted"].pronunciations) == 3
     gen.cleanup()

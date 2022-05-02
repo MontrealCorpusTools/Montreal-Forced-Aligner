@@ -10,6 +10,20 @@
 Release candidates
 ==================
 
+2.0.0rc6
+--------
+
+- Reverted the default export type to ``long_textgrid``, which can be changed to ``short_textgrid`` or ``json`` via the ``--output_format`` flag for commands that export TextGrids :github_issue:`434`
+- Added more information for when malformed dictionary lines fail to parse (i.e., lines with just tabs on them) :github_issue:`411`
+- Fixed a bug where phones with underscores in them would cause export to crash :github_issue:`432`
+- Changed the overwrite behavior in export to specifically avoid overwriting input files, rather than testing the existence of the overall output directory :github_issue:`431`
+- Added additional initial check to ensure that Kaldi and OpenFst binaries can be successfully invoked, rather than throwing an unintuitive error during feature creation
+- Optimized initial load and TextGrid export :github_issue:`437` and :github_issue:`249`
+- Allow for dictionaries with the same base name in different locations to be used side-by-side :github_issue:`417`
+- Fixed a bug where initial silence was not being properly handled if silence probability training had not been done
+- Removed PronunciationDictionaryMixin and PronunciationDictionary classes and refactored functionality into :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin` and :class:`~montreal_forced_aligner.db.Dictionary`
+- Fixed a bug where alignment models would not be adapted during adaptation :github_issue:`421`
+
 2.0.0rc5
 --------
 
@@ -77,7 +91,7 @@ Beta releases
 - Added better progress bars for corpus loading, acoustic modeling, G2P training, transcription and alignment
 - Changed the default behavior of G2P generation to use a threshold system rather than returning a single top pronunciation.  The threshold defaults to 0.99, but can be specified through ``--g2p_threshold``.  Specifying number of pronunciations will override this behavior (use ``--num_pronunciation 1`` for the old behavior).
 - Changed the behavior of G2P evaluation to check whether the generated hypothesis is in the golden pronunciation set, so languages with pronunciation variation will be less penalized in evaluation
-- Added :class:`~montreal_forced_aligner.data.WordData` and :class:`~montreal_forced_aligner.data.Pronunciation` data classes
+- Added :class:`~montreal_forced_aligner.data.WordData` and :class:`~montreal_forced_aligner.db.Pronunciation` data classes
 - Refactored and simplified TextGrid export process
 - Removed the ``multilingual_ipa`` mode in favor of a more general approach to better modeling phones
 - Added functionality to evaluate alignments against golden alignment set

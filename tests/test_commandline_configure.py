@@ -12,7 +12,6 @@ from montreal_forced_aligner.config import (
 def test_configure(
     temp_dir,
     basic_corpus_dir,
-    sick_dict_path,
     generated_dir,
     english_dictionary,
     basic_align_config_path,
@@ -95,8 +94,8 @@ def test_configure(
     command = [
         "align",
         basic_corpus_dir,
-        sick_dict_path,
-        "english",
+        english_dictionary,
+        english_acoustic_model,
         os.path.join(generated_dir, "basic_output"),
         "-t",
         get_temporary_directory(),

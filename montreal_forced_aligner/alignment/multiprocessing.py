@@ -16,15 +16,16 @@ from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Union
 
 import sqlalchemy.engine
-from sqlalchemy.orm import Session, joinedload, load_only, subqueryload
+from sqlalchemy.orm import Session, joinedload, load_only, selectinload
 
-from montreal_forced_aligner.corpus.db import Dictionary, Phone, Speaker, Utterance
 from montreal_forced_aligner.data import (
     CtmInterval,
     MfaArguments,
     PronunciationProbabilityCounter,
     TextgridFormats,
 )
+from montreal_forced_aligner.db import Dictionary, File, Phone, Speaker, Utterance, Word
+from montreal_forced_aligner.helper import split_phone_position
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
 from montreal_forced_aligner.utils import Counter, KaldiFunction, Stopped, thirdparty_binary
 
@@ -58,8 +59,8 @@ __all__ = [
 class GeneratePronunciationsArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsFunction`"""
 
-    text_int_paths: Dict[str, str]
-    ali_paths: Dict[str, str]
+    text_int_paths: Dict[int, str]
+    ali_paths: Dict[int, str]
     model_path: str
 
 
@@ -70,8 +71,8 @@ class AlignmentExtractionArguments(MfaArguments):
     model_path: str
     frame_shift: float
     cleanup_textgrids: bool
-    ali_paths: Dict[str, str]
-    text_int_paths: Dict[str, str]
+    ali_paths: Dict[int, str]
+    text_int_paths: Dict[int, str]
 
 
 @dataclass
@@ -80,7 +81,7 @@ class ExportTextGridArguments(MfaArguments):
 
     frame_shift: int
     output_directory: str
-    backup_output_directory: str
+    output_format: str
 
 
 @dataclass
@@ -94,24 +95,22 @@ class CompileInformationArguments(MfaArguments):
 class CompileTrainGraphsArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`"""
 
-    dictionaries: List[str]
+    dictionaries: List[int]
     tree_path: str
     model_path: str
-    text_int_paths: Dict[str, str]
-    disambig_path: str
-    lexicon_fst_paths: Dict[str, str]
-    fst_scp_paths: Dict[str, str]
+    text_int_paths: Dict[int, str]
+    fst_scp_paths: Dict[int, str]
 
 
 @dataclass
 class AlignArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
 
-    dictionaries: List[str]
-    fst_scp_paths: Dict[str, str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    fst_scp_paths: Dict[int, str]
+    feature_strings: Dict[int, str]
     model_path: str
-    ali_paths: Dict[str, str]
+    ali_paths: Dict[int, str]
     align_options: MetaDict
 
 
@@ -121,10 +120,10 @@ class AccStatsArguments(MfaArguments):
     Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
     """
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    ali_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
+    ali_paths: Dict[int, str]
+    acc_paths: Dict[int, str]
     model_path: str
 
 
@@ -157,24 +156,29 @@ class CompileTrainGraphsFunction(KaldiFunction):
         self.tree_path = args.tree_path
         self.model_path = args.model_path
         self.text_int_paths = args.text_int_paths
-        self.disambig_path = args.disambig_path
-        self.lexicon_fst_paths = args.lexicon_fst_paths
         self.fst_scp_paths = args.fst_scp_paths
 
     def run(self):
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                fst_scp_path = self.fst_scp_paths[dict_name]
+        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+            dictionaries = (
+                session.query(Dictionary)
+                .join(Dictionary.speakers)
+                .filter(Speaker.job_id == self.job_name)
+                .distinct()
+            )
+            for d in dictionaries:
+                fst_scp_path = self.fst_scp_paths[d.id]
                 fst_ark_path = fst_scp_path.replace(".scp", ".ark")
-                text_path = self.text_int_paths[dict_name]
+                text_path = self.text_int_paths[d.id]
                 proc = subprocess.Popen(
                     [
                         thirdparty_binary("compile-train-graphs"),
-                        f"--read-disambig-syms={self.disambig_path}",
+                        f"--read-disambig-syms={d.disambiguation_symbols_int_path}",
                         self.tree_path,
                         self.model_path,
-                        self.lexicon_fst_paths[dict_name],
+                        d.lexicon_fst_path,
                         f"ark:{text_path}",
                         f"ark,scp:{fst_ark_path},{fst_scp_path}",
                     ],
@@ -228,15 +232,15 @@ class AccStatsFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
+            for dict_id in self.dictionaries:
                 processed_count = 0
                 acc_proc = subprocess.Popen(
                     [
                         thirdparty_binary("gmm-acc-stats-ali"),
                         self.model_path,
-                        self.feature_strings[dict_name],
-                        f"ark,s,cs:{self.ali_paths[dict_name]}",
-                        self.acc_paths[dict_name],
+                        self.feature_strings[dict_id],
+                        f"ark,s,cs:{self.ali_paths[dict_id]}",
+                        self.acc_paths[dict_id],
                     ],
                     stderr=subprocess.PIPE,
                     encoding="utf8",
@@ -292,10 +296,10 @@ class AlignFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                fst_path = self.fst_scp_paths[dict_name]
-                ali_path = self.ali_paths[dict_name]
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                fst_path = self.fst_scp_paths[dict_id]
+                ali_path = self.ali_paths[dict_id]
                 com = [
                     thirdparty_binary("gmm-align-compiled"),
                     f"--transition-scale={self.align_options['transition_scale']}",
@@ -368,7 +372,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
         self.reversed_word_mapping = {}
 
     def _process_pronunciations(
-        self, word_pronunciations: typing.List[typing.Tuple[str, typing.Tuple[str]]]
+        self, word_pronunciations: typing.List[typing.Tuple[str, str]]
     ) -> PronunciationProbabilityCounter:
         """
         Process an utterance's pronunciations and extract relevant count information
@@ -407,44 +411,40 @@ class GeneratePronunciationsFunction(KaldiFunction):
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with Session(db_engine) as session:
-            ds = (
-                session.query(Dictionary)
-                .options(
-                    subqueryload(Dictionary.words),
-                    load_only(
-                        Dictionary.position_dependent_phones,
-                        Dictionary.clitic_marker,
-                        Dictionary.silence_word,
-                        Dictionary.oov_word,
-                        Dictionary.name,
-                        Dictionary.optional_silence_phone,
-                        Dictionary.word_boundary_int_path,
-                    ),
-                )
-                .all()
+            ds = session.query(Dictionary).options(
+                selectinload(Dictionary.words),
+                load_only(
+                    Dictionary.position_dependent_phones,
+                    Dictionary.clitic_marker,
+                    Dictionary.silence_word,
+                    Dictionary.oov_word,
+                    Dictionary.id,
+                    Dictionary.optional_silence_phone,
+                    Dictionary.root_temp_directory,
+                ),
             )
             for d in ds:
-                if d.name not in self.text_int_paths:
+                if d.id not in self.text_int_paths:
                     continue
                 self.position_dependent_phones = d.position_dependent_phones
                 self.clitic_marker = d.clitic_marker
                 self.silence_word = d.silence_word
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
-                self.word_boundary_int_paths[d.name] = d.word_boundary_int_path
-                self.reversed_word_mapping[d.name] = {}
+                self.word_boundary_int_paths[d.id] = d.word_boundary_int_path
+                self.reversed_word_mapping[d.id] = {}
                 for w in d.words:
-                    self.reversed_word_mapping[d.name][w.id] = w.word
-            phones = session.query(Phone)
-            for phone in phones:
-                self.reversed_phone_mapping[phone.id] = phone.phone
+                    self.reversed_word_mapping[d.id][w.mapping_id] = w.word
+            phones = session.query(Phone.phone, Phone.mapping_id)
+            for phone, mapping_id in phones:
+                self.reversed_phone_mapping[mapping_id] = phone
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.text_int_paths.keys():
+            for dict_id in self.text_int_paths.keys():
                 current_utterance = None
                 word_pronunciations = []
-                text_int_path = self.text_int_paths[dict_name]
-                word_boundary_path = self.word_boundary_int_paths[dict_name]
-                ali_path = self.ali_paths[dict_name]
+                text_int_path = self.text_int_paths[dict_id]
+                word_boundary_path = self.word_boundary_int_paths[dict_id]
+                ali_path = self.ali_paths[dict_id]
                 if not os.path.exists(ali_path):
                     continue
                 lin_proc = subprocess.Popen(
@@ -487,18 +487,20 @@ class GeneratePronunciationsFunction(KaldiFunction):
                     utt = line[0]
                     if utt != current_utterance and current_utterance is not None:
                         log_file.write(f"{current_utterance}\t{word_pronunciations}\n")
-                        yield dict_name, self._process_pronunciations(word_pronunciations)
+                        yield dict_id, self._process_pronunciations(word_pronunciations)
                         word_pronunciations = []
                     current_utterance = utt
                     pron = [int(x) for x in line[4:]]
-                    word = self.reversed_word_mapping[dict_name][int(line[3])]
+                    word = self.reversed_word_mapping[dict_id][int(line[3])]
                     if self.position_dependent_phones:
-                        pron = tuple(self.reversed_phone_mapping[x].split("_")[0] for x in pron)
+                        pron = " ".join(
+                            split_phone_position(self.reversed_phone_mapping[x])[0] for x in pron
+                        )
                     else:
-                        pron = tuple(self.reversed_phone_mapping[x] for x in pron)
+                        pron = " ".join(self.reversed_phone_mapping[x] for x in pron)
                     word_pronunciations.append((word, pron))
                 if word_pronunciations:
-                    yield dict_name, self._process_pronunciations(word_pronunciations)
+                    yield dict_id, self._process_pronunciations(word_pronunciations)
 
                 self.check_call(prons_proc)
 
@@ -606,7 +608,7 @@ class AlignmentExtractionFunction(KaldiFunction):
         self.words = {}
         self.silence_words = set()
 
-    def cleanup_intervals(self, utterance_name: int, dict_name: str, intervals: List[CtmInterval]):
+    def cleanup_intervals(self, utterance_name: int, dict_id: int, intervals: List[CtmInterval]):
         """
         Clean up phone intervals to remove silence
 
@@ -642,7 +644,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                     actual_phone_intervals.append(interval)
                     continue
             if self.position_dependent_phones and "_" in phone_label:
-                phone, position = phone_label.split("_")
+                phone, position = split_phone_position(phone_label)
                 if position in {"B", "S"}:
                     current_word_begin = interval.begin
                 if position in {"E", "S"}:
@@ -674,9 +676,9 @@ class AlignmentExtractionFunction(KaldiFunction):
                     current_word_begin = interval.begin
                 current_phones.append(phone_label)
                 cur_word = words[words_index]
-                if cur_word not in self.words[dict_name]:
+                if cur_word not in self.words[dict_id]:
                     cur_word = self.oov_word
-                if tuple(current_phones) in self.words[dict_name][cur_word]:
+                if tuple(current_phones) in self.words[dict_id][cur_word]:
                     actual_word_intervals.append(
                         CtmInterval(
                             current_word_begin, interval.end, words[words_index], utterance_name
@@ -692,22 +694,21 @@ class AlignmentExtractionFunction(KaldiFunction):
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with Session(db_engine) as session:
-            for dict_name in self.ali_paths.keys():
+            for dict_id in self.ali_paths.keys():
                 d = (
                     session.query(Dictionary)
                     .options(
-                        subqueryload(Dictionary.words),
+                        selectinload(Dictionary.words).selectinload(Word.pronunciations),
                         load_only(
                             Dictionary.position_dependent_phones,
                             Dictionary.clitic_marker,
                             Dictionary.silence_word,
                             Dictionary.oov_word,
+                            Dictionary.root_temp_directory,
                             Dictionary.optional_silence_phone,
-                            Dictionary.word_boundary_int_path,
                         ),
                     )
-                    .filter_by(name=dict_name)
-                    .first()
+                    .get(dict_id)
                 )
 
                 self.position_dependent_phones = d.position_dependent_phones
@@ -715,16 +716,15 @@ class AlignmentExtractionFunction(KaldiFunction):
                 self.silence_word = d.silence_word
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
-                self.word_boundary_int_paths[dict_name] = d.word_boundary_int_path
+                self.word_boundary_int_paths[dict_id] = d.word_boundary_int_path
 
-                self.words[dict_name] = {}
+                self.words[dict_id] = {}
                 for w in d.words:
-                    pronunciations = w.pronunciations.split(";")
-                    self.words[dict_name][w.word] = set()
-                    for pron in pronunciations:
+                    self.words[dict_id][w.word] = set()
+                    for pron in w.pronunciations:
                         if pron == self.optional_silence_phone:
                             self.silence_words.add(w.word)
-                        self.words[dict_name][w.word].add(tuple(pron.split(" ")))
+                        self.words[dict_id][w.word].add(tuple(pron.pronunciation.split(" ")))
                 utts = (
                     session.query(Utterance)
                     .join(Utterance.speaker)
@@ -734,16 +734,16 @@ class AlignmentExtractionFunction(KaldiFunction):
                 for utt in utts:
                     self.utterance_texts[utt.id] = utt.normalized_text.split()
                     self.utterance_begins[utt.id] = utt.begin
-                ds = session.query(Phone).all()
-                for phone in ds:
-                    self.reversed_phone_mapping[phone.id] = phone.phone
+                ds = session.query(Phone.phone, Phone.mapping_id).all()
+                for phone, mapping_id in ds:
+                    self.reversed_phone_mapping[mapping_id] = phone
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.ali_paths.keys():
+            for dict_id in self.ali_paths.keys():
                 cur_utt = None
                 intervals = []
-                ali_path = self.ali_paths[dict_name]
-                text_int_path = self.text_int_paths[dict_name]
-                word_boundary_int_path = self.word_boundary_int_paths[dict_name]
+                ali_path = self.ali_paths[dict_id]
+                text_int_path = self.text_int_paths[dict_id]
+                word_boundary_int_path = self.word_boundary_int_paths[dict_id]
                 lin_proc = subprocess.Popen(
                     [
                         thirdparty_binary("linear-to-nbest"),
@@ -809,7 +809,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                         cur_utt = interval.utterance
                     if cur_utt != interval.utterance:
                         word_intervals, phone_intervals = self.cleanup_intervals(
-                            cur_utt, dict_name, intervals
+                            cur_utt, dict_id, intervals
                         )
                         yield cur_utt, word_intervals, phone_intervals
                         intervals = []
@@ -818,13 +818,13 @@ class AlignmentExtractionFunction(KaldiFunction):
                 self.check_call(nbest_proc)
             if intervals:
                 word_intervals, phone_intervals = self.cleanup_intervals(
-                    cur_utt, dict_name, intervals
+                    cur_utt, dict_id, intervals
                 )
                 yield cur_utt, word_intervals, phone_intervals
 
 
 def construct_output_tiers(
-    session: Session, file_id: int
+    session: Session, file: File
 ) -> Dict[str, Dict[str, List[CtmInterval]]]:
     """
     Construct aligned output tiers for a file
@@ -842,16 +842,7 @@ def construct_output_tiers(
         Aligned tiers
     """
     data = {}
-    utterances = (
-        session.query(Utterance)
-        .options(
-            subqueryload(Utterance.word_intervals),
-            subqueryload(Utterance.phone_intervals),
-            joinedload(Utterance.speaker).load_only(Speaker.name),
-        )
-        .filter_by(file_id=file_id)
-    )
-    for utt in utterances:
+    for utt in file.utterances:
         if utt.speaker.name not in data:
             data[utt.speaker.name] = {"words": [], "phones": []}
         for wi in utt.word_intervals:
@@ -868,6 +859,7 @@ def construct_output_path(
     name: str,
     relative_path: str,
     output_directory: str,
+    input_path: str = "",
     output_format: str = TextgridFormats.SHORT_TEXTGRID,
 ) -> str:
     """
@@ -889,6 +881,8 @@ def construct_output_path(
     else:
         relative = output_directory
     output_path = os.path.join(relative, name + extension)
+    if output_path == input_path:
+        output_path = os.path.join(relative, name + "_aligned" + extension)
     os.makedirs(relative, exist_ok=True)
     return output_path
 
@@ -922,25 +916,22 @@ class ExportTextGridProcessWorker(mp.Process):
         self,
         db_path: str,
         for_write_queue: mp.Queue,
+        return_queue: mp.Queue,
         stopped: Stopped,
-        finished_processing: Stopped,
-        textgrid_errors: Dict[str, str],
-        output_format: str,
-        output_directory: str,
+        finished_adding: Stopped,
         arguments: ExportTextGridArguments,
         exported_file_count: Counter,
     ):
         mp.Process.__init__(self)
         self.db_path = db_path
         self.for_write_queue = for_write_queue
+        self.return_queue = return_queue
         self.stopped = stopped
-        self.finished_processing = finished_processing
-        self.textgrid_errors = textgrid_errors
+        self.finished_adding = finished_adding
+        self.finished_processing = Stopped()
 
         self.output_directory = arguments.output_directory
-        self.backup_output_directory = arguments.backup_output_directory
-        self.output_format = output_format
-        self.output_directory = output_directory
+        self.output_format = arguments.output_format
         self.frame_shift = arguments.frame_shift
         self.log_path = arguments.log_path
         self.exported_file_count = exported_file_count
@@ -949,31 +940,71 @@ class ExportTextGridProcessWorker(mp.Process):
         """Run the exporter function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+
             while True:
                 try:
-                    file_id, name, relative_path, duration = self.for_write_queue.get(timeout=1)
+                    (
+                        file_id,
+                        name,
+                        relative_path,
+                        duration,
+                        text_file_path,
+                    ) = self.for_write_queue.get(timeout=1)
                 except Empty:
-                    if self.finished_processing.stop_check():
+                    if self.finished_adding.stop_check():
+                        self.finished_processing.stop()
                         break
                     continue
 
-                self.for_write_queue.task_done()
-                self.exported_file_count.increment()
                 if self.stopped.stop_check():
                     continue
                 try:
                     output_path = construct_output_path(
-                        name, relative_path, self.output_directory, self.output_format
+                        name,
+                        relative_path,
+                        self.output_directory,
+                        text_file_path,
+                        self.output_format,
                     )
-                    data = construct_output_tiers(session, file_id)
+                    utterances = (
+                        session.query(Utterance)
+                        .options(
+                            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
+                            selectinload(Utterance.phone_intervals),
+                            selectinload(Utterance.word_intervals),
+                        )
+                        .filter(Utterance.file_id == file_id)
+                    )
+                    data = {}
+                    for utt in utterances:
+                        if utt.speaker.name not in data:
+                            data[utt.speaker.name] = {"words": [], "phones": []}
+                        for wi in utt.word_intervals:
+                            data[utt.speaker.name]["words"].append(
+                                CtmInterval(wi.begin, wi.end, wi.label, utt.id)
+                            )
+
+                        for pi in utt.phone_intervals:
+                            data[utt.speaker.name]["phones"].append(
+                                CtmInterval(pi.begin, pi.end, pi.label, utt.id)
+                            )
                     export_textgrid(
                         data, output_path, duration, self.frame_shift, self.output_format
                     )
-                    log_file.write("Done!\n")
+                    self.return_queue.put(1)
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
-                    self.textgrid_errors[output_path] = "\n".join(
-                        traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    log_file.write(
+                        f"Error writing to {output_path}: \n\n{self.textgrid_errors[output_path]}\n"
                     )
                     self.stopped.stop()
+                    self.return_queue.put(
+                        (
+                            output_path,
+                            "\n".join(
+                                traceback.format_exception(exc_type, exc_value, exc_traceback)
+                            ),
+                        )
+                    )
                     raise
+            log_file.write("Done!\n")

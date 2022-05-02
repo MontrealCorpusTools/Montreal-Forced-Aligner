@@ -4,8 +4,10 @@ import os
 import shutil
 import typing
 
+from sqlalchemy.orm import joinedload
+
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
-from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+from montreal_forced_aligner.db import Dictionary, Pronunciation, Word
 
 __all__ = ["PronunciationProbabilityTrainer"]
 
@@ -87,58 +89,82 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin):
                 "Pronunciation probability estimation already done, loading saved probabilities..."
             )
             self.training_complete = True
-            options = self.dictionary_options
             silence_prob_sum = 0
             initial_silence_prob_sum = 0
             final_silence_correction_sum = 0
             final_non_silence_correction_sum = 0
-            for dict_name, d in self.worker.dictionary_mapping.items():
-                new_dictionary_path = os.path.join(working_dir, f"{dict_name}.dict")
-                self.worker.dictionary_mapping[dict_name] = PronunciationDictionary(
-                    dictionary_path=new_dictionary_path,
-                    temporary_directory=self.worker.dictionary_output_directory,
-                    root_dictionary=self.worker,
-                    **options,
-                )
-                silence_info_path = os.path.join(working_dir, f"{dict_name}_silence_info.json")
-                with open(silence_info_path, "r", encoding="utf8") as f:
-                    data = json.load(f)
-                if self.silence_probabilities:
-                    d.silence_probability = data["silence_probability"]
-                    d.initial_silence_probability = data["initial_silence_probability"]
-                    d.final_silence_correction = data["final_silence_correction"]
-                    d.final_non_silence_correction = data["final_non_silence_correction"]
-                    silence_prob_sum += d.silence_probability
-                    initial_silence_prob_sum += d.initial_silence_probability
-                    final_silence_correction_sum += d.final_silence_correction
-                    final_non_silence_correction_sum += d.final_non_silence_correction
-            if self.silence_probabilities:
-                self.worker.silence_probability = silence_prob_sum / len(
-                    self.worker.dictionary_mapping
-                )
-                self.worker.initial_silence_probability = initial_silence_prob_sum / len(
-                    self.worker.dictionary_mapping
-                )
-                self.worker.final_silence_correction = final_silence_correction_sum / len(
-                    self.worker.dictionary_mapping
-                )
-                self.worker.final_non_silence_correction = final_non_silence_correction_sum / len(
-                    self.worker.dictionary_mapping
-                )
+            with self.worker.session() as session:
+                dictionaries = session.query(Dictionary).all()
+                for d in dictionaries:
+                    pronunciations = (
+                        session.query(Pronunciation)
+                        .join(Pronunciation.word)
+                        .options(joinedload(Pronunciation.word, innerjoin=True))
+                        .filter(Word.dictionary_id == d.id)
+                    )
+                    cache = {(x.word.word, x.pronunciation): x for x in pronunciations}
+                    new_dictionary_path = os.path.join(working_dir, f"{d.id}.dict")
+                    with open(new_dictionary_path, "r", encoding="utf8") as f:
+                        for line in f:
+                            line = line.strip()
+                            line = line.split()
+                            word = line.pop(0)
+                            prob = float(line.pop(0))
+                            silence_after_prob = None
+                            silence_before_correct = None
+                            non_silence_before_correct = None
+                            if self.silence_probabilities:
+                                silence_after_prob = float(line.pop(0))
+                                silence_before_correct = float(line.pop(0))
+                                non_silence_before_correct = float(line.pop(0))
+                            pron = " ".join(line)
+                            p = cache[(word, pron)]
+                            p.probability = prob
+                            p.silence_after_probability = silence_after_prob
+                            p.silence_before_correction = silence_before_correct
+                            p.non_silence_before_correction = non_silence_before_correct
 
+                    silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
+                    with open(silence_info_path, "r", encoding="utf8") as f:
+                        data = json.load(f)
+                    if self.silence_probabilities:
+                        d.silence_probability = data["silence_probability"]
+                        d.initial_silence_probability = data["initial_silence_probability"]
+                        d.final_silence_correction = data["final_silence_correction"]
+                        d.final_non_silence_correction = data["final_non_silence_correction"]
+                        silence_prob_sum += d.silence_probability
+                        initial_silence_prob_sum += d.initial_silence_probability
+                        final_silence_correction_sum += d.final_silence_correction
+                        final_non_silence_correction_sum += d.final_non_silence_correction
+                if self.silence_probabilities:
+                    self.worker.silence_probability = silence_prob_sum / len(dictionaries)
+                    self.worker.initial_silence_probability = initial_silence_prob_sum / len(
+                        dictionaries
+                    )
+                    self.worker.final_silence_correction = final_silence_correction_sum / len(
+                        dictionaries
+                    )
+                    self.worker.final_non_silence_correction = (
+                        final_non_silence_correction_sum / len(dictionaries)
+                    )
+                session.commit()
             self.worker.write_lexicon_information()
             return
         self.worker.compute_pronunciation_probabilities(self.silence_probabilities)
         self.worker.write_lexicon_information()
         self.training_complete = True
-        for dict_name, d in self.worker.dictionary_mapping.items():
-            dict_path = os.path.join(working_dir, f"{dict_name}.dict")
-            d.export_lexicon(
-                dict_path, probability=True, silence_probabilities=self.silence_probabilities
-            )
-            silence_info_path = os.path.join(working_dir, f"{dict_name}_silence_info.json")
-            with open(silence_info_path, "w", encoding="utf8") as f:
-                json.dump(d.silence_probability_info, f)
+        with self.worker.session() as session:
+            for d in session.query(Dictionary):
+                dict_path = os.path.join(working_dir, f"{d.id}.dict")
+                self.worker.export_lexicon(
+                    d.id,
+                    dict_path,
+                    probability=True,
+                    silence_probabilities=self.silence_probabilities,
+                )
+                silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
+                with open(silence_info_path, "w", encoding="utf8") as f:
+                    json.dump(d.silence_probability_info, f)
         with open(done_path, "w"):
             pass
 

@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -39,7 +40,7 @@ def test_validate_training_corpus(
         multilingual_ipa_tg_corpus_dir,
         english_dictionary,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "validation"),
         "-q",
         "--clean",
         "--config_path",

@@ -14,6 +14,10 @@ from montreal_forced_aligner.utils import KaldiFunction, thirdparty_binary
 
 
 class OnlineAlignmentArguments(MfaArguments):
+    """
+    Arguments for performing alignment online on single utterances
+    """
+
     working_directory: str
     sox_string: str
     utterance_data: UtteranceData
@@ -32,6 +36,20 @@ class OnlineAlignmentArguments(MfaArguments):
 
 
 class OnlineAlignmentFunction(KaldiFunction):
+    """
+    Multiprocessing function to align an utterance
+
+    See Also
+    --------
+    :meth:`.PretrainedAligner.align_one_utterance`
+        Main function that calls this function in parallel
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.online.alignment.OnlineAlignmentArguments`
+        Arguments for the function
+    """
+
     def __init__(self, args: OnlineAlignmentArguments):
         super(OnlineAlignmentFunction, self).__init__(args)
         self.working_directory = args.working_directory
@@ -98,6 +116,7 @@ class OnlineAlignmentFunction(KaldiFunction):
         return actual_word_intervals, actual_phone_intervals
 
     def run(self):
+        """Run the function"""
         wav_path = os.path.join(self.working_directory, "wav.scp")
         likelihood_path = os.path.join(self.working_directory, "likelihoods.scp")
         feat_path = os.path.join(self.working_directory, "feats.scp")

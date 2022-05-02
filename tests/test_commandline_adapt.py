@@ -6,7 +6,6 @@ from montreal_forced_aligner.command_line.mfa import parser
 
 def test_adapt_basic(
     basic_corpus_dir,
-    sick_dict_path,
     generated_dir,
     english_dictionary,
     temp_dir,

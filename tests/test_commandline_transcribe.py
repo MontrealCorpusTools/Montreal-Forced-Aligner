@@ -9,7 +9,7 @@ from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpu
 
 def test_transcribe(
     basic_corpus_dir,
-    sick_dict_path,
+    basic_dict_path,
     english_acoustic_model,
     generated_dir,
     transcription_acoustic_model,
@@ -21,7 +21,7 @@ def test_transcribe(
     command = [
         "transcribe",
         basic_corpus_dir,
-        sick_dict_path,
+        basic_dict_path,
         transcription_acoustic_model,
         transcription_language_model,
         output_path,
@@ -42,7 +42,7 @@ def test_transcribe(
 
 def test_transcribe_arpa(
     basic_corpus_dir,
-    sick_dict_path,
+    basic_dict_path,
     english_acoustic_model,
     generated_dir,
     transcription_language_model_arpa,
@@ -57,7 +57,7 @@ def test_transcribe_arpa(
     command = [
         "transcribe",
         basic_corpus_dir,
-        sick_dict_path,
+        basic_dict_path,
         english_acoustic_model,
         transcription_language_model_arpa,
         output_path,
