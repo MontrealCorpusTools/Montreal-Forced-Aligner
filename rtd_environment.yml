@@ -13,6 +13,7 @@ dependencies:
   - dataclassy
   - sqlalchemy>=1.4
   - pip
+  - biopython
   - pip:
       - sphinxemoji
       - sphinxcontrib-autoprogram

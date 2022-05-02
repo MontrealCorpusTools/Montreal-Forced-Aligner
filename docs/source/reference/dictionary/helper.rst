@@ -23,13 +23,6 @@ Mixins
    DictionaryMixin
    TemporaryDictionaryMixin
 
-.. currentmodule:: montreal_forced_aligner.dictionary.pronunciation
-
-.. autosummary::
-   :toctree: generated/
-
-   PronunciationDictionaryMixin
-
 .. currentmodule:: montreal_forced_aligner.dictionary.multispeaker
 
 .. autosummary::

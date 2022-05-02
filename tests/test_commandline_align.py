@@ -21,7 +21,6 @@ def assert_export_exist(old_directory, new_directory):
 
 def test_align_arguments(
     basic_corpus_dir,
-    sick_dict_path,
     generated_dir,
     english_dictionary,
     temp_dir,
@@ -85,62 +84,8 @@ def test_align_basic(
         os.path.join(output_directory, "sickmichael", "cold_corpus3.TextGrid"),
     ]
 
-    mod_times = {}
     for path in output_paths:
         assert os.path.exists(path)
-        mod_times[path] = os.stat(path).st_mtime
-
-    align_temp_dir = os.path.join(temp_dir, "basic_pretrained_aligner", "pretrained_aligner")
-    assert os.path.exists(align_temp_dir)
-
-    backup_textgrid_dir = os.path.join(align_temp_dir, "textgrids")
-    assert not os.path.exists(backup_textgrid_dir)
-
-    command = [
-        "align",
-        basic_corpus_dir,
-        english_dictionary,
-        english_acoustic_model,
-        output_directory,
-        "-t",
-        temp_dir,
-        "--config_path",
-        basic_align_config_path,
-        "-q",
-        "--debug",
-        "--disable_mp",
-    ]
-    args, unknown = parser.parse_known_args(command)
-
-    run_align_corpus(args, unknown)
-    assert os.listdir(backup_textgrid_dir)
-
-    for path in output_paths:
-        assert os.path.exists(path)
-        assert mod_times[path] == os.stat(path).st_mtime
-
-    command = [
-        "align",
-        basic_corpus_dir,
-        english_dictionary,
-        english_acoustic_model,
-        output_directory,
-        "-t",
-        temp_dir,
-        "--config_path",
-        basic_align_config_path,
-        "-q",
-        "--disable_textgrid_cleanup",
-        "--clean",
-        "--overwrite",
-    ]
-    args, unknown = parser.parse_known_args(command)
-
-    run_align_corpus(args, unknown)
-    assert not os.path.exists(backup_textgrid_dir) or not os.listdir(backup_textgrid_dir)
-    for path in output_paths:
-        assert os.path.exists(path)
-        assert mod_times[path] != os.stat(path).st_mtime
 
 
 def test_align_multilingual(
@@ -166,7 +111,7 @@ def test_align_multilingual(
         "--clean",
         "--debug",
         "--output_format",
-        "long_textgrid",
+        "short_textgrid",
     ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)
@@ -223,6 +168,39 @@ def test_align_multilingual_tg_speaker_dict(
         "-q",
         "--clean",
         "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+
+def test_align_evaluation(
+    basic_corpus_dir,
+    english_us_mfa_dictionary,
+    generated_dir,
+    temp_dir,
+    basic_align_config_path,
+    english_mfa_acoustic_model,
+    basic_reference_dir,
+    eval_mapping_path,
+):
+
+    command = [
+        "align",
+        basic_corpus_dir,
+        english_us_mfa_dictionary,
+        english_mfa_acoustic_model,
+        os.path.join(generated_dir, "align_eval_output"),
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+        "--reference_directory",
+        basic_reference_dir,
+        "--custom_mapping_path",
+        eval_mapping_path,
     ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)

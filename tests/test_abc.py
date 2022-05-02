@@ -3,9 +3,11 @@ from montreal_forced_aligner.acoustic_modeling import SatTrainer, TrainableAlign
 from montreal_forced_aligner.alignment import AlignMixin
 
 
-def test_typing(sick_corpus, sick_dict, temp_dir):
+def test_typing(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus, dictionary_path=sick_dict, temporary_directory=temp_dir
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
+        temporary_directory=temp_dir,
     )
     trainer = SatTrainer(identifier="sat", worker=am_trainer)
     assert type(trainer).__name__ == "SatTrainer"

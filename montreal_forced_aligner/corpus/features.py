@@ -343,12 +343,12 @@ class CalcFmllrFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
+            for dict_id in self.dictionaries:
                 while True:
-                    feature_string = self.feature_strings[dict_name]
-                    ali_path = self.ali_paths[dict_name]
-                    spk2utt_path = self.spk2utt_paths[dict_name]
-                    trans_path = self.trans_paths[dict_name]
+                    feature_string = self.feature_strings[dict_id]
+                    ali_path = self.ali_paths[dict_id]
+                    spk2utt_path = self.spk2utt_paths[dict_id]
+                    trans_path = self.trans_paths[dict_id]
                     initial = True
                     if os.path.exists(trans_path):
                         initial = False
@@ -664,7 +664,7 @@ class FeatureConfigMixin:
             "fmllr_update_type": self.fmllr_update_type,
             "silence_weight": self.silence_weight,
             "silence_csl": getattr(
-                self, "optional_silence_csl", ""
+                self, "silence_csl", ""
             ),  # If we have silence phones from a dictionary, use them
         }
 

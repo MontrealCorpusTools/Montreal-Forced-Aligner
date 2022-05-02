@@ -164,9 +164,9 @@ def run_model(args: Namespace) -> None:
         Parsed command line arguments
     """
     validate_args(args)
-    manager = ModelManager()
+    manager = ModelManager(token=args.github_token)
     if args.action == "download" and args.name:
-        manager.download_model(args.model_type, args.name)
+        manager.download_model(args.model_type, args.name, args.ignore_cache)
     elif args.action == "download":
         manager.print_remote_models(args.model_type)
     elif args.action == "list":

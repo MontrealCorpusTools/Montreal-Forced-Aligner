@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import queue
 import shutil
 import subprocess
 import time
@@ -183,6 +184,7 @@ class GmmGselectFunction(KaldiFunction):
                 env=os.environ,
             )
             gselect_proc.communicate()
+        yield None
 
 
 class GaussToPostFunction(KaldiFunction):
@@ -258,6 +260,7 @@ class GaussToPostFunction(KaldiFunction):
                 env=os.environ,
             )
             scale_post_proc.communicate()
+        yield None
 
 
 class AccGlobalStatsFunction(KaldiFunction):
@@ -375,6 +378,7 @@ class AccIvectorStatsFunction(KaldiFunction):
                 env=os.environ,
             )
             acc_stats_proc.communicate()
+        yield None
 
 
 class DubmTrainer(IvectorModelTrainingMixin):
@@ -462,7 +466,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"gmm_gselect.{j.name}.log"),
-                feat_strings[j.name],
+                feat_strings[j.name][None],
                 self.dubm_options,
                 self.model_path,
                 j.construct_path(self.working_directory, "gselect", "ark"),
@@ -491,7 +495,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                     self.working_log_directory,
                     f"acc_global_stats.{self.iteration}.{j.name}.log",
                 ),
-                feat_strings[j.name],
+                feat_strings[j.name][None],
                 self.dubm_options,
                 j.construct_path(self.working_directory, "gselect", "ark"),
                 j.construct_path(self.working_directory, f"global.{self.iteration}", "acc"),
@@ -519,16 +523,30 @@ class DubmTrainer(IvectorModelTrainingMixin):
         arguments = self.gmm_gselect_arguments()
 
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(arguments):
                 function = GmmGselectFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if stopped.stop_check():
+                        continue
+                except queue.Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                if isinstance(result, KaldiProcessingError):
+                    error_dict[result.job_name] = result
+                    continue
             for p in procs:
                 p.join()
             if error_dict:
@@ -539,7 +557,8 @@ class DubmTrainer(IvectorModelTrainingMixin):
             self.log_debug("Not using multiprocessing...")
             for args in arguments:
                 function = GmmGselectFunction(args)
-                function.run()
+                for _ in function.run():
+                    pass
 
             self.log_debug(f"Gaussian selection took {time.time() - begin}")
 
@@ -602,16 +621,30 @@ class DubmTrainer(IvectorModelTrainingMixin):
         arguments = self.acc_global_stats_arguments()
 
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(arguments):
                 function = AccGlobalStatsFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if stopped.stop_check():
+                        continue
+                except queue.Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                if isinstance(result, KaldiProcessingError):
+                    error_dict[result.job_name] = result
+                    continue
             for p in procs:
                 p.join()
             if error_dict:
@@ -753,7 +786,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"ivector_acc.{j.name}.log"),
-                feat_strings[j.name],
+                feat_strings[j.name][None],
                 self.ivector_options,
                 self.ie_path,
                 j.construct_path(self.working_directory, "post", "ark"),
@@ -809,7 +842,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"gauss_to_post.{j.name}.log"),
-                feat_strings[j.name],
+                feat_strings[j.name][None],
                 self.ivector_options,
                 j.construct_path(self.working_directory, "post", "ark"),
                 self.dubm_path,
@@ -835,16 +868,30 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         arguments = self.gauss_to_post_arguments()
 
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(arguments):
                 function = GaussToPostFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if stopped.stop_check():
+                        continue
+                except queue.Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                if isinstance(result, KaldiProcessingError):
+                    error_dict[result.job_name] = result
+                    continue
             for p in procs:
                 p.join()
             if error_dict:
@@ -855,7 +902,8 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             self.log_debug("Not using multiprocessing...")
             for args in arguments:
                 function = GaussToPostFunction(args)
-                function.run()
+                for _ in function.run():
+                    pass
 
         self.log_debug(f"Extracting posteriors took {time.time() - begin}")
 
@@ -927,16 +975,30 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         arguments = self.acc_ivector_stats_arguments()
 
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(arguments):
                 function = AccIvectorStatsFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if stopped.stop_check():
+                        continue
+                except queue.Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                if isinstance(result, KaldiProcessingError):
+                    error_dict[result.job_name] = result
+                    continue
             for p in procs:
                 p.join()
             if error_dict:
@@ -947,7 +1009,8 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             self.log_debug("Not using multiprocessing...")
             for args in arguments:
                 function = AccIvectorStatsFunction(args)
-                function.run()
+                for _ in function.run():
+                    pass
 
         self.log_debug(f"Accumulating stats took {time.time() - begin}")
 

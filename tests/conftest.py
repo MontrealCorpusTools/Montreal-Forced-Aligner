@@ -225,6 +225,22 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope="session")
+def basic_reference_dir(corpus_root_dir, wav_dir, textgrid_dir):
+    path = os.path.join(corpus_root_dir, "basic_reference")
+    os.makedirs(path, exist_ok=True)
+    names = [("michael", ["acoustic_corpus"]), ("sickmichael", ["cold_corpus", "cold_corpus3"])]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(
+                os.path.join(textgrid_dir, name + ".TextGrid"),
+                os.path.join(s_dir, name + ".TextGrid"),
+            )
+    return path
+
+
+@pytest.fixture(scope="session")
 def xsampa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "xsampa")
     os.makedirs(path, exist_ok=True)
@@ -546,8 +562,18 @@ def dict_dir(test_dir):
 
 
 @pytest.fixture(scope="session")
+def abstract_dict_path(dict_dir):
+    return os.path.join(dict_dir, "abstract.txt")
+
+
+@pytest.fixture(scope="session")
 def basic_dict_path(dict_dir):
     return os.path.join(dict_dir, "basic.txt")
+
+
+@pytest.fixture(scope="session")
+def tabbed_dict_path(dict_dir):
+    return os.path.join(dict_dir, "tabbed_dictionary.txt")
 
 
 @pytest.fixture(scope="session")
@@ -566,11 +592,6 @@ def xsampa_dict_path(dict_dir):
 
 
 @pytest.fixture(scope="session")
-def sick_dict_path(dict_dir):
-    return os.path.join(dict_dir, "sick.txt")
-
-
-@pytest.fixture(scope="session")
 def vietnamese_dict_path(dict_dir):
     return os.path.join(dict_dir, "vietnamese_ipa.txt")
 
@@ -581,22 +602,12 @@ def acoustic_dict_path(dict_dir):
 
 
 @pytest.fixture(scope="session")
-def speaker_dictionary_path(sick_dict_path, acoustic_dict_path, generated_dir):
-    data = {"default": acoustic_dict_path, "sickmichael": sick_dict_path}
-    speaker_dict_path = os.path.join(generated_dir, "sick_acoustic_dicts.yaml")
+def speaker_dictionary_path(basic_dict_path, acoustic_dict_path, generated_dir):
+    data = {"default": acoustic_dict_path, "sickmichael": basic_dict_path}
+    speaker_dict_path = os.path.join(generated_dir, "basic_acoustic_dicts.yaml")
     with open(speaker_dict_path, "w") as f:
         yaml.safe_dump(data, f)
     return speaker_dict_path
-
-
-@pytest.fixture(scope="session")
-def sick_dict(sick_dict_path, generated_dir):
-    return sick_dict_path
-
-
-@pytest.fixture(scope="session")
-def sick_corpus(basic_corpus_dir):
-    return basic_corpus_dir
 
 
 @pytest.fixture(scope="session")
@@ -615,23 +626,28 @@ def ivector_output_model_path(generated_dir):
 
 
 @pytest.fixture(scope="session")
-def sick_g2p_model_path(generated_dir):
-    return os.path.join(generated_dir, "sick_g2p.zip")
+def basic_g2p_model_path(generated_dir):
+    return os.path.join(generated_dir, "basic_g2p.zip")
 
 
 @pytest.fixture(scope="session")
-def g2p_sick_output(generated_dir):
-    return os.path.join(generated_dir, "g2p_sick.txt")
+def g2p_basic_output(generated_dir):
+    return os.path.join(generated_dir, "g2p_basic.txt")
 
 
 @pytest.fixture(scope="session")
-def orth_sick_output(generated_dir):
-    return os.path.join(generated_dir, "orth_sick.txt")
+def orth_basic_output(generated_dir):
+    return os.path.join(generated_dir, "orth_basic.txt")
 
 
 @pytest.fixture(scope="session")
 def config_directory(test_dir):
     return os.path.join(test_dir, "configs")
+
+
+@pytest.fixture(scope="session")
+def eval_mapping_path(config_directory):
+    return os.path.join(config_directory, "eval_mapping.yaml")
 
 
 @pytest.fixture(scope="session")
@@ -720,10 +736,10 @@ def sat_train_config_path(config_directory):
 
 
 @pytest.fixture(scope="session")
-def multispeaker_dictionary_config_path(generated_dir, sick_dict_path, english_dictionary):
+def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_dictionary):
     path = os.path.join(generated_dir, "multispeaker_dictionary.yaml")
     with open(path, "w", encoding="utf8") as f:
-        yaml.safe_dump({"default": english_dictionary, "michael": sick_dict_path}, f)
+        yaml.safe_dump({"default": english_dictionary, "michael": basic_dict_path}, f)
     return path
 
 

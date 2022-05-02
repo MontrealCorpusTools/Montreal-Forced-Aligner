@@ -62,93 +62,93 @@ class CreateHclgArguments(MfaArguments):
 class DecodeArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
     decode_options: MetaDict
     model_path: str
-    lat_paths: Dict[str, str]
-    word_symbol_paths: Dict[str, str]
-    hclg_paths: Dict[str, str]
+    lat_paths: Dict[int, str]
+    word_symbol_paths: Dict[int, str]
+    hclg_paths: Dict[int, str]
 
 
 class ScoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
 
-    dictionaries: List[str]
+    dictionaries: List[int]
     score_options: MetaDict
-    lat_paths: Dict[str, str]
-    rescored_lat_paths: Dict[str, str]
-    carpa_rescored_lat_paths: Dict[str, str]
-    words_paths: Dict[str, str]
-    tra_paths: Dict[str, str]
+    lat_paths: Dict[int, str]
+    rescored_lat_paths: Dict[int, str]
+    carpa_rescored_lat_paths: Dict[int, str]
+    words_paths: Dict[int, str]
+    tra_paths: Dict[int, str]
 
 
 class LmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
 
-    dictionaries: List[str]
+    dictionaries: List[int]
     lm_rescore_options: MetaDict
-    lat_paths: Dict[str, str]
-    rescored_lat_paths: Dict[str, str]
-    old_g_paths: Dict[str, str]
-    new_g_paths: Dict[str, str]
+    lat_paths: Dict[int, str]
+    rescored_lat_paths: Dict[int, str]
+    old_g_paths: Dict[int, str]
+    new_g_paths: Dict[int, str]
 
 
 class CarpaLmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
 
-    dictionaries: List[str]
-    lat_paths: Dict[str, str]
-    rescored_lat_paths: Dict[str, str]
-    old_g_paths: Dict[str, str]
-    new_g_paths: Dict[str, str]
+    dictionaries: List[int]
+    lat_paths: Dict[int, str]
+    rescored_lat_paths: Dict[int, str]
+    old_g_paths: Dict[int, str]
+    new_g_paths: Dict[int, str]
 
 
 class InitialFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
     model_path: str
     fmllr_options: MetaDict
-    pre_trans_paths: Dict[str, str]
-    lat_paths: Dict[str, str]
-    spk2utt_paths: Dict[str, str]
+    pre_trans_paths: Dict[int, str]
+    lat_paths: Dict[int, str]
+    spk2utt_paths: Dict[int, str]
 
 
 class LatGenFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
     model_path: str
     decode_options: MetaDict
-    word_symbol_paths: Dict[str, str]
-    hclg_paths: Dict[str, str]
-    tmp_lat_paths: Dict[str, str]
+    word_symbol_paths: Dict[int, str]
+    hclg_paths: Dict[int, str]
+    tmp_lat_paths: Dict[int, str]
 
 
 class FinalFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
     model_path: str
     fmllr_options: MetaDict
-    trans_paths: Dict[str, str]
-    spk2utt_paths: Dict[str, str]
-    tmp_lat_paths: Dict[str, str]
+    trans_paths: Dict[int, str]
+    spk2utt_paths: Dict[int, str]
+    tmp_lat_paths: Dict[int, str]
 
 
 class FmllrRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
+    dictionaries: List[int]
+    feature_strings: Dict[int, str]
     model_path: str
     fmllr_options: MetaDict
-    tmp_lat_paths: Dict[str, str]
-    final_lat_paths: Dict[str, str]
+    tmp_lat_paths: Dict[int, str]
+    final_lat_paths: Dict[int, str]
 
 
 def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: TextIO) -> None:
@@ -677,11 +677,11 @@ class DecodeFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                lat_path = self.lat_paths[dict_name]
-                word_symbol_path = self.word_symbol_paths[dict_name]
-                hclg_path = self.hclg_paths[dict_name]
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                lat_path = self.lat_paths[dict_id]
+                word_symbol_path = self.word_symbol_paths[dict_id]
+                hclg_path = self.hclg_paths[dict_id]
                 if os.path.exists(lat_path):
                     continue
                 if (
@@ -764,14 +764,14 @@ class ScoreFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
+            for dict_id in self.dictionaries:
                 language_model_weight = self.score_options["language_model_weight"]
                 word_insertion_penalty = self.score_options["word_insertion_penalty"]
-                carpa_rescored_lat_path = self.carpa_rescored_lat_paths[dict_name]
-                rescored_lat_path = self.rescored_lat_paths[dict_name]
-                lat_path = self.lat_paths[dict_name]
-                words_path = self.words_paths[dict_name]
-                tra_path = self.tra_paths[dict_name]
+                carpa_rescored_lat_path = self.carpa_rescored_lat_paths[dict_id]
+                rescored_lat_path = self.rescored_lat_paths[dict_id]
+                lat_path = self.lat_paths[dict_id]
+                words_path = self.words_paths[dict_id]
+                tra_path = self.tra_paths[dict_id]
                 if os.path.exists(carpa_rescored_lat_path):
                     lat_path = carpa_rescored_lat_path
                 elif os.path.exists(rescored_lat_path):
@@ -858,11 +858,11 @@ class LmRescoreFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                lat_path = self.lat_paths[dict_name]
-                rescored_lat_path = self.rescored_lat_paths[dict_name]
-                old_g_path = self.old_g_paths[dict_name]
-                new_g_path = self.new_g_paths[dict_name]
+            for dict_id in self.dictionaries:
+                lat_path = self.lat_paths[dict_id]
+                rescored_lat_path = self.rescored_lat_paths[dict_id]
+                old_g_path = self.old_g_paths[dict_id]
+                new_g_path = self.new_g_paths[dict_id]
                 if sys.platform == "win32":
                     project_type_arg = "--project_output=true"
                 else:
@@ -936,15 +936,15 @@ class CarpaLmRescoreFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "a", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
+            for dict_id in self.dictionaries:
                 if sys.platform == "win32":
                     project_type_arg = "--project_output=true"
                 else:
                     project_type_arg = "--project_type=output"
-                lat_path = self.lat_paths[dict_name]
-                rescored_lat_path = self.rescored_lat_paths[dict_name]
-                old_g_path = self.old_g_paths[dict_name]
-                new_g_path = self.new_g_paths[dict_name]
+                lat_path = self.lat_paths[dict_id]
+                rescored_lat_path = self.rescored_lat_paths[dict_id]
+                old_g_path = self.old_g_paths[dict_id]
+                new_g_path = self.new_g_paths[dict_id]
                 if os.path.exists(rescored_lat_path):
                     continue
                 project_proc = subprocess.Popen(
@@ -1029,11 +1029,11 @@ class InitialFmllrFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                lat_path = self.lat_paths[dict_name]
-                feature_string = self.feature_strings[dict_name]
-                spk2utt_path = self.spk2utt_paths[dict_name]
-                trans_path = self.pre_trans_paths[dict_name]
+            for dict_id in self.dictionaries:
+                lat_path = self.lat_paths[dict_id]
+                feature_string = self.feature_strings[dict_id]
+                spk2utt_path = self.spk2utt_paths[dict_id]
+                trans_path = self.pre_trans_paths[dict_id]
 
                 latt_post_proc = subprocess.Popen(
                     [
@@ -1135,11 +1135,11 @@ class LatGenFmllrFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                words_path = self.word_symbol_paths[dict_name]
-                hclg_path = self.hclg_paths[dict_name]
-                tmp_lat_path = self.tmp_lat_paths[dict_name]
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                words_path = self.word_symbol_paths[dict_id]
+                hclg_path = self.hclg_paths[dict_id]
+                tmp_lat_path = self.tmp_lat_paths[dict_id]
                 lat_gen_proc = subprocess.Popen(
                     [
                         thirdparty_binary("gmm-latgen-faster"),
@@ -1212,13 +1212,13 @@ class FinalFmllrFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                trans_path = self.trans_paths[dict_name]
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                trans_path = self.trans_paths[dict_id]
                 temp_trans_path = trans_path + ".temp"
                 temp_composed_trans_path = trans_path + ".temp_composed"
-                spk2utt_path = self.spk2utt_paths[dict_name]
-                tmp_lat_path = self.tmp_lat_paths[dict_name]
+                spk2utt_path = self.spk2utt_paths[dict_id]
+                tmp_lat_path = self.tmp_lat_paths[dict_id]
                 determinize_proc = subprocess.Popen(
                     [
                         thirdparty_binary("lattice-determinize-pruned"),
@@ -1338,10 +1338,10 @@ class FmllrRescoreFunction(KaldiFunction):
     def run(self):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                feature_string = self.feature_strings[dict_name]
-                tmp_lat_path = self.tmp_lat_paths[dict_name]
-                final_lat_path = self.final_lat_paths[dict_name]
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                tmp_lat_path = self.tmp_lat_paths[dict_id]
+                final_lat_path = self.final_lat_paths[dict_id]
                 rescore_proc = subprocess.Popen(
                     [
                         thirdparty_binary("gmm-rescore-lattice"),

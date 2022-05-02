@@ -75,11 +75,11 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
         """Run the function"""
 
         with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_name in self.dictionaries:
-                ali_path = self.ali_paths[dict_name]
-                acc_path = self.acc_paths[dict_name]
-                feature_string = self.feature_strings[dict_name]
-                si_feature_string = self.si_feature_strings[dict_name]
+            for dict_id in self.dictionaries:
+                ali_path = self.ali_paths[dict_id]
+                acc_path = self.acc_paths[dict_id]
+                feature_string = self.feature_strings[dict_id]
+                si_feature_string = self.si_feature_strings[dict_id]
                 ali_to_post_proc = subprocess.Popen(
                     [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
                     stderr=log_file,
@@ -168,7 +168,7 @@ class SatTrainer(TriphoneTrainer):
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "two_feat_acc", "ark"),
                 self.model_path,
@@ -317,19 +317,18 @@ class SatTrainer(TriphoneTrainer):
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(arguments):
                     function = AccStatsTwoFeatsFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        _ = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -338,6 +337,9 @@ class SatTrainer(TriphoneTrainer):
                                 break
                         else:
                             break
+                        continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
                         continue
                     pbar.update(1)
                 for p in procs:

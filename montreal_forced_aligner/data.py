@@ -26,9 +26,10 @@ __all__ = [
     "CtmInterval",
     "TextFileType",
     "SoundFileType",
+    "WordType",
+    "PhoneType",
     "PhoneSetType",
     "WordData",
-    "Pronunciation",
     "PronunciationProbabilityCounter",
 ]
 
@@ -57,8 +58,8 @@ class TextFileType(enum.Enum):
     """Enum for types of text files"""
 
     NONE = "none"
-    TEXTGRID = TextgridFormats.SHORT_TEXTGRID
-    LONG_TEXTGRID = TextgridFormats.LONG_TEXTGRID
+    TEXTGRID = TextgridFormats.LONG_TEXTGRID
+    SHORT_TEXTGRID = TextgridFormats.SHORT_TEXTGRID
     LAB = "lab"
     JSON = TextgridFormats.JSON
 
@@ -109,6 +110,27 @@ def voiced_variants(base_phone) -> typing.Set[str]:
     return {base_phone + d for d in ["", "ʱ", "ʲ", "ʷ", "ⁿ", "ˠ", "̚"]} | {
         d + base_phone for d in ["ⁿ"]
     }
+
+
+class PhoneType(enum.Enum):
+    """Enum for types of phones"""
+
+    non_silence = 1
+    silence = 2
+    disambiguation = 3
+
+
+class WordType(enum.Enum):
+    """Enum for types of words"""
+
+    speech = 1
+    clitic = 2
+    silence = 3
+    oov = 4
+    bracketed = 5
+    laughter = 6
+    noise = 7
+    music = 8
 
 
 class PhoneSetType(enum.Enum):
@@ -1056,67 +1078,6 @@ class FileExtensions:
 
 
 @dataclass(slots=True)
-class Pronunciation:
-    """
-    Data class for information about a pronunciation string
-
-    Parameters
-    ----------
-    pronunciation: tuple
-        Tuple of phones
-    probability: float
-        Probability of pronunciation
-    disambiguation: Optional[int]
-        Disambiguation index within a pronunciation dictionary
-    silence_after_probability: Optional[float]
-        Probability of silence after the pronunciation
-    silence_before_correction: Optional[float]
-        Correction factor for probability of silence before the pronunciation
-    non_silence_before_correction: Optional[float]
-        Correction factor for probability of non-silence before the pronunciation
-    """
-
-    pronunciation: typing.Tuple[str, ...]
-    probability: float = 1.0
-    disambiguation: int = None
-    silence_after_probability: float = None
-    silence_before_correction: float = None
-    non_silence_before_correction: float = None
-
-    def __hash__(self):
-        """Hash of the pronunciation"""
-        return hash(self.pronunciation)
-
-    def __len__(self):
-        """Length of pronunciation"""
-        return len(self.pronunciation)
-
-    def __repr__(self):
-        """Representation"""
-        return f"<Pronunciation /{' '.join(self.pronunciation)}/>"
-
-    def __bool__(self) -> bool:
-        """Check for phones in the pronunciation"""
-        return bool(self.pronunciation)
-
-    def __str__(self):
-        """String format"""
-        return f"{' '.join(self.pronunciation)}"
-
-    def __eq__(self, other: Pronunciation):
-        """Check for whether two pronunciations are equal"""
-        return self.pronunciation == other.pronunciation
-
-    def __lt__(self, other: Pronunciation):
-        """Check for whether one pronunciation is less than another"""
-        return self.pronunciation < other.pronunciation
-
-    def __gt__(self, other: Pronunciation):
-        """Check for whether one pronunciation is greater than another"""
-        return self.pronunciation > other.pronunciation
-
-
-@dataclass(slots=True)
 class WordData:
     """
     Data class for information about a word and its pronunciations
@@ -1125,52 +1086,12 @@ class WordData:
     ----------
     orthography: str
         Orthographic string for the word
-    pronunciations: dict[tuple[str, ...], :class:`~montreal_forced_aligner.data.Pronunciation`]
-        Dictionary mapping of pronunciations for the word
+    pronunciations: set[tuple[str, ...]
+        Set of tuple pronunciations for the word
     """
 
     orthography: str
-    pronunciations: typing.Dict[typing.Tuple[str, ...], Pronunciation]
-
-    def __init__(self, orthography: str, pronunciations: typing.Collection[Pronunciation]):
-        self.orthography = orthography
-        self.pronunciations = {}
-        if isinstance(pronunciations, dict):
-            self.pronunciations.update(pronunciations)
-        else:
-            for p in pronunciations:
-                self.pronunciations[p.pronunciation] = p
-
-    def add_pronunciation(self, pronunciation: Pronunciation) -> None:
-        """Add pronunciation for a word
-
-        Parameters
-        ----------
-        pronunciation: :class:`~montreal_forced_aligner.data.Pronunciation`
-            Pronunciation to add
-        """
-        self.pronunciations[pronunciation.pronunciation] = pronunciation
-
-    def __repr__(self) -> str:
-        """Word object representation"""
-        pronunciation_string = ", ".join(map(str, self.pronunciations))
-        return f"<Word {self.orthography} with pronunciations {pronunciation_string}>"
-
-    def __hash__(self) -> hash:
-        """Word hash"""
-        return hash(self.orthography)
-
-    def __len__(self) -> int:
-        """Number of pronunciations"""
-        return len(self.pronunciations)
-
-    def __getitem__(self, item: typing.Tuple[str, ...]) -> Pronunciation:
-        return self.pronunciations[item]
-
-    def __iter__(self) -> typing.Generator[Pronunciation]:
-        """Iterator over pronunciations"""
-        for p in self.pronunciations.values():
-            yield p
+    pronunciations: typing.Set[typing.Tuple[str, ...]]
 
 
 @dataclass(slots=True)

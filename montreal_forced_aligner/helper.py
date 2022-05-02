@@ -15,10 +15,11 @@ import ansiwrap
 import dataclassy
 import numpy
 import yaml
+from Bio import pairwise2
 from colorama import Fore, Style
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import CorpusMappingType, MetaDict
+    from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.data import WordData
     from montreal_forced_aligner.textgrid import CtmInterval
 
@@ -63,6 +64,10 @@ def load_configuration(config_path: str) -> Dict[str, Any]:
     if not data:
         return {}
     return data
+
+
+def split_phone_position(phone_label):
+    return phone_label.rsplit("_", maxsplit=1)
 
 
 def parse_old_features(config: MetaDict) -> MetaDict:
@@ -532,7 +537,7 @@ def load_scp_safe(string: str) -> str:
     return string.replace("_MFASPACE_", " ")
 
 
-def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = False) -> None:
+def output_mapping(mapping: Dict[str, Any], path: str, skip_safe: bool = False) -> None:
     """
     Helper function to save mapping information (i.e., utt2spk) in Kaldi scp format
 
@@ -541,7 +546,7 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
 
     Parameters
     ----------
-    mapping: CorpusMappingType
+    mapping: dict[str, Any]
         Mapping to output
     path: str
         Path to save mapping
@@ -560,7 +565,7 @@ def output_mapping(mapping: CorpusMappingType, path: str, skip_safe: bool = Fals
             f.write(f"{make_scp_safe(k)} {v}\n")
 
 
-def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
+def load_scp(path: str, data_type: Optional[Type] = str) -> Dict[str, Any]:
     """
     Load a Kaldi script file (.scp)
 
@@ -584,7 +589,7 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> CorpusMappingType:
 
     Returns
     -------
-    CorpusMappingType
+    dict[str, Any]
         Dictionary where the keys are the first column and the values are all
         other columns in the scp file
 
@@ -826,7 +831,6 @@ def align_phones(
     float
         Phone error rate
     """
-    from Bio import pairwise2
 
     if ignored_phones is None:
         ignored_phones = set()

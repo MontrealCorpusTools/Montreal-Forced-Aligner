@@ -16,15 +16,6 @@ Mixins
 Multiprocessing workers and functions
 -------------------------------------
 
-.. currentmodule:: montreal_forced_aligner.acoustic_modeling.base
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_alignment_improvement_func
-   compare_alignments
-
-
 .. currentmodule:: montreal_forced_aligner.acoustic_modeling.monophone
 
 .. autosummary::
@@ -60,14 +51,6 @@ Multiprocessing workers and functions
 
 Multiprocessing argument classes
 --------------------------------
-
-.. currentmodule:: montreal_forced_aligner.acoustic_modeling.base
-
-.. autosummary::
-   :toctree: generated/
-
-   AlignmentImprovementArguments
-
 
 .. currentmodule:: montreal_forced_aligner.acoustic_modeling.monophone
 

@@ -9,7 +9,6 @@ from montreal_forced_aligner.command_line.mfa import parser
 @pytest.mark.skip("Speaker diarization functionality disabled.")
 def test_cluster(
     basic_corpus_dir,
-    sick_dict_path,
     english_ivector_model,
     generated_dir,
     transcription_acoustic_model,

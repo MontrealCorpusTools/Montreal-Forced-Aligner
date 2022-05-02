@@ -5,14 +5,18 @@ Exception classes
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import sys
+import typing
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
+
+import requests.structures
 
 from montreal_forced_aligner.helper import TerminalPrinter, comma_join
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionaryMixin
+    from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
     from montreal_forced_aligner.models import G2PModel
     from montreal_forced_aligner.textgrid import CtmInterval
 
@@ -116,33 +120,46 @@ class ThirdpartyError(MFAError):
         Flag for the error having to do with SoX
     """
 
-    def __init__(self, binary_name, open_fst=False, open_blas=False, libc=False, sox=False):
+    def __init__(
+        self, binary_name, open_fst=False, open_blas=False, libc=False, sox=False, error_text=None
+    ):
         super().__init__("")
-        self.message_lines = [f"Could not find '{self.printer.error_text(binary_name)}'."]
-        self.message_lines.append(
-            "Please ensure that you have installed MFA's conda dependencies and are in the correct environment."
-        )
-        if open_fst:
+        if error_text:
+            self.message_lines = [
+                f"There was an error when invoking '{self.printer.error_text(binary_name)}':",
+                error_text,
+                "This likely indicates that MFA's dependencies were not correctly installed, or there is an issue with your Conda environment.",
+                "If you are in the correct environment, please try re-creating the environment from scratch as a first step, i.e.:",
+                self.printer.pass_text(
+                    "conda create -n aligner -c conda-forge montreal-forced-aligner"
+                ),
+            ]
+        else:
+            self.message_lines = [f"Could not find '{self.printer.error_text(binary_name)}'."]
             self.message_lines.append(
-                f"Please ensure that you are in an environment that has the {self.printer.emphasized_text('openfst')} conda package installed, "
-                f"or that the {self.printer.emphasized_text('openfst')} binaries are on your path if you compiled them yourself."
+                "Please ensure that you have installed MFA's conda dependencies and are in the correct environment."
             )
-        elif open_blas:
-            self.message_lines.append(
-                f"Try installing {self.printer.emphasized_text('openblas')} via system package manager or verify it's on your system path?"
-            )
-        elif libc:
-            self.message_lines.append(
-                f"You likely have a different version of {self.printer.emphasized_text('glibc')} than the packages binaries use. "
-                f"Try compiling {self.printer.emphasized_text('Kaldi')} on your machine and collecting the binaries via the "
-                f"{self.printer.pass_text('mfa thirdparty kaldi')} command."
-            )
-        elif sox:
-            self.message_lines = []
-            self.message_lines.append(
-                f"Your version of {self.printer.emphasized_text('sox')} does not support the file format in your corpus. "
-                f"Try installing another version of {self.printer.emphasized_text('sox')} with support for {self.printer.error_text(binary_name)}."
-            )
+            if open_fst:
+                self.message_lines.append(
+                    f"Please ensure that you are in an environment that has the {self.printer.emphasized_text('openfst')} conda package installed, "
+                    f"or that the {self.printer.emphasized_text('openfst')} binaries are on your path if you compiled them yourself."
+                )
+            elif open_blas:
+                self.message_lines.append(
+                    f"Try installing {self.printer.emphasized_text('openblas')} via system package manager or verify it's on your system path?"
+                )
+            elif libc:
+                self.message_lines.append(
+                    f"You likely have a different version of {self.printer.emphasized_text('glibc')} than the packages binaries use. "
+                    f"Try compiling {self.printer.emphasized_text('Kaldi')} on your machine and collecting the binaries via the "
+                    f"{self.printer.pass_text('mfa thirdparty kaldi')} command."
+                )
+            elif sox:
+                self.message_lines = []
+                self.message_lines.append(
+                    f"Your version of {self.printer.emphasized_text('sox')} does not support the file format in your corpus. "
+                    f"Try installing another version of {self.printer.emphasized_text('sox')} with support for {self.printer.error_text(binary_name)}."
+                )
 
 
 # Model Errors
@@ -178,9 +195,25 @@ class ModelsConnectionError(ModelError):
     Exception during connecting to online repo for downloading models
     """
 
-    def __init__(self, response_code, response_text: str):
+    def __init__(
+        self,
+        response_code: int,
+        response: typing.Dict[str, typing.Any],
+        headers: requests.structures.CaseInsensitiveDict,
+    ):
         super().__init__("")
-        self.message_lines = [f"The response returned code {response_code}:  {response_text}"]
+        if response_code == 403 and "API rate limit" in response["message"]:
+            rate_limit = headers["x-ratelimit-limit"]
+            rate_limit_reset = datetime.datetime.fromtimestamp(int(headers["x-ratelimit-reset"]))
+            self.message_lines = [
+                f"Current hourly rate limit ({self.printer.error_text(rate_limit)} per hour) has been exceeded for the GitHub API.",
+                "You can increase it by providing a personal authentication token to via --github_token.",
+                f"The rate limit will reset at {self.printer.pass_text(rate_limit_reset)}",
+            ]
+        else:
+            self.message_lines = [
+                f"The response returned code {response_code}:  {response['message']}"
+            ]
 
 
 # Dictionary Errors
@@ -442,11 +475,11 @@ class PronunciationOrthographyMismatchError(AlignerError):
     ----------
     g2p_model: :class:`~montreal_forced_aligner.models.G2PModel`
         Specified G2P model
-    dictionary: :class:`~montreal_forced_aligner.dictionary.pronunciation.PronunciationDictionaryMixin`
+    dictionary: :class:`~montreal_forced_aligner.dictionary.mixins.DictionaryMixin`
         Specified dictionary
     """
 
-    def __init__(self, g2p_model: G2PModel, dictionary: PronunciationDictionaryMixin):
+    def __init__(self, g2p_model: G2PModel, dictionary: DictionaryMixin):
         super().__init__(
             "There were graphemes in the corpus that are not covered by the G2P model:"
         )
@@ -717,13 +750,26 @@ class KaldiProcessingError(MFAError):
         super().__init__(
             f"There were {len(error_logs)} job(s) with errors when running Kaldi binaries."
         )
-
-        if log_file is not None:
-            self.message_lines.append(
-                f" For more details, please check {self.printer.error_text(log_file)}"
-            )
+        self.job_name = None
         self.error_logs = error_logs
         self.log_file = log_file
+        self.refresh_message()
+
+    def refresh_message(self):
+        self.message_lines = [
+            f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries.",
+            "See the log files below for more information.",
+        ]
+        for error_log in self.error_logs:
+            self.message_lines.append(error_log)
+        if self.log_file:
+            self.message_lines.append(
+                f" For more details, please check {self.printer.error_text(self.log_file)}"
+            )
+
+    def append_error_log(self, error_log: str):
+        self.error_logs.append(error_log)
+        self.refresh_message()
 
     def update_log_file(self, logger: logging.Logger) -> None:
         """
@@ -736,10 +782,4 @@ class KaldiProcessingError(MFAError):
         """
         if logger.handlers:
             self.log_file = logger.handlers[0].baseFilename
-        self.message_lines = [
-            f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries."
-        ]
-        if self.log_file is not None:
-            self.message_lines.append(
-                f" For more details, please check {self.printer.error_text(self.log_file)}"
-            )
+        self.refresh_message()

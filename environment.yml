@@ -12,6 +12,7 @@ dependencies:
   - dataclassy
   - kaldi
   - sox
+  - ffmpeg
   - pynini
   - openfst
   - baumwelch

@@ -6,7 +6,7 @@ from montreal_forced_aligner.command_line.train_acoustic_model import run_train_
 
 def test_train_and_align_basic(
     basic_corpus_dir,
-    sick_dict_path,
+    basic_dict_path,
     generated_dir,
     temp_dir,
     mono_train_config_path,
@@ -17,7 +17,7 @@ def test_train_and_align_basic(
     command = [
         "train",
         basic_corpus_dir,
-        sick_dict_path,
+        basic_dict_path,
         os.path.join(generated_dir, "basic_output"),
         "-t",
         temp_dir,

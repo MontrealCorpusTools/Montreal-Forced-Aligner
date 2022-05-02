@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.dictionary.pronunciation import DictionaryMixin
+    from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
     from montreal_forced_aligner.g2p.trainer import G2PTrainer
 else:
     from dataclassy import dataclass
@@ -927,21 +927,22 @@ class DictionaryModel(MfaModel):
         """
         Pretty print the dictionary's metadata using TerminalPrinter
         """
-        from montreal_forced_aligner.dictionary.pronunciation import PronunciationDictionary
+        from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
         printer = TerminalPrinter()
         configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
-        dictionary = PronunciationDictionary(
+        dictionary = MultispeakerDictionary(
             self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
         )
+        graphemes, phone_counts = dictionary.dictionary_setup()
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
         configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}
         if self.phone_set_type.has_base_phone_regex:
             for k, v in sorted(dictionary.base_phones.items()):
                 if k not in configuration_data["Dictionary"]["data"]["detailed_phone_info"]:
                     configuration_data["Dictionary"]["data"]["detailed_phone_info"][k] = []
-                for p2 in sorted(v, key=lambda x: -dictionary.phone_counts[x]):
-                    detail_string = f"{p2} ({dictionary.phone_counts[p2]})"
+                for p2 in sorted(v, key=lambda x: -phone_counts[x]):
+                    detail_string = f"{p2} ({phone_counts[p2]})"
                     configuration_data["Dictionary"]["data"]["detailed_phone_info"][k].append(
                         detail_string
                     )
@@ -951,13 +952,11 @@ class DictionaryModel(MfaModel):
             for phone in sorted(dictionary.non_silence_phones):
                 configuration_data["Dictionary"]["data"]["detailed_phone_info"][
                     phone
-                ] = dictionary.phone_counts[phone]
-        if len(dictionary.graphemes) < 50:
-            configuration_data["Dictionary"]["data"]["graphemes"] = sorted(dictionary.graphemes)
+                ] = phone_counts[phone]
+        if len(graphemes) < 50:
+            configuration_data["Dictionary"]["data"]["graphemes"] = sorted(graphemes)
         else:
-            configuration_data["Dictionary"]["data"][
-                "graphemes"
-            ] = f"{len(dictionary.graphemes)} graphemes"
+            configuration_data["Dictionary"]["data"]["graphemes"] = f"{len(graphemes)} graphemes"
         printer.print_config(configuration_data)
 
     @classmethod
@@ -1082,41 +1081,80 @@ class ModelRelease:
 class ModelManager:
     """
     Class for managing the currently available models on the local system and the models available to be downloaded
+
+    Parameters
+    ----------
+        token: str, optional
+            GitHub authentication token to use to increase release limits
     """
 
     base_url = "https://api.github.com/repos/MontrealCorpusTools/mfa-models/releases"
 
-    def __init__(self):
+    def __init__(self, token=None):
+        from montreal_forced_aligner.config import get_temporary_directory
+
+        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
+        os.makedirs(pretrained_dir, exist_ok=True)
         self.local_models = {k: [] for k in MODEL_TYPES.keys()}
         self.remote_models: Dict[str, Dict[str, ModelRelease]] = {
             k: {} for k in MODEL_TYPES.keys()
         }
+        self.token = token
         self.synced_remote = False
         self.printer = TerminalPrinter()
+        self._cache_info = {}
         self.refresh_local()
+
+    @property
+    def cache_path(self):
+        from montreal_forced_aligner.config import get_temporary_directory
+
+        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
+        return os.path.join(pretrained_dir, "cache.json")
 
     def refresh_local(self) -> None:
         """Refresh cached information with the latest list of local model"""
+        if os.path.exists(self.cache_path):
+            with open(self.cache_path, "r", encoding="utf8") as f:
+                self._cache_info = json.load(f)
+                if "list_etags" in self._cache_info:
+                    self._cache_info["list_etags"] = {
+                        int(k): v for k, v in self._cache_info["list_etags"].items()
+                    }
         self.local_models = {
             model_type: model_class.get_available_models()
             for model_type, model_class in MODEL_TYPES.items()
         }
 
-    def refresh_remote(self, token=None) -> None:
+    def refresh_remote(self) -> None:
         """Refresh cached information with the latest list of downloadable models"""
         self.remote_models = {k: {} for k in MODEL_TYPES.keys()}
         data_count = 100
         headers = {"Accept": "application/vnd.github.v3+json"}
-        if token:
-            headers["Authorization"] = f"token {token}"
+        if self.token:
+            headers["Authorization"] = f"token {self.token}"
         page = 1
+        etags = {}
+        if "list_etags" in self._cache_info:
+            etags = self._cache_info["list_etags"]
+        else:
+            self._cache_info["list_etags"] = {}
         while data_count == 100:
-
+            if page in etags:
+                headers["If-None-Match"] = etags[page]
             r = requests.get(
                 self.base_url, params={"per_page": 100, "page": page}, headers=headers
             )
             if r.status_code >= 400:
-                raise ModelsConnectionError(r.status_code, r.text)
+                raise ModelsConnectionError(r.status_code, r.json(), r.headers)
+            if r.status_code >= 300:  # Using cached releases
+                for model_type, model_releases in self._cache_info.items():
+                    if model_type not in MODEL_TYPES:
+                        continue
+                    for model_name, data in model_releases.items():
+                        self.remote_models[model_type][model_name] = ModelRelease(*data)
+                return
+            self._cache_info["list_etags"][page] = r.headers["etag"]
             data = r.json()
             data_count = len(data)
             for d in data:
@@ -1139,7 +1177,19 @@ class ModelManager:
                 self.remote_models[model_type][model_name] = ModelRelease(
                     model_name, tag, version, download_url, file_name, d["id"]
                 )
+                if model_type not in self._cache_info:
+                    self._cache_info[model_type] = {}
+                self._cache_info[model_type][model_name] = [
+                    model_name,
+                    tag,
+                    version,
+                    download_url,
+                    file_name,
+                    d["id"],
+                ]
             page += 1
+        with open(self.cache_path, "w", encoding="utf8") as f:
+            json.dump(self._cache_info, f)
 
     def has_local_model(self, model_type: str, model_name: str) -> bool:
         """Check for local model"""
@@ -1214,7 +1264,7 @@ class ModelManager:
                 )
 
     def download_model(
-        self, model_type: str, model_name=typing.Optional[str], token: str = None
+        self, model_type: str, model_name=typing.Optional[str], ignore_cache=False
     ) -> None:
         """
         Download a model to MFA's temporary directory
@@ -1225,6 +1275,8 @@ class ModelManager:
             Model type
         model_name: str
             Name of model
+        ignore_cache: bool
+            Flag to ignore previously downloaded files
         """
         if not model_name:
             return self.print_remote_models(model_type)
@@ -1235,17 +1287,20 @@ class ModelManager:
                 model_name, model_type, sorted(self.remote_models[model_type].keys())
             )
         release = self.remote_models[model_type][model_name]
+        local_path = os.path.join(
+            MODEL_TYPES[model_type].pretrained_directory(), release.download_file_name
+        )
+        if os.path.exists(local_path) and not ignore_cache:
+            return
         headers = {"Accept": "application/octet-stream"}
-        if token:
-            headers["Authorization"] = f"token {token}"
+        if self.token:
+            headers["Authorization"] = f"token {self.token}"
+        if release.download_link in self._cache_info:
+            headers["If-None-Match"] = self._cache_info[release.download_link]
         r = requests.get(release.download_link, headers=headers)
         if r.status_code >= 400:
-            raise ModelsConnectionError(r.status_code, r.text)
-        with open(
-            os.path.join(
-                MODEL_TYPES[model_type].pretrained_directory(), release.download_file_name
-            ),
-            "wb",
-        ) as f:
+            raise ModelsConnectionError(r.status_code, r.json(), r.headers)
+        self._cache_info[release.download_link] = r.headers["etag"]
+        with open(local_path, "wb") as f:
             f.write(r.content)
         self.refresh_local()

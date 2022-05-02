@@ -1,0 +1,3 @@
+worda phonea phoneb
+wordb phonea phonec
+wordc phonec

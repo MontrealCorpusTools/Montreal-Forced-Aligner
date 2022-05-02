@@ -25,7 +25,9 @@ from typing import (
     get_type_hints,
 )
 
+import sqlalchemy
 import yaml
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration
@@ -40,7 +42,6 @@ __all__ = [
     "MfaWorker",
     "TopLevelMfaWorker",
     "MetaDict",
-    "CtmErrorDict",
     "FileExporterMixin",
     "ModelExporterMixin",
     "TemporaryDirectoryMixin",
@@ -51,7 +52,6 @@ __all__ = [
 
 # Configuration types
 MetaDict = Dict[str, Any]
-CtmErrorDict: Dict[Tuple[str, int], str]
 
 
 class KaldiFunction(metaclass=abc.ABCMeta):
@@ -165,6 +165,84 @@ class TemporaryDirectoryMixin(metaclass=abc.ABCMeta):
     @language_model_output_directory.setter
     def language_model_output_directory(self, directory: str) -> None:
         self._language_model_output_directory = directory
+
+
+class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
+    """
+    Abstract class for mixing in database functionality
+    """
+
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self._db_engine = None
+        self._session = None
+
+    def initialize_database(self) -> None:
+        """
+        Initialize the database with database schema
+        """
+        from montreal_forced_aligner.db import MfaSqlBase
+
+        os.makedirs(self.output_directory, exist_ok=True)
+        MfaSqlBase.metadata.create_all(self.db_engine)
+
+    @property
+    def db_engine(self) -> sqlalchemy.engine.Engine:
+        """Database engine"""
+        if self._db_engine is None:
+            self._db_engine = self.construct_engine()
+        return self._db_engine
+
+    @property
+    def db_path(self) -> str:
+        """Path to SQLite database file"""
+        return os.path.join(self.output_directory, f"{self.identifier}.db")
+
+    def construct_engine(self, same_thread=True, read_only=False) -> sqlalchemy.engine.Engine:
+        """
+        Construct a database engine
+
+        Parameters
+        ----------
+        same_thread: bool, optional
+            Flag for whether to enforce checking access on different threads, defaults to True
+        read_only: bool, optional
+            Flag for whether the database engine should be created as read-only, defaults to False
+
+        Returns
+        -------
+        :class:`~sqlalchemy.engine.Engine`
+            SqlAlchemy engine
+        """
+        connect_args = {}
+        if not same_thread:
+            connect_args["check_same_thread"] = False
+        string = f"sqlite:///{self.db_path}"
+        if read_only:
+            string = f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
+        return sqlalchemy.create_engine(string, connect_args=connect_args)
+
+    def session(self, **kwargs) -> Session:
+        """
+        Construct database session
+
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments to pass to the Session
+
+        Returns
+        -------
+        :class:`~sqlalchemy.orm.session.Session`
+            SqlAlchemy session
+        """
+        autoflush = kwargs.pop("autoflush", False)
+        if self._session is None:
+            self._session = sqlalchemy.orm.Session(self.db_engine, autoflush=autoflush, **kwargs)
+        return self._session
 
 
 class MfaWorker(metaclass=abc.ABCMeta):
@@ -501,6 +579,17 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         Clean up loggers and output final message for top-level workers
         """
         try:
+            if getattr(self, "_session", None) is not None:
+                try:
+                    self._session.commit()
+                except Exception:
+                    self._session.rollback()
+                finally:
+                    self._session.close()
+                self._session = None
+            if getattr(self, "_db_engine", None) is not None:
+                self._db_engine.dispose()
+                self._db_engine = None
             if self.dirty:
                 self.log_error("There was an error in the run, please see the log.")
             else:
@@ -753,13 +842,6 @@ class FileExporterMixin(ExporterMixin, metaclass=abc.ABCMeta):
     def __init__(self, cleanup_textgrids: bool = True, **kwargs):
         self.cleanup_textgrids = cleanup_textgrids
         super().__init__(**kwargs)
-
-    @property
-    def backup_output_directory(self) -> Optional[str]:
-        """Path to store files if overwriting is not allowed"""
-        if self.overwrite:
-            return None
-        return os.path.join(self.working_directory, "backup")
 
     @abc.abstractmethod
     def export_files(self, output_directory: str) -> None:

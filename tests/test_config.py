@@ -14,9 +14,11 @@ from montreal_forced_aligner.exceptions import ConfigError
 from montreal_forced_aligner.ivector.trainer import TrainableIvectorExtractor
 
 
-def test_monophone_config(sick_corpus, sick_dict, temp_dir):
+def test_monophone_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus, dictionary_path=sick_dict, temporary_directory=temp_dir
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
+        temporary_directory=temp_dir,
     )
     config = MonophoneTrainer(identifier="mono", worker=am_trainer)
     config.compute_calculated_properties()
@@ -47,9 +49,11 @@ def test_monophone_config(sick_corpus, sick_dict, temp_dir):
     am_trainer.cleanup()
 
 
-def test_triphone_config(sick_corpus, sick_dict, temp_dir):
+def test_triphone_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus, dictionary_path=sick_dict, temporary_directory=temp_dir
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
+        temporary_directory=temp_dir,
     )
     config = TriphoneTrainer(identifier="tri", worker=am_trainer)
     config.compute_calculated_properties()
@@ -57,9 +61,11 @@ def test_triphone_config(sick_corpus, sick_dict, temp_dir):
     am_trainer.cleanup()
 
 
-def test_lda_mllt_config(sick_corpus, sick_dict, temp_dir):
+def test_lda_mllt_config(basic_corpus_dir, basic_dict_path, temp_dir):
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus, dictionary_path=sick_dict, temporary_directory=temp_dir
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
+        temporary_directory=temp_dir,
     )
 
     assert am_trainer.beam == 10
@@ -74,8 +80,8 @@ def test_lda_mllt_config(sick_corpus, sick_dict, temp_dir):
 
 def test_load_align(
     config_directory,
-    sick_corpus,
-    sick_dict,
+    basic_corpus_dir,
+    basic_dict_path,
     temp_dir,
     english_acoustic_model,
     mono_align_config_path,
@@ -83,8 +89,8 @@ def test_load_align(
     params = PretrainedAligner.parse_parameters(mono_align_config_path)
     aligner = PretrainedAligner(
         acoustic_model_path=english_acoustic_model,
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         **params
     )
@@ -102,8 +108,8 @@ def test_load_align(
     print(params)
     aligner = PretrainedAligner(
         acoustic_model_path=english_acoustic_model,
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         **params
     )
@@ -112,11 +118,11 @@ def test_load_align(
     aligner.cleanup()
 
 
-def test_load_basic_train(sick_corpus, sick_dict, temp_dir, basic_train_config_path):
+def test_load_basic_train(basic_corpus_dir, basic_dict_path, temp_dir, basic_train_config_path):
     params = TrainableAligner.parse_parameters(basic_train_config_path)
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         **params
     )
@@ -134,11 +140,11 @@ def test_load_basic_train(sick_corpus, sick_dict, temp_dir, basic_train_config_p
     am_trainer.cleanup()
 
 
-def test_load_mono_train(sick_corpus, sick_dict, temp_dir, mono_train_config_path):
+def test_load_mono_train(basic_corpus_dir, basic_dict_path, temp_dir, mono_train_config_path):
     params = TrainableAligner.parse_parameters(mono_train_config_path)
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         **params
     )
@@ -150,10 +156,10 @@ def test_load_mono_train(sick_corpus, sick_dict, temp_dir, mono_train_config_pat
     am_trainer.cleanup()
 
 
-def test_load_ivector_train(sick_corpus, sick_dict, temp_dir, train_ivector_config_path):
+def test_load_ivector_train(basic_corpus_dir, temp_dir, train_ivector_config_path):
     params = TrainableIvectorExtractor.parse_parameters(train_ivector_config_path)
     trainer = TrainableIvectorExtractor(
-        corpus_directory=sick_corpus, temporary_directory=temp_dir, **params
+        corpus_directory=basic_corpus_dir, temporary_directory=temp_dir, **params
     )
 
     for t in trainer.training_configs.values():
@@ -163,12 +169,12 @@ def test_load_ivector_train(sick_corpus, sick_dict, temp_dir, train_ivector_conf
     trainer.cleanup()
 
 
-def test_load(sick_corpus, sick_dict, temp_dir, config_directory):
+def test_load(basic_corpus_dir, basic_dict_path, temp_dir, config_directory):
     path = os.path.join(config_directory, "basic_train_config.yaml")
     params = TrainableAligner.parse_parameters(path)
     am_trainer = TrainableAligner(
-        corpus_directory=sick_corpus,
-        dictionary_path=sick_dict,
+        corpus_directory=basic_corpus_dir,
+        dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
         **params
     )

@@ -1,3 +1,4 @@
+"""Mixin module for G2P functionality"""
 from abc import ABCMeta, abstractmethod
 from typing import Dict, List
 
@@ -98,7 +99,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
             for (orthography, word) in results.items():
                 if not word.pronunciations:
                     continue
-                for p in word:
+                for p in word.pronunciations:
                     if not p:
                         continue
                     f.write(f"{orthography}\t{p}\n")

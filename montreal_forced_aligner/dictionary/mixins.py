@@ -9,7 +9,7 @@ import typing
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
-from montreal_forced_aligner.abc import TemporaryDirectoryMixin
+from montreal_forced_aligner.abc import DatabaseMixin
 from montreal_forced_aligner.data import PhoneSetType
 
 if TYPE_CHECKING:
@@ -207,6 +207,8 @@ class SplitWordsFunction:
         specials_set: Optional[Set[str]] = None,
         oov_word: Optional[str] = None,
         bracketed_word: Optional[str] = None,
+        laughter_word: Optional[str] = None,
+        laughter_regex: Optional[str] = None,
     ):
         self.clitic_marker = clitic_markers[0] if len(clitic_markers) else None
         self.compound_markers = compound_markers
@@ -214,6 +216,7 @@ class SplitWordsFunction:
         self.specials_set = specials_set
         self.oov_word = oov_word
         self.bracketed_word = bracketed_word
+        self.laughter_word = laughter_word
         if not word_mapping:
             word_mapping = None
         self.word_mapping = word_mapping
@@ -222,6 +225,7 @@ class SplitWordsFunction:
         self.initial_clitic_pattern = None
         self.final_clitic_pattern = None
         self.bracket_pattern = None
+        self.laughter_regex = re.compile(laughter_regex)
         if brackets:
             left_brackets = re.escape("".join(x[0] for x in brackets))
             right_brackets = "".join(x[1] for x in brackets)
@@ -259,6 +263,8 @@ class SplitWordsFunction:
         """
         if normalized_text in self.word_mapping and normalized_text not in self.specials_set:
             return self.word_mapping[normalized_text]
+        elif self.laughter_regex and self.laughter_regex.match(normalized_text):
+            return self.word_mapping[self.laughter_word]
         elif self.bracket_pattern and self.bracket_pattern.match(normalized_text):
             return self.word_mapping[self.bracketed_word]
         else:
@@ -473,6 +479,8 @@ class DictionaryMixin:
         self.ignore_case = ignore_case
         self.oov_word = oov_word
         self.silence_word = silence_word
+        self.bracketed_word = "[bracketed]"
+        self.laughter_word = "[laughter]"
         self.position_dependent_phones = position_dependent_phones
         self.optional_silence_phone = optional_silence_phone
         self.other_noise_phone = other_noise_phone
@@ -536,14 +544,6 @@ class DictionaryMixin:
                 return self.base_phone_mapping[base_phone]
             return base_phone
         return phone
-
-    @property
-    def split_regex(self) -> re.Pattern:
-        """Pattern for splitting arbitrary text"""
-        markers = self.compound_markers
-        if "-" in markers:
-            markers = ["-"] + [x for x in self.compound_markers if x != "-"]
-        return re.compile(rf'[{"".join(markers)} ]')
 
     @property
     def extra_questions_mapping(self) -> Dict[str, List[str]]:
@@ -888,7 +888,7 @@ class DictionaryMixin:
         yield from self.construct_sanitize_function()(text)
 
 
-class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
+class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABCMeta):
     """
     Mixin for dictionaries backed by a temporary directory
     """
@@ -930,12 +930,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
                         cat = "end"
                     f.write(" ".join([p, cat]) + "\n")
                     intf.write(" ".join([str(self.phone_mapping[p]), cat]) + "\n")
-
-    def write_training_information(self) -> None:
-        """Write phone information needed for training"""
-        self._write_topo()
-        self._write_phone_sets()
-        self._write_extra_questions()
 
     def _get_grouped_phones(self) -> Dict[str, Set[str]]:
         """
@@ -1119,14 +1113,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_dir, "phones.txt")
 
-    def _write_phone_symbol_table(self) -> None:
-        """
-        Write the phone mapping to the temporary directory
-        """
-        with open(self.phone_symbol_table_path, "w", encoding="utf8") as f:
-            for p, i in sorted(self.phone_mapping.items(), key=lambda x: x[1]):
-                f.write(f"{p} {i}\n")
-
     @property
     def disambiguation_symbols_txt_path(self):
         """Path to the file containing phone disambiguation symbols"""
@@ -1152,21 +1138,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, TemporaryDirectoryMixin, metacla
     def topo_path(self) -> str:
         """Path to the dictionary's topology file"""
         return os.path.join(self.phones_dir, "topo")
-
-    def _write_extra_questions(self) -> None:
-        """
-        Write extra questions symbols to the temporary directory
-        """
-        phone_extra = os.path.join(self.phones_dir, "extra_questions.txt")
-        phone_extra_int = os.path.join(self.phones_dir, "extra_questions.int")
-        with open(phone_extra, "w", encoding="utf8") as outf, open(
-            phone_extra_int, "w", encoding="utf8"
-        ) as intf:
-            for v in self.extra_questions_mapping.values():
-                if not v:
-                    continue
-                outf.write(f"{' '.join(v)}\n")
-                intf.write(f"{' '.join(str(self.phone_mapping[x]) for x in v)}\n")
 
     def _write_disambig(self) -> None:
         """

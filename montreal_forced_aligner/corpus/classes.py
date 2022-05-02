@@ -242,13 +242,13 @@ class UtteranceData:
 
     speaker_name: str
     file_name: str
-    begin: typing.Optional[float] = 0
-    end: typing.Optional[float] = -1
-    channel: typing.Optional[int] = 0
-    text: typing.Optional[str] = None
-    normalized_text: typing.List[str] = []
-    normalized_text_int: typing.List[int] = []
-    oovs: typing.Set[str] = set()
+    begin: float
+    end: float
+    channel: int = 0
+    text: str = ""
+    normalized_text: str = ""
+    normalized_text_int: str = ""
+    oovs: str = ""
 
     def parse_transcription(self, sanitize_function=Optional[MultispeakerSanitizationFunction]):
         """
@@ -260,8 +260,11 @@ class UtteranceData:
             Function to sanitize words and strip punctuation
 
         """
-        self.normalized_text = []
-        self.normalized_text_int = []
+        oovs = set()
+        normalized_text = []
+        normalized_text_int = []
+        if not self.text:
+            return
         if sanitize_function is not None:
             try:
                 sanitize, split = sanitize_function.get_functions_for_speaker(self.speaker_name)
@@ -276,12 +279,12 @@ class UtteranceData:
                         if new_w in split.specials_set or (
                             split.word_mapping is not None and new_w not in split.word_mapping
                         ):
-                            self.oovs.add(new_w)
-                        self.normalized_text.append(new_w)
-                        self.normalized_text_int.append(split.to_int(new_w))
+                            oovs.add(new_w)
+                        normalized_text.append(new_w)
+                        normalized_text_int.append(str(split.to_int(new_w)))
                     if text:
                         text += " "
                     text += w
-                self.text = text
-            else:
-                self.text = " ".join(words)
+                self.oovs = " ".join(sorted(oovs))
+                self.normalized_text = " ".join(normalized_text)
+                self.normalized_text_int = " ".join(normalized_text_int)

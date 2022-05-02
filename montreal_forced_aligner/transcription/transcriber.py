@@ -19,13 +19,20 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import tqdm
 from praatio import textgrid
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.corpus.db import File, SoundFile, Speaker, SpeakerOrdering, Utterance
 from montreal_forced_aligner.data import TextgridFormats
+from montreal_forced_aligner.db import (
+    Dictionary,
+    File,
+    SoundFile,
+    Speaker,
+    SpeakerOrdering,
+    Utterance,
+)
 from montreal_forced_aligner.exceptions import KaldiProcessingError, PlatformError
 from montreal_forced_aligner.helper import load_configuration, parse_old_features, score_wer
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
@@ -132,9 +139,7 @@ class TranscriberMixin:
             Directory to save evaluation
         """
         output_path = os.path.join(output_directory, "transcription_evaluation.csv")
-        with open(output_path, "w", newline="", encoding="utf8") as f, Session(
-            self.db_engine
-        ) as session:
+        with open(output_path, "w", newline="", encoding="utf8") as f, self.session() as session:
             writer = csv.writer(f)
             writer.writerow(
                 [
@@ -227,7 +232,7 @@ class TranscriberMixin:
         to_comp = []
 
         update_mappings = []
-        with Session(self.db_engine) as session:
+        with self.session() as session:
             utterances = session.query(Utterance).filter(Utterance.normalized_text != None)  # noqa
             for utt in utterances:
                 g = utt.normalized_text.split()
@@ -463,24 +468,25 @@ class Transcriber(
             Per dictionary arguments for HCLG
         """
         args = {}
-        for dict_name, dictionary in self.dictionary_mapping.items():
-            args[dict_name] = CreateHclgArguments(
-                dict_name,
-                getattr(self, "db_path", ""),
-                os.path.join(self.model_directory, "log", f"hclg.{dict_name}.log"),
-                self.model_directory,
-                os.path.join(self.model_directory, "{file_name}" + f".{dict_name}.fst"),
-                os.path.join(self.model_directory, f"words.{dict_name}.txt"),
-                os.path.join(self.model_directory, f"G.{dict_name}.carpa"),
-                self.language_model.small_arpa_path,
-                self.language_model.medium_arpa_path,
-                self.language_model.carpa_path,
-                self.model_path,
-                dictionary.lexicon_disambig_fst_path,
-                os.path.join(dictionary.phones_dir, "disambiguation_symbols.int"),
-                self.hclg_options,
-                dictionary.words_mapping,
-            )
+        with self.session() as session:
+            for d in session.query(Dictionary):
+                args[d.id] = CreateHclgArguments(
+                    d.id,
+                    getattr(self, "db_path", ""),
+                    os.path.join(self.model_directory, "log", f"hclg.{d.id}.log"),
+                    self.model_directory,
+                    os.path.join(self.model_directory, "{file_name}" + f".{d.id}.fst"),
+                    os.path.join(self.model_directory, f"words.{d.id}.txt"),
+                    os.path.join(self.model_directory, f"G.{d.id}.carpa"),
+                    self.language_model.small_arpa_path,
+                    self.language_model.medium_arpa_path,
+                    self.language_model.carpa_path,
+                    self.model_path,
+                    d.lexicon_disambig_fst_path,
+                    d.disambiguation_symbols_int_path,
+                    self.hclg_options,
+                    self.word_mapping(d.id),
+                )
         return args
 
     def decode_arguments(self) -> List[DecodeArguments]:
@@ -498,7 +504,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"decode.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_string[j.name],
                 self.decode_options,
                 self.alignment_model_path,
@@ -523,7 +529,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.evaluation_directory, f"score.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 self.score_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
@@ -548,7 +554,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"lm_rescore.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 self.lm_rescore_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
@@ -572,7 +578,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"carpa_lm_rescore.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
                 j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
@@ -605,7 +611,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"initial_fmllr.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -631,7 +637,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"lat_gen_fmllr.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 self.model_path,
                 self.decode_options,
@@ -657,7 +663,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"final_fmllr.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -683,7 +689,7 @@ class Transcriber(
                 j.name,
                 getattr(self, "db_path", ""),
                 os.path.join(self.working_log_directory, f"fmllr_rescore.{j.name}.log"),
-                j.dictionary_names,
+                j.dictionary_ids,
                 feat_strings[j.name],
                 self.model_path,
                 self.fmllr_options,
@@ -777,14 +783,13 @@ class Transcriber(
         dict_arguments = list(dict_arguments.values())
         self.log_info("Generating HCLG.fst...")
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(dict_arguments):
                 function = CreateHclgFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
             with tqdm.tqdm(
@@ -792,7 +797,7 @@ class Transcriber(
             ) as pbar:
                 while True:
                     try:
-                        result, hclg_path = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -802,6 +807,10 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    result, hclg_path = result
                     if result:
                         self.log_debug(f"Done generating {hclg_path}!")
                     else:
@@ -846,9 +855,10 @@ class Transcriber(
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         self.write_lexicon_information(write_disambiguation=True)
-        for dict_name, dictionary in self.dictionary_mapping.items():
-            words_path = os.path.join(self.model_directory, f"words.{dict_name}.txt")
-            shutil.copyfile(dictionary.words_symbol_path, words_path)
+        with self.session() as session:
+            for d in session.query(Dictionary):
+                words_path = os.path.join(self.model_directory, f"words.{d.id}.txt")
+                shutil.copyfile(d.words_symbol_path, words_path)
 
         big_arpa_path = self.language_model.carpa_path
         small_arpa_path = self.language_model.small_arpa_path
@@ -936,28 +946,18 @@ class Transcriber(
         ) as log_file:
             log_file.write("utterance,graph_cost,acoustic_cost,total_cost,num_frames\n")
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.score_arguments()):
                     function = ScoreFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        (
-                            utterance,
-                            graph_cost,
-                            acoustic_cost,
-                            total_cost,
-                            num_frames,
-                        ) = return_queue.get(timeout=1)
-                        log_file.write(
-                            f"{utterance},{graph_cost},{acoustic_cost},{total_cost},{num_frames}\n"
-                        )
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -968,6 +968,20 @@ class Transcriber(
                             break
                         continue
                     pbar.update(1)
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+
+                    (
+                        utterance,
+                        graph_cost,
+                        acoustic_cost,
+                        total_cost,
+                        num_frames,
+                    ) = result
+                    log_file.write(
+                        f"{utterance},{graph_cost},{acoustic_cost},{total_cost},{num_frames}\n"
+                    )
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1054,20 +1068,18 @@ class Transcriber(
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.initial_fmllr_arguments()):
                     function = InitialFmllrFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        done, no_gpost, other_errors = return_queue.get(timeout=1)
-                        sum_errors += no_gpost + other_errors
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1077,6 +1089,11 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    done, no_gpost, other_errors = result
+                    sum_errors += no_gpost + other_errors
                     pbar.update(done + no_gpost + other_errors)
                 for p in procs:
                     p.join()
@@ -1113,20 +1130,18 @@ class Transcriber(
         ) as log_file:
             log_file.write("utterance,log_likelihood,num_frames\n")
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.lat_gen_fmllr_arguments()):
                     function = LatGenFmllrFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        utterance, log_likelihood, num_frames = return_queue.get(timeout=1)
-                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1136,7 +1151,12 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
                     pbar.update(1)
+                    utterance, log_likelihood, num_frames = result
+                    log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1164,20 +1184,18 @@ class Transcriber(
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.final_fmllr_arguments()):
                     function = FinalFmllrFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        done, no_gpost, other_errors = return_queue.get(timeout=1)
-                        sum_errors += no_gpost + other_errors
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1187,6 +1205,11 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    done, no_gpost, other_errors = result
+                    sum_errors += no_gpost + other_errors
                     pbar.update(done + no_gpost + other_errors)
                 for p in procs:
                     p.join()
@@ -1217,20 +1240,18 @@ class Transcriber(
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.fmllr_rescore_arguments()):
                     function = FmllrRescoreFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        done, errors = return_queue.get(timeout=1)
-                        sum_errors += errors
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1240,6 +1261,11 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    done, errors = result
+                    sum_errors += errors
                     pbar.update(done + errors)
                 for p in procs:
                     p.join()
@@ -1308,20 +1334,18 @@ class Transcriber(
         ) as log_file:
             log_file.write("utterance,log_likelihood,num_frames\n")
             if self.use_mp:
-                manager = mp.Manager()
-                error_dict = manager.dict()
-                return_queue = manager.Queue()
+                error_dict = {}
+                return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
                 for i, args in enumerate(self.decode_arguments()):
                     function = DecodeFunction(args)
-                    p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                    p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
                 while True:
                     try:
-                        utterance, log_likelihood, num_frames = return_queue.get(timeout=1)
-                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1331,6 +1355,11 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    utterance, log_likelihood, num_frames = result
+                    log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
                     pbar.update(1)
                 for p in procs:
                     p.join()
@@ -1357,14 +1386,13 @@ class Transcriber(
         """
         self.log_info("Rescoring lattices with medium G.fst...")
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(self.lm_rescore_arguments()):
                 function = LmRescoreFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
             with tqdm.tqdm(
@@ -1372,7 +1400,7 @@ class Transcriber(
             ) as pbar:
                 while True:
                     try:
-                        succeeded, failed = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1382,6 +1410,10 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    succeeded, failed = result
                     if failed:
                         self.log_warning("Some lattices failed to be rescored")
                     pbar.update(succeeded + failed)
@@ -1412,14 +1444,13 @@ class Transcriber(
         """
         self.log_info("Rescoring lattices with large G.carpa...")
         if self.use_mp:
-            manager = mp.Manager()
-            error_dict = manager.dict()
-            return_queue = manager.Queue()
+            error_dict = {}
+            return_queue = mp.Queue()
             stopped = Stopped()
             procs = []
             for i, args in enumerate(self.carpa_lm_rescore_arguments()):
                 function = CarpaLmRescoreFunction(args)
-                p = KaldiProcessWorker(i, return_queue, function, error_dict, stopped)
+                p = KaldiProcessWorker(i, return_queue, function, stopped)
                 procs.append(p)
                 p.start()
             with tqdm.tqdm(
@@ -1427,7 +1458,7 @@ class Transcriber(
             ) as pbar:
                 while True:
                     try:
-                        succeeded, failed = return_queue.get(timeout=1)
+                        result = return_queue.get(timeout=1)
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1437,6 +1468,10 @@ class Transcriber(
                         else:
                             break
                         continue
+                    if isinstance(result, KaldiProcessingError):
+                        error_dict[result.job_name] = result
+                        continue
+                    succeeded, failed = result
                     if failed:
                         self.log_warning("Some lattices failed to be rescored")
                     pbar.update(succeeded + failed)
@@ -1519,11 +1554,11 @@ class Transcriber(
 
     def _load_transcripts(self):
         """Load transcripts from Kaldi temporary files"""
-        with Session(self.db_engine) as session:
+        with self.session() as session:
+            records = []
             for score_args in self.score_arguments():
-                for dict_name, tra_path in score_args.tra_paths.items():
-                    records = []
-                    lookup = self.dictionary_mapping[dict_name].reversed_word_mapping
+                for dict_id, tra_path in score_args.tra_paths.items():
+                    lookup = self.reversed_word_mapping(dict_id)
                     with open(tra_path, "r", encoding="utf8") as f:
                         for line in f:
                             t = line.strip().split(" ")
@@ -1537,7 +1572,8 @@ class Transcriber(
                                     "transcription_text": " ".join(lookup[int(x)] for x in ints),
                                 }
                             )
-                    session.bulk_update_mappings(Utterance, records)
+            session.bulk_update_mappings(Utterance, records)
+            session.commit()
 
     def export_files(self, output_directory: str) -> None:
         """
@@ -1552,7 +1588,7 @@ class Transcriber(
             output_directory = os.path.join(self.working_directory, "transcriptions")
         os.makedirs(output_directory, exist_ok=True)
         self._load_transcripts()
-        with Session(self.db_engine) as session:
+        with self.session() as session:
             files = session.query(File).options(
                 selectinload(File.utterances),
                 selectinload(File.speakers).selectinload(SpeakerOrdering.speaker),
