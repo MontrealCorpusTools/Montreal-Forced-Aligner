@@ -1228,6 +1228,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
 
             begin = time.time()
             self.write_lexicon_information()
+            self.write_training_information()
             self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 
             if self.ignore_acoustics:

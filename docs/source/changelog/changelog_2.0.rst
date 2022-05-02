@@ -22,6 +22,7 @@ Release candidates
 - Allow for dictionaries with the same base name in different locations to be used side-by-side :github_issue:`417`
 - Fixed a bug where initial silence was not being properly handled if silence probability training had not been done
 - Removed PronunciationDictionaryMixin and PronunciationDictionary classes and refactored functionality into :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerDictionaryMixin` and :class:`~montreal_forced_aligner.db.Dictionary`
+- Fixed a bug where alignment models would not be adapted during adaptation :github_issue:`421`
 
 2.0.0rc5
 --------
