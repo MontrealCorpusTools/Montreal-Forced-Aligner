@@ -962,6 +962,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             relative_path,
                             self.speaker_characters,
                             sanitize_function,
+                            self.sample_frequency
                         )
 
                         self.add_file(file, session)
