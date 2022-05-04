@@ -706,7 +706,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 subsets_per_dictionary = {}
                 utts_per_dictionary = {}
                 subsetted = 0
-                for dict_id in getattr(self, "dictionary_mapping", {}).keys():
+                for dict_id in getattr(self, "dictionary_lookup", {}).values():
                     num_utts = (
                         session.query(Utterance)
                         .join(Utterance.speaker)
@@ -720,7 +720,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 remaining_subset = subset - sum(subsets_per_dictionary.values())
                 remaining_dicts = num_dictionaries - subsetted
                 remaining_subset_per_dictionary = int(remaining_subset / remaining_dicts)
-                for dict_id in getattr(self, "dictionary_mapping", {}).keys():
+                for dict_id in getattr(self, "dictionary_lookup", {}).values():
                     num_utts = utts_per_dictionary[dict_id]
                     if dict_id in subsets_per_dictionary:
                         subset_per_dictionary = subsets_per_dictionary[dict_id]

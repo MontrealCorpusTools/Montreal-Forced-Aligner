@@ -17,6 +17,7 @@ Release candidates
 - Fixed a bug where sample rate could not be specified when not using multiprocessing :github_pr:`444`
 - Fixed an incompatibility with the Kaldi version 1016 where BLAS libraries were not operating in single-threaded mode
 - Further optimized large multispeaker dictionary loading
+- Fixed a bug where subsets were not properly generated when multiple dictionaries were used
 
 2.0.0rc6
 --------
