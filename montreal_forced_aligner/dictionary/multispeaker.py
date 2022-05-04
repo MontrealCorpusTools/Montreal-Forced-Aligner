@@ -305,10 +305,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self._speaker_ids[speaker_name] = speaker_id
                 dictionary_id_cache[path] = dictionary_id
             dictionary = (
-                session.query(Dictionary)
-                .join(Speaker.dictionary)
-                .filter(Dictionary.default == True)  # noqa
-                .first()
+                session.query(Dictionary).filter(Dictionary.default == True).first()  # noqa
             )
             if dictionary:
                 self._default_dictionary_id = dictionary.id
