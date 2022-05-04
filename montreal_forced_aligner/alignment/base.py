@@ -295,16 +295,18 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         silence_prob = silence_probabilities[w_p1]
                     bar_count_silence_wp[w_p2] += counts["silence"] * silence_prob
                     bar_count_non_silence_wp[w_p2] += counts["non_silence"] * (1 - silence_prob)
-                for w_p, silence_count in counter.silence_before_counts.items():
-                    if w_p[0] in {initial_key[0], final_key[0], self.silence_word}:
+                for w, p, _ in pronunciations:
+                    silence_count = counter.silence_before_counts[(w, p)]
+                    if w in {initial_key[0], final_key[0], self.silence_word}:
                         continue
-                    non_silence_count = counter.non_silence_before_counts[w_p]
+                    non_silence_count = counter.non_silence_before_counts[(w, p)]
                     pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
-                        (silence_count + lambda_3) / (bar_count_silence_wp[w_p] + lambda_3)
+                        (silence_count + lambda_3) / (bar_count_silence_wp[(w, p)] + lambda_3)
                     )
 
                     pron_mapping[(w, p)]["non_silence_before_correction"] = format_correction(
-                        (non_silence_count + lambda_3) / (bar_count_non_silence_wp[w_p] + lambda_3)
+                        (non_silence_count + lambda_3)
+                        / (bar_count_non_silence_wp[(w, p)] + lambda_3)
                     )
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
                     silence_probability * lambda_2

@@ -132,6 +132,13 @@ class SanitizeFunction:
                 self.clitic_cleanup_regex = re.compile(
                     rf'[{extra}{"".join(other_clitic_markers)}]'
                 )
+        non_word_character_set = sorted(self.all_punctuation)
+        if "-" in self.all_punctuation:
+            extra = "-"
+            non_word_character_set = [x for x in non_word_character_set if x != "-"]
+        self.punctuation_regex = re.compile(
+            rf"^[{extra}{re.escape(''.join(non_word_character_set))}]+$"
+        )
 
     def __call__(self, text) -> typing.Generator[str]:
         """
@@ -165,7 +172,7 @@ class SanitizeFunction:
         for w in words:
             if not w:
                 continue
-            if w in self.all_punctuation:
+            if self.punctuation_regex.match(w):
                 continue
             if clitic_check and w[0] == self.base_clitic_marker == w[-1]:
                 w = w[1:-1]

@@ -32,6 +32,7 @@ from montreal_forced_aligner.corpus.multiprocessing import (
     AcousticDirectoryParser,
     CorpusProcessWorker,
 )
+from montreal_forced_aligner.data import DatabaseImportData
 from montreal_forced_aligner.db import (
     Corpus,
     File,
@@ -91,7 +92,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def __init__(self, audio_directory: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
-        self.sound_file_errors = {}
+        self.sound_file_errors = []
         self.transcriptions_without_wavs = []
         self.no_transcription_files = []
         self.stopped = Stopped()
@@ -503,8 +504,11 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
+                    if isinstance(result, Exception):
+                        key = "error"
+                        if isinstance(result, KaldiProcessingError):
+                            key = result.job_name
+                        error_dict[key] = result
                         continue
                     pbar.update(result)
                 for p in procs:
@@ -799,6 +803,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             procs.append(p)
             p.start()
         last_poll = time.time() - 30
+        import_data = DatabaseImportData()
         try:
             with self.session() as session:
                 with tqdm.tqdm(total=100, disable=getattr(self, "quiet", False)) as pbar:
@@ -828,14 +833,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                     error_dict[error_type] = []
                                 error_dict[error_type].append(error)
                         else:
-                            self.add_file(file, session)
+                            import_data.add_objects(self.generate_import_objects(file))
 
                     self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
 
                     if "error" in error_dict:
                         session.rollback()
                         raise error_dict["error"][1]
-                    self._finalize_load(session)
+                    self._finalize_load(session, import_data)
             for k in ["sound_file_errors", "decode_error_files", "textgrid_read_errors"]:
                 if hasattr(self, k):
                     if k in error_dict:
@@ -921,6 +926,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 all_sound_files.update(exts.other_audio_files)
                 all_sound_files.update(exts.wav_files)
         self.log_debug(f"Walking through {self.corpus_directory}...")
+        import_data = DatabaseImportData()
         with self.session() as session:
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                 exts = find_exts(files)
@@ -962,18 +968,16 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             relative_path,
                             self.speaker_characters,
                             sanitize_function,
-                            self.sample_frequency
+                            self.sample_frequency,
                         )
-
-                        self.add_file(file, session)
+                        import_data.add_objects(self.generate_import_objects(file))
                     except TextParseError as e:
                         self.decode_error_files.append(e)
                     except TextGridParseError as e:
                         self.textgrid_read_errors.append(e)
                     except SoundFileError as e:
                         self.sound_file_errors.append(e)
-            self._finalize_load(session)
-            session.commit()
+            self._finalize_load(session, import_data)
         if self.decode_error_files or self.textgrid_read_errors:
             self.log_info(
                 "There were some issues with files in the corpus. "

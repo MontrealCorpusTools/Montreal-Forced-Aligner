@@ -10,6 +10,14 @@
 Release candidates
 ==================
 
+2.0.0rc7
+--------
+
+- Fixed a bug where silence correction was not being calculated correctly
+- Fixed a bug where sample rate could not be specified when not using multiprocessing :github_pr:`444`
+- Fixed an incompatibility with the Kaldi version 1016 where BLAS libraries were not operating in single-threaded mode
+- Further optimized large multispeaker dictionary loading
+
 2.0.0rc6
 --------
 

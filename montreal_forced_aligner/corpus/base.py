@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
 from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
 from montreal_forced_aligner.corpus.multiprocessing import Job
-from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.data import DatabaseImportData, TextFileType
 from montreal_forced_aligner.db import (
     Corpus,
     Dictionary,
@@ -101,12 +101,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self._current_speaker_index = 1
         self._current_file_index = 1
         self._speaker_ids = {}
-        self._speaker_objects = []
-        self._file_objects = []
-        self._text_file_objects = []
-        self._sound_file_objects = []
-        self._speaker_ordering_objects = []
-        self._utterance_objects = []
 
     def inspect_database(self) -> None:
         """Check if a database file exists and create the necessary metadata"""
@@ -439,23 +433,26 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             for j in self.jobs:
                 j.refresh_dictionaries(session)
 
-    def _finalize_load(self, session):
+    def _finalize_load(self, session: Session, import_data: DatabaseImportData):
         """Finalize the import of database objects after parsing"""
         with session.bind.begin() as conn:
-            if self._speaker_objects:
-                conn.execute(sqlalchemy.insert(Speaker.__table__), self._speaker_objects)
-            if self._file_objects:
-                conn.execute(sqlalchemy.insert(File.__table__), self._file_objects)
-            if self._text_file_objects:
-                conn.execute(sqlalchemy.insert(TextFile.__table__), self._text_file_objects)
-            if self._sound_file_objects:
-                conn.execute(sqlalchemy.insert(SoundFile.__table__), self._sound_file_objects)
-            if self._speaker_ordering_objects:
+            if import_data.speaker_objects:
+                conn.execute(sqlalchemy.insert(Speaker.__table__), import_data.speaker_objects)
+            if import_data.file_objects:
+                conn.execute(sqlalchemy.insert(File.__table__), import_data.file_objects)
+            if import_data.text_file_objects:
+                conn.execute(sqlalchemy.insert(TextFile.__table__), import_data.text_file_objects)
+            if import_data.sound_file_objects:
                 conn.execute(
-                    sqlalchemy.insert(SpeakerOrdering.__table__), self._speaker_ordering_objects
+                    sqlalchemy.insert(SoundFile.__table__), import_data.sound_file_objects
                 )
-            if self._utterance_objects:
-                conn.execute(sqlalchemy.insert(Utterance.__table__), self._utterance_objects)
+            if import_data.speaker_ordering_objects:
+                conn.execute(
+                    sqlalchemy.insert(SpeakerOrdering.__table__),
+                    import_data.speaker_ordering_objects,
+                )
+            if import_data.utterance_objects:
+                conn.execute(sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects)
             session.commit()
         speakers = (
             session.query(Speaker.id)
@@ -463,17 +460,12 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             .group_by(Speaker.id)
             .having(sqlalchemy.func.count(Utterance.id) == 0)
         )
+        self._speaker_ids = {}
         speaker_ids = [x[0] for x in speakers]
         if speaker_ids:
             session.query(Speaker).filter(Speaker.id.in_(speaker_ids)).delete()
             session.commit()
             self._num_speakers = None
-        self._speaker_objects = []
-        self._file_objects = []
-        self._text_file_objects = []
-        self._sound_file_objects = []
-        self._speaker_ordering_objects = []
-        self._utterance_objects = []
 
     def add_speaker(self, name: str, session: Session = None):
         """
@@ -501,9 +493,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 dictionary = session.query(Dictionary).get(self.get_dictionary_id(name))
             speaker_obj = Speaker(name=name, dictionary=dictionary)
             session.add(speaker_obj)
-            self._speaker_ids[name] = speaker_obj
+            session.flush()
+            self._speaker_ids[name] = speaker_obj.id
         else:
-            self._speaker_ids[name] = speaker_obj
+            self._speaker_ids[name] = speaker_obj.id
 
         if close:
             session.commit()
@@ -522,102 +515,53 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if session is None:
             session = self.session()
             close = True
-        if close:
-            f = File(
-                id=self._current_file_index,
-                name=file.name,
-                relative_path=file.relative_path,
-                modified=False,
-            )
-            session.add(f)
-        else:
-            self._file_objects.append(
-                {
-                    "id": self._current_file_index,
-                    "name": file.name,
-                    "relative_path": file.relative_path,
-                    "modified": False,
-                }
-            )
+        f = File(
+            id=self._current_file_index,
+            name=file.name,
+            relative_path=file.relative_path,
+            modified=False,
+        )
+        session.add(f)
+        session.flush()
         for i, speaker in enumerate(file.speaker_ordering):
             if speaker not in self._speaker_ids:
-                if close:
-                    speaker_obj = Speaker(
-                        id=self._current_speaker_index,
-                        name=speaker,
-                        dictionary_id=getattr(self, "_default_dictionary_id", None),
-                    )
-                    session.add(speaker_obj)
-                else:
-                    self._speaker_objects.append(
-                        {
-                            "id": self._current_speaker_index,
-                            "name": speaker,
-                            "dictionary_id": getattr(self, "_default_dictionary_id", None),
-                        }
-                    )
+                speaker_obj = Speaker(
+                    id=self._current_speaker_index,
+                    name=speaker,
+                    dictionary_id=getattr(self, "_default_dictionary_id", None),
+                )
+                session.add(speaker_obj)
                 self._speaker_ids[speaker] = self._current_speaker_index
                 self._current_speaker_index += 1
 
-            if close:
-                so = SpeakerOrdering(
-                    file_id=self._current_file_index,
-                    speaker_id=self._speaker_ids[speaker],
-                    index=i,
-                )
-                session.add(so)
-            else:
-                self._speaker_ordering_objects.append(
-                    {
-                        "file_id": self._current_file_index,
-                        "speaker_id": self._speaker_ids[speaker],
-                        "index": i,
-                    }
-                )
+            so = SpeakerOrdering(
+                file_id=self._current_file_index,
+                speaker_id=self._speaker_ids[speaker],
+                index=i,
+            )
+            session.add(so)
         if file.wav_path is not None:
-            if close:
-                sf = SoundFile(
-                    file_id=self._current_file_index,
-                    sound_file_path=file.wav_path,
-                    format=file.wav_info.format,
-                    sample_rate=file.wav_info.sample_rate,
-                    duration=file.wav_info.duration,
-                    num_channels=file.wav_info.num_channels,
-                    sox_string=file.wav_info.sox_string,
-                )
-                session.add(sf)
-            else:
-                self._sound_file_objects.append(
-                    {
-                        "file_id": self._current_file_index,
-                        "sound_file_path": file.wav_path,
-                        "format": file.wav_info.format,
-                        "sample_rate": file.wav_info.sample_rate,
-                        "duration": file.wav_info.duration,
-                        "num_channels": file.wav_info.num_channels,
-                        "sox_string": file.wav_info.sox_string,
-                    }
-                )
+            sf = SoundFile(
+                file_id=self._current_file_index,
+                sound_file_path=file.wav_path,
+                format=file.wav_info.format,
+                sample_rate=file.wav_info.sample_rate,
+                duration=file.wav_info.duration,
+                num_channels=file.wav_info.num_channels,
+                sox_string=file.wav_info.sox_string,
+            )
+            session.add(sf)
         if file.text_path is not None:
             text_type = file.text_type
             if isinstance(text_type, TextFileType):
                 text_type = file.text_type.value
 
-            if close:
-                tf = TextFile(
-                    file_id=self._current_file_index,
-                    text_file_path=file.text_path,
-                    file_type=text_type,
-                )
-                session.add(tf)
-            else:
-                self._text_file_objects.append(
-                    {
-                        "file_id": self._current_file_index,
-                        "text_file_path": file.text_path,
-                        "file_type": text_type,
-                    }
-                )
+            tf = TextFile(
+                file_id=self._current_file_index,
+                text_file_path=file.text_path,
+                file_type=text_type,
+            )
+            session.add(tf)
         frame_shift = getattr(self, "frame_shift", None)
         if frame_shift is not None:
             frame_shift = round(frame_shift / 1000, 4)
@@ -626,46 +570,117 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             num_frames = None
             if frame_shift is not None:
                 num_frames = int(duration / frame_shift)
-            if close:
-                utterance = Utterance(
-                    begin=u.begin,
-                    end=u.end,
-                    duration=duration,
-                    channel=u.channel,
-                    oovs=u.oovs,
-                    normalized_text=u.normalized_text,
-                    text=u.text,
-                    normalized_text_int=u.normalized_text_int,
-                    num_frames=num_frames,
-                    in_subset=False,
-                    ignored=False,
-                    file_id=self._current_file_index,
-                    speaker_id=self._speaker_ids[u.speaker_name],
-                )
-                session.add(utterance)
-            else:
-                self._utterance_objects.append(
-                    {
-                        "begin": u.begin,
-                        "end": u.end,
-                        "duration": duration,
-                        "channel": u.channel,
-                        "oovs": u.oovs,
-                        "normalized_text": u.normalized_text,
-                        "text": u.text,
-                        "normalized_text_int": u.normalized_text_int,
-                        "num_frames": num_frames,
-                        "in_subset": False,
-                        "ignored": False,
-                        "file_id": self._current_file_index,
-                        "speaker_id": self._speaker_ids[u.speaker_name],
-                    }
-                )
+            utterance = Utterance(
+                begin=u.begin,
+                end=u.end,
+                duration=duration,
+                channel=u.channel,
+                oovs=u.oovs,
+                normalized_text=u.normalized_text,
+                text=u.text,
+                normalized_text_int=u.normalized_text_int,
+                num_frames=num_frames,
+                in_subset=False,
+                ignored=False,
+                file_id=self._current_file_index,
+                speaker_id=self._speaker_ids[u.speaker_name],
+            )
+            session.add(utterance)
 
         if close:
             session.commit()
             session.close()
         self._current_file_index += 1
+
+    def generate_import_objects(self, file: FileData) -> DatabaseImportData:
+        """
+        Add a file to the corpus
+
+        Parameters
+        ----------
+        file: :class:`~montreal_forced_aligner.corpus.classes.FileData`
+            File to be added
+        """
+        data = DatabaseImportData()
+        data.file_objects.append(
+            {
+                "id": self._current_file_index,
+                "name": file.name,
+                "relative_path": file.relative_path,
+                "modified": False,
+            }
+        )
+        for i, speaker in enumerate(file.speaker_ordering):
+            if speaker not in self._speaker_ids:
+                data.speaker_objects.append(
+                    {
+                        "id": self._current_speaker_index,
+                        "name": speaker,
+                        "dictionary_id": getattr(self, "_default_dictionary_id", None),
+                    }
+                )
+                self._speaker_ids[speaker] = self._current_speaker_index
+                self._current_speaker_index += 1
+
+            data.speaker_ordering_objects.append(
+                {
+                    "file_id": self._current_file_index,
+                    "speaker_id": self._speaker_ids[speaker],
+                    "index": i,
+                }
+            )
+        if file.wav_path is not None:
+            data.sound_file_objects.append(
+                {
+                    "file_id": self._current_file_index,
+                    "sound_file_path": file.wav_path,
+                    "format": file.wav_info.format,
+                    "sample_rate": file.wav_info.sample_rate,
+                    "duration": file.wav_info.duration,
+                    "num_channels": file.wav_info.num_channels,
+                    "sox_string": file.wav_info.sox_string,
+                }
+            )
+        if file.text_path is not None:
+            text_type = file.text_type
+            if isinstance(text_type, TextFileType):
+                text_type = file.text_type.value
+
+            data.text_file_objects.append(
+                {
+                    "file_id": self._current_file_index,
+                    "text_file_path": file.text_path,
+                    "file_type": text_type,
+                }
+            )
+        frame_shift = getattr(self, "frame_shift", None)
+        if frame_shift is not None:
+            frame_shift = round(frame_shift / 1000, 4)
+        for u in file.utterances:
+            duration = u.end - u.begin
+            num_frames = None
+            if frame_shift is not None:
+                num_frames = int(duration / frame_shift)
+            data.utterance_objects.append(
+                {
+                    "begin": u.begin,
+                    "end": u.end,
+                    "duration": duration,
+                    "channel": u.channel,
+                    "oovs": u.oovs,
+                    "normalized_text": u.normalized_text,
+                    "text": u.text,
+                    "normalized_text_int": u.normalized_text_int,
+                    "num_frames": num_frames,
+                    "in_subset": False,
+                    "ignored": False,
+                    "file_id": self._current_file_index,
+                    "speaker_id": self._speaker_ids[u.speaker_name],
+                }
+            )
+
+        self._current_file_index += 1
+        return data
 
     @property
     def data_source_identifier(self) -> str:
@@ -811,7 +826,8 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
             session.commit()
 
-            # Extra check to make sure the randomness didn't end up with 1 or 2 utterances for a particular job/dictionary combo
+            # Extra check to make sure the randomness didn't end up with 1 or 2 utterances
+            # for a particular job/dictionary combo
             subset_agg = (
                 session.query(
                     Speaker.job_id, Speaker.dictionary_id, sqlalchemy.func.count(Utterance.id)

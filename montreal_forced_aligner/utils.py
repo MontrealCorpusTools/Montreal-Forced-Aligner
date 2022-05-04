@@ -405,6 +405,10 @@ class KaldiProcessWorker(mp.Process):
         """
         Run through the arguments in the queue apply the function to them
         """
+        from .config import BLAS_THREADS
+
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
+        os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
         try:
             for result in self.function.run():
                 self.return_q.put(result)

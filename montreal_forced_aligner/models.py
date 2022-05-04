@@ -10,7 +10,7 @@ import os
 import shutil
 import typing
 from shutil import copy, copyfile, make_archive, move, rmtree, unpack_archive
-from typing import TYPE_CHECKING, Collection, Dict, Optional, Union
+from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple, Union
 
 import requests
 import yaml
@@ -1013,7 +1013,7 @@ class DictionaryModel(MfaModel):
         """Name of the dictionary"""
         return os.path.splitext(os.path.basename(self.path))[0]
 
-    def load_dictionary_paths(self) -> Dict[str, DictionaryModel]:
+    def load_dictionary_paths(self) -> Dict[str, Tuple[DictionaryModel, List[str]]]:
         """
         Load the pronunciation dictionaries
 
@@ -1027,9 +1027,11 @@ class DictionaryModel(MfaModel):
             with open(self.path, "r", encoding="utf8") as f:
                 data = yaml.safe_load(f)
                 for speaker, path in data.items():
-                    mapping[speaker] = DictionaryModel(path)
+                    if path not in mapping:
+                        mapping[path] = (DictionaryModel(path), set())
+                    mapping[path][1].add(speaker)
         else:
-            mapping["default"] = self
+            mapping[self.path] = (self, {"default"})
         return mapping
 
 
