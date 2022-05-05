@@ -173,7 +173,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         begin = time.time()
         dictionary_counters = {
-            dict_id: PronunciationProbabilityCounter() for dict_id in self.dictionary_lookup.keys()
+            dict_id: PronunciationProbabilityCounter()
+            for dict_id in self.dictionary_lookup.values()
         }
         self.log_info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
@@ -295,17 +296,21 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         silence_prob = silence_probabilities[w_p1]
                     bar_count_silence_wp[w_p2] += counts["silence"] * silence_prob
                     bar_count_non_silence_wp[w_p2] += counts["non_silence"] * (1 - silence_prob)
-                for w_p, silence_count in counter.silence_before_counts.items():
-                    if w_p[0] in {initial_key[0], final_key[0], self.silence_word}:
+                for w, p, _ in pronunciations:
+                    silence_count = counter.silence_before_counts[(w, p)]
+                    if w in {initial_key[0], final_key[0], self.silence_word}:
                         continue
-                    non_silence_count = counter.non_silence_before_counts[w_p]
+                    non_silence_count = counter.non_silence_before_counts[(w, p)]
                     pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
-                        (silence_count + lambda_3) / (bar_count_silence_wp[w_p] + lambda_3)
+                        (silence_count + lambda_3) / (bar_count_silence_wp[(w, p)] + lambda_3)
                     )
 
                     pron_mapping[(w, p)]["non_silence_before_correction"] = format_correction(
-                        (non_silence_count + lambda_3) / (bar_count_non_silence_wp[w_p] + lambda_3)
+                        (non_silence_count + lambda_3)
+                        / (bar_count_non_silence_wp[(w, p)] + lambda_3)
                     )
+                session.bulk_update_mappings(Pronunciation, pron_mapping.values())
+                session.flush()
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
                     silence_probability * lambda_2
                 )
@@ -346,10 +351,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 self.final_non_silence_correction = (
                     final_non_silence_correction_sum / self.num_dictionaries
                 )
-            session.bulk_update_mappings(Pronunciation, pron_mapping.values())
             session.bulk_update_mappings(Dictionary, dictionary_mappings)
             session.commit()
-        self.log_debug(f"Alignment round took {time.time() - begin}")
+        self.log_debug(f"Calculating pronunciation probabilities took {time.time() - begin}")
 
     def _collect_alignments(self):
         """

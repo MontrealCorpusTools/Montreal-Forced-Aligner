@@ -14,6 +14,7 @@ from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
+from montreal_forced_aligner.data import DatabaseImportData
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.utils import Stopped
@@ -58,11 +59,7 @@ class TextCorpusMixin(CorpusMixin):
             )
             procs.append(p)
             p.start()
-        self._speaker_objects = []
-        self._file_objects = []
-        self._text_file_objects = []
-        self._speaker_ordering_objects = []
-        self._utterance_objects = []
+        import_data = DatabaseImportData()
         try:
             file_count = 0
             with tqdm.tqdm(
@@ -118,7 +115,7 @@ class TextCorpusMixin(CorpusMixin):
                                 error_dict[error_type] = []
                             error_dict[error_type].append(error)
                     else:
-                        self.add_file(file, session)
+                        import_data.add_objects(self.generate_import_objects(file))
 
                 self.log_debug("Waiting for workers to finish...")
                 for p in procs:
@@ -128,7 +125,7 @@ class TextCorpusMixin(CorpusMixin):
                     session.rollback()
                     raise error_dict["error"][1]
 
-                self._finalize_load(session)
+                self._finalize_load(session, import_data)
 
                 for k in ["decode_error_files", "textgrid_read_errors"]:
                     if hasattr(self, k):
@@ -184,6 +181,7 @@ class TextCorpusMixin(CorpusMixin):
         begin_time = time.time()
         self.stopped = False
 
+        import_data = DatabaseImportData()
         sanitize_function = getattr(self, "sanitize_function", None)
         with self.session() as session:
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
@@ -211,12 +209,12 @@ class TextCorpusMixin(CorpusMixin):
                             self.speaker_characters,
                             sanitize_function,
                         )
-                        self.add_file(file, session)
+                        import_data.add_objects(self.generate_import_objects(file))
                     except TextParseError as e:
                         self.decode_error_files.append(e)
                     except TextGridParseError as e:
                         self.textgrid_read_errors.append(e)
-            self._finalize_load(session)
+            self._finalize_load(session, import_data)
         if self.decode_error_files or self.textgrid_read_errors:
             self.log_info(
                 "There were some issues with files in the corpus. "

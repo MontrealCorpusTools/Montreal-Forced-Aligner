@@ -7,6 +7,8 @@ import subprocess
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
+import dataclassy
+
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
@@ -28,6 +30,8 @@ __all__ = [
 ]
 
 
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class VadArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ComputeVadFunction`"""
 
@@ -36,6 +40,8 @@ class VadArguments(MfaArguments):
     vad_options: MetaDict
 
 
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class MfccArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.corpus.features.MfccFunction`
@@ -48,6 +54,8 @@ class MfccArguments(MfaArguments):
     pitch_options: MetaDict
 
 
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class CalcFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.CalcFmllrFunction`"""
 
@@ -61,6 +69,8 @@ class CalcFmllrArguments(MfaArguments):
     fmllr_options: MetaDict
 
 
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class ExtractIvectorsArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.corpus.features.ExtractIvectorsFunction`"""
 

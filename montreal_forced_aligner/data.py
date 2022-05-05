@@ -16,11 +16,6 @@ from praatio.utilities.constants import Interval, TextgridFormats
 
 from .exceptions import CtmError
 
-if typing.TYPE_CHECKING:
-    from dataclasses import dataclass
-else:
-    from dataclassy import dataclass
-
 __all__ = [
     "MfaArguments",
     "CtmInterval",
@@ -30,11 +25,59 @@ __all__ = [
     "PhoneType",
     "PhoneSetType",
     "WordData",
+    "DatabaseImportData",
     "PronunciationProbabilityCounter",
 ]
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
+class DatabaseImportData:
+    """
+    Class for storing information on importing data into the database
+
+    Parameters
+    ----------
+    speaker_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.Speaker` properties
+    file_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.File` properties
+    text_file_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.TextFile` properties
+    sound_file_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.SoundFile` properties
+    speaker_ordering_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.SpeakerOrdering` properties
+    utterance_objects: list[dict[str, Any]]
+        List of dictionaries with :class:`~montreal_forced_aligner.db.Utterance` properties
+    """
+
+    speaker_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    file_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    text_file_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    sound_file_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    speaker_ordering_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+    utterance_objects: typing.List[typing.Dict[str, typing.Any]] = dataclassy.factory(list)
+
+    def add_objects(self, other_import: DatabaseImportData) -> None:
+        """
+        Combine objects for two importers
+
+        Parameters
+        ----------
+        other_import: :class:`~montreal_forced_aligner.data.DatabaseImportData`
+            Other object with objects to import
+        """
+        self.speaker_objects.extend(other_import.speaker_objects)
+        self.file_objects.extend(other_import.file_objects)
+        self.text_file_objects.extend(other_import.text_file_objects)
+        self.sound_file_objects.extend(other_import.sound_file_objects)
+        self.speaker_ordering_objects.extend(other_import.speaker_ordering_objects)
+        self.utterance_objects.extend(other_import.utterance_objects)
+
+
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class MfaArguments:
     """
     Base class for argument classes for MFA functions
@@ -160,7 +203,7 @@ class PhoneSetType(enum.Enum):
             return re.compile(r"[a-z]{1,3}[12345]")
         elif self is PhoneSetType.IPA:
             return re.compile(
-                r"[əɚʊɡɤʁɹɔɛʉɒβɲɟʝŋʃɕʰʲɾ̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]"
+                r"[əɚʊɡɤʁɹɔɛʉɒβɲɟʝŋʃɕʰʲɾ̃̚ː˩˨˧˦˥̪̝̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̰̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌˈ̣]"
             )
         return None
 
@@ -168,7 +211,7 @@ class PhoneSetType(enum.Enum):
     def suprasegmental_phone_regex(self) -> typing.Optional[re.Pattern]:
         """Regex for creating base phones"""
         if self is PhoneSetType.IPA:
-            return re.compile(r"([ː̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ʱʰʲ̚ʼ͈ˈ̣ᵝ]+)")
+            return re.compile(r"([ː̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ʱʰʲ̚ʼ͈ˈ̣]+)")
         return None
 
     @property
@@ -179,7 +222,7 @@ class PhoneSetType(enum.Enum):
         elif self is PhoneSetType.PINYIN:
             return re.compile(r"[12345]")
         elif self is PhoneSetType.IPA:
-            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̹̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ˈ]+)")
+            return re.compile(r"([ː˩˨˧˦˥̟̥̂̀̄ˑ̊ᵝ̠̹̞̩̯̬̺ˀˤ̻̙̘̤̜̑̽᷈᷄᷅̌̋̏‿̆͜͡ˌ̍ˈ]+)")
         return None
 
     @property
@@ -1019,7 +1062,8 @@ class PhoneSetType(enum.Enum):
         return extra_questions
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class SoundFileInformation:
     """
     Data class for sound file information with format, duration, number of channels, bit depth, and
@@ -1051,7 +1095,8 @@ class SoundFileInformation:
         return dataclassy.asdict(self)
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class FileExtensions:
     """
     Data class for information about the current directory
@@ -1077,7 +1122,8 @@ class FileExtensions:
     other_audio_files: typing.Dict[str, str]
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class WordData:
     """
     Data class for information about a word and its pronunciations
@@ -1094,7 +1140,8 @@ class WordData:
     pronunciations: typing.Set[typing.Tuple[str, ...]]
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class PronunciationProbabilityCounter:
     """
     Data class for count information used in pronunciation probability modeling
@@ -1151,7 +1198,8 @@ class PronunciationProbabilityCounter:
         self.non_silence_before_counts.update(other_counter.non_silence_before_counts)
 
 
-@dataclass(slots=True)
+# noinspection PyUnresolvedReferences
+@dataclassy.dataclass(slots=True)
 class CtmInterval:
     """
     Data class for intervals derived from CTM files
@@ -1191,7 +1239,8 @@ class CtmInterval:
 
     def to_tg_interval(self) -> Interval:
         """
-        Converts the CTMInterval to `PraatIO's Interval class <http://timmahrt.github.io/praatIO/praatio/utilities/constants.html#Interval>`_
+        Converts the CTMInterval to
+        `PraatIO's Interval class <http://timmahrt.github.io/praatIO/praatio/utilities/constants.html#Interval>`_
 
         Returns
         -------

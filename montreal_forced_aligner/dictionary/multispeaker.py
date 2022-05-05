@@ -138,8 +138,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     ----------
     dictionary_model: :class:`~montreal_forced_aligner.models.DictionaryModel`
         Dictionary model
-    dictionary_lookup: dict[int, str]
-        Mapping of dictionary ids to names
+    dictionary_lookup: dict[str, int]
+        Mapping of dictionary names to ids
     """
 
     def __init__(self, dictionary_path: str = None, **kwargs):
@@ -218,10 +218,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     @property
     def num_dictionaries(self) -> int:
         """Number of pronunciation dictionaries"""
-        if self._num_dictionaries is None:
-            with self.session() as session:
-                self._num_dictionaries = session.query(Dictionary).count()
-        return self._num_dictionaries
+        return len(self.dictionary_lookup)
 
     @property
     def sanitize_function(self) -> MultispeakerSanitizationFunction:
@@ -295,7 +292,25 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 flags=re.IGNORECASE,
             )
         self._speaker_ids = getattr(self, "_speaker_ids", {})
+        dictionary_id_cache = {}
         with self.session() as session:
+            for speaker_id, speaker_name, dictionary_id, dict_name, path in (
+                session.query(
+                    Speaker.id, Speaker.name, Dictionary.id, Dictionary.name, Dictionary.path
+                )
+                .join(Speaker.dictionary)
+                .filter(Dictionary.default == False)  # noqa
+            ):
+                self._speaker_ids[speaker_name] = speaker_id
+                dictionary_id_cache[path] = dictionary_id
+                self.dictionary_lookup[dict_name] = dictionary_id
+            dictionary = (
+                session.query(Dictionary).filter(Dictionary.default == True).first()  # noqa
+            )
+            if dictionary:
+                self._default_dictionary_id = dictionary.id
+                dictionary_id_cache[dictionary.path] = self._default_dictionary_id
+                self.dictionary_lookup[dictionary.name] = dictionary.id
             word_primary_key = 1
             pronunciation_primary_key = 1
             word_objs = []
@@ -304,13 +319,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             phone_counts = collections.Counter()
             graphemes = set()
             self._current_speaker_index = getattr(self, "_current_speaker_index", 1)
-            for speaker, dictionary_model in self.dictionary_model.load_dictionary_paths().items():
-                dictionary = (
-                    session.query(Dictionary)
-                    .filter(Dictionary.path == dictionary_model.path)
-                    .first()
-                )
-                if dictionary is None:
+            for (
+                dictionary_model,
+                speakers,
+            ) in self.dictionary_model.load_dictionary_paths().values():
+                if dictionary_model.path not in dictionary_id_cache:
                     word_cache = {}
                     pronunciation_cache = set()
                     subsequences = set()
@@ -342,7 +355,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         clitic_marker=clitic_marker,
                         bracket_regex=bracket_regex.pattern,
                         laughter_regex=laughter_regex.pattern,
-                        default=speaker == "default",
+                        default="default" in speakers,
                         max_disambiguation_symbol=0,
                         silence_word=self.silence_word,
                         oov_word=self.oov_word,
@@ -352,6 +365,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     )
                     session.add(dictionary)
                     session.flush()
+                    dictionary_id_cache[dictionary_model.path] = dictionary.id
                     if dictionary.default:
                         self._default_dictionary_id = dictionary.id
                     self._words_mappings[dictionary.id] = {}
@@ -548,19 +562,19 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     self.max_disambiguation_symbol = max(
                         self.max_disambiguation_symbol, dictionary.max_disambiguation_symbol
                     )
-
-                if speaker != "default":
-                    if speaker not in self._speaker_ids:
-                        speaker_objs.append(
-                            {
-                                "id": self._current_speaker_index,
-                                "name": speaker,
-                                "dictionary_id": dictionary.id,
-                            }
-                        )
-                        self._speaker_ids[speaker] = self._current_speaker_index
-                        self._current_speaker_index += 1
-                self.dictionary_lookup[dictionary.id] = dictionary.name
+                for speaker in speakers:
+                    if speaker != "default":
+                        if speaker not in self._speaker_ids:
+                            speaker_objs.append(
+                                {
+                                    "id": self._current_speaker_index,
+                                    "name": speaker,
+                                    "dictionary_id": dictionary.id,
+                                }
+                            )
+                            self._speaker_ids[speaker] = self._current_speaker_index
+                            self._current_speaker_index += 1
+                self.dictionary_lookup[dictionary.name] = dictionary.id
                 session.commit()
 
             self.non_silence_phones -= self.silence_phones

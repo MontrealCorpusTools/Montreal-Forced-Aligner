@@ -178,7 +178,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     ):
         super().__init__(**kwargs)
         self._db_engine = None
-        self._session = None
 
     def initialize_database(self) -> None:
         """
@@ -240,9 +239,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             SqlAlchemy session
         """
         autoflush = kwargs.pop("autoflush", False)
-        if self._session is None:
-            self._session = sqlalchemy.orm.Session(self.db_engine, autoflush=autoflush, **kwargs)
-        return self._session
+        return sqlalchemy.orm.Session(self.db_engine, autoflush=autoflush, **kwargs)
 
 
 class MfaWorker(metaclass=abc.ABCMeta):

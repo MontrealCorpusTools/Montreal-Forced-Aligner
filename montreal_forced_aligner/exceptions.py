@@ -25,6 +25,7 @@ __all__ = [
     "MFAError",
     "SoxError",
     "G2PError",
+    "CtmError",
     "PyniniAlignmentError",
     "ConfigError",
     "LMError",
