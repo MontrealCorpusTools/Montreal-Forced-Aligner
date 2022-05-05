@@ -173,7 +173,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
 
         begin = time.time()
         dictionary_counters = {
-            dict_id: PronunciationProbabilityCounter() for dict_id in self.dictionary_lookup.keys()
+            dict_id: PronunciationProbabilityCounter()
+            for dict_id in self.dictionary_lookup.values()
         }
         self.log_info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
@@ -308,6 +309,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         (non_silence_count + lambda_3)
                         / (bar_count_non_silence_wp[(w, p)] + lambda_3)
                     )
+                session.bulk_update_mappings(Pronunciation, pron_mapping.values())
+                session.flush()
                 initial_silence_count = counter.silence_before_counts[initial_key] + (
                     silence_probability * lambda_2
                 )
@@ -348,10 +351,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 self.final_non_silence_correction = (
                     final_non_silence_correction_sum / self.num_dictionaries
                 )
-            session.bulk_update_mappings(Pronunciation, pron_mapping.values())
             session.bulk_update_mappings(Dictionary, dictionary_mappings)
             session.commit()
-        self.log_debug(f"Alignment round took {time.time() - begin}")
+        self.log_debug(f"Calculating pronunciation probabilities took {time.time() - begin}")
 
     def _collect_alignments(self):
         """

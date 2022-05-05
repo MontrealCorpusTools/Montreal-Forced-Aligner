@@ -138,8 +138,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     ----------
     dictionary_model: :class:`~montreal_forced_aligner.models.DictionaryModel`
         Dictionary model
-    dictionary_lookup: dict[int, str]
-        Mapping of dictionary ids to names
+    dictionary_lookup: dict[str, int]
+        Mapping of dictionary names to ids
     """
 
     def __init__(self, dictionary_path: str = None, **kwargs):
@@ -574,7 +574,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             )
                             self._speaker_ids[speaker] = self._current_speaker_index
                             self._current_speaker_index += 1
-                self.dictionary_lookup[dictionary.id] = dictionary.name
+                self.dictionary_lookup[dictionary.name] = dictionary.id
                 session.commit()
 
             self.non_silence_phones -= self.silence_phones
