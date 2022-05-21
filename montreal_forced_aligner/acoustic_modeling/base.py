@@ -256,13 +256,17 @@ class AcousticModelTrainingMixin(
         done_path = os.path.join(self.working_directory, "done")
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.working_directory)
-        if os.path.exists(done_path):
-            self.log_info(f"{self.identifier} training already done, skipping initialization.")
-            self.training_complete = True
+        os.makedirs(self.working_log_directory, exist_ok=True)
+        if os.path.exists(done_path) or any(
+            x.endswith(".mdl") for x in os.listdir(self.working_directory)
+        ):
+            self.log_info(
+                f"{self.identifier} training already initialized, skipping initialization."
+            )
+            if os.path.exists(done_path):
+                self.training_complete = True
             return
         self.log_info(f"Initializing training for {self.identifier}...")
-        os.makedirs(self.working_directory, exist_ok=True)
-        os.makedirs(self.working_log_directory, exist_ok=True)
         if self.subset and self.subset >= self.worker.num_utterances:
             self.log_warning(
                 "Subset specified is larger than the dataset, "
@@ -384,6 +388,9 @@ class AcousticModelTrainingMixin(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -392,9 +399,6 @@ class AcousticModelTrainingMixin(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     num_utterances, errors = result
                     pbar.update(num_utterances + errors)
@@ -551,17 +555,19 @@ class AcousticModelTrainingMixin(
         the model to be used in the next round alignment
 
         """
-        shutil.copy(
+        os.rename(
             os.path.join(self.working_directory, f"{self.num_iterations+1}.mdl"),
             os.path.join(self.working_directory, "final.mdl"),
         )
-        shutil.copy(
-            os.path.join(self.working_directory, f"{self.num_iterations+1}.occs"),
-            os.path.join(self.working_directory, "final.occs"),
-        )
+        final_occs_path = os.path.join(self.working_directory, "final.occs")
+        if not os.path.exists(final_occs_path):
+            os.rename(
+                os.path.join(self.working_directory, f"{self.num_iterations+1}.occs"),
+                final_occs_path,
+            )
         ali_model_path = os.path.join(self.working_directory, f"{self.num_iterations+1}.alimdl")
         if os.path.exists(ali_model_path):
-            shutil.copy(
+            os.rename(
                 ali_model_path,
                 os.path.join(self.working_directory, "final.alimdl"),
             )
@@ -577,6 +583,9 @@ class AcousticModelTrainingMixin(
                     os.remove(os.path.join(self.working_directory, f"{i}.occs"))
                 except FileNotFoundError:
                     pass
+            for file in os.listdir(self.working_directory):
+                if any(file.startswith(x) for x in ["fsts.", "trans.", "ali."]):
+                    os.remove(os.path.join(self.working_directory, file))
         self.training_complete = True
         self.worker.current_trainer = None
 
@@ -625,6 +634,17 @@ class AcousticModelTrainingMixin(
                 "num_oovs": sum(self.worker.oovs_found.values()),
                 "average_log_likelihood": average_log_likelihood,
             },
+            "dictionaries": {
+                "names": sorted(self.worker.dictionary_base_names.values()),
+                "default": self.worker.dictionary_base_names[self.worker._default_dictionary_id],
+                "silence_word": self.worker.silence_word,
+                "use_g2p": self.worker.use_g2p,
+                "oov_word": self.worker.oov_word,
+                "bracketed_word": self.worker.bracketed_word,
+                "laughter_word": self.worker.laughter_word,
+                "position_dependent_phones": self.worker.position_dependent_phones,
+                "clitic_marker": self.worker.clitic_marker,
+            },
             "features": self.feature_options,
             "oov_phone": self.worker.oov_phone,
             "optional_silence_phone": self.worker.optional_silence_phone,
@@ -650,6 +670,9 @@ class AcousticModelTrainingMixin(
         acoustic_model = AcousticModel.empty(basename, root_directory=self.working_log_directory)
         acoustic_model.add_meta_file(self)
         acoustic_model.add_model(self.working_directory)
+        acoustic_model.add_pronunciation_models(
+            self.working_directory, self.worker.dictionary_base_names.values()
+        )
         if directory:
             os.makedirs(directory, exist_ok=True)
         basename, _ = os.path.splitext(output_model_path)

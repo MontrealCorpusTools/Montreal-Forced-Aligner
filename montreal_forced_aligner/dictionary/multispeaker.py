@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import typing
+import unicodedata
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 import sqlalchemy.orm.session
@@ -19,6 +20,7 @@ from montreal_forced_aligner.data import PhoneType, WordType
 from montreal_forced_aligner.db import (
     DictBundle,
     Dictionary,
+    Grapheme,
     OovWord,
     Phone,
     Pronunciation,
@@ -150,9 +152,16 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self._num_dictionaries = None
         self.dictionary_lookup = {}
         self._phone_mapping = None
+        self._grapheme_mapping = None
         self._words_mappings = {}
         self._default_dictionary_id = None
         self._dictionary_base_names = None
+        self.bracket_regex = None
+        self.laughter_regex = None
+        self.compound_regex = None
+        self.clitic_cleanup_regex = None
+        self.clitic_marker = None
+        self.use_g2p = False
 
     @property
     def dictionary_base_names(self) -> Dict[int, str]:
@@ -165,7 +174,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     base_name = d_name
                     if any(d_name == x[1] and d_id != x[0] for x in dictionaries):
                         base_name += f"_{d_id}"
-                    base_name += ".dict"
                     self._dictionary_base_names[d_id] = base_name
         return self._dictionary_base_names
 
@@ -185,12 +193,15 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         if dictionary_id not in self._words_mappings:
             self._words_mappings[dictionary_id] = {}
+            index = 0
             with self.session() as session:
                 words = session.query(Word.word, Word.mapping_id).filter(
                     Word.dictionary_id == dictionary_id
                 )
                 for w, index in words:
                     self._words_mappings[dictionary_id][w] = index
+                if index == 0:
+                    return self._words_mappings[dictionary_id]
                 self._words_mappings[dictionary_id]["#0"] = index + 1
                 self._words_mappings[dictionary_id]["<s>"] = index + 2
                 self._words_mappings[dictionary_id]["</s>"] = index + 3
@@ -224,23 +235,26 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
     def sanitize_function(self) -> MultispeakerSanitizationFunction:
         """Sanitization function for the dictionary"""
         sanitize_function = SanitizeFunction(
-            self.punctuation,
-            self.clitic_markers,
-            self.compound_markers,
-            self.brackets,
+            self.clitic_marker,
+            self.clitic_cleanup_regex,
+            self.punctuation_regex,
+            self.word_break_regex,
+            self.bracket_regex,
+            self.bracket_sanitize_regex,
             self.ignore_case,
-            self.quote_markers,
-            self.word_break_markers,
         )
         split_functions = {}
+        non_speech_regexes = {}
+        if self.laughter_regex is not None:
+            non_speech_regexes[self.laughter_word] = self.laughter_regex
+        if self.bracket_regex is not None:
+            non_speech_regexes[self.bracketed_word] = self.bracket_regex
         with self.session() as session:
-            dictionaries = session.query(
-                Dictionary.id, Dictionary.default, Dictionary.laughter_regex
-            )
+            dictionaries = session.query(Dictionary.id, Dictionary.default)
             speaker_mapping = {
                 x[0]: x[1] for x in session.query(Speaker.name, Speaker.dictionary_id)
             }
-            for dict_id, default, laughter_regex in dictionaries:
+            for dict_id, default in dictionaries:
                 if default:
                     speaker_mapping["default"] = dict_id
 
@@ -250,24 +264,37 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     .filter(Word.word_type == WordType.clitic)
                     .filter(Word.dictionary_id == dict_id)
                 )
+                initial_clitic_regex = None
+                final_clitic_regex = None
+                if self.clitic_marker is not None:
+                    initial_clitics = sorted(
+                        x for x in clitic_set if x.endswith(self.clitic_marker)
+                    )
+                    final_clitics = sorted(
+                        x for x in clitic_set if x.startswith(self.clitic_marker)
+                    )
+                    if initial_clitics:
+                        initial_clitic_regex = re.compile(rf"^{'|'.join(initial_clitics)}(?=\w)")
+                    if final_clitics:
+                        final_clitic_regex = re.compile(rf"(?<=\w){'|'.join(final_clitics)}$")
                 split_functions[dict_id] = SplitWordsFunction(
-                    self.clitic_markers,
-                    self.compound_markers,
-                    clitic_set,
-                    self.brackets,
-                    self.word_mapping(dict_id),
-                    self.specials_set,
+                    self.clitic_marker,
+                    initial_clitic_regex,
+                    final_clitic_regex,
+                    self.compound_regex,
+                    non_speech_regexes,
                     self.oov_word,
-                    self.bracketed_word,
-                    self.laughter_word,
-                    laughter_regex,
+                    self.word_mapping(dict_id),
+                    self.grapheme_mapping,
+                    self.specials_set,
                 )
         return MultispeakerSanitizationFunction(
             speaker_mapping, sanitize_function, split_functions
         )
 
-    def dictionary_setup(self):
+    def dictionary_setup(self) -> None:
         """Set up the dictionary for processing"""
+        self.compile_regexes()
         exist_check = os.path.exists(self.db_path)
         if not exist_check:
             self.initialize_database()
@@ -279,18 +306,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         pretrained = False
         if self.non_silence_phones:
             pretrained = True
-        bracket_regex = None
-        laughter_regex = None
-        if self.brackets:
-            left_brackets = [x[0] for x in self.brackets]
-            right_brackets = [x[1] for x in self.brackets]
-            bracket_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
-            )
-            laughter_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}](laugh(ing|ter)?|lachen|lg)[{re.escape(''.join(right_brackets))}]+",
-                flags=re.IGNORECASE,
-            )
+
         self._speaker_ids = getattr(self, "_speaker_ids", {})
         dictionary_id_cache = {}
         with self.session() as session:
@@ -298,10 +314,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 session.query(
                     Speaker.id, Speaker.name, Dictionary.id, Dictionary.name, Dictionary.path
                 )
-                .join(Speaker.dictionary)
+                .outerjoin(Speaker.dictionary)
                 .filter(Dictionary.default == False)  # noqa
             ):
-                self._speaker_ids[speaker_name] = speaker_id
+                if speaker_id is not None:
+                    self._speaker_ids[speaker_name] = speaker_id
                 dictionary_id_cache[path] = dictionary_id
                 self.dictionary_lookup[dict_name] = dictionary_id
             dictionary = (
@@ -323,7 +340,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 dictionary_model,
                 speakers,
             ) in self.dictionary_model.load_dictionary_paths().values():
-                if dictionary_model.path not in dictionary_id_cache:
+                if dictionary_model.path not in dictionary_id_cache and not self.use_g2p:
                     word_cache = {}
                     pronunciation_cache = set()
                     subsequences = set()
@@ -338,13 +355,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             )
                     else:
                         self.phone_set_type = dictionary_model.phone_set_type
-                    sanitize = False
-                    clitic_cleanup_regex = None
-                    clitic_marker = None
-                    if len(self.clitic_markers) >= 1:
-                        sanitize = True
-                        clitic_cleanup_regex = re.compile(rf'[{"".join(self.clitic_markers[1:])}]')
-                        clitic_marker = self.clitic_markers[0]
 
                     dictionary = Dictionary(
                         name=dictionary_model.name,
@@ -352,10 +362,18 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         phone_set_type=self.phone_set_type,
                         root_temp_directory=self.dictionary_output_directory,
                         position_dependent_phones=self.position_dependent_phones,
-                        clitic_marker=clitic_marker,
-                        bracket_regex=bracket_regex.pattern,
-                        laughter_regex=laughter_regex.pattern,
+                        clitic_marker=self.clitic_marker if self.clitic_marker is not None else "",
+                        bracket_regex=self.bracket_regex.pattern
+                        if self.bracket_regex is not None
+                        else "",
+                        clitic_cleanup_regex=self.clitic_cleanup_regex.pattern
+                        if self.clitic_cleanup_regex is not None
+                        else "",
+                        laughter_regex=self.laughter_regex.pattern
+                        if self.laughter_regex is not None
+                        else "",
                         default="default" in speakers,
+                        use_g2p=False,
                         max_disambiguation_symbol=0,
                         silence_word=self.silence_word,
                         oov_word=self.oov_word,
@@ -398,11 +416,13 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     pronunciation_primary_key += 1
 
                     special_words = {self.oov_word: WordType.oov}
-                    if bracket_regex is not None:
+                    if self.bracket_regex is not None:
                         special_words[self.bracketed_word] = WordType.bracketed
-                    if laughter_regex is not None:
+                    if self.laughter_regex is not None:
                         special_words[self.laughter_word] = WordType.laughter
                     specials_found = set()
+                    if not os.path.exists(dictionary_model.path):
+                        raise DictionaryFileError(dictionary_model.path)
                     with open(dictionary_model.path, "r", encoding="utf8") as inf:
                         for i, line in enumerate(inf):
                             line = line.strip()
@@ -423,15 +443,17 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 word = word.lower()
                             if " " in word:
                                 continue
-                            if sanitize:
-                                word = clitic_cleanup_regex.sub(clitic_marker, word)
+                            if self.clitic_cleanup_regex is not None:
+                                word = self.clitic_cleanup_regex.sub(self.clitic_marker, word)
                             if not line:
                                 raise DictionaryError(
                                     f"Line {i} of {dictionary_model.path} does not have a pronunciation."
                                 )
                             if word in self.specials_set:
                                 continue
-                            graphemes.update(word)
+                            characters = list(unicodedata.normalize("NFD", word))
+                            if word not in special_words:
+                                graphemes.update(characters)
                             prob = 1
                             if dictionary_model.pronunciation_probabilities:
                                 prob = float(line.pop(0))
@@ -485,10 +507,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             if (word, pron_string) in pronunciation_cache:
                                 continue
 
-                            if (
-                                not pretrained
-                                and word_objs[word_cache[word] - 1]["word_type"] is WordType.speech
-                            ):
+                            if not pretrained and word_objs[word_cache[word] - 1]["word_type"] in {
+                                WordType.speech,
+                                WordType.clitic,
+                            }:
                                 self.non_silence_phones.update(pron)
                             pron_objs.append(
                                 {
@@ -579,6 +601,35 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
 
             self.non_silence_phones -= self.silence_phones
             phone_objs = []
+            grapheme_objs = []
+            if graphemes:
+                i = 0
+                session.query(Grapheme).delete()
+                session.commit()
+                special_graphemes = [self.silence_word, "<space>"]
+                if self.bracket_regex is not None:
+                    special_graphemes.append(self.bracketed_word)
+                if self.laughter_regex is not None:
+                    special_graphemes.append(self.laughter_word)
+                for g in special_graphemes:
+                    grapheme_objs.append(
+                        {
+                            "id": i + 1,
+                            "mapping_id": i,
+                            "grapheme": g,
+                        }
+                    )
+                    i += 1
+                for g in sorted(graphemes) + [self.oov_word, "#0", "<s>", "</s>"]:
+                    grapheme_objs.append(
+                        {
+                            "id": i + 1,
+                            "mapping_id": i,
+                            "grapheme": g,
+                        }
+                    )
+                    i += 1
+
             if self.non_silence_phones:
                 max_phone_ind = session.query(sqlalchemy.func.max(Phone.mapping_id)).scalar()
                 i = 0
@@ -646,6 +697,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     conn.execute(sqlalchemy.insert(Speaker.__table__), speaker_objs)
                 if phone_objs:
                     conn.execute(sqlalchemy.insert(Phone.__table__), phone_objs)
+                if grapheme_objs:
+                    conn.execute(sqlalchemy.insert(Grapheme.__table__), grapheme_objs)
 
                 session.commit()
         return graphemes, phone_counts
@@ -946,7 +999,10 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         binary_ext = ".fst"
         word_disambig_path = os.path.join(dictionary.temp_directory, "word_disambig.txt")
         with open(word_disambig_path, "w") as f:
-            f.write(str(self.word_mapping(dictionary.id)["#0"]))
+            try:
+                f.write(str(self.word_mapping(dictionary.id)["#0"]))
+            except KeyError:
+                pass
         if write_disambiguation:
             text_ext = ".disambig_text_fst"
             binary_ext = ".disambig_fst"
@@ -1034,12 +1090,48 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self._phone_mapping = {x[0]: x[1] for x in phones}
         return self._phone_mapping
 
+    @property
+    def grapheme_mapping(self) -> Dict[str, int]:
+        """Mapping of phone symbols to integer IDs for Kaldi processing"""
+        if self._grapheme_mapping is None:
+            with self.session() as session:
+                graphemes = (
+                    session.query(Grapheme.grapheme, Grapheme.mapping_id)
+                    .order_by(Grapheme.id)
+                    .all()
+                )
+                self._grapheme_mapping = {x[0]: x[1] for x in graphemes}
+        return self._grapheme_mapping
+
+    def lookup_grapheme(self, grapheme):
+        if grapheme in self.grapheme_mapping:
+            return self.grapheme_mapping[grapheme]
+        return self.grapheme_mapping[self.oov_word]
+
+    @property
+    def reversed_grapheme_mapping(self) -> Dict[int, str]:
+        """
+        A mapping of integer ids to graphemes
+        """
+        mapping = {}
+        for k, v in self.grapheme_mapping.items():
+            mapping[v] = k
+        return mapping
+
     def _write_phone_symbol_table(self) -> None:
         """
         Write the phone mapping to the temporary directory
         """
         with open(self.phone_symbol_table_path, "w", encoding="utf8") as f:
             for p, i in self.phone_mapping.items():
+                f.write(f"{p} {i}\n")
+
+    def _write_grapheme_symbol_table(self) -> None:
+        """
+        Write the phone mapping to the temporary directory
+        """
+        with open(self.grapheme_symbol_table_path, "w", encoding="utf8") as f:
+            for p, i in self.grapheme_mapping.items():
                 f.write(f"{p} {i}\n")
 
     def _write_extra_questions(self) -> None:
@@ -1071,35 +1163,33 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         directory : str
             Path to directory to save ``oovs_found.txt``
         """
-
         with self.session() as session:
-            dictionaries = (
-                session.query(Dictionary).options(selectinload(Dictionary.oov_words)).all()
-            )
-            for dictionary in dictionaries:
+            for dict_id, base_name in self.dictionary_base_names.items():
                 with open(
-                    os.path.join(directory, f"oovs_found_{dictionary.name}_{dictionary.id}.txt"),
+                    os.path.join(directory, f"oovs_found_{base_name}.txt"),
                     "w",
                     encoding="utf8",
                 ) as f, open(
-                    os.path.join(directory, f"oov_counts_{dictionary.name}_{dictionary.id}.txt"),
+                    os.path.join(directory, f"oov_counts_{base_name}.txt"),
                     "w",
                     encoding="utf8",
                 ) as cf:
-                    for oov in dictionary.oov_words:
-                        f.write(oov.word + "\n")
-                        cf.write(f"{oov.word}\t{oov.count}\n")
+                    oovs = (
+                        session.query(OovWord.word, OovWord.count)
+                        .filter(OovWord.dictionary_id == dict_id)
+                        .order_by(sqlalchemy.desc(OovWord.count))
+                    )
+                    for word, count in oovs:
+                        f.write(word + "\n")
+                        cf.write(f"{word}\t{count}\n")
 
     def calculate_oovs_found(self) -> None:
         """Sum the counts of oovs found in pronunciation dictionaries"""
 
         with self.session() as session:
-            dictionaries = (
-                session.query(Dictionary).options(selectinload(Dictionary.oov_words)).all()
-            )
-            oov_words = {}
-            for dictionary in dictionaries:
-                dict_id = dictionary.id
+            session.query(OovWord).delete()
+            session.flush()
+            for dict_id in self.dictionary_lookup.values():
                 oov_words = {}
                 utterances = (
                     session.query(Utterance.oovs)
@@ -1127,12 +1217,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Flag to use disambiguation symbols in the output
         """
         os.makedirs(self.phones_dir, exist_ok=True)
-        phone_disambig_path = os.path.join(self.phones_dir, "phone_disambig.txt")
-        with open(phone_disambig_path, "w") as f:
-            f.write(str(self.phone_mapping["#0"]))
-        self._write_word_boundaries()
         self._write_phone_symbol_table()
+        self._write_grapheme_symbol_table()
         self._write_disambig()
+        self._write_word_boundaries()
+        if self.use_g2p:
+            return
         silence_disambiguation_symbol = None
         if write_disambiguation:
             silence_disambiguation_symbol = self.silence_disambiguation_symbol

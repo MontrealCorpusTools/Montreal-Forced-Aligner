@@ -369,7 +369,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         subprocess.check_call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
         assert os.path.exists(self.large_arpa_path)
 
-        self.log_info("Large ngam model created!")
+        self.log_info("Large ngram model created!")
 
     def train(self) -> None:
         """
@@ -462,7 +462,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
             )
         assert os.path.exists(self.mod_path)
 
-        self.log_info("Large ngam model parsed!")
+        self.log_info("Large ngram model parsed!")
 
         self.prune_large_language_model()
 

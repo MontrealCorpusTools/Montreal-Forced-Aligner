@@ -70,11 +70,15 @@ class Archive(MfaModel):
 
     extensions = [".zip"]
 
+    model_type = None
+
     def __init__(self, source: str, root_directory: Optional[str] = None):
         from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = os.path.join(get_temporary_directory(), "extracted_models")
+            root_directory = os.path.join(
+                get_temporary_directory(), "extracted_models", self.model_type
+            )
         self.root_directory = root_directory
         self.source = source
         self._meta = {}
@@ -139,7 +143,7 @@ class Archive(MfaModel):
         for f in os.listdir(self.dirname):
             if f == "tree":
                 return AcousticModel(self.dirname, self.root_directory)
-            if f == "phones.sym":
+            if f in {"phones.sym", "phones.txt"}:
                 return G2PModel(self.dirname, self.root_directory)
             if f.endswith(".arpa"):
                 return LanguageModel(self.dirname, self.root_directory)
@@ -252,7 +256,7 @@ class Archive(MfaModel):
         from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = get_temporary_directory()
+            root_directory = os.path.join(get_temporary_directory(), "temp_models", cls.model_type)
 
         os.makedirs(root_directory, exist_ok=True)
         source = os.path.join(root_directory, head)
@@ -304,7 +308,15 @@ class AcousticModel(Archive):
 
     """
 
-    files = ["final.mdl", "final.alimdl", "final.occs", "lda.mat", "tree"]
+    files = [
+        "final.mdl",
+        "final.alimdl",
+        "final.occs",
+        "lda.mat",
+        "tree",
+        "phones.txt",
+        "graphemes.txt",
+    ]
     extensions = [".zip", ".am"]
 
     model_type = "acoustic"
@@ -466,6 +478,24 @@ class AcousticModel(Archive):
             File to add
         """
         for f in self.files:
+            if os.path.exists(os.path.join(source, f)):
+                copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
+
+    def add_pronunciation_models(
+        self, source: str, dictionary_base_names: Collection[str]
+    ) -> None:
+        """
+        Add file into archive
+
+        Parameters
+        ----------
+        source: str
+            File to add
+        dictionary_base_names: list[str]
+            Base names of dictionaries to add pronunciation models
+        """
+        for base_name in dictionary_base_names:
+            f = f"{base_name}.fst"
             if os.path.exists(os.path.join(source, f)):
                 copyfile(os.path.join(source, f), os.path.join(self.dirname, f))
 
@@ -654,7 +684,10 @@ class G2PModel(Archive):
 
     @property
     def sym_path(self) -> str:
-        """G2p model's symbols path"""
+        """G2P model's symbols path"""
+        path = os.path.join(self.dirname, "phones.txt")
+        if os.path.exists(path):
+            return path
         return os.path.join(self.dirname, "phones.sym")
 
     def add_sym_path(self, source_directory: str) -> None:
@@ -667,7 +700,7 @@ class G2PModel(Archive):
             Source directory path
         """
         if not os.path.exists(self.sym_path):
-            copyfile(os.path.join(source_directory, "phones.sym"), self.sym_path)
+            copyfile(os.path.join(source_directory, "phones.txt"), self.sym_path)
 
     def add_fst_model(self, source_directory: str) -> None:
         """
@@ -740,7 +773,9 @@ class LanguageModel(Archive):
         from .config import get_temporary_directory
 
         if root_directory is None:
-            root_directory = get_temporary_directory()
+            root_directory = os.path.join(
+                get_temporary_directory(), "extracted_models", self.model_type
+            )
 
         if source.endswith(self.arpa_extension):
             self.root_directory = root_directory
@@ -833,7 +868,9 @@ class DictionaryModel(MfaModel):
         if root_directory is None:
             from montreal_forced_aligner.config import get_temporary_directory
 
-            root_directory = get_temporary_directory()
+            root_directory = os.path.join(
+                get_temporary_directory(), "extracted_models", self.model_type
+            )
         self.path = path
         self.dirname = os.path.join(root_directory, self.name)
         self.pronunciation_probabilities = True
@@ -931,8 +968,11 @@ class DictionaryModel(MfaModel):
 
         printer = TerminalPrinter()
         configuration_data = {"Dictionary": {"name": (self.name, "green"), "data": self.meta}}
+        temp_directory = os.path.join(self.dirname, "temp")
+        if os.path.exists(temp_directory):
+            shutil.rmtree(temp_directory)
         dictionary = MultispeakerDictionary(
-            self.path, temporary_directory=self.dirname, phone_set_type=self.phone_set_type
+            self.path, temporary_directory=temp_directory, phone_set_type=self.phone_set_type
         )
         graphemes, phone_counts = dictionary.dictionary_setup()
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)

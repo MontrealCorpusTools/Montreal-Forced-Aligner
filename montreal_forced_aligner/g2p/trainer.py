@@ -1,7 +1,7 @@
 """Class definitions for training G2P models"""
 from __future__ import annotations
 
-import functools
+import itertools
 import multiprocessing as mp
 import operator
 import os
@@ -12,23 +12,29 @@ import shutil
 import statistics
 import subprocess
 import time
-from typing import Any, Dict, List, NamedTuple, Optional, Set
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import tqdm
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
-from montreal_forced_aligner.data import WordData
+from montreal_forced_aligner.data import WordType
+from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
-from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlignmentError
-from montreal_forced_aligner.g2p.generator import PyniniValidator
+from montreal_forced_aligner.exceptions import (
+    KaldiProcessingError,
+    PyniniAlignmentError,
+    PyniniGenerationError,
+)
+from montreal_forced_aligner.g2p.generator import MatchScorer, PyniniValidator, RewriterWorker
 from montreal_forced_aligner.helper import score_g2p
 from montreal_forced_aligner.models import G2PModel
-from montreal_forced_aligner.utils import Stopped
+from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
 try:
     import pynini
     import pywrapfst
     from pynini import Fst, TokenType
+    from pynini.lib import rewrite
     from pywrapfst import convert
 
     G2P_DISABLED = False
@@ -37,6 +43,7 @@ except ImportError:
     pynini = None
     pywrapfst = None
     TokenType = Optional[str]
+    rewrite = None
     Fst = None
 
     def convert(x):
@@ -60,11 +67,30 @@ class RandomStart(NamedTuple):
 
     idx: int
     seed: int
-    g_path: str
-    p_path: str
-    c_path: str
+    input_far_path: str
+    output_far_path: str
+    cg_path: str
     tempdir: str
     train_opts: List[str]
+
+
+def _get_far_labels(far_path: str) -> Set[int]:
+    """Extracts label set from acceptors in a FAR.
+    Args:
+      far_path: path to FAR file.
+    Returns:
+      A set of integer labels found in the FAR.
+    """
+    labels: Set[int] = set()
+    reader = pywrapfst.FarReader.open(far_path)
+    while not reader.done():
+        fst = reader.get_fst()
+        assert fst.properties(pywrapfst.ACCEPTOR, True) == pywrapfst.ACCEPTOR
+        for state in fst.states():
+            labels.update(arc.ilabel for arc in fst.arcs(state))
+        next(reader)
+    assert not reader.error()
+    return labels
 
 
 class RandomStartWorker(mp.Process):
@@ -101,17 +127,17 @@ class RandomStartWorker(mp.Process):
                 try:
                     start = time.time()
                     # Randomize channel model.
-                    c_path = os.path.join(args.tempdir, f"c-{args.seed:05d}.fst")
-                    fst_path = os.path.join(args.tempdir, f"t-{args.seed:05d}.fst")
-                    likelihood_path = fst_path.replace(".fst", ".like")
-                    if not os.path.exists(fst_path):
+                    rfst_path = os.path.join(args.tempdir, f"random-{args.seed:05d}.fst")
+                    afst_path = os.path.join(args.tempdir, f"aligner-{args.seed:05d}.fst")
+                    likelihood_path = afst_path.replace(".fst", ".like")
+                    if not os.path.exists(afst_path):
                         cmd = [
-                            "baumwelchrandomize",
+                            thirdparty_binary("baumwelchrandomize"),
                             f"--seed={args.seed}",
-                            args.c_path,
-                            c_path,
+                            args.cg_path,
+                            rfst_path,
                         ]
-                        subprocess.check_call(cmd, stderr=log_file)
+                        subprocess.check_call(cmd, stderr=log_file, env=os.environ)
                         random_end = time.time()
                         log_file.write(
                             f"{args.seed} randomization took {random_end - start} seconds\n"
@@ -120,16 +146,18 @@ class RandomStartWorker(mp.Process):
 
                         likelihood = INF
                         cmd = [
-                            "baumwelchtrain",
+                            thirdparty_binary("baumwelchtrain"),
                             *args.train_opts,
-                            args.g_path,
-                            args.p_path,
-                            c_path,
-                            fst_path,
+                            args.input_far_path,
+                            args.output_far_path,
+                            rfst_path,
+                            afst_path,
                         ]
                         log_file.write(f"{args.seed} train command: {' '.join(cmd)}\n")
                         log_file.flush()
-                        with subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True) as proc:
+                        with subprocess.Popen(
+                            cmd, stderr=subprocess.PIPE, text=True, env=os.environ
+                        ) as proc:
                             # Parses STDERR to capture the likelihood.
                             for line in proc.stderr:  # type: ignore
                                 log_file.write(line)
@@ -147,7 +175,7 @@ class RandomStartWorker(mp.Process):
                     else:
                         with open(likelihood_path, "r") as f:
                             likelihood = f.read().strip()
-                    self.return_queue.put((fst_path, likelihood))
+                    self.return_queue.put((afst_path, likelihood))
                 except Exception:
                     self.stopped.stop()
                     e = KaldiProcessingError([self.log_file])
@@ -206,7 +234,376 @@ class G2PTrainer(MfaWorker, TrainerMixin):
         self.g2p_validation_phones = set()
 
 
-class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
+class PyniniTrainerMixin:
+    def __init__(
+        self,
+        order: int = 8,
+        random_starts: int = 25,
+        seed: int = 1917,
+        delta: float = 1 / 1024,
+        alpha: float = 1.0,
+        batch_size: int = 800,
+        num_iterations: int = 10,
+        smoothing_method: str = "kneser_ney",
+        pruning_method: str = "relative_entropy",
+        model_size: int = 1000000,
+        insertions: bool = True,
+        deletions: bool = True,
+        fst_default_cache_gc="",
+        fst_default_cache_gc_limit="",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        if not hasattr(self, "_data_source"):
+            self._data_source = None
+        self.order = order
+        self.random_starts = random_starts
+        self.seed = seed
+        self.delta = delta
+        self.alpha = alpha
+        self.batch_size = batch_size
+        self.num_iterations = num_iterations
+        self.smoothing_method = smoothing_method
+        self.pruning_method = pruning_method
+        self.model_size = model_size
+        self.insertions = insertions
+        self.deletions = deletions
+        self.fst_default_cache_gc = fst_default_cache_gc
+        self.fst_default_cache_gc_limit = fst_default_cache_gc_limit
+        self._sym_path = None
+        self._fst_path = None
+        self.input_sym_path = None
+        self.input_token_type = "utf8"
+        self.output_token_type = "utf8"
+
+    @property
+    def data_source_identifier(self) -> str:
+        """Dictionary name"""
+        return self._data_source
+
+    def train_iteration(self) -> None:
+        """Train iteration, not used"""
+        pass
+
+    @property
+    def architecture(self) -> str:
+        """Pynini"""
+        return "pynini"
+
+    @property
+    def input_far_path(self) -> str:
+        """Path to store grapheme archive"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.g.far")
+
+    @property
+    def output_far_path(self) -> str:
+        """Path to store grapheme archive"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.p.far")
+
+    @property
+    def cg_path(self) -> str:
+        """Path to store grapheme archive"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.cg.fst")
+
+    @property
+    def align_path(self) -> str:
+        """Path to store grapheme archive"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.align.fst")
+
+    @property
+    def afst_path(self) -> str:
+        """Path to store grapheme archive"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.afst.far")
+
+    @property
+    def input_path(self) -> str:
+        """Path to temporary file to store training data"""
+        return os.path.join(self.working_directory, f"input_{self.data_source_identifier}.txt")
+
+    @property
+    def output_path(self) -> str:
+        """Path to temporary file to store training data"""
+        return os.path.join(self.working_directory, f"output_{self.data_source_identifier}.txt")
+
+    def generate_model(self) -> None:
+        """
+        Generate an ngram G2P model from FAR strings
+        """
+        assert os.path.exists(self.far_path)
+        if os.path.exists(self.fst_path):
+            self.log_info("Model building already done, skipping!")
+            return
+        with open(
+            os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
+        ) as logf:
+            ngramcount_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramcount"),
+                    "--require_symbols=false",
+                    f"--order={self.order}",
+                    self.far_path,
+                ],
+                stderr=logf,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+            )
+
+            ngrammake_proc = subprocess.Popen(
+                [thirdparty_binary("ngrammake"), f"--method={self.smoothing_method}"],
+                stdin=ngramcount_proc.stdout,
+                stderr=logf,
+                stdout=subprocess.PIPE,
+                env=os.environ,
+            )
+
+            ngramshrink_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngramshrink"),
+                    f"--method={self.pruning_method}",
+                    # f"--theta=0.000000001",
+                    f"--target_number_of_ngrams={self.model_size}",
+                ],
+                stdin=ngrammake_proc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=logf,
+                env=os.environ,
+            )
+
+            fstencode_proc = subprocess.Popen(
+                [thirdparty_binary("fstencode"), "--decode", "-", self.encoder_path, "-"],
+                stdin=ngramshrink_proc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=logf,
+                env=os.environ,
+            )
+            sort_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("fstarcsort"),
+                    "-",
+                    self.fst_path,
+                ],
+                stdin=fstencode_proc.stdout,
+                stderr=logf,
+                env=os.environ,
+            )
+            sort_proc.communicate()
+
+    @property
+    def fst_path(self):
+        """Internal temporary FST file"""
+        if self._fst_path is not None:
+            return self._fst_path
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.fst")
+
+    @property
+    def far_path(self):
+        """Internal temporary FAR file"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
+
+    @property
+    def encoder_path(self):
+        """Internal temporary encoder file"""
+        return os.path.join(self.working_directory, f"{self.data_source_identifier}.enc")
+
+    @property
+    def sym_path(self):
+        """Internal temporary symbol file"""
+        if self._sym_path is not None:
+            return self._sym_path
+        return os.path.join(self.working_directory, "phones.txt")
+
+    def align_g2p(self):
+        """Runs the entire alignment regimen."""
+        self._lexicon_covering()
+        self._alignments()
+        self._encode()
+
+    @staticmethod
+    def _narcs(f: Fst) -> int:
+        """Computes the number of arcs in an FST."""
+        return sum(f.num_arcs(state) for state in f.states())
+
+    def _lexicon_covering(
+        self,
+    ) -> None:
+        """Builds covering grammar and lexicon FARs."""
+        # Sets of labels for the covering grammar.
+        with open(
+            os.path.join(self.working_log_directory, "covering_grammar.log"), "w", encoding="utf8"
+        ) as log_file:
+            com = [
+                thirdparty_binary("farcompilestrings"),
+                "--fst_type=compact",
+            ]
+            if self.input_token_type != "utf8":
+                com.append("--token_type=symbol")
+                com.append(
+                    f"--symbols={self.input_token_type}",
+                )
+                com.append("--unknown_symbol=<unk>")
+            else:
+                com.append("--token_type=utf8")
+            com.extend([self.input_path, self.input_far_path])
+            print(" ".join(com), file=log_file)
+            subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
+            com = [
+                thirdparty_binary("farcompilestrings"),
+                "--fst_type=compact",
+                "--token_type=symbol",
+                f"--symbols={self.phone_symbol_table_path}",
+                self.output_path,
+                self.output_far_path,
+            ]
+            print(" ".join(com), file=log_file)
+            subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
+            ilabels = _get_far_labels(self.input_far_path)
+            print(ilabels, file=log_file)
+            olabels = _get_far_labels(self.output_far_path)
+            print(olabels, file=log_file)
+            cg = pywrapfst.VectorFst()
+            state = cg.add_state()
+            cg.set_start(state)
+            one = pywrapfst.Weight.one(cg.weight_type())
+            for ilabel, olabel in itertools.product(ilabels, olabels):
+                cg.add_arc(state, pywrapfst.Arc(ilabel, olabel, one, state))
+            # Handles epsilons, carefully avoiding adding a useless 0:0 label.
+            if self.insertions:
+                for olabel in olabels:
+                    cg.add_arc(state, pywrapfst.Arc(0, olabel, one, state))
+            if self.deletions:
+                for ilabel in ilabels:
+                    cg.add_arc(state, pywrapfst.Arc(ilabel, 0, one, state))
+            cg.set_final(state)
+            assert cg.verify(), "Label acceptor is ill-formed"
+            cg.write(self.cg_path)
+
+    def _alignments(self) -> None:
+        """Trains the aligner and constructs the alignments FAR."""
+        if not os.path.exists(self.align_path):
+            self.log_info("Training aligner")
+            train_opts = []
+            if self.batch_size:
+                train_opts.append(f"--batch_size={self.batch_size}")
+            if self.delta:
+                train_opts.append(f"--delta={self.delta}")
+            if self.fst_default_cache_gc:
+                train_opts.append(f"--fst_default_cache_gc={self.fst_default_cache_gc}")
+            if self.fst_default_cache_gc_limit:
+                train_opts.append(
+                    f"--fst_default_cache_gc_limit={self.fst_default_cache_gc_limit}"
+                )
+            if self.alpha:
+                train_opts.append(f"--alpha={self.alpha}")
+            if self.num_iterations:
+                train_opts.append(f"--max_iters={self.num_iterations}")
+            # Constructs the actual command vectors (plus an index for logging
+            # purposes).
+            random.seed(self.seed)
+            starts = [
+                (
+                    RandomStart(
+                        idx,
+                        seed,
+                        self.input_far_path,
+                        self.output_far_path,
+                        self.cg_path,
+                        self.working_directory,
+                        train_opts,
+                    )
+                )
+                for (idx, seed) in enumerate(
+                    random.sample(range(1, RAND_MAX), self.random_starts), 1
+                )
+            ]
+            stopped = Stopped()
+            num_commands = len(starts)
+            job_queue = mp.JoinableQueue()
+            fst_likelihoods = {}
+            # Actually runs starts.
+            self.log_info("Calculating alignments...")
+            begin = time.time()
+            with tqdm.tqdm(
+                total=num_commands * self.num_iterations, disable=getattr(self, "quiet", False)
+            ) as pbar:
+                for start in starts:
+                    job_queue.put(start)
+                error_dict = {}
+                return_queue = mp.Queue()
+                procs = []
+                for i in range(self.num_jobs):
+                    log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
+                    p = RandomStartWorker(
+                        i,
+                        job_queue,
+                        return_queue,
+                        log_path,
+                        stopped,
+                    )
+                    procs.append(p)
+                    p.start()
+
+                while True:
+                    try:
+                        result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
+                        if stopped.stop_check():
+                            continue
+                    except queue.Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    if isinstance(result, int):
+                        pbar.update(result)
+                    else:
+                        fst_likelihoods[result[0]] = result[1]
+                for p in procs:
+                    p.join()
+            if error_dict:
+                raise PyniniAlignmentError(error_dict)
+            (best_fst, best_likelihood) = min(fst_likelihoods.items(), key=operator.itemgetter(1))
+            self.log_info(f"Best likelihood: {best_likelihood}")
+            self.log_debug(
+                f"Ran {self.random_starts} random starts in {time.time() - begin} seconds"
+            )
+            # Moves best likelihood solution to the requested location.
+            shutil.move(best_fst, self.align_path)
+        cmd = [thirdparty_binary("baumwelchdecode")]
+        if self.fst_default_cache_gc:
+            cmd.append(f"--fst_default_cache_gc={self.fst_default_cache_gc}")
+        if self.fst_default_cache_gc_limit:
+            cmd.append(f"--fst_default_cache_gc_limit={self.fst_default_cache_gc_limit}")
+        cmd.append(self.input_far_path)
+        cmd.append(self.output_far_path)
+        cmd.append(self.align_path)
+        cmd.append(self.afst_path)
+        self.log_debug(f"Subprocess call: {cmd}")
+        subprocess.check_call(cmd, env=os.environ)
+        self.log_info("Completed computing alignments!")
+
+    def _encode(self) -> None:
+        """Encodes the alignments."""
+        self.log_info("Encoding the alignments as FSAs")
+        subprocess.check_call(
+            [
+                thirdparty_binary("farencode"),
+                "--encode_labels",
+                self.afst_path,
+                self.encoder_path,
+                self.far_path,
+            ],
+            env=os.environ,
+        )
+        self.log_info(f"Success! FAR path: {self.far_path}; encoder path: {self.encoder_path}")
+
+
+class PyniniTrainer(
+    MultispeakerDictionaryMixin, PyniniTrainerMixin, G2PTrainer, TopLevelMfaWorker
+):
     """
     Top-level G2P trainer that uses Pynini functionality
 
@@ -250,59 +647,22 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
         For top-level parameters
     """
 
-    _compactor = functools.partial(convert, fst_type="compact_string")
-
     def __init__(
         self,
-        order: int = 7,
-        random_starts: int = 25,
-        seed: int = 1917,
-        delta: float = 1 / 1024,
-        alpha: float = 1.0,
-        batch_size: int = 800,
-        num_iterations: int = 10,
-        smoothing_method: str = "kneser_ney",
-        pruning_method: str = "relative_entropy",
-        model_size: int = 1000000,
-        insertions: bool = True,
-        deletions: bool = True,
-        fst_default_cache_gc="",
-        fst_default_cache_gc_limit="",
         **kwargs,
     ):
         self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
         super().__init__(**kwargs)
-        self.order = order
-        self.random_starts = random_starts
-        self.seed = seed
-        self.delta = delta
-        self.alpha = alpha
-        self.batch_size = batch_size
-        self.num_iterations = num_iterations
-        self.smoothing_method = smoothing_method
-        self.pruning_method = pruning_method
-        self.model_size = model_size
-        self.insertions = insertions
-        self.deletions = deletions
-        self.fst_default_cache_gc = fst_default_cache_gc
-        self.fst_default_cache_gc_limit = fst_default_cache_gc_limit
-        self.g_path = os.path.join(self.working_directory, "g.far")
-        self.p_path = os.path.join(self.working_directory, "p.far")
-        self.c_path = os.path.join(self.working_directory, "c.fst")
-        self.align_path = os.path.join(self.working_directory, "align.fst")
-        self.afst_path = os.path.join(self.working_directory, "afst.far")
         self.wer = None
         self.ler = None
+        self._fst_path = None
+        self._sym_path = None
+        self.position_dependent_phones = False
 
     @property
     def data_directory(self) -> str:
         """Data directory for trainer"""
         return self.working_directory
-
-    @property
-    def data_source_identifier(self) -> str:
-        """Dictionary name"""
-        return self._data_source
 
     @property
     def workflow_identifier(self) -> str:
@@ -316,24 +676,18 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
         config.update({"dictionary_path": self.dictionary_model.path})
         return config
 
-    def train_iteration(self) -> None:
-        """Train iteration, not used"""
-        pass
-
     def setup(self) -> None:
         """Setup for G2P training"""
         if self.initialized:
             return
         self.initialize_database()
         self.dictionary_setup()
+        os.makedirs(self.phones_dir, exist_ok=True)
+        self._write_phone_symbol_table()
+        self._write_grapheme_symbol_table()
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.initialize_training()
         self.initialized = True
-
-    @property
-    def architecture(self) -> str:
-        """Pynini"""
-        return "pynini"
 
     @property
     def meta(self) -> MetaDict:
@@ -362,16 +716,22 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
             m["evaluation"]["phone_error_rate"] = self.ler
         return m
 
-    @property
-    def input_path(self) -> str:
-        """Path to temporary file to store training data"""
-        return os.path.join(self.working_directory, "input.txt")
-
     def initialize_training(self) -> None:
         """Initialize training G2P model"""
         random.seed(self.seed)
+        self._sym_path = self.phone_symbol_table_path
+        self.output_token_type = pynini.SymbolTable.read_text(self.phone_symbol_table_path)
         with self.session() as session:
-            self.g2p_training_dictionary = self.actual_words(session)
+            self.g2p_training_dictionary = {}
+            pronunciations = (
+                session.query(Word.word, Pronunciation.pronunciation)
+                .join(Pronunciation.word)
+                .filter(Word.word_type.in_([WordType.speech, WordType.clitic]))
+            )
+            for w, p in pronunciations:
+                if w not in self.g2p_training_dictionary:
+                    self.g2p_training_dictionary[w] = set()
+                self.g2p_training_dictionary[w].add(p)
             if self.evaluation_mode:
                 word_dict = self.g2p_training_dictionary
                 words = sorted(word_dict.keys())
@@ -393,29 +753,24 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
                         for word in self.g2p_validation_dictionary:
                             f.write(word + "\n")
 
-            if not os.path.exists(self.sym_path):
-                phones_path = os.path.join(self.working_directory, "phones_only.txt")
-                with open(self.input_path, "w", encoding="utf8") as f2, open(
-                    phones_path, "w", encoding="utf8"
-                ) as phonef:
-                    for word, v in self.g2p_training_dictionary.items():
-                        if re.match(r"\W", word) is not None:
-                            continue
-                        self.g2p_training_graphemes.update(word)
-                        for v2 in v.pronunciations:
-                            self.g2p_training_phones.update(v2.pronunciation.split())
-                            f2.write(f"{word}\t{v2.pronunciation}\n")
-                            phonef.write(f"{v2.pronunciation}\n")
-                subprocess.call(["ngramsymbols", phones_path, self.sym_path])
-                if not self.debug:
-                    os.remove(phones_path)
+            with open(self.input_path, "w", encoding="utf8") as inf, open(
+                self.output_path, "w", encoding="utf8"
+            ) as outf:
+                for word, pronunciations in self.g2p_training_dictionary.items():
+                    if re.match(r"\W", word) is not None:
+                        continue
+                    self.g2p_training_graphemes.update(word)
+                    for p in pronunciations:
+                        self.g2p_training_phones.update(p.split())
+                        print(word, file=inf)
+                        print(p, file=outf)
             self.log_debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
             self.log_debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
             if self.evaluation_mode:
-                for k, v in self.g2p_validation_dictionary.items():
-                    self.g2p_validation_graphemes.update(k)
-                    for v2 in v.pronunciations:
-                        self.g2p_validation_phones.update(v2.pronunciation.split())
+                for word, pronunciations in self.g2p_validation_dictionary.items():
+                    self.g2p_validation_graphemes.update(word)
+                    for p in pronunciations:
+                        self.g2p_validation_phones.update(p.split())
                 self.log_debug(
                     f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
                 )
@@ -444,65 +799,6 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
             elif not name.endswith(".log"):
                 os.remove(path)
 
-    def generate_model(self) -> None:
-        """
-        Generate an ngram G2P model from FAR strings
-        """
-        assert os.path.exists(self.far_path)
-        if os.path.exists(self.fst_path):
-            self.log_info("Model building already done, skipping!")
-            return
-        with open(
-            os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
-        ) as logf:
-            ngram_count_path = os.path.join(self.working_directory, "ngram.count")
-            ngram_make_path = os.path.join(self.working_directory, "ngram.make")
-            ngram_shrink_path = os.path.join(self.working_directory, "ngram.shrink")
-            ngramcount_proc = subprocess.Popen(
-                [
-                    "ngramcount",
-                    "--require_symbols=false",
-                    f"--order={self.order}",
-                    self.far_path,
-                    ngram_count_path,
-                ],
-                stderr=logf,
-            )
-            ngramcount_proc.communicate()
-
-            ngrammake_proc = subprocess.Popen(
-                [
-                    "ngrammake",
-                    f"--method={self.smoothing_method}",
-                    ngram_count_path,
-                    ngram_make_path,
-                ],
-                stderr=logf,
-            )
-            ngrammake_proc.communicate()
-
-            ngramshrink_proc = subprocess.Popen(
-                [
-                    "ngramshrink",
-                    f"--method={self.pruning_method}",
-                    f"--target_number_of_ngrams={self.model_size}",
-                    ngram_make_path,
-                    ngram_shrink_path,
-                ],
-                stderr=logf,
-            )
-            ngramshrink_proc.communicate()
-
-            fstencode_proc = subprocess.Popen(
-                ["fstencode", "--decode", ngram_shrink_path, self.encoder_path, self.fst_path],
-                stderr=logf,
-            )
-            fstencode_proc.communicate()
-
-        os.remove(ngram_count_path)
-        os.remove(ngram_make_path)
-        os.remove(ngram_shrink_path)
-
     def export_model(self, output_model_path: str) -> None:
         """
         Export G2P model to specified path
@@ -527,158 +823,61 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
         # self.clean_up()
         self.log_info(f"Saved model to {output_model_path}")
 
-    @property
-    def fst_path(self):
-        """Internal temporary FST file"""
-        return os.path.join(self.working_directory, "model.fst")
+    def score_pronunciations(
+        self, score_threshold: Optional[float] = 1.0
+    ) -> Dict[Tuple[str, str], Tuple[float, float]]:
+        """
+        Scored pronunciations according to their cost in the G2P model
 
-    @property
-    def far_path(self):
-        """Internal temporary FAR file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
+        Returns
+        -------
+        dict[tuple[str, str], float]
+            Scores for given pronunciations
+        """
+        fst = pynini.Fst.read(self.fst_path)
 
-    @property
-    def encoder_path(self):
-        """Internal temporary encoder file"""
-        return os.path.join(self.working_directory, f"{self.data_source_identifier}.enc")
-
-    @property
-    def sym_path(self):
-        """Internal temporary symbol file"""
-        return os.path.join(self.working_directory, "phones.sym")
-
-    def align(self):
-        """Runs the entire alignment regimen."""
-        self._lexicon_covering()
-        self._alignments()
-        self._encode()
-
-    @staticmethod
-    def _label_union(labels: Set[int], epsilon: bool) -> Fst:
-        """Creates FSA over a union of the labels."""
-        side = pynini.Fst()
-        src = side.add_state()
-        side.set_start(src)
-        dst = side.add_state()
-        if epsilon:
-            labels.add(0)
-        one = pynini.Weight.one(side.weight_type())
-        for label in labels:
-            side.add_arc(src, pynini.Arc(label, label, one, dst))
-        side.set_final(dst)
-        assert side.verify(), "FST is ill-formed"
-        return side
-
-    @staticmethod
-    def _narcs(f: Fst) -> int:
-        """Computes the number of arcs in an FST."""
-        return sum(f.num_arcs(state) for state in f.states())
-
-    NON_SYMBOL = ("byte", "utf8")
-
-    def _lexicon_covering(
-        self,
-    ) -> None:
-        """Builds covering grammar and lexicon FARs."""
-        # Sets of labels for the covering grammar.
-        g_labels: Set[int] = set()
-        p_labels: Set[int] = set()
-        self.log_info("Constructing grapheme and phoneme FARs")
-        input_token_type = "utf8"
-        output_token_type = pynini.SymbolTable.read_text(self.sym_path)
-        g_writer = pywrapfst.FarWriter.create(self.g_path)
-        p_writer = pywrapfst.FarWriter.create(self.p_path)
-        with open(self.input_path, "r") as source:
-            for (linenum, line) in enumerate(source, 1):
-                key = f"{linenum:08x}"
-                (g, p) = line.rstrip().split("\t", 1)
-                # For both G and P, we compile a FSA, store the labels, and
-                # then write the compact version to the FAR.
-                g_fst = pynini.accep(g, token_type=input_token_type)
-                g_labels.update(g_fst.paths().ilabels())
-                g_writer[key] = self._compactor(g_fst)
-                p_fst = pynini.accep(p, token_type=output_token_type)
-                p_labels.update(p_fst.paths().ilabels())
-                p_writer[key] = self._compactor(p_fst)
-        self.log_info(f"Processed {linenum:,d} examples")
-        self.log_info("Constructing covering grammar")
-        self.log_info(f"{len(g_labels)} unique graphemes")
-        g_side = self._label_union(g_labels, self.insertions)
-        self.log_info(f"{len(p_labels)} unique phones")
-        p_side = self._label_union(p_labels, self.deletions)
-        # The covering grammar is given by (G job_name P)^*.
-        covering = pynini.cross(g_side, p_side).closure().optimize()
-        assert covering.num_states() == 1, "Covering grammar FST is ill-formed"
-        self.log_info(
-            f"Covering grammar has {PyniniTrainer._narcs(covering):,d} arcs",
+        matcher = MatchScorer(
+            fst,
+            self.input_token_type,
+            self.output_token_type,
+            threshold=self.g2p_threshold,
         )
-        covering.write(self.c_path)
 
-    def _alignments(self) -> None:
-        """Trains the aligner and constructs the alignments FAR."""
-        if not os.path.exists(self.align_path):
-            self.log_info("Training aligner")
-            train_opts = []
-            if self.batch_size:
-                train_opts.append(f"--batch_size={self.batch_size}")
-            if self.delta:
-                train_opts.append(f"--delta={self.delta}")
-            if self.fst_default_cache_gc:
-                train_opts.append(f"--fst_default_cache_gc={self.fst_default_cache_gc}")
-            if self.fst_default_cache_gc_limit:
-                train_opts.append(
-                    f"--fst_default_cache_gc_limit={self.fst_default_cache_gc_limit}"
-                )
-            if self.alpha:
-                train_opts.append(f"--alpha={self.alpha}")
-            if self.num_iterations:
-                train_opts.append(f"--max_iters={self.num_iterations}")
-            # Constructs the actual command vectors (plus an index for logging
-            # purposes).
-            random.seed(self.seed)
-            starts = [
-                (
-                    RandomStart(
-                        idx,
-                        seed,
-                        self.g_path,
-                        self.p_path,
-                        self.c_path,
-                        self.working_directory,
-                        train_opts,
-                    )
-                )
-                for (idx, seed) in enumerate(
-                    random.sample(range(1, RAND_MAX), self.random_starts), 1
-                )
-            ]
+        num_words = len(self.g2p_training_dictionary)
+        begin = time.time()
+        self.log_info("Scoring pronunciations...")
+        to_return = {}
+
+        if num_words < 30 or self.num_jobs < 2:
+            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
+                for word, pronunciations in self.g2p_training_dictionary.items():
+                    pbar.update(1)
+                    try:
+                        scored_prons = matcher((word, pronunciations))
+                    except rewrite.Error as e:
+                        self.log_debug(f"Skipping {word} due to {e}")
+                        continue
+                    for p, (absolute_score, relative_score) in scored_prons.items():
+                        if relative_score <= score_threshold:
+                            to_return[(word, p)] = (absolute_score, relative_score)
+        else:
             stopped = Stopped()
-            num_commands = len(starts)
-            job_queue = mp.JoinableQueue()
-            fst_likelihoods = {}
-            # Actually runs starts.
-            self.log_info("Calculating alignments...")
-            begin = time.time()
-            with tqdm.tqdm(
-                total=num_commands * self.num_iterations, disable=getattr(self, "quiet", False)
-            ) as pbar:
-                for start in starts:
-                    job_queue.put(start)
-                error_dict = {}
-                return_queue = mp.Queue()
-                procs = []
-                for i in range(self.num_jobs):
-                    log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
-                    p = RandomStartWorker(
-                        i,
-                        job_queue,
-                        return_queue,
-                        log_path,
-                        stopped,
-                    )
-                    procs.append(p)
-                    p.start()
-
+            job_queue = mp.Queue()
+            return_queue = mp.Queue()
+            procs = []
+            for _ in range(self.num_jobs):
+                p = RewriterWorker(
+                    job_queue,
+                    return_queue,
+                    matcher,
+                    stopped,
+                )
+                procs.append(p)
+                p.start()
+            for word, pronunciations in self.g2p_training_dictionary.items():
+                job_queue.put((word, pronunciations))
+            error_dict = {}
+            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
@@ -686,61 +885,27 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
                             continue
                     except queue.Empty:
                         for proc in procs:
+                            # print(proc.name, proc.finished.stop_check())
                             if not proc.finished.stop_check():
                                 break
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
+                    pbar.update(1)
+                    if isinstance(result, Exception):
+                        stopped.stop()
+                        error_dict[word] = result
                         continue
-                    if isinstance(result, int):
-                        pbar.update(result)
-                    else:
-                        fst_likelihoods[result[0]] = result[1]
-                for p in procs:
-                    p.join()
+                    (word, _), result = result
+                    for p, (absolute_score, relative_score) in result.items():
+                        if relative_score <= score_threshold:
+                            to_return[(word, p)] = (absolute_score, relative_score)
+            for p in procs:
+                p.join()
             if error_dict:
-                raise PyniniAlignmentError(error_dict)
-            (best_fst, best_likelihood) = min(fst_likelihoods.items(), key=operator.itemgetter(1))
-            self.log_info(f"Best likelihood: {best_likelihood}")
-            self.log_debug(
-                f"Ran {self.random_starts} random starts in {time.time() - begin} seconds"
-            )
-            # Moves best likelihood solution to the requested location.
-            shutil.move(best_fst, self.align_path)
-        self.log_info("Computing alignments")
-        cmd = ["baumwelchdecode"]
-        if self.fst_default_cache_gc:
-            cmd.append(f"--fst_default_cache_gc={self.fst_default_cache_gc}")
-        if self.fst_default_cache_gc_limit:
-            cmd.append(f"--fst_default_cache_gc_limit={self.fst_default_cache_gc_limit}")
-        cmd.append(self.g_path)
-        cmd.append(self.p_path)
-        cmd.append(self.align_path)
-        cmd.append(self.afst_path)
-        self.log_debug(f"Subprocess call: {cmd}")
-        subprocess.check_call(cmd)
-
-    def _encode(self) -> None:
-        """Encodes the alignments."""
-        self.log_info("Encoding the alignments as FSAs")
-        encoder = pywrapfst.EncodeMapper(encode_labels=True)
-        a_reader = pywrapfst.FarReader.open(self.afst_path)
-        a_writer = pywrapfst.FarWriter.create(self.far_path)
-        # Curries converter function for the FAR.
-        converter = functools.partial(pywrapfst.convert, fst_type="vector")
-        while not a_reader.done():
-            key = a_reader.get_key()
-            fst = converter(a_reader.get_fst())
-            fst.encode(encoder)
-            a_writer[key] = self._compactor(fst)
-            try:
-                next(a_reader)
-            except StopIteration:
-                break
-        encoder.write(self.encoder_path)
-        self.log_info(f"Success! FAR path: {self.far_path}; encoder path: {self.encoder_path}")
+                raise PyniniGenerationError(error_dict)
+        self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
+        return to_return
 
     def train(self) -> None:
         """
@@ -751,7 +916,7 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
         if os.path.exists(self.far_path) and os.path.exists(self.encoder_path):
             self.log_info("Alignment already done, skipping!")
         else:
-            self.align()
+            self.align_g2p()
             self.log_debug(
                 f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
             )
@@ -764,6 +929,10 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
 
     def finalize_training(self) -> None:
         """Finalize training"""
+        shutil.copyfile(self.fst_path, os.path.join(self.working_directory, "model.fst"))
+        shutil.copyfile(
+            self.phone_symbol_table_path, os.path.join(self.working_directory, "phones.txt")
+        )
         if self.evaluation_mode:
             self.evaluate_g2p_model()
 
@@ -786,7 +955,7 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
 
     def compute_validation_errors(
         self,
-        hypothesis_values: Dict[str, WordData],
+        hypothesis_values: Dict[str, List[str]],
     ):
         """
         Computes validation errors
@@ -809,26 +978,27 @@ class PyniniTrainer(MultispeakerDictionaryMixin, G2PTrainer, TopLevelMfaWorker):
         to_comp = []
         hyp_pron_count = 0
         gold_pron_count = 0
-        for word, gold in self.g2p_validation_dictionary.items():
-            gold = WordData(word, set(tuple(x.pronunciation.split()) for x in gold.pronunciations))
+        for word, gold_pronunciations in self.g2p_validation_dictionary.items():
             if word not in hypothesis_values:
                 incorrect += 1
-                gold_length = statistics.mean(len(x) for x in gold.pronunciations)
+                gold_length = statistics.mean(len(x.split()) for x in gold_pronunciations)
                 total_edits += gold_length
                 total_length += gold_length
                 continue
             hyp = hypothesis_values[word]
-            for h in hyp.pronunciations:
-                if h in gold.pronunciations:
+            for h in hyp:
+                if h in gold_pronunciations:
                     correct += 1
                     total_length += len(h)
                     break
             else:
                 incorrect += 1
-                to_comp.append((gold, hyp))  # Multiple hypotheses to compare
-            self.log_debug(f"For the word {word}: gold is {gold}, hypothesized are: {hyp}")
-            hyp_pron_count += len(hyp.pronunciations)
-            gold_pron_count += len(gold.pronunciations)
+                to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
+            self.log_debug(
+                f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
+            )
+            hyp_pron_count += len(hyp)
+            gold_pron_count += len(gold_pronunciations)
         self.log_debug(
             f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
             f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."

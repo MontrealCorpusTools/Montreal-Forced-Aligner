@@ -95,6 +95,16 @@ class TextCorpusMixin(CorpusMixin):
                 while True:
                     try:
                         file = return_queue.get(timeout=1)
+                        if isinstance(file, tuple):
+                            error_type = file[0]
+                            error = file[1]
+                            if error_type == "error":
+                                error_dict[error_type] = error
+                            else:
+                                if error_type not in error_dict:
+                                    error_dict[error_type] = []
+                                error_dict[error_type].append(error)
+                            continue
                         if self.stopped.stop_check():
                             continue
                     except Empty:
@@ -105,17 +115,7 @@ class TextCorpusMixin(CorpusMixin):
                             break
                         continue
                     pbar.update(1)
-                    if isinstance(file, tuple):
-                        error_type = file[0]
-                        error = file[1]
-                        if error_type == "error":
-                            error_dict[error_type] = error
-                        else:
-                            if error_type not in error_dict:
-                                error_dict[error_type] = []
-                            error_dict[error_type].append(error)
-                    else:
-                        import_data.add_objects(self.generate_import_objects(file))
+                    import_data.add_objects(self.generate_import_objects(file))
 
                 self.log_debug("Waiting for workers to finish...")
                 for p in procs:

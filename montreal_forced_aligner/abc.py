@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,7 +30,7 @@ import sqlalchemy
 import yaml
 from sqlalchemy.orm import Session
 
-from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration
 
 if TYPE_CHECKING:
@@ -65,10 +66,18 @@ class KaldiFunction(metaclass=abc.ABCMeta):
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
 
-    @abc.abstractmethod
     def run(self):
-        """Run the function"""
-        ...
+        """Run the function, calls :meth:`~KaldiFunction._run` with error handling"""
+        try:
+            return self._run()
+        except Exception:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            raise MultiprocessingError(self.job_name, error_text)
+
+    def _run(self):
+        """Internal logic for running the worker"""
+        pass
 
     def check_call(self, proc: subprocess.Popen):
         """

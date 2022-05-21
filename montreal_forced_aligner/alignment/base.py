@@ -38,7 +38,6 @@ from montreal_forced_aligner.db import (
     WordInterval,
     WordType,
 )
-from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.textgrid import export_textgrid, output_textgrid_writing_errors
 from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped
 
@@ -136,6 +135,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 self.model_path,
+                False,
             )
             for j in self.jobs
         ]
@@ -194,6 +194,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -202,9 +205,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     dict_id, utterance_counter = result
                     dictionary_counters[dict_id].add_counts(utterance_counter)
@@ -276,13 +276,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 silence_probabilities = {}
                 for w, p, _ in pronunciations:
                     count = counter.silence_following_counts[(w, p)]
+                    total_count = (
+                        counter.silence_following_counts[(w, p)]
+                        + counter.non_silence_following_counts[(w, p)]
+                    )
                     w_p_silence_count = count + (silence_probability * lambda_2)
-                    w_p_non_silence_count = counter.non_silence_following_counts[(w, p)] + (
-                        (1 - silence_probability) * lambda_2
-                    )
-                    prob = format_probability(
-                        w_p_silence_count / (w_p_silence_count + w_p_non_silence_count)
-                    )
+                    prob = format_probability(w_p_silence_count / (total_count + lambda_2))
                     silence_probabilities[(w, p)] = prob
                     if w not in {initial_key[0], final_key[0], self.silence_word}:
                         pron_mapping[(w, p)]["silence_after_probability"] = prob
@@ -294,12 +293,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         silence_prob = 0.01
                     else:
                         silence_prob = silence_probabilities[w_p1]
-                    bar_count_silence_wp[w_p2] += counts["silence"] * silence_prob
-                    bar_count_non_silence_wp[w_p2] += counts["non_silence"] * (1 - silence_prob)
+                    total_count = counts["silence"] + counts["non_silence"]
+                    bar_count_silence_wp[w_p2] += total_count * silence_prob
+                    bar_count_non_silence_wp[w_p2] += total_count * (1 - silence_prob)
                 for w, p, _ in pronunciations:
-                    silence_count = counter.silence_before_counts[(w, p)]
                     if w in {initial_key[0], final_key[0], self.silence_word}:
                         continue
+                    silence_count = counter.silence_before_counts[(w, p)]
                     non_silence_count = counter.non_silence_before_counts[(w, p)]
                     pron_mapping[(w, p)]["silence_before_correction"] = format_correction(
                         (silence_count + lambda_3) / (bar_count_silence_wp[(w, p)] + lambda_3)
@@ -388,6 +388,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -396,9 +399,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     utterance, word_intervals, phone_intervals = result
                     for interval in phone_intervals:

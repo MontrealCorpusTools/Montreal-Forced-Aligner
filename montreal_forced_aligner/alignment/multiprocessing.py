@@ -62,6 +62,7 @@ class GeneratePronunciationsArguments(MfaArguments):
     text_int_paths: Dict[int, str]
     ali_paths: Dict[int, str]
     model_path: str
+    for_g2p: bool
 
 
 @dataclass
@@ -99,7 +100,7 @@ class CompileTrainGraphsArguments(MfaArguments):
     tree_path: str
     model_path: str
     text_int_paths: Dict[int, str]
-    fst_scp_paths: Dict[int, str]
+    fst_ark_paths: Dict[int, str]
 
 
 @dataclass
@@ -107,7 +108,7 @@ class AlignArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
 
     dictionaries: List[int]
-    fst_scp_paths: Dict[int, str]
+    fst_ark_paths: Dict[int, str]
     feature_strings: Dict[int, str]
     model_path: str
     ali_paths: Dict[int, str]
@@ -156,11 +157,13 @@ class CompileTrainGraphsFunction(KaldiFunction):
         self.tree_path = args.tree_path
         self.model_path = args.model_path
         self.text_int_paths = args.text_int_paths
-        self.fst_scp_paths = args.fst_scp_paths
+        self.fst_ark_paths = args.fst_ark_paths
+        self.working_dir = os.path.dirname(list(self.fst_ark_paths.values())[0])
 
-    def run(self):
+    def _run(self):
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+
         with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
             dictionaries = (
                 session.query(Dictionary)
@@ -168,30 +171,176 @@ class CompileTrainGraphsFunction(KaldiFunction):
                 .filter(Speaker.job_id == self.job_name)
                 .distinct()
             )
+
+            tree_proc = subprocess.Popen(
+                [thirdparty_binary("tree-info"), self.tree_path],
+                encoding="utf8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, _ = tree_proc.communicate()
+            context_width = 1
+            central_pos = 0
+            for line in stdout.split("\n"):
+                text = line.strip().split(" ")
+                if text[0] == "context-width":
+                    context_width = int(text[1])
+                elif text[0] == "central-position":
+                    central_pos = int(text[1])
+            out_disambig = os.path.join(self.working_dir, f"{self.job_name}.disambig")
+            ilabels_temp = os.path.join(self.working_dir, f"{self.job_name}.ilabels")
+            clg_path = os.path.join(self.working_dir, f"{self.job_name}.clg.temp")
+            ha_out_disambig = os.path.join(
+                self.working_dir, f"{self.job_name}.ha_out_disambig.temp"
+            )
             for d in dictionaries:
-                fst_scp_path = self.fst_scp_paths[d.id]
-                fst_ark_path = fst_scp_path.replace(".scp", ".ark")
+                fst_ark_path = self.fst_ark_paths[d.id]
                 text_path = self.text_int_paths[d.id]
-                proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("compile-train-graphs"),
-                        f"--read-disambig-syms={d.disambiguation_symbols_int_path}",
-                        self.tree_path,
-                        self.model_path,
-                        d.lexicon_fst_path,
-                        f"ark:{text_path}",
-                        f"ark,scp:{fst_ark_path},{fst_scp_path}",
-                    ],
-                    stderr=subprocess.PIPE,
-                    encoding="utf8",
-                    env=os.environ,
-                )
-                for line in proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield int(m.group("succeeded")), int(m.group("failed"))
-                self.check_call(proc)
+                if d.use_g2p:
+                    import pynini
+                    from pynini.lib import rewrite
+
+                    from montreal_forced_aligner.g2p.generator import threshold_lattice_to_dfa
+
+                    fst = pynini.Fst.read(d.lexicon_fst_path)
+                    token_type = pynini.SymbolTable.read_text(d.grapheme_symbol_table_path)
+                    utterances = (
+                        session.query(Utterance.kaldi_id, Utterance.normalized_character_text)
+                        .join(Utterance.speaker)
+                        .filter(Utterance.ignored == False)  # noqa
+                        .filter(Utterance.normalized_character_text != "")
+                        .filter(Speaker.job_id == self.job_name)
+                        .filter(Speaker.dictionary_id == d.id)
+                        .order_by(Utterance.kaldi_id)
+                    )
+                    with open(fst_ark_path, "wb") as fst_output_file:
+                        for utt_id, full_text in utterances:
+                            full_text = f"<s> {full_text} </s>"
+                            lattice = rewrite.rewrite_lattice(full_text, fst, token_type)
+                            lattice = threshold_lattice_to_dfa(lattice, 2.0)
+                            input = lattice.write_to_string()
+                            clg_compose_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("fstcomposecontext"),
+                                    f"--context-size={context_width}",
+                                    f"--central-position={central_pos}",
+                                    f"--read-disambig-syms={d.disambiguation_symbols_int_path}",
+                                    f"--write-disambig-syms={out_disambig}",
+                                    ilabels_temp,
+                                    "-",
+                                    "-",
+                                ],
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            clg_sort_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("fstarcsort"),
+                                    "--sort_type=ilabel",
+                                    "-",
+                                    clg_path,
+                                ],
+                                stdin=clg_compose_proc.stdout,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            clg_compose_proc.stdin.write(input)
+                            clg_compose_proc.stdin.flush()
+                            clg_compose_proc.stdin.close()
+                            clg_sort_proc.communicate()
+
+                            make_h_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("make-h-transducer"),
+                                    f"--disambig-syms-out={ha_out_disambig}",
+                                    ilabels_temp,
+                                    self.tree_path,
+                                    self.model_path,
+                                ],
+                                stderr=log_file,
+                                stdout=subprocess.PIPE,
+                                env=os.environ,
+                            )
+                            hclg_compose_proc = subprocess.Popen(
+                                [thirdparty_binary("fsttablecompose"), "-", clg_path, "-"],
+                                stderr=log_file,
+                                stdin=make_h_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                env=os.environ,
+                            )
+
+                            hclg_determinize_proc = subprocess.Popen(
+                                [thirdparty_binary("fstdeterminizestar"), "--use-log=true"],
+                                stdin=hclg_compose_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            hclg_rmsymbols_proc = subprocess.Popen(
+                                [thirdparty_binary("fstrmsymbols"), ha_out_disambig],
+                                stdin=hclg_determinize_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            hclg_rmeps_proc = subprocess.Popen(
+                                [thirdparty_binary("fstrmepslocal")],
+                                stdin=hclg_rmsymbols_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            hclg_minimize_proc = subprocess.Popen(
+                                [thirdparty_binary("fstminimizeencoded")],
+                                stdin=hclg_rmeps_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+                            hclg_self_loop_proc = subprocess.Popen(
+                                [
+                                    thirdparty_binary("add-self-loops"),
+                                    "--self-loop-scale=0.1",
+                                    "--reorder=true",
+                                    self.model_path,
+                                    "-",
+                                    "-",
+                                ],
+                                stdin=hclg_minimize_proc.stdout,
+                                stdout=subprocess.PIPE,
+                                stderr=log_file,
+                                env=os.environ,
+                            )
+
+                            stdout, _ = hclg_self_loop_proc.communicate()
+                            self.check_call(hclg_minimize_proc)
+                            fst_output_file.write(utt_id.encode("utf8") + b" ")
+                            fst_output_file.write(stdout)
+                            yield 1, 0
+
+                else:
+                    proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("compile-train-graphs"),
+                            f"--read-disambig-syms={d.disambiguation_symbols_int_path}",
+                            self.tree_path,
+                            self.model_path,
+                            d.lexicon_fst_path,
+                            f"ark:{text_path}",
+                            f"ark:{fst_ark_path}",
+                        ],
+                        stderr=subprocess.PIPE,
+                        encoding="utf8",
+                        env=os.environ,
+                    )
+                    for line in proc.stderr:
+                        log_file.write(line)
+                        m = self.progress_pattern.match(line.strip())
+                        if m:
+                            yield int(m.group("succeeded")), int(m.group("failed"))
+                    self.check_call(proc)
 
 
 class AccStatsFunction(KaldiFunction):
@@ -287,7 +436,7 @@ class AlignFunction(KaldiFunction):
     def __init__(self, args: AlignArguments):
         super().__init__(args)
         self.dictionaries = args.dictionaries
-        self.fst_scp_paths = args.fst_scp_paths
+        self.fst_ark_paths = args.fst_ark_paths
         self.feature_strings = args.feature_strings
         self.model_path = args.model_path
         self.ali_paths = args.ali_paths
@@ -298,7 +447,7 @@ class AlignFunction(KaldiFunction):
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
-                fst_path = self.fst_scp_paths[dict_id]
+                fst_path = self.fst_ark_paths[dict_id]
                 ali_path = self.ali_paths[dict_id]
                 com = [
                     thirdparty_binary("gmm-align-compiled"),
@@ -309,7 +458,7 @@ class AlignFunction(KaldiFunction):
                     f"--retry-beam={self.align_options['retry_beam']}",
                     "--careful=false",
                     "-",
-                    f"scp:{fst_path}",
+                    f"ark:{fst_path}",
                     feature_string,
                     f"ark:{ali_path}",
                     "ark,t:-",
@@ -367,6 +516,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
         self.text_int_paths = args.text_int_paths
         self.ali_paths = args.ali_paths
         self.model_path = args.model_path
+        self.for_g2p = args.for_g2p
         self.reversed_phone_mapping = {}
         self.word_boundary_int_paths = {}
         self.reversed_word_mapping = {}
@@ -487,20 +637,36 @@ class GeneratePronunciationsFunction(KaldiFunction):
                     utt = line[0]
                     if utt != current_utterance and current_utterance is not None:
                         log_file.write(f"{current_utterance}\t{word_pronunciations}\n")
-                        yield dict_id, self._process_pronunciations(word_pronunciations)
+                        if self.for_g2p:
+                            phones = ""
+                            for x in word_pronunciations:
+                                phones += x[1] + " "
+                            yield dict_id, current_utterance, phones.strip()
+                        else:
+                            yield dict_id, self._process_pronunciations(word_pronunciations)
                         word_pronunciations = []
                     current_utterance = utt
                     pron = [int(x) for x in line[4:]]
                     word = self.reversed_word_mapping[dict_id][int(line[3])]
-                    if self.position_dependent_phones:
-                        pron = " ".join(
-                            split_phone_position(self.reversed_phone_mapping[x])[0] for x in pron
-                        )
-                    else:
+                    if self.for_g2p:
                         pron = " ".join(self.reversed_phone_mapping[x] for x in pron)
+                    else:
+                        if self.position_dependent_phones:
+                            pron = " ".join(
+                                split_phone_position(self.reversed_phone_mapping[x])[0]
+                                for x in pron
+                            )
+                        else:
+                            pron = " ".join(self.reversed_phone_mapping[x] for x in pron)
                     word_pronunciations.append((word, pron))
                 if word_pronunciations:
-                    yield dict_id, self._process_pronunciations(word_pronunciations)
+                    if self.for_g2p:
+                        phones = ""
+                        for x in word_pronunciations:
+                            phones += x[1] + " "
+                        yield dict_id, current_utterance, phones.strip()
+                    else:
+                        yield dict_id, self._process_pronunciations(word_pronunciations)
 
                 self.check_call(prons_proc)
 

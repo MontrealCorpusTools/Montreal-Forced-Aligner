@@ -28,7 +28,7 @@ class MonoAlignEqualArguments(MfaArguments):
 
     dictionaries: List[str]
     feature_strings: Dict[str, str]
-    fst_scp_paths: Dict[str, str]
+    fst_ark_paths: Dict[str, str]
     ali_ark_paths: Dict[str, str]
     acc_paths: Dict[str, str]
     model_path: str
@@ -63,7 +63,7 @@ class MonoAlignEqualFunction(KaldiFunction):
         super().__init__(args)
         self.dictionaries = args.dictionaries
         self.feature_strings = args.feature_strings
-        self.fst_scp_paths = args.fst_scp_paths
+        self.fst_ark_paths = args.fst_ark_paths
         self.model_path = args.model_path
         self.ali_ark_paths = args.ali_ark_paths
         self.acc_paths = args.acc_paths
@@ -72,13 +72,13 @@ class MonoAlignEqualFunction(KaldiFunction):
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
-                fst_path = self.fst_scp_paths[dict_id]
+                fst_path = self.fst_ark_paths[dict_id]
                 ali_path = self.ali_ark_paths[dict_id]
                 acc_path = self.acc_paths[dict_id]
                 align_proc = subprocess.Popen(
                     [
                         thirdparty_binary("align-equal-compiled"),
-                        f"scp:{fst_path}",
+                        f"ark:{fst_path}",
                         self.feature_strings[dict_id],
                         f"ark:{ali_path}",
                     ],
@@ -163,7 +163,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 os.path.join(self.working_log_directory, f"mono_align_equal.{j.name}.log"),
                 j.dictionary_ids,
                 feat_strings[j.name],
-                j.construct_path_dictionary(self.working_directory, "fsts", "scp"),
+                j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                 j.construct_path_dictionary(self.working_directory, "0", "acc"),
                 self.model_path,
@@ -238,6 +238,9 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -246,9 +249,6 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     num_utterances, errors = result
                     pbar.update(num_utterances + errors)

@@ -19,7 +19,11 @@ from colorama import Fore, Style
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import MfaArguments
-from montreal_forced_aligner.exceptions import KaldiProcessingError, ThirdpartyError
+from montreal_forced_aligner.exceptions import (
+    KaldiProcessingError,
+    MultiprocessingError,
+    ThirdpartyError,
+)
 from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
@@ -34,6 +38,18 @@ __all__ = [
     "ProcessWorker",
     "run_mp",
     "run_non_mp",
+]
+canary_kaldi_bins = [
+    "compute-mfcc-feats",
+    "compute-and-process-kaldi-pitch-feats",
+    "gmm-align-compiled",
+    "gmm-est-fmllr",
+    "gmm-est-fmllr-gpost",
+    "lattice-oracle",
+    "gmm-latgen-faster",
+    "fstdeterminizestar",
+    "fsttablecompose",
+    "gmm-rescore-lattice",
 ]
 
 
@@ -67,17 +83,14 @@ def check_third_party():
     bin_path = shutil.which("fstcompile")
     if bin_path is None:
         raise ThirdpartyError("fstcompile", open_fst=True)
-    bin_path = shutil.which("compute-mfcc-feats")
-    if bin_path is None:
-        raise ThirdpartyError("compute-mfcc-feats")
 
     p = subprocess.run(["fstcompile", "--help"], capture_output=True, text=True)
     if p.returncode == 1 and p.stderr:
         raise ThirdpartyError("fstcompile", open_fst=True, error_text=p.stderr)
-
-    p = subprocess.run(["compute-mfcc-feats", "--help"], capture_output=True, text=True)
-    if p.returncode == 1 and p.stderr:
-        raise ThirdpartyError("compute-mfcc-feats", error_text=p.stderr)
+    for fn in canary_kaldi_bins:
+        p = subprocess.run([thirdparty_binary(fn), "--help"], capture_output=True, text=True)
+        if p.returncode == 1 and p.stderr:
+            raise ThirdpartyError(fn, error_text=p.stderr)
 
 
 def thirdparty_binary(binary_name: str) -> str:
@@ -104,6 +117,8 @@ def thirdparty_binary(binary_name: str) -> str:
             raise ThirdpartyError(binary_name, open_fst=True)
         else:
             raise ThirdpartyError(binary_name)
+    if " " in bin_path:
+        return f'"{bin_path}"'
     return bin_path
 
 
@@ -364,7 +379,7 @@ class ProcessWorker(mp.Process):
                 self.return_q.put((self.job_name, result))
             except Exception as e:
                 self.stopped.stop()
-                if isinstance(e, KaldiProcessingError):
+                if isinstance(e, (KaldiProcessingError, MultiprocessingError)):
                     e.job_name = self.job_name
                 self.return_q.put((self.job_name, e))
 
@@ -513,7 +528,7 @@ def run_mp(
             else:
                 break
             continue
-        if isinstance(result, KaldiProcessingError):
+        if isinstance(result, (KaldiProcessingError, MultiprocessingError)):
             error_dict[job_name] = result
             continue
         info[job_name] = result

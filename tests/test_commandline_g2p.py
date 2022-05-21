@@ -145,6 +145,37 @@ def test_generate_dict_text_only(
     assert len(d.word_mapping()) > 0
 
 
+def test_generate_dict_textgrid(
+    multilingual_ipa_tg_corpus_dir,
+    english_g2p_model,
+    generated_dir,
+    temp_dir,
+    g2p_config_path,
+):
+    if G2P_DISABLED:
+        pytest.skip("No Pynini found")
+    output_file = os.path.join(generated_dir, "tg_g2pped.dict")
+    command = [
+        "g2p",
+        english_g2p_model,
+        multilingual_ipa_tg_corpus_dir,
+        output_file,
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "--config_path",
+        g2p_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_g2p(args, unknown)
+    assert os.path.exists(output_file)
+    d = MultispeakerDictionary(dictionary_path=output_file, temporary_directory=temp_dir)
+    d.dictionary_setup()
+    assert len(d.word_mapping()) > 0
+
+
 def test_generate_orthography_dict(basic_corpus_dir, orth_basic_output, temp_dir):
     if G2P_DISABLED:
         pytest.skip("No Pynini found")

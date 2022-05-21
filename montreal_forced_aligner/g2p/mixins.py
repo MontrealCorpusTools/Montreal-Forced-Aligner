@@ -25,7 +25,7 @@ class G2PMixin(metaclass=ABCMeta):
         self,
         include_bracketed: bool = False,
         num_pronunciations: int = 0,
-        g2p_threshold: float = 0.99,
+        g2p_threshold: float = 1.5,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -96,10 +96,10 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         """
         results = self.generate_pronunciations()
         with open(output_file_path, "w", encoding="utf8") as f:
-            for (orthography, word) in results.items():
-                if not word.pronunciations:
+            for (orthography, pronunciations) in results.items():
+                if not pronunciations:
                     continue
-                for p in word.pronunciations:
+                for p in pronunciations:
                     if not p:
                         continue
                     f.write(f"{orthography}\t{p}\n")

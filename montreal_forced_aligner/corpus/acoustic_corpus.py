@@ -280,7 +280,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             feat_path = os.path.join(self.base_data_directory, "feats.scp")
             utt2spk_path = os.path.join(self.base_data_directory, "utt2spk.scp")
             cmvn_path = os.path.join(self.base_data_directory, "cmvn.scp")
-            feats = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+            feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
             feats += " add-deltas ark:- ark:- |"
             return feats
         utt2spks = j.construct_path_dictionary(self.data_directory, "utt2spk", "scp")
@@ -290,7 +290,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             feat_path = features[dict_id]
             cmvn_path = cmvns[dict_id]
             utt2spk_path = utt2spks[dict_id]
-            feats = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+            feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
             if self.uses_deltas:
                 feats += " add-deltas ark:- ark:- |"
 
@@ -299,7 +299,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             utt2spk_path = j.construct_path(self.data_directory, "utt2spk", "scp")
             cmvn_path = j.construct_path(self.data_directory, "cmvn", "scp")
             feat_path = j.construct_path(self.data_directory, "feats", "scp")
-            feats = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+            feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
             if self.uses_deltas:
                 feats += " add-deltas ark:- ark:- |"
             return feats
@@ -341,7 +341,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 utt2spk_path = j.construct_path(self.data_directory, "utt2spk", "scp")
                 cmvn_path = j.construct_path(self.data_directory, "cmvn", "scp")
                 feat_path = j.construct_path(self.data_directory, "feats", "scp")
-                feats = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+                feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
                 if self.uses_deltas:
                     feats += " add-deltas ark:- ark:- |"
 
@@ -361,19 +361,19 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     pass
                 vad_path = vads[dict_id]
                 if self.uses_voiced:
-                    feats = f"ark,s,cs:add-deltas scp:{feat_path} ark:- |"
+                    feats = f'ark,s,cs:add-deltas scp:"{feat_path}" ark:- |'
                     if self.uses_cmvn:
                         feats += " apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
-                    feats += f" select-voiced-frames ark:- scp,s,cs:{vad_path} ark:- |"
+                    feats += f' select-voiced-frames ark:- scp,s,cs:"{vad_path}" ark:- |'
                 elif not os.path.exists(cmvn_path) and self.uses_cmvn:
-                    feats = f"ark,s,cs:add-deltas scp:{feat_path} ark:- |"
+                    feats = f'ark,s,cs:add-deltas scp:"{feat_path}" ark:- |'
                     if self.uses_cmvn:
                         feats += " apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
                 else:
-                    feats = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+                    feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
                     if lda_mat_path is not None:
                         feats += f" splice-feats --left-context={self.splice_left_context} --right-context={self.splice_right_context} ark:- ark:- |"
-                        feats += f" transform-feats {lda_mat_path} ark:- ark:- |"
+                        feats += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
                     elif self.uses_splices:
                         feats += f" splice-feats --left-context={self.splice_left_context} --right-context={self.splice_right_context} ark:- ark:- |"
                     elif self.uses_deltas:
@@ -383,7 +383,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     ):
                         if not os.path.exists(fmllr_trans_path):
                             raise Exception(f"Could not find {fmllr_trans_path}")
-                        feats += f" transform-feats --utt2spk=ark:{utt2spk_path} ark:{fmllr_trans_path} ark:- ark:- |"
+                        feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" ark:"{fmllr_trans_path}" ark:- ark:- |'
                 feat_strings[dict_id] = feats
             strings.append(feat_strings)
         return strings
@@ -495,6 +495,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -503,12 +506,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, Exception):
-                        key = "error"
-                        if isinstance(result, KaldiProcessingError):
-                            key = result.job_name
-                        error_dict[key] = result
                         continue
                     pbar.update(result)
                 for p in procs:
@@ -567,6 +564,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         update_mapping = []
         with self.session() as session:
             for s, cmvn in load_scp(cmvn_scp).items():
+                if isinstance(cmvn, list):
+                    cmvn = " ".join(cmvn)
                 update_mapping.append({"id": int(s), "cmvn": cmvn})
             session.bulk_update_mappings(Speaker, update_mapping)
             session.commit()
@@ -605,6 +604,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -613,9 +615,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     pbar.update(1)
                 for p in procs:
@@ -810,6 +809,16 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     while True:
                         try:
                             file = return_queue.get(timeout=1)
+                            if isinstance(file, tuple):
+                                error_type = file[0]
+                                error = file[1]
+                                if error_type == "error":
+                                    error_dict[error_type] = error
+                                else:
+                                    if error_type not in error_dict:
+                                        error_dict[error_type] = []
+                                    error_dict[error_type].append(error)
+                                continue
                             if self.stopped.stop_check():
                                 continue
                         except Empty:
@@ -823,17 +832,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             pbar.total = file_counts.value()
                             last_poll = time.time()
                         pbar.update(1)
-                        if isinstance(file, tuple):
-                            error_type = file[0]
-                            error = file[1]
-                            if error_type == "error":
-                                error_dict[error_type] = error
-                            else:
-                                if error_type not in error_dict:
-                                    error_dict[error_type] = []
-                                error_dict[error_type].append(error)
-                        else:
-                            import_data.add_objects(self.generate_import_objects(file))
+                        import_data.add_objects(self.generate_import_objects(file))
 
                     self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
 

@@ -577,8 +577,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 channel=u.channel,
                 oovs=u.oovs,
                 normalized_text=u.normalized_text,
+                normalized_character_text=u.normalized_character_text,
                 text=u.text,
                 normalized_text_int=u.normalized_text_int,
+                normalized_character_text_int=u.normalized_character_text_int,
                 num_frames=num_frames,
                 in_subset=False,
                 ignored=False,
@@ -669,8 +671,10 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "channel": u.channel,
                     "oovs": u.oovs,
                     "normalized_text": u.normalized_text,
+                    "normalized_character_text": u.normalized_character_text,
                     "text": u.text,
                     "normalized_text_int": u.normalized_text_int,
+                    "normalized_character_text_int": u.normalized_character_text_int,
                     "num_frames": num_frames,
                     "in_subset": False,
                     "ignored": False,
@@ -933,6 +937,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         Load the corpus
         """
         self.inspect_database()
+
         self.log_info("Setting up corpus information...")
         if not self.imported:
             self.log_debug("Could not load from temp")

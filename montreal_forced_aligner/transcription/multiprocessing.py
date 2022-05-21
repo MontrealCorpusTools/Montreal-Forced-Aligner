@@ -180,43 +180,39 @@ def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: 
     """
     if os.path.exists(lg_path):
         return
-    temp_compose_path = lg_path + ".temp"
     compose_proc = subprocess.Popen(
-        [thirdparty_binary("fsttablecompose"), dictionary_path, small_g_path, temp_compose_path],
+        [thirdparty_binary("fsttablecompose"), dictionary_path, small_g_path],
         stderr=log_file,
+        stdout=subprocess.PIPE,
         env=os.environ,
     )
-    compose_proc.communicate()
 
-    temp2_compose_path = lg_path + ".temp2"
     determinize_proc = subprocess.Popen(
         [
             thirdparty_binary("fstdeterminizestar"),
             "--use-log=true",
-            temp_compose_path,
-            temp2_compose_path,
         ],
-        stderr=log_file,
-        env=os.environ,
-    )
-    determinize_proc.communicate()
-    os.remove(temp_compose_path)
-
-    minimize_proc = subprocess.Popen(
-        [thirdparty_binary("fstminimizeencoded"), temp2_compose_path, temp_compose_path],
+        stdin=compose_proc.stdout,
         stdout=subprocess.PIPE,
         stderr=log_file,
         env=os.environ,
     )
-    minimize_proc.communicate()
-    os.remove(temp2_compose_path)
+
+    minimize_proc = subprocess.Popen(
+        [thirdparty_binary("fstminimizeencoded")],
+        stdin=determinize_proc.stdout,
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+        env=os.environ,
+    )
+
     push_proc = subprocess.Popen(
-        [thirdparty_binary("fstpushspecial"), temp_compose_path, lg_path],
+        [thirdparty_binary("fstpushspecial"), "-", lg_path],
+        stdin=minimize_proc.stdout,
         stderr=log_file,
         env=os.environ,
     )
     push_proc.communicate()
-    os.remove(temp_compose_path)
 
 
 def compose_clg(
@@ -343,16 +339,16 @@ def compose_hclg(
     )
     make_h_proc.communicate()
 
-    temp_compose_path = hclga_path + ".temp"
     compose_proc = subprocess.Popen(
-        [thirdparty_binary("fsttablecompose"), ha_path, clg_path, temp_compose_path],
+        [thirdparty_binary("fsttablecompose"), ha_path, clg_path],
         stderr=log_file,
+        stdout=subprocess.PIPE,
         env=os.environ,
     )
-    compose_proc.communicate()
 
     determinize_proc = subprocess.Popen(
-        [thirdparty_binary("fstdeterminizestar"), "--use-log=true", temp_compose_path],
+        [thirdparty_binary("fstdeterminizestar"), "--use-log=true"],
+        stdin=compose_proc.stdout,
         stdout=subprocess.PIPE,
         stderr=log_file,
         env=os.environ,
@@ -378,7 +374,6 @@ def compose_hclg(
         env=os.environ,
     )
     minimize_proc.communicate()
-    os.remove(temp_compose_path)
 
 
 def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) -> None:
@@ -863,6 +858,8 @@ class LmRescoreFunction(KaldiFunction):
                 rescored_lat_path = self.rescored_lat_paths[dict_id]
                 old_g_path = self.old_g_paths[dict_id]
                 new_g_path = self.new_g_paths[dict_id]
+                if " " in new_g_path:
+                    new_g_path = f'"{new_g_path}"'
                 if sys.platform == "win32":
                     project_type_arg = "--project_output=true"
                 else:
@@ -1052,7 +1049,7 @@ class InitialFmllrFunction(KaldiFunction):
                         f"{self.fmllr_options['silence_weight']}",
                         self.fmllr_options["sil_phones"],
                         self.model_path,
-                        "ark:-",
+                        "ark,s,cs:-",
                         "ark:-",
                     ],
                     stdin=latt_post_proc.stdout,
@@ -1065,7 +1062,7 @@ class InitialFmllrFunction(KaldiFunction):
                         thirdparty_binary("gmm-post-to-gpost"),
                         self.model_path,
                         feature_string,
-                        "ark:-",
+                        "ark,s,cs:-",
                         "ark:-",
                     ],
                     stdin=weight_silence_proc.stdout,

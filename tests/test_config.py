@@ -73,6 +73,7 @@ def test_lda_mllt_config(basic_corpus_dir, basic_dict_path, temp_dir):
     assert am_trainer.align_options["beam"] == 10
     assert am_trainer.align_options["retry_beam"] == 40
     config = LdaTrainer(identifier="lda", worker=am_trainer)
+
     config.compute_calculated_properties()
     assert config.mllt_iterations == [2, 4, 6, 12]
     am_trainer.cleanup()

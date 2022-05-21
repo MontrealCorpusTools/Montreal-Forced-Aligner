@@ -22,7 +22,6 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 )
 from montreal_forced_aligner.db import File, Speaker, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
-from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
 
 if TYPE_CHECKING:
@@ -129,7 +128,7 @@ class AlignMixin(DictionaryMixin):
                     os.path.join(self.working_directory, "tree"),
                     model_path,
                     j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
-                    j.construct_path_dictionary(self.working_directory, "fsts", "scp"),
+                    j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
                 )
             )
         return args
@@ -161,7 +160,7 @@ class AlignMixin(DictionaryMixin):
                     getattr(self, "db_path", ""),
                     log_path,
                     j.dictionary_ids,
-                    j.construct_path_dictionary(self.working_directory, "fsts", "scp"),
+                    j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
                     feat_strings[j.name],
                     self.alignment_model_path,
                     j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -265,6 +264,9 @@ class AlignMixin(DictionaryMixin):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -273,9 +275,6 @@ class AlignMixin(DictionaryMixin):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     done, errors = result
                     pbar.update(done + errors)
@@ -334,6 +333,9 @@ class AlignMixin(DictionaryMixin):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -342,9 +344,6 @@ class AlignMixin(DictionaryMixin):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     utterance, log_likelihood = result
                     update_mappings.append(

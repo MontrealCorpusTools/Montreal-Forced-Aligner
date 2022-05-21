@@ -10,6 +10,15 @@
 Release candidates
 ==================
 
+2.0.0rc8
+--------
+
+- Fixed a bug where G2P output was not correctly converted to strings :github_issue:`448`
+- Fixed a bug where specifying conda or temporary directories with spaces would cause crashes :github_issue:`450`
+- Fixed a crash with unspecified github_token values for ``mfa model`` commands
+- Added a utility function for :ref:`validating_dictionaries`
+- Fixed a bug where errors in multiprocessing workers were not properly raised by the main thread, obscuring the source of errors :github_issue:`452`
+
 2.0.0rc7
 --------
 

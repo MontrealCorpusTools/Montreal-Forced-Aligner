@@ -329,6 +329,9 @@ class SatTrainer(TriphoneTrainer):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -337,9 +340,6 @@ class SatTrainer(TriphoneTrainer):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     pbar.update(1)
                 for p in procs:

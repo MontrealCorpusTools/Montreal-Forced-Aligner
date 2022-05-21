@@ -410,3 +410,45 @@ def test_swedish_mfa(
         assert os.path.exists(tg_path)
         tg = tgio.openTextgrid(tg_path, includeEmptyIntervals=False)
         assert len(tg.tierNameList) == 2
+
+
+def test_acoustic_g2p_model(
+    basic_corpus_dir,
+    acoustic_model_dir,
+    dict_dir,
+    generated_dir,
+    temp_dir,
+    basic_align_config_path,
+):
+    model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
+    dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")
+    output_directory = os.path.join(generated_dir, "acoustic_g2p_output")
+    command = [
+        "align",
+        basic_corpus_dir,
+        dict_path,
+        model_path,
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    assert os.path.exists(output_directory)
+
+    output_paths = [
+        os.path.join(output_directory, "michael", "acoustic corpus.TextGrid"),
+        os.path.join(output_directory, "michael", "acoustic_corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold_corpus.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold corpus3.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "cold_corpus3.TextGrid"),
+    ]
+
+    for path in output_paths:
+        assert os.path.exists(path)

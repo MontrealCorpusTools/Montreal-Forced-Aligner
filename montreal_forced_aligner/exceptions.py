@@ -735,6 +735,13 @@ class LanguageModelNotFoundError(LMError):
         super().__init__("Could not find a suitable language model.")
 
 
+class MultiprocessingError(MFAError):
+    def __init__(self, job_name: int, error_text: str):
+        super().__init__(f"Job {job_name} encountered an error:")
+        self.job_name = job_name
+        self.message_lines.extend(error_text.splitlines(keepends=False))
+
+
 class KaldiProcessingError(MFAError):
     """
     Exception class for when a Kaldi binary has an exception

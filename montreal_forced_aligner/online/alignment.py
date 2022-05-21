@@ -185,12 +185,12 @@ class OnlineAlignmentFunction(KaldiFunction):
                     pitch_command = " ".join(pitch_base_command)
                     if os.path.exists(segment_path):
                         segment_command = (
-                            f"extract-segments scp:{wav_path} {segment_path} ark:- | "
+                            f'extract-segments scp:"{wav_path}" "{segment_path}" ark:- | '
                         )
                         pitch_input = "ark:-"
                     else:
                         segment_command = ""
-                        pitch_input = f"scp:{wav_path}"
+                        pitch_input = f'scp:"{wav_path}"'
                     pitch_feat_string = (
                         f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
                     )
@@ -269,10 +269,10 @@ class OnlineAlignmentFunction(KaldiFunction):
                     env=os.environ,
                 )
             else:
-                feat_string = f"ark,s,cs:apply-cmvn --utt2spk=ark:{utt2spk_path} scp:{cmvn_path} scp:{feat_path} ark:- |"
+                feat_string = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
                 if lda_mat_path is not None:
                     feat_string += f" splice-feats --left-context={self.feature_options['splice_left_context']} --right-context={self.feature_options['splice_right_context']} ark:- ark:- |"
-                    feat_string += f" transform-feats {lda_mat_path} ark:- ark:- |"
+                    feat_string += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
                     align_proc = subprocess.Popen(
                         [
                             thirdparty_binary("gmm-align-compiled"),

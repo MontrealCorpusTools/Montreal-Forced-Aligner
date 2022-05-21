@@ -528,7 +528,7 @@ def test_no_punctuation(
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
         TrainableAligner.parse_parameters(no_punctuation_config_path)
     )
-    params["use_mp"] = True
+    params["use_mp"] = False
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
         dictionary_path=basic_dict_path,

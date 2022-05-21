@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from argparse import Namespace
     from dataclasses import dataclass
 
-    from .abc import MetaDict
+    from montreal_forced_aligner.abc import MetaDict
 else:
     from dataclassy import dataclass
 
@@ -203,6 +203,7 @@ class TestUtterancesFunction(KaldiFunction):
                     stderr=log_file,
                     stdin=compile_proc.stdout,
                     stdout=subprocess.PIPE,
+                    env=os.environ,
                 )
 
                 oracle_proc = subprocess.Popen(
@@ -226,7 +227,7 @@ class TestUtterancesFunction(KaldiFunction):
                     mod_path = os.path.join(temp_dir, f"{utt}.mod")
                     far_proc = subprocess.Popen(
                         [
-                            "farcompilestrings",
+                            thirdparty_binary("farcompilestrings"),
                             "--fst_type=compact",
                             f"--unknown_symbol={self.oov_word}",
                             f"--symbols={word_symbols_path}",
@@ -236,34 +237,45 @@ class TestUtterancesFunction(KaldiFunction):
                         stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     count_proc = subprocess.Popen(
-                        ["ngramcount", f"--order={self.order}"],
+                        [thirdparty_binary("ngramcount"), f"--order={self.order}"],
                         stdin=far_proc.stdout,
                         stdout=subprocess.PIPE,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     with open(mod_path, "wb") as f:
                         make_proc = subprocess.Popen(
-                            ["ngrammake", f"--method={self.method}"],
+                            [thirdparty_binary("ngrammake"), f"--method={self.method}"],
                             stdin=count_proc.stdout,
                             stdout=f,
                             stderr=log_file,
+                            env=os.environ,
                         )
                     far_proc.stdin.write(" ".join(text).encode("utf8"))
                     far_proc.stdin.flush()
                     far_proc.stdin.close()
                     make_proc.communicate()
                     merge_proc = subprocess.Popen(
-                        ["ngrammerge", "--normalize", "--v=10", mod_path, fsts[utt]],
+                        [
+                            thirdparty_binary("ngrammerge"),
+                            "--normalize",
+                            "--v=10",
+                            mod_path,
+                            fsts[utt],
+                        ],
                         stdout=subprocess.PIPE,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     print_proc = subprocess.Popen(
-                        ["fstprint", "--numeric=true", "--v=10"],
+                        [thirdparty_binary("fstprint"), "--numeric=true", "--v=10"],
                         stderr=log_file,
                         stdin=merge_proc.stdout,
                         stdout=subprocess.PIPE,
+                        env=os.environ,
                     )
                     # fst = far_proc.stdout.read()
                     fst = print_proc.communicate()[0]
@@ -328,7 +340,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
                     mod_path = base_path + ".mod"
                     far_proc = subprocess.Popen(
                         [
-                            "farcompilestrings",
+                            thirdparty_binary("farcompilestrings"),
                             "--fst_type=compact",
                             f"--unknown_symbol={self.oov_word}",
                             f"--symbols={word_symbols_path}",
@@ -337,22 +349,24 @@ class TrainSpeakerLmFunction(KaldiFunction):
                         ],
                         stdout=subprocess.PIPE,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     count_proc = subprocess.Popen(
-                        ["ngramcount", f"--order={self.order}"],
+                        [thirdparty_binary("ngramcount"), f"--order={self.order}"],
                         stdin=far_proc.stdout,
                         stdout=subprocess.PIPE,
                         stderr=log_file,
                     )
                     make_proc = subprocess.Popen(
-                        ["ngrammake", "--method=kneser_ney"],
+                        [thirdparty_binary("ngrammake"), "--method=kneser_ney"],
                         stdin=count_proc.stdout,
                         stdout=subprocess.PIPE,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     shrink_proc = subprocess.Popen(
                         [
-                            "ngramshrink",
+                            thirdparty_binary("ngramshrink"),
                             "--method=relative_entropy",
                             f"--target_number_of_ngrams={self.target_num_ngrams}",
                             "--shrink_opt=2",
@@ -362,6 +376,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
                         ],
                         stdin=make_proc.stdout,
                         stderr=log_file,
+                        env=os.environ,
                     )
                     shrink_proc.communicate()
                     self.check_call(shrink_proc)
