@@ -233,7 +233,9 @@ class TranscriberMixin:
 
         update_mappings = []
         with self.session() as session:
-            utterances = session.query(Utterance).filter(Utterance.normalized_text != None)  # noqa
+            utterances = session.query(Utterance)
+            utterances = utterances.filter(Utterance.normalized_text != None)  # noqa
+            utterances = utterances.filter(Utterance.normalized_text != "")
             for utt in utterances:
                 g = utt.normalized_text.split()
                 total_count += 1
