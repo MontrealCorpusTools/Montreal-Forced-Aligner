@@ -372,7 +372,7 @@ class AcousticModel(Archive):
             "sample_frequency": 16000,
             "allow_downsample": True,
             "allow_upsample": True,
-            "pitch": False,
+            "use_pitch": False,
             "uses_cmvn": True,
             "uses_deltas": True,
             "uses_splices": False,
@@ -421,7 +421,7 @@ class AcousticModel(Archive):
                 self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
                     os.path.join(self.dirname, "final.alimdl")
                 )
-            if self._meta["version"] == "0.9.0":
+            if self._meta["version"] in {"0.9.0", "1.0.0"}:
                 self._meta["features"]["uses_speaker_adaptation"] = True
             if (
                 "uses_splices" not in self._meta["features"]
