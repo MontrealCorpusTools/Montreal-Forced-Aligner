@@ -401,7 +401,7 @@ def create_parser() -> ArgumentParser:
     )
     train_parser.add_argument(
         "--train_g2p",
-        help="Flag for using G2P in pronunciation probability estimation",
+        help="Flag for using G2P in pronunciation probability estimation (experimental feature)",
         action="store_true",
     )
     add_global_options(train_parser, textgrid_output=True)

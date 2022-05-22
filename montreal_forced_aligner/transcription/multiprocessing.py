@@ -1010,7 +1010,7 @@ class InitialFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*Done (?P<done>\d+) files, (?P<no_gpost>\d+) with no g?posts, (?P<other_errors>\d+) with other errors."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over \d+ frames."
     )
 
     def __init__(self, args: InitialFmllrArguments):
@@ -1090,9 +1090,7 @@ class InitialFmllrFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield int(m.group("done")), int(m.group("no_gpost")), int(
-                            m.group("other_errors")
-                        )
+                        yield 1
             self.check_call(fmllr_proc)
 
 
@@ -1193,7 +1191,7 @@ class FinalFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*Done (?P<done>\d+) files, (?P<no_gpost>\d+) with no g?posts, (?P<other_errors>\d+) with other errors."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over \d+ frames."
     )
 
     def __init__(self, args: FinalFmllrArguments):
@@ -1274,9 +1272,7 @@ class FinalFmllrFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield int(m.group("done")), int(m.group("no_gpost")), int(
-                            m.group("other_errors")
-                        )
+                        yield 1
                 self.check_call(fmllr_proc)
 
                 compose_proc = subprocess.Popen(

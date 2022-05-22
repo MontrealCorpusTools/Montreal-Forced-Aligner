@@ -421,6 +421,8 @@ class AcousticModel(Archive):
                 self._meta["features"]["uses_speaker_adaptation"] = os.path.exists(
                     os.path.join(self.dirname, "final.alimdl")
                 )
+            if self._meta["version"] == "0.9.0":
+                self._meta["features"]["uses_speaker_adaptation"] = True
             if (
                 "uses_splices" not in self._meta["features"]
                 or not self._meta["features"]["uses_splices"]
@@ -811,16 +813,25 @@ class LanguageModel(Archive):
     @property
     def small_arpa_path(self) -> str:
         """Small arpa path"""
+        for file in os.listdir(self.dirname):
+            if file.endswith("_small" + self.arpa_extension):
+                return os.path.join(self.dirname, file)
         return os.path.join(self.dirname, f"{self.name}_small{self.arpa_extension}")
 
     @property
     def medium_arpa_path(self) -> str:
         """Medium arpa path"""
+        for file in os.listdir(self.dirname):
+            if file.endswith("_med" + self.arpa_extension):
+                return os.path.join(self.dirname, file)
         return os.path.join(self.dirname, f"{self.name}_med{self.arpa_extension}")
 
     @property
     def large_arpa_path(self) -> str:
         """Large arpa path"""
+        for file in os.listdir(self.dirname):
+            if file.endswith(self.arpa_extension) and "_small" not in file and "_med" not in file:
+                return os.path.join(self.dirname, file)
         return os.path.join(self.dirname, self.name + self.arpa_extension)
 
     def add_arpa_file(self, arpa_path: str) -> None:

@@ -800,6 +800,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -808,9 +811,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     result, hclg_path = result
                     if result:
@@ -960,6 +960,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -970,9 +973,6 @@ class Transcriber(
                             break
                         continue
                     pbar.update(1)
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
 
                     (
                         utterance,
@@ -1068,7 +1068,7 @@ class Transcriber(
         """
         self.log_info("Calculating initial fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1082,6 +1082,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1091,12 +1094,7 @@ class Transcriber(
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
-                    done, no_gpost, other_errors = result
-                    sum_errors += no_gpost + other_errors
-                    pbar.update(done + no_gpost + other_errors)
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1105,9 +1103,8 @@ class Transcriber(
             else:
                 for args in self.initial_fmllr_arguments():
                     function = InitialFmllrFunction(args)
-                    for done, no_gpost, other_errors in function.run():
-                        sum_errors += no_gpost + other_errors
-                        pbar.update(done + no_gpost + other_errors)
+                    for _ in function.run():
+                        pbar.update(1)
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
@@ -1144,6 +1141,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1152,9 +1152,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     pbar.update(1)
                     utterance, log_likelihood, num_frames = result
@@ -1184,7 +1181,7 @@ class Transcriber(
         """
         self.log_info("Calculating final fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1198,6 +1195,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1207,12 +1207,7 @@ class Transcriber(
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
-                    done, no_gpost, other_errors = result
-                    sum_errors += no_gpost + other_errors
-                    pbar.update(done + no_gpost + other_errors)
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1221,9 +1216,8 @@ class Transcriber(
             else:
                 for args in self.final_fmllr_arguments():
                     function = FinalFmllrFunction(args)
-                    for done, no_gpost, other_errors in function.run():
-                        sum_errors += no_gpost + other_errors
-                        pbar.update(done + no_gpost + other_errors)
+                    for _ in function.run():
+                        pbar.update(1)
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
@@ -1254,6 +1248,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1262,9 +1259,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     done, errors = result
                     sum_errors += errors
@@ -1348,6 +1342,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1356,9 +1353,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     utterance, log_likelihood, num_frames = result
                     log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
@@ -1403,6 +1397,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1411,9 +1408,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     succeeded, failed = result
                     if failed:
@@ -1461,6 +1455,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1469,9 +1466,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     succeeded, failed = result
                     if failed:

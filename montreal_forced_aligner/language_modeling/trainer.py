@@ -259,13 +259,13 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             num_oovs = None
             perplexity = None
             for line in stdout.splitlines():
-                m = re.search(r"(\d+) sentences", line)
+                m = re.search(r"\d+ sentences", line)
                 if m:
                     num_sentences = m.group(0)
-                m = re.search(r"(\d+) words", line)
+                m = re.search(r"\d+ words", line)
                 if m:
                     num_words = m.group(0)
-                m = re.search(r"(\d+) OOVs", line)
+                m = re.search(r"\d+ OOVs", line)
                 if m:
                     num_oovs = m.group(0)
                 m = re.search(r"perplexity = (?P<perplexity>[\d.]+)", line)
@@ -275,7 +275,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             self.num_sentences = num_sentences
             self.num_words = num_words
             self.num_oovs = num_oovs
-            self.log_info(f"{num_sentences} sentences, {num_words} words, {num_oovs} oovs")
+            self.log_info(f"{num_sentences}, {num_words}, {num_oovs}")
             self.log_info(f"Perplexity of large model: {perplexity}")
 
             perplexity_proc = subprocess.Popen(
