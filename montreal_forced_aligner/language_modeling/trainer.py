@@ -333,7 +333,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         str
             Normalized text
         """
-        unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
+        unk_words = {k for k, v in self.word_counts.items() if v <= min_count} | self.specials_set
 
         with self.session() as session:
             utterances = session.query(Utterance.normalized_text)
