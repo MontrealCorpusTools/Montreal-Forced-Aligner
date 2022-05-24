@@ -631,7 +631,6 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
 
         total_instances = 0
-
         with open(utterance_oov_path, "w", encoding="utf8") as f, self.session() as session:
             utterances = (
                 session.query(
@@ -655,7 +654,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 )
                 self.oovs_found.update(oovs)
         if self.oovs_found:
-            self.save_oovs_found(output_dir)
+            self.calculate_oovs_found()
             self.printer.print_yellow_stat(len(self.oovs_found), "OOV word types")
             self.printer.print_yellow_stat(total_instances, "total OOV tokens")
             lines = [

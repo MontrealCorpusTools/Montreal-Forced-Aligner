@@ -16,7 +16,11 @@ from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
+    from dataclasses import dataclass
+
     from ..abc import MappingType
+else:
+    from dataclassy import dataclass
 
 
 __all__ = [
@@ -37,6 +41,7 @@ __all__ = [
 ]
 
 
+@dataclass
 class CreateHclgArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`"""
 
@@ -59,6 +64,7 @@ class CreateHclgArguments(MfaArguments):
         return self.path_template.format(file_name="HCLG")
 
 
+@dataclass
 class DecodeArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
 
@@ -71,6 +77,7 @@ class DecodeArguments(MfaArguments):
     hclg_paths: Dict[int, str]
 
 
+@dataclass
 class ScoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
 
@@ -81,8 +88,10 @@ class ScoreArguments(MfaArguments):
     carpa_rescored_lat_paths: Dict[int, str]
     words_paths: Dict[int, str]
     tra_paths: Dict[int, str]
+    ali_paths: Dict[int, str]
 
 
+@dataclass
 class LmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
 
@@ -94,6 +103,7 @@ class LmRescoreArguments(MfaArguments):
     new_g_paths: Dict[int, str]
 
 
+@dataclass
 class CarpaLmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
 
@@ -104,6 +114,7 @@ class CarpaLmRescoreArguments(MfaArguments):
     new_g_paths: Dict[int, str]
 
 
+@dataclass
 class InitialFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
 
@@ -116,6 +127,7 @@ class InitialFmllrArguments(MfaArguments):
     spk2utt_paths: Dict[int, str]
 
 
+@dataclass
 class LatGenFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
 
@@ -128,6 +140,7 @@ class LatGenFmllrArguments(MfaArguments):
     tmp_lat_paths: Dict[int, str]
 
 
+@dataclass
 class FinalFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
 
@@ -140,6 +153,7 @@ class FinalFmllrArguments(MfaArguments):
     tmp_lat_paths: Dict[int, str]
 
 
+@dataclass
 class FmllrRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
 
@@ -322,7 +336,7 @@ def compose_hclg(
     model_path = os.path.join(model_directory, "final.mdl")
     tree_path = os.path.join(model_directory, "tree")
     ha_path = hclga_path.replace("HCLGa", "Ha")
-    ha_out_disambig = os.path.join(model_directory, "disambig_tid.int")
+    ha_out_disambig = hclga_path.replace("HCLGa", "disambig_tid")
     make_h_proc = subprocess.Popen(
         [
             thirdparty_binary("make-h-transducer"),
@@ -755,6 +769,7 @@ class ScoreFunction(KaldiFunction):
         self.carpa_rescored_lat_paths = args.carpa_rescored_lat_paths
         self.words_paths = args.words_paths
         self.tra_paths = args.tra_paths
+        self.ali_paths = args.ali_paths
 
     def run(self):
         """Run the function"""
@@ -767,6 +782,7 @@ class ScoreFunction(KaldiFunction):
                 lat_path = self.lat_paths[dict_id]
                 words_path = self.words_paths[dict_id]
                 tra_path = self.tra_paths[dict_id]
+                ali_path = self.ali_paths[dict_id]
                 if os.path.exists(carpa_rescored_lat_path):
                     lat_path = carpa_rescored_lat_path
                 elif os.path.exists(rescored_lat_path):
@@ -800,6 +816,7 @@ class ScoreFunction(KaldiFunction):
                         f"--word-symbol-table={words_path}",
                         "ark:-",
                         f"ark,t:{tra_path}",
+                        f"ark:{ali_path}",
                     ],
                     stdin=penalty_proc.stdout,
                     stderr=subprocess.PIPE,
@@ -1010,7 +1027,7 @@ class InitialFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over \d+ frames."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over [\d.]+ frames."
     )
 
     def __init__(self, args: InitialFmllrArguments):
@@ -1191,7 +1208,7 @@ class FinalFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over \d+ frames."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over [\d.]+ frames."
     )
 
     def __init__(self, args: FinalFmllrArguments):

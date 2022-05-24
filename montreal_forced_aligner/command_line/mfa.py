@@ -293,6 +293,11 @@ def create_parser() -> ArgumentParser:
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
+    align_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
+    )
     add_global_options(align_parser, textgrid_output=True)
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
@@ -340,6 +345,11 @@ def create_parser() -> ArgumentParser:
         default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
+    )
+    adapt_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
     )
     add_global_options(adapt_parser, textgrid_output=True)
 
@@ -398,6 +408,11 @@ def create_parser() -> ArgumentParser:
         default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
+    )
+    train_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
     )
     train_parser.add_argument(
         "--train_g2p",
@@ -801,6 +816,13 @@ def create_parser() -> ArgumentParser:
         "--config_path", type=str, default="", help="Path to config file to use for transcription"
     )
     transcribe_parser.add_argument(
+        "--output_type",
+        type=str,
+        default="transcription",
+        choices=["transcription", "alignment"],
+        help="Whether to output transcription or alignment of transcribed files",
+    )
+    transcribe_parser.add_argument(
         "-s",
         "--speaker_characters",
         type=str,
@@ -820,6 +842,11 @@ def create_parser() -> ArgumentParser:
         "--evaluate",
         dest="evaluation_mode",
         help="Evaluate the transcription against golden texts",
+        action="store_true",
+    )
+    transcribe_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
         action="store_true",
     )
     transcribe_parser.add_argument(

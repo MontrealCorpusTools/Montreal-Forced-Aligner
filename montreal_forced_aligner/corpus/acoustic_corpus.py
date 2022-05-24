@@ -1089,7 +1089,7 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryD
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store corpus and dictionary files"""
-        return self.temporary_directory
+        return os.path.join(self.temporary_directory, self.identifier)
 
     @property
     def working_directory(self) -> str:

@@ -9,7 +9,7 @@ import datetime
 import logging
 import sys
 import typing
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Collection, Dict, List, Optional
 
 import requests.structures
 
@@ -420,13 +420,13 @@ class AlignmentExportError(AlignmentError):
 
     """
 
-    def __init__(self, error_dict: Dict[Tuple[str, int], str]):
-        MFAError.__init__(self, "Error was encountered in processing CTMs:")
+    def __init__(self, path: str, error_lines: List[str]):
+        MFAError.__init__(self, f"Error was encountered in exporting {path}:")
+        self.path = path
         self.message_lines.append("")
         self.message_lines.append("")
 
-        for key, error in error_dict.items():
-            self.message_lines.extend([f"{key}:", error])
+        self.message_lines.extend(error_lines)
 
 
 class CtmError(AlignmentError):

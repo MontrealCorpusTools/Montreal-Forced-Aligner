@@ -15,10 +15,13 @@ from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ansiwrap
+import sqlalchemy
 from colorama import Fore, Style
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.data import DatasetType, MfaArguments
+from montreal_forced_aligner.db import Corpus, Dictionary
 from montreal_forced_aligner.exceptions import (
     KaldiProcessingError,
     MultiprocessingError,
@@ -51,6 +54,47 @@ canary_kaldi_bins = [
     "fsttablecompose",
     "gmm-rescore-lattice",
 ]
+
+
+def inspect_database(path: str) -> DatasetType:
+    if not os.path.exists(path):
+        return DatasetType.NONE
+    engine = sqlalchemy.create_engine(f"sqlite:///file:{path}?mode=ro&nolock=1&uri=true")
+    with Session(engine) as session:
+        corpus = session.query(Corpus).first()
+        dictionary = session.query(Dictionary).first()
+        if corpus is None and dictionary is None:
+            return DatasetType.NONE
+        elif corpus is None:
+            return DatasetType.DICTIONARY
+        elif dictionary is None:
+            if corpus.has_sound_files:
+                return DatasetType.ACOUSTIC_CORPUS
+            else:
+                return DatasetType.TEXT_CORPUS
+        if corpus.has_sound_files:
+            return DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY
+        else:
+            return DatasetType.TEXT_CORPUS_WITH_DICTIONARY
+
+
+def get_class_for_dataset_type(dataset_type: DatasetType):
+    from montreal_forced_aligner.corpus.acoustic_corpus import (
+        AcousticCorpus,
+        AcousticCorpusWithPronunciations,
+    )
+    from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpus, TextCorpus
+    from montreal_forced_aligner.dictionary import MultispeakerDictionary
+
+    mapping = {
+        DatasetType.NONE: None,
+        DatasetType.ACOUSTIC_CORPUS: AcousticCorpus,
+        DatasetType.TEXT_CORPUS: TextCorpus,
+        DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY: AcousticCorpusWithPronunciations,
+        DatasetType.TEXT_CORPUS_WITH_DICTIONARY: DictionaryTextCorpus,
+        DatasetType.DICTIONARY: MultispeakerDictionary,
+    }
+    return mapping[dataset_type]
 
 
 def get_mfa_version() -> str:

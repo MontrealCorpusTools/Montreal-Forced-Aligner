@@ -436,6 +436,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     def _finalize_load(self, session: Session, import_data: DatabaseImportData):
         """Finalize the import of database objects after parsing"""
         with session.bind.begin() as conn:
+
             if import_data.speaker_objects:
                 conn.execute(sqlalchemy.insert(Speaker.__table__), import_data.speaker_objects)
             if import_data.file_objects:
@@ -454,6 +455,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             if import_data.utterance_objects:
                 conn.execute(sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects)
             session.commit()
+        self.imported = True
         speakers = (
             session.query(Speaker.id)
             .outerjoin(Speaker.utterances)
@@ -462,10 +464,17 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         )
         self._speaker_ids = {}
         speaker_ids = [x[0] for x in speakers]
+        session.query(Corpus).update(
+            {
+                "imported": True,
+                "has_text_files": len(import_data.text_file_objects) > 0,
+                "has_sound_files": len(import_data.sound_file_objects) > 0,
+            }
+        )
         if speaker_ids:
             session.query(Speaker).filter(Speaker.id.in_(speaker_ids)).delete()
-            session.commit()
             self._num_speakers = None
+        session.commit()
 
     def add_speaker(self, name: str, session: Session = None):
         """
@@ -946,11 +955,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                 self._load_corpus_from_source_mp()
             else:
                 self._load_corpus_from_source()
-
-            self.imported = True
-            with self.session() as session:
-                session.query(Corpus).update({"imported": True})
-                session.commit()
         else:
             self.log_debug("Successfully loaded from temporary files")
         if not self.num_files:

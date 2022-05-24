@@ -21,10 +21,10 @@ import tqdm
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
 
-from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
-from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.data import TextgridFormats
+from montreal_forced_aligner.data import TextFileType, TextgridFormats
 from montreal_forced_aligner.db import (
     Dictionary,
     File,
@@ -323,9 +323,7 @@ class TranscriberMixin:
         }
 
 
-class Transcriber(
-    AcousticCorpusPronunciationMixin, TranscriberMixin, FileExporterMixin, TopLevelMfaWorker
-):
+class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
     """
     Class for performing transcription.
 
@@ -371,6 +369,7 @@ class Transcriber(
         min_language_model_weight: int = 7,
         max_language_model_weight: int = 17,
         word_insertion_penalties: List[float] = None,
+        output_type: str = "transcription",
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -383,6 +382,7 @@ class Transcriber(
         self.max_language_model_weight = max_language_model_weight
         self.evaluation_mode = evaluation_mode
         self.word_insertion_penalties = word_insertion_penalties
+        self.output_type = output_type
 
     @classmethod
     def parse_parameters(
@@ -538,6 +538,7 @@ class Transcriber(
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
                 j.construct_dictionary_dependent_paths(self.model_directory, "words", "txt"),
                 j.construct_path_dictionary(self.evaluation_directory, "tra", "scp"),
+                j.construct_path_dictionary(self.evaluation_directory, "ali", "ark"),
             )
             for j in self.jobs
         ]
@@ -1037,7 +1038,7 @@ class Transcriber(
                     )
                     self.score()
 
-                    ser, wer = self.evaluate()
+                    ser, wer = self.evaluate_transcriptions()
                     if wer < best_wer:
                         best = (lmwt, wip)
                         best_wer = wer
@@ -1533,7 +1534,7 @@ class Transcriber(
                 e.update_log_file(logger)
             raise
 
-    def evaluate(self):
+    def evaluate_transcriptions(self):
         """
         Evaluates the transcripts if there are reference transcripts
 
@@ -1571,18 +1572,17 @@ class Transcriber(
             session.bulk_update_mappings(Utterance, records)
             session.commit()
 
-    def export_files(self, output_directory: str) -> None:
+    def collect_alignments(self) -> None:
         """
-        Export transcriptions
+        Collect word and phone alignments from alignment archives
+        """
+        if self.alignment_done:
+            if self.export_output_directory is not None:
+                self.export_textgrids()
+            return
+        self._collect_alignments()
 
-        Parameters
-        ----------
-        output_directory: str
-            Directory to save transcriptions
-        """
-        if not self.overwrite and os.path.exists(output_directory):
-            output_directory = os.path.join(self.working_directory, "transcriptions")
-        os.makedirs(output_directory, exist_ok=True)
+    def export_transcriptions(self):
         self._load_transcripts()
         with self.session() as session:
             files = session.query(File).options(
@@ -1605,7 +1605,10 @@ class Transcriber(
                 else:
                     output_format = TextgridFormats.SHORT_TEXTGRID
                 output_path = construct_output_path(
-                    file.name, file.relative_path, output_directory, output_format=output_format
+                    file.name,
+                    file.relative_path,
+                    self.export_output_directory,
+                    output_format=output_format,
                 )
                 data = file.construct_transcription_tiers()
                 if output_format == "lab":
@@ -1626,4 +1629,29 @@ class Transcriber(
                         tg.addTier(tier)
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
         if self.evaluation_mode:
-            self.save_transcription_evaluation(output_directory)
+            self.save_transcription_evaluation(self.export_output_directory)
+
+    def export_files(
+        self,
+        output_directory: str,
+        output_format: Optional[str] = None,
+        include_original_text: bool = False,
+    ) -> None:
+        """
+        Export transcriptions
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save transcriptions
+        output_format: str, optional
+            Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
+        """
+        if output_format is None:
+            output_format = TextFileType.TEXTGRID.value
+        self.export_output_directory = output_directory
+        os.makedirs(self.export_output_directory, exist_ok=True)
+        if self.output_type == "transcription":
+            self.export_transcriptions()
+        else:
+            self.export_textgrids(output_format, include_original_text)

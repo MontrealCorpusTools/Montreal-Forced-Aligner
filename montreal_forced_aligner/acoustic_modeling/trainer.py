@@ -403,7 +403,12 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             previous.exported_model_path, self.working_directory
         )
 
-    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
+    def export_files(
+        self,
+        output_directory: str,
+        output_format: Optional[str] = None,
+        include_original_text: bool = False,
+    ) -> None:
         """
         Export a TextGrid file for every sound file in the dataset
 
@@ -413,7 +418,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             Directory to save to
         """
         self.align()
-        super(TrainableAligner, self).export_files(output_directory, output_format)
+        super(TrainableAligner, self).export_files(
+            output_directory, output_format, include_original_text
+        )
 
     @property
     def num_current_utterances(self) -> int:

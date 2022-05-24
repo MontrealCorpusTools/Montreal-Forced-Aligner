@@ -642,12 +642,19 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         "mapping_id": i,
                         "phone": "<eps>",
                         "phone_type": PhoneType.silence,
+                        "count": 0,
                     }
                 )
                 for p in self.kaldi_silence_phones:
                     i += 1
                     phone_objs.append(
-                        {"id": i + 1, "mapping_id": i, "phone": p, "phone_type": PhoneType.silence}
+                        {
+                            "id": i + 1,
+                            "mapping_id": i,
+                            "phone": p,
+                            "phone_type": PhoneType.silence,
+                            "count": 0,
+                        }
                     )
                 for p in self.kaldi_non_silence_phones:
                     i += 1
@@ -657,6 +664,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             "mapping_id": i,
                             "phone": p,
                             "phone_type": PhoneType.non_silence,
+                            "count": phone_counts[split_phone_position(p)[0]],
                         }
                     )
                 for x in range(self.max_disambiguation_symbol + 2):
@@ -669,6 +677,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             "mapping_id": i,
                             "phone": p,
                             "phone_type": PhoneType.disambiguation,
+                            "count": 0,
                         }
                     )
             else:
@@ -1189,17 +1198,16 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         with self.session() as session:
             session.query(OovWord).delete()
             session.flush()
+            oov_words = {}
             for dict_id in self.dictionary_lookup.values():
-                oov_words = {}
                 utterances = (
                     session.query(Utterance.oovs)
                     .join(Utterance.speaker)
-                    .join(Speaker.dictionary)
                     .filter(Speaker.dictionary_id == dict_id)
                     .filter(Utterance.oovs != "")
                 )
-                for u in utterances:
-                    for w in u.oovs.split():
+                for (oovs,) in utterances:
+                    for w in oovs.split():
                         if w not in oov_words:
                             oov_words[w] = {"word": w, "count": 0, "dictionary_id": dict_id}
                         oov_words[w]["count"] += 1

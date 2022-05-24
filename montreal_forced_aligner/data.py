@@ -111,6 +111,17 @@ class TextFileType(enum.Enum):
         return self.value
 
 
+class DatasetType(enum.Enum):
+    """Enum for types of sound files"""
+
+    NONE = 0
+    ACOUSTIC_CORPUS = 1
+    TEXT_CORPUS = 2
+    ACOUSTIC_CORPUS_WITH_DICTIONARY = 3
+    TEXT_CORPUS_WITH_DICTIONARY = 4
+    DICTIONARY = 5
+
+
 class SoundFileType(enum.Enum):
     """Enum for types of sound files"""
 

@@ -20,6 +20,8 @@ Release candidates
 - Fixed a bug where errors in multiprocessing workers were not properly raised by the main thread, obscuring the source of errors :github_issue:`452`
 - Added an experimental training flag for training a G2P model as part of the acoustic model training
 - Fixed a bug where models trained in 1.0 would not use speaker adaptation during alignment or transcription
+- Add support for exporting original text alongside word and phone alignments :github_issue:`414`
+- Fixed an issue with transcribing using multiple dictionaries
 
 2.0.0rc7
 --------

@@ -25,6 +25,7 @@ from montreal_forced_aligner.data import (
     TextgridFormats,
 )
 from montreal_forced_aligner.db import Dictionary, File, Phone, Speaker, Utterance, Word
+from montreal_forced_aligner.exceptions import AlignmentExportError
 from montreal_forced_aligner.helper import split_phone_position
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
 from montreal_forced_aligner.utils import Counter, KaldiFunction, Stopped, thirdparty_binary
@@ -83,6 +84,7 @@ class ExportTextGridArguments(MfaArguments):
     frame_shift: int
     output_directory: str
     output_format: str
+    include_original_text: bool
 
 
 @dataclass
@@ -1100,6 +1102,7 @@ class ExportTextGridProcessWorker(mp.Process):
         self.output_format = arguments.output_format
         self.frame_shift = arguments.frame_shift
         self.log_path = arguments.log_path
+        self.include_original_text = arguments.include_original_text
         self.exported_file_count = exported_file_count
 
     def run(self) -> None:
@@ -1145,6 +1148,13 @@ class ExportTextGridProcessWorker(mp.Process):
                     for utt in utterances:
                         if utt.speaker.name not in data:
                             data[utt.speaker.name] = {"words": [], "phones": []}
+                            if self.include_original_text:
+                                data[utt.speaker.name]["utterances"] = []
+
+                        if self.include_original_text:
+                            data[utt.speaker.name]["utterances"].append(
+                                CtmInterval(utt.begin, utt.end, utt.text, utt.id)
+                            )
                         for wi in utt.word_intervals:
                             data[utt.speaker.name]["words"].append(
                                 CtmInterval(wi.begin, wi.end, wi.label, utt.id)
@@ -1160,17 +1170,12 @@ class ExportTextGridProcessWorker(mp.Process):
                     self.return_queue.put(1)
                 except Exception:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
-                    log_file.write(
-                        f"Error writing to {output_path}: \n\n{self.textgrid_errors[output_path]}\n"
-                    )
-                    self.stopped.stop()
                     self.return_queue.put(
-                        (
+                        AlignmentExportError(
                             output_path,
-                            "\n".join(
-                                traceback.format_exception(exc_type, exc_value, exc_traceback)
-                            ),
+                            traceback.format_exception(exc_type, exc_value, exc_traceback),
                         )
                     )
+                    self.stopped.stop()
                     raise
             log_file.write("Done!\n")

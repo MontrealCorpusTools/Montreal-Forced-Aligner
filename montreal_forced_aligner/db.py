@@ -94,6 +94,8 @@ class Corpus(MfaSqlBase):
     transcription_done = Column(Boolean, default=False)
     alignment_evaluation_done = Column(Boolean, default=False)
     has_reference_alignments = Column(Boolean, default=False)
+    has_sound_files = Column(Boolean, default=False)
+    has_text_files = Column(Boolean, default=False)
 
 
 class Dictionary(MfaSqlBase):
@@ -320,6 +322,7 @@ class Phone(MfaSqlBase):
     id = Column(Integer, primary_key=True)
     mapping_id = Column(Integer, nullable=False, unique=True)
     phone = Column(String(10), unique=True, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
 
 

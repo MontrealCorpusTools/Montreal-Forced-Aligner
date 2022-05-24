@@ -168,6 +168,7 @@ def test_align_multilingual_tg_speaker_dict(
         "-q",
         "--clean",
         "--debug",
+        "--include_original_text",
     ]
     args, unknown = parser.parse_known_args(command)
     run_align_corpus(args, unknown)

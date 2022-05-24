@@ -37,7 +37,7 @@ The two metrics calculated for each utterance are overlap score and phone error 
 
 .. math::
 
-   Overlap \: score = \frac{\sum\limits_{i=0}^{n-1} (\lvert begin_{aligned[i]} - begin_{ref[i]} \rvert + \lvert end_{aligned[i]} - end_{ref[i]} \rvert )}{n}
+   Alignment \: score = \frac{Overlap \: cost}{2}
 
 Phone error rate is calculated as:
 
