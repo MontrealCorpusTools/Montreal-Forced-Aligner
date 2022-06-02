@@ -8,7 +8,7 @@ features:
   type: "mfcc"
   use_energy: true
   frame_shift: 10
-  pitch: false
+  use_pitch: false
 
 training:
   - monophone:

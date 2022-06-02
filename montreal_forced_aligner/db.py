@@ -94,6 +94,8 @@ class Corpus(MfaSqlBase):
     transcription_done = Column(Boolean, default=False)
     alignment_evaluation_done = Column(Boolean, default=False)
     has_reference_alignments = Column(Boolean, default=False)
+    has_sound_files = Column(Boolean, default=False)
+    has_text_files = Column(Boolean, default=False)
 
 
 class Dictionary(MfaSqlBase):
@@ -149,6 +151,7 @@ class Dictionary(MfaSqlBase):
     path = Column(String, unique=True, nullable=False)
     phone_set_type = Column(Enum(PhoneSetType))
     root_temp_directory = Column(String, nullable=False)
+    clitic_cleanup_regex = Column(String, nullable=True)
     bracket_regex = Column(String, nullable=True)
     laughter_regex = Column(String, nullable=True)
     position_dependent_phones = Column(Boolean, nullable=False)
@@ -160,6 +163,7 @@ class Dictionary(MfaSqlBase):
     bracketed_word = Column(String, nullable=False)
     laughter_word = Column(String, nullable=False)
 
+    use_g2p = Column(Boolean, nullable=False)
     max_disambiguation_symbol = Column(Integer, default=0, nullable=False)
     silence_probability = Column(Float, default=0.5, nullable=False)
     initial_silence_probability = Column(Float, default=0.5, nullable=False)
@@ -202,12 +206,17 @@ class Dictionary(MfaSqlBase):
         """
         Phones directory
         """
-        return os.path.join(self.root_temp_directory, "phones")
+        return os.path.join(str(self.root_temp_directory), "phones")
 
     @property
     def phone_symbol_table_path(self):
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_directory, "phones.txt")
+
+    @property
+    def grapheme_symbol_table_path(self):
+        """Path to file containing grapheme symbols and their integer IDs"""
+        return os.path.join(self.phones_directory, "graphemes.txt")
 
     @property
     def phone_disambig_path(self):
@@ -219,7 +228,7 @@ class Dictionary(MfaSqlBase):
         """
         Path of disambiguated lexicon fst (L.fst)
         """
-        return os.path.join(self.root_temp_directory, f"{self.id}_{self.name}")
+        return os.path.join(str(self.root_temp_directory), f"{self.id}_{self.name}")
 
     @property
     def lexicon_disambig_fst_path(self) -> str:
@@ -313,7 +322,29 @@ class Phone(MfaSqlBase):
     id = Column(Integer, primary_key=True)
     mapping_id = Column(Integer, nullable=False, unique=True)
     phone = Column(String(10), unique=True, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
+
+
+class Grapheme(MfaSqlBase):
+    """
+    Database class for storing phones and their integer IDs
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    mapping_id: int
+        Integer ID of the phone for Kaldi processing
+    grapheme: str
+        Phone label
+    """
+
+    __tablename__ = "grapheme"
+
+    id = Column(Integer, primary_key=True)
+    mapping_id = Column(Integer, nullable=False, unique=True)
+    grapheme = Column(String(10), unique=True, nullable=False)
 
 
 class Word(MfaSqlBase):
@@ -343,7 +374,7 @@ class Word(MfaSqlBase):
     id = Column(Integer, primary_key=True)
     mapping_id = Column(Integer, nullable=False, index=True)
     word = Column(String, nullable=False, index=True)
-    count = Column(Integer, default=0, nullable=False)
+    count = Column(Integer, default=0, nullable=False, index=True)
     word_type = Column(Enum(WordType), nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="words")
@@ -351,6 +382,7 @@ class Word(MfaSqlBase):
 
     __table_args__ = (
         sqlalchemy.Index("dictionary_word_type_index", "dictionary_id", "word_type"),
+        sqlalchemy.Index("word_dictionary_index", "word", "dictionary_id"),
     )
 
 
@@ -376,9 +408,11 @@ class OovWord(MfaSqlBase):
 
     id = Column(Integer, primary_key=True)
     word = Column(String, nullable=False, index=True)
-    count = Column(Integer, default=0, nullable=False)
+    count = Column(Integer, default=0, nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="oov_words")
+
+    __table_args__ = (sqlalchemy.Index("oov_word_dictionary_index", "word", "dictionary_id"),)
 
 
 class Pronunciation(MfaSqlBase):
@@ -914,8 +948,10 @@ class Utterance(MfaSqlBase):
     text = Column(String)
     oovs = Column(String)
     normalized_text = Column(String)
+    normalized_character_text = Column(String)
     transcription_text = Column(String)
     normalized_text_int = Column(String)
+    normalized_character_text_int = Column(String)
     features = Column(String)
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
     ignored = Column(Boolean, nullable=False, default=False, index=True)

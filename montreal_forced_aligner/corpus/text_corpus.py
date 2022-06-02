@@ -95,6 +95,16 @@ class TextCorpusMixin(CorpusMixin):
                 while True:
                     try:
                         file = return_queue.get(timeout=1)
+                        if isinstance(file, tuple):
+                            error_type = file[0]
+                            error = file[1]
+                            if error_type == "error":
+                                error_dict[error_type] = error
+                            else:
+                                if error_type not in error_dict:
+                                    error_dict[error_type] = []
+                                error_dict[error_type].append(error)
+                            continue
                         if self.stopped.stop_check():
                             continue
                     except Empty:
@@ -105,17 +115,7 @@ class TextCorpusMixin(CorpusMixin):
                             break
                         continue
                     pbar.update(1)
-                    if isinstance(file, tuple):
-                        error_type = file[0]
-                        error = file[1]
-                        if error_type == "error":
-                            error_dict[error_type] = error
-                        else:
-                            if error_type not in error_dict:
-                                error_dict[error_type] = []
-                            error_dict[error_type].append(error)
-                    else:
-                        import_data.add_objects(self.generate_import_objects(file))
+                    import_data.add_objects(self.generate_import_objects(file))
 
                 self.log_debug("Waiting for workers to finish...")
                 for p in procs:
@@ -266,7 +266,58 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         self.create_corpus_split()
 
 
-class TextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
+class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
+    """
+    Standalone class for working with text corpora without a pronunciation dictionary
+
+    Most MFA functionality will use the :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin` class rather than this class.
+
+    Parameters
+    ----------
+    num_jobs: int
+        Number of jobs to use when loading the corpus
+
+    See Also
+    --------
+    :class:`~montreal_forced_aligner.corpus.text_corpus.DictionaryTextCorpusMixin`
+        For dictionary and corpus parsing parameters
+    :class:`~montreal_forced_aligner.abc.MfaWorker`
+        For MFA processing parameters
+    :class:`~montreal_forced_aligner.abc.TemporaryDirectoryMixin`
+        For temporary directory parameters
+    """
+
+    def __init__(self, num_jobs=3, **kwargs):
+        super().__init__(**kwargs)
+        self.num_jobs = num_jobs
+
+    def load_corpus(self) -> None:
+        """
+        Load the corpus
+        """
+        self.initialize_database()
+
+        self._load_corpus()
+        self.initialize_jobs()
+        self.create_corpus_split()
+
+    @property
+    def identifier(self) -> str:
+        """Identifier for the corpus"""
+        return self.data_source_identifier
+
+    @property
+    def output_directory(self) -> str:
+        """Root temporary directory to store all corpus and dictionary files"""
+        return os.path.join(self.temporary_directory, self.identifier)
+
+    @property
+    def working_directory(self) -> str:
+        """Working directory"""
+        return self.corpus_output_directory
+
+
+class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     """
     Standalone class for working with text corpora and pronunciation dictionaries
 
@@ -304,4 +355,4 @@ class TextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     @property
     def working_directory(self) -> str:
         """Working directory"""
-        return self.output_directory
+        return self.corpus_output_directory

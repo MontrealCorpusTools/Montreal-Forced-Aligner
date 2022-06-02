@@ -16,7 +16,11 @@ from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
+    from dataclasses import dataclass
+
     from ..abc import MappingType
+else:
+    from dataclassy import dataclass
 
 
 __all__ = [
@@ -37,6 +41,7 @@ __all__ = [
 ]
 
 
+@dataclass
 class CreateHclgArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`"""
 
@@ -59,6 +64,7 @@ class CreateHclgArguments(MfaArguments):
         return self.path_template.format(file_name="HCLG")
 
 
+@dataclass
 class DecodeArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
 
@@ -71,6 +77,7 @@ class DecodeArguments(MfaArguments):
     hclg_paths: Dict[int, str]
 
 
+@dataclass
 class ScoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
 
@@ -81,8 +88,10 @@ class ScoreArguments(MfaArguments):
     carpa_rescored_lat_paths: Dict[int, str]
     words_paths: Dict[int, str]
     tra_paths: Dict[int, str]
+    ali_paths: Dict[int, str]
 
 
+@dataclass
 class LmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
 
@@ -94,6 +103,7 @@ class LmRescoreArguments(MfaArguments):
     new_g_paths: Dict[int, str]
 
 
+@dataclass
 class CarpaLmRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
 
@@ -104,6 +114,7 @@ class CarpaLmRescoreArguments(MfaArguments):
     new_g_paths: Dict[int, str]
 
 
+@dataclass
 class InitialFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
 
@@ -116,6 +127,7 @@ class InitialFmllrArguments(MfaArguments):
     spk2utt_paths: Dict[int, str]
 
 
+@dataclass
 class LatGenFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
 
@@ -128,6 +140,7 @@ class LatGenFmllrArguments(MfaArguments):
     tmp_lat_paths: Dict[int, str]
 
 
+@dataclass
 class FinalFmllrArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
 
@@ -140,6 +153,7 @@ class FinalFmllrArguments(MfaArguments):
     tmp_lat_paths: Dict[int, str]
 
 
+@dataclass
 class FmllrRescoreArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
 
@@ -180,43 +194,39 @@ def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: 
     """
     if os.path.exists(lg_path):
         return
-    temp_compose_path = lg_path + ".temp"
     compose_proc = subprocess.Popen(
-        [thirdparty_binary("fsttablecompose"), dictionary_path, small_g_path, temp_compose_path],
+        [thirdparty_binary("fsttablecompose"), dictionary_path, small_g_path],
         stderr=log_file,
+        stdout=subprocess.PIPE,
         env=os.environ,
     )
-    compose_proc.communicate()
 
-    temp2_compose_path = lg_path + ".temp2"
     determinize_proc = subprocess.Popen(
         [
             thirdparty_binary("fstdeterminizestar"),
             "--use-log=true",
-            temp_compose_path,
-            temp2_compose_path,
         ],
-        stderr=log_file,
-        env=os.environ,
-    )
-    determinize_proc.communicate()
-    os.remove(temp_compose_path)
-
-    minimize_proc = subprocess.Popen(
-        [thirdparty_binary("fstminimizeencoded"), temp2_compose_path, temp_compose_path],
+        stdin=compose_proc.stdout,
         stdout=subprocess.PIPE,
         stderr=log_file,
         env=os.environ,
     )
-    minimize_proc.communicate()
-    os.remove(temp2_compose_path)
+
+    minimize_proc = subprocess.Popen(
+        [thirdparty_binary("fstminimizeencoded")],
+        stdin=determinize_proc.stdout,
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+        env=os.environ,
+    )
+
     push_proc = subprocess.Popen(
-        [thirdparty_binary("fstpushspecial"), temp_compose_path, lg_path],
+        [thirdparty_binary("fstpushspecial"), "-", lg_path],
+        stdin=minimize_proc.stdout,
         stderr=log_file,
         env=os.environ,
     )
     push_proc.communicate()
-    os.remove(temp_compose_path)
 
 
 def compose_clg(
@@ -326,7 +336,7 @@ def compose_hclg(
     model_path = os.path.join(model_directory, "final.mdl")
     tree_path = os.path.join(model_directory, "tree")
     ha_path = hclga_path.replace("HCLGa", "Ha")
-    ha_out_disambig = os.path.join(model_directory, "disambig_tid.int")
+    ha_out_disambig = hclga_path.replace("HCLGa", "disambig_tid")
     make_h_proc = subprocess.Popen(
         [
             thirdparty_binary("make-h-transducer"),
@@ -343,16 +353,16 @@ def compose_hclg(
     )
     make_h_proc.communicate()
 
-    temp_compose_path = hclga_path + ".temp"
     compose_proc = subprocess.Popen(
-        [thirdparty_binary("fsttablecompose"), ha_path, clg_path, temp_compose_path],
+        [thirdparty_binary("fsttablecompose"), ha_path, clg_path],
         stderr=log_file,
+        stdout=subprocess.PIPE,
         env=os.environ,
     )
-    compose_proc.communicate()
 
     determinize_proc = subprocess.Popen(
-        [thirdparty_binary("fstdeterminizestar"), "--use-log=true", temp_compose_path],
+        [thirdparty_binary("fstdeterminizestar"), "--use-log=true"],
+        stdin=compose_proc.stdout,
         stdout=subprocess.PIPE,
         stderr=log_file,
         env=os.environ,
@@ -378,7 +388,6 @@ def compose_hclg(
         env=os.environ,
     )
     minimize_proc.communicate()
-    os.remove(temp_compose_path)
 
 
 def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) -> None:
@@ -760,6 +769,7 @@ class ScoreFunction(KaldiFunction):
         self.carpa_rescored_lat_paths = args.carpa_rescored_lat_paths
         self.words_paths = args.words_paths
         self.tra_paths = args.tra_paths
+        self.ali_paths = args.ali_paths
 
     def run(self):
         """Run the function"""
@@ -772,6 +782,7 @@ class ScoreFunction(KaldiFunction):
                 lat_path = self.lat_paths[dict_id]
                 words_path = self.words_paths[dict_id]
                 tra_path = self.tra_paths[dict_id]
+                ali_path = self.ali_paths[dict_id]
                 if os.path.exists(carpa_rescored_lat_path):
                     lat_path = carpa_rescored_lat_path
                 elif os.path.exists(rescored_lat_path):
@@ -805,6 +816,7 @@ class ScoreFunction(KaldiFunction):
                         f"--word-symbol-table={words_path}",
                         "ark:-",
                         f"ark,t:{tra_path}",
+                        f"ark:{ali_path}",
                     ],
                     stdin=penalty_proc.stdout,
                     stderr=subprocess.PIPE,
@@ -863,6 +875,8 @@ class LmRescoreFunction(KaldiFunction):
                 rescored_lat_path = self.rescored_lat_paths[dict_id]
                 old_g_path = self.old_g_paths[dict_id]
                 new_g_path = self.new_g_paths[dict_id]
+                if " " in new_g_path:
+                    new_g_path = f'"{new_g_path}"'
                 if sys.platform == "win32":
                     project_type_arg = "--project_output=true"
                 else:
@@ -1013,7 +1027,7 @@ class InitialFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*Done (?P<done>\d+) files, (?P<no_gpost>\d+) with no g?posts, (?P<other_errors>\d+) with other errors."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over [\d.]+ frames."
     )
 
     def __init__(self, args: InitialFmllrArguments):
@@ -1052,7 +1066,7 @@ class InitialFmllrFunction(KaldiFunction):
                         f"{self.fmllr_options['silence_weight']}",
                         self.fmllr_options["sil_phones"],
                         self.model_path,
-                        "ark:-",
+                        "ark,s,cs:-",
                         "ark:-",
                     ],
                     stdin=latt_post_proc.stdout,
@@ -1065,7 +1079,7 @@ class InitialFmllrFunction(KaldiFunction):
                         thirdparty_binary("gmm-post-to-gpost"),
                         self.model_path,
                         feature_string,
-                        "ark:-",
+                        "ark,s,cs:-",
                         "ark:-",
                     ],
                     stdin=weight_silence_proc.stdout,
@@ -1093,9 +1107,7 @@ class InitialFmllrFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield int(m.group("done")), int(m.group("no_gpost")), int(
-                            m.group("other_errors")
-                        )
+                        yield 1
             self.check_call(fmllr_proc)
 
 
@@ -1196,7 +1208,7 @@ class FinalFmllrFunction(KaldiFunction):
     """
 
     progress_pattern = re.compile(
-        r"^LOG.*Done (?P<done>\d+) files, (?P<no_gpost>\d+) with no g?posts, (?P<other_errors>\d+) with other errors."
+        r"^LOG.*For speaker \w+, auxf-impr from fMLLR is [\d.]+, over [\d.]+ frames."
     )
 
     def __init__(self, args: FinalFmllrArguments):
@@ -1277,9 +1289,7 @@ class FinalFmllrFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield int(m.group("done")), int(m.group("no_gpost")), int(
-                            m.group("other_errors")
-                        )
+                        yield 1
                 self.check_call(fmllr_proc)
 
                 compose_proc = subprocess.Popen(

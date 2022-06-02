@@ -24,7 +24,10 @@ from montreal_forced_aligner.command_line.train_ivector_extractor import (
 )
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
-from montreal_forced_aligner.command_line.validate import run_validate_corpus
+from montreal_forced_aligner.command_line.validate import (
+    run_validate_corpus,
+    run_validate_dictionary,
+)
 from montreal_forced_aligner.config import (
     load_command_history,
     load_global_config,
@@ -290,6 +293,11 @@ def create_parser() -> ArgumentParser:
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
+    align_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
+    )
     add_global_options(align_parser, textgrid_output=True)
 
     adapt_parser = subparsers.add_parser("adapt", help="Adapt an acoustic model to a new corpus")
@@ -337,6 +345,11 @@ def create_parser() -> ArgumentParser:
         default="long_textgrid",
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
+    )
+    adapt_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
     )
     add_global_options(adapt_parser, textgrid_output=True)
 
@@ -396,6 +409,16 @@ def create_parser() -> ArgumentParser:
         choices=["short_textgrid", "long_textgrid", "json"],
         help="Format for aligned output files",
     )
+    train_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
+        action="store_true",
+    )
+    train_parser.add_argument(
+        "--train_g2p",
+        help="Flag for using G2P in pronunciation probability estimation (experimental feature)",
+        action="store_true",
+    )
     add_global_options(train_parser, textgrid_output=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a corpus for use in MFA")
@@ -452,6 +475,46 @@ def create_parser() -> ArgumentParser:
         choices=["AUTO", "IPA", "ARPA", "PINYIN"],
     )
     add_global_options(validate_parser)
+
+    validate_dictionary_parser = subparsers.add_parser(
+        "validate_dictionary",
+        help="Validate a dictionary using a G2P model to detect unlikely pronunciations",
+    )
+
+    validate_dictionary_parser.add_argument(
+        "dictionary_path", type=str, help=dictionary_path_help, default=""
+    )
+    validate_dictionary_parser.add_argument(
+        "output_path",
+        type=str,
+        nargs="?",
+        help="Path to save the CSV file with the scored pronunciations",
+    )
+    validate_dictionary_parser.add_argument(
+        "--g2p_model_path",
+        type=str,
+        help="Pretrained G2P model path",
+    )
+    validate_dictionary_parser.add_argument(
+        "--g2p_threshold",
+        type=float,
+        default=3.0,
+        help="Threshold to use when running G2P. Paths with costs less than the best path times the threshold value will be included.",
+    )
+    validate_dictionary_parser.add_argument(
+        "--score_threshold",
+        type=float,
+        default=1.0,
+        help="Threshold to use when filtering scored pronunciations, only include pronunciations with relative scores less than this value."
+        "1.0 represents the best pronunciation, 0.0 represents a pronunciation that was not generated with the specified g2p_threshold.",
+    )
+    validate_dictionary_parser.add_argument(
+        "--config_path",
+        type=str,
+        default="",
+        help="Path to config file to use for validation",
+    )
+    add_global_options(validate_dictionary_parser)
 
     g2p_parser = subparsers.add_parser(
         "g2p", help="Generate a pronunciation dictionary using a G2P model"
@@ -753,6 +816,13 @@ def create_parser() -> ArgumentParser:
         "--config_path", type=str, default="", help="Path to config file to use for transcription"
     )
     transcribe_parser.add_argument(
+        "--output_type",
+        type=str,
+        default="transcription",
+        choices=["transcription", "alignment"],
+        help="Whether to output transcription or alignment of transcribed files",
+    )
+    transcribe_parser.add_argument(
         "-s",
         "--speaker_characters",
         type=str,
@@ -772,6 +842,11 @@ def create_parser() -> ArgumentParser:
         "--evaluate",
         dest="evaluation_mode",
         help="Evaluate the transcription against golden texts",
+        action="store_true",
+    )
+    transcribe_parser.add_argument(
+        "--include_original_text",
+        help="Flag to include original utterance text in the output",
         action="store_true",
     )
     transcribe_parser.add_argument(
@@ -990,6 +1065,8 @@ def main() -> None:
             run_train_g2p(args, unknown)
         elif args.subcommand == "validate":
             run_validate_corpus(args, unknown)
+        elif args.subcommand == "validate_dictionary":
+            run_validate_dictionary(args, unknown)
         elif args.subcommand in ["model", "models"]:
             run_model(args)
         elif args.subcommand == "train_lm":

@@ -5,15 +5,13 @@ import functools
 import multiprocessing as mp
 import os
 import queue
-import re
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Tuple, Union
 
 import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
-from montreal_forced_aligner.data import WordData
 from montreal_forced_aligner.exceptions import G2PError, PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
 from montreal_forced_aligner.helper import comma_join
@@ -28,7 +26,7 @@ try:
     G2P_DISABLED = False
 except ImportError:
     pynini = None
-    TokenType = None
+    TokenType = str
     Fst = None
     rewrite = None
     G2P_DISABLED = True
@@ -78,7 +76,7 @@ def optimal_rewrites(
     rule: pynini.Fst,
     input_token_type: Optional[pynini.TokenType] = None,
     output_token_type: Optional[pynini.TokenType] = None,
-    threshold: float = 0.99,
+    threshold: float = 1,
 ) -> List[str]:
     """Returns all optimal rewrites.
     Args:
@@ -95,18 +93,37 @@ def optimal_rewrites(
     return rewrite.lattice_to_strings(lattice, output_token_type)
 
 
+def scored_match(
+    input_string: pynini.FstLike,
+    output_string: pynini.FstLike,
+    rule: pynini.Fst,
+    input_token_type: Optional[pynini.TokenType] = None,
+    output_token_type: Optional[pynini.TokenType] = None,
+    threshold: float = 6,
+    state_multiplier: int = 4,
+    lattice=None,
+) -> float:
+    if lattice is None:
+        lattice = rewrite.rewrite_lattice(input_string, rule, input_token_type)
+    with pynini.default_token_type(output_token_type):
+        matched_lattice = pynini.intersect(lattice, output_string, compose_filter="sequence")
+        matched_lattice = rewrite.lattice_to_dfa(matched_lattice, True, state_multiplier)
+    if matched_lattice.start() == pynini.NO_STATE_ID:
+        return -1
+    matched_weight = float(matched_lattice.paths().weight())
+    return matched_weight
+
+
 class Rewriter:
     """Helper object for rewriting."""
-
-    split_pattern = re.compile(r"\s+")
 
     def __init__(
         self,
         fst: Fst,
         input_token_type: TokenType,
         output_token_type: TokenType,
-        num_pronunciations=0,
-        threshold=0.99,
+        num_pronunciations: int = 0,
+        threshold: float = 1,
     ):
         if num_pronunciations > 0:
             self.rewrite = functools.partial(
@@ -128,7 +145,51 @@ class Rewriter:
     def __call__(self, i: str) -> List[Tuple[str, ...]]:  # pragma: no cover
         """Call the rewrite function"""
         hypotheses = self.rewrite(i)
-        return [tuple(y for y in self.split_pattern.split(x) if y) for x in hypotheses]
+        return [x for x in hypotheses if x]
+
+
+class MatchScorer:
+    """Helper object for matches input and output strings."""
+
+    def __init__(
+        self,
+        fst: Fst,
+        input_token_type: TokenType,
+        output_token_type: TokenType,
+        threshold: float = 1.0,
+    ):
+        self.fst = fst
+        self.input_token_type = input_token_type
+        self.output_token_type = output_token_type
+        self.threshold = threshold
+        self.match = functools.partial(
+            scored_match,
+            threshold=threshold,
+            rule=fst,
+            input_token_type=input_token_type,
+            output_token_type=output_token_type,
+        )
+
+    def __call__(self, i: Tuple[str, Collection[str]]) -> Dict[str, float]:  # pragma: no cover
+        """Call the rewrite function"""
+        best_score = 100000
+        word, pronunciations = i
+        lattice = rewrite.rewrite_lattice(word, self.fst, self.input_token_type)
+        output = {}
+        for p in pronunciations:
+            score = self.match(word, p, lattice=lattice)
+            if score >= 0 and score < best_score:
+                best_score = score
+            output[p] = score
+        for p, score in output.items():
+            if score > 0:
+                relative_score = best_score / score
+            elif score == 0:
+                relative_score = 1.0
+            else:
+                relative_score = 0.0
+            output[p] = (score, relative_score)
+        return output
 
 
 class RewriterWorker(mp.Process):
@@ -167,6 +228,7 @@ class RewriterWorker(mp.Process):
             except Exception as e:  # noqa
                 self.stopped.stop()
                 self.return_queue.put(e)
+                raise
         self.finished.stop()
         return
 
@@ -209,7 +271,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
         For top level G2P generation parameters
     """
 
-    def generate_pronunciations(self) -> Dict[str, WordData]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations for the word set
 
@@ -220,7 +282,7 @@ class OrthographyGenerator(G2PTopLevelMixin):
         """
         pronunciations = {}
         for word in self.words_to_g2p:
-            pronunciations[word] = WordData(word, {tuple(word)})
+            pronunciations[word] = [" ".join(word)]
         return pronunciations
 
 
@@ -251,13 +313,13 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
 
-    def generate_pronunciations(self) -> Dict[str, WordData]:
+    def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
         Generate pronunciations
 
         Returns
         -------
-        dict[str, Word]
+        dict[str, list[str]]
             Mappings of keys to their generated pronunciations
         """
         if self.g2p_model.meta["architecture"] == "phonetisaurus":
@@ -286,7 +348,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         self.log_info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
-        if num_words < 30 or self.num_jobs < 2:
+        if num_words < 30 or self.num_jobs == 1:
             with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
                 for word in self.words_to_g2p:
                     w, m = clean_up_word(word, self.g2p_model.meta["graphemes"])
@@ -299,10 +361,10 @@ class PyniniGenerator(G2PTopLevelMixin):
                         skipped_words += 1
                         continue
                     try:
-                        pron = rewriter(w)
+                        prons = rewriter(w)
                     except rewrite.Error:
                         continue
-                    to_return[word] = WordData(w, {p for p in pron if p})
+                    to_return[word] = prons
                 self.log_debug(
                     f"Skipping {skipped_words} words for containing the following graphemes: "
                     f"{comma_join(sorted(missing_graphemes))}"
@@ -325,7 +387,6 @@ class PyniniGenerator(G2PTopLevelMixin):
                 f"{comma_join(sorted(missing_graphemes))}"
             )
             error_dict = {}
-            return_dict = {}
             return_queue = mp.Queue()
             procs = []
             for _ in range(self.num_jobs):
@@ -355,18 +416,12 @@ class PyniniGenerator(G2PTopLevelMixin):
                     if isinstance(result, Exception):
                         error_dict[word] = result
                         continue
-                    return_dict[word] = result
+                    to_return[word] = result
 
             for p in procs:
                 p.join()
             if error_dict:
                 raise PyniniGenerationError(error_dict)
-            for w in self.words_to_g2p:
-                if w in return_dict:
-                    to_return[w] = WordData(
-                        w,
-                        {p for p in return_dict[w] if p},
-                    )
         self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return
 

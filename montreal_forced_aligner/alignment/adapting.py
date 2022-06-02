@@ -55,10 +55,10 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     """
 
     def __init__(self, mapping_tau: int = 20, **kwargs):
-        super().__init__(**kwargs)
-        self.mapping_tau = mapping_tau
         self.initialized = False
         self.adaptation_done = False
+        super().__init__(**kwargs)
+        self.mapping_tau = mapping_tau
 
     def map_acc_stats_arguments(self, alignment=False) -> List[AccStatsArguments]:
         """
@@ -123,6 +123,9 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -131,9 +134,6 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     num_utterances, errors = result
                     pbar.update(num_utterances + errors)

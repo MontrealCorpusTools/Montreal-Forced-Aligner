@@ -38,7 +38,7 @@ This section is only relevant for training, as the trained model will contain ex
    "use_energy", "False", "Use energy in place of first MFCC"
    "frame_shift", 10, "In milliseconds, determines time resolution"
    "snip_edges", True, "Should provide better time resolution in alignment"
-   "use_pitch", False, "Currently not implemented"
+   "use_pitch", False, "Flag for whether to compute pitch features"
    "low_frequency", 20, "Frequency cut off for feature generation"
    "high_frequency", 7800, "Frequency cut off for feature generation"
    "sample_frequency", 16000, "Sample rate to up- or down-sample to"

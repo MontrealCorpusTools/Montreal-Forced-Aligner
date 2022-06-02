@@ -187,12 +187,12 @@ class MfccFunction(KaldiFunction):
                 pitch_command = " ".join(pitch_base_command)
                 if os.path.exists(self.segment_path):
                     segment_command = (
-                        f"extract-segments scp:{self.wav_path} {self.segment_path} ark:- | "
+                        f'extract-segments scp:"{self.wav_path}" "{self.segment_path}" ark:- | '
                     )
                     pitch_input = "ark:-"
                 else:
                     segment_command = ""
-                    pitch_input = f"scp:{self.wav_path}"
+                    pitch_input = f'scp:"{self.wav_path}"'
                 pitch_feat_string = (
                     f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
                 )
@@ -363,7 +363,7 @@ class CalcFmllrFunction(KaldiFunction):
                     if os.path.exists(trans_path):
                         initial = False
                     post_proc = subprocess.Popen(
-                        [thirdparty_binary("ali-to-post"), f"ark:{ali_path}", "ark:-"],
+                        [thirdparty_binary("ali-to-post"), f"ark,s,cs:{ali_path}", "ark:-"],
                         stderr=log_file,
                         stdout=subprocess.PIPE,
                         env=os.environ,
@@ -375,7 +375,7 @@ class CalcFmllrFunction(KaldiFunction):
                             "0.0",
                             self.fmllr_options["silence_csl"],
                             self.ali_model_path,
-                            "ark:-",
+                            "ark,s,cs:-",
                             "ark:-",
                         ],
                         stderr=log_file,
@@ -391,7 +391,7 @@ class CalcFmllrFunction(KaldiFunction):
                                 thirdparty_binary("gmm-post-to-gpost"),
                                 self.ali_model_path,
                                 feature_string,
-                                "ark:-",
+                                "ark,s,cs:-",
                                 "ark:-",
                             ],
                             stderr=log_file,
@@ -428,7 +428,7 @@ class CalcFmllrFunction(KaldiFunction):
                                     f"--spk2utt=ark:{spk2utt_path}",
                                     self.model_path,
                                     feature_string,
-                                    "ark:-",
+                                    "ark,s,cs:-",
                                     f"ark:{temp_trans_path}",
                                 ],
                                 stderr=subprocess.PIPE,

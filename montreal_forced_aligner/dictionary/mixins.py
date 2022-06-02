@@ -6,11 +6,13 @@ import abc
 import os
 import re
 import typing
+import unicodedata
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
 from montreal_forced_aligner.data import PhoneSetType
+from montreal_forced_aligner.helper import make_re_character_set_safe
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict, ReversedMappingType
@@ -54,91 +56,22 @@ class SanitizeFunction:
 
     def __init__(
         self,
-        punctuation: List[str],
-        clitic_markers: List[str],
-        compound_markers: List[str],
-        brackets: List[Tuple[str, str]],
+        clitic_marker: str,
+        clitic_cleanup_regex: Optional[re.Pattern],
+        punctuation_regex: Optional[re.Pattern],
+        word_break_regex: Optional[re.Pattern],
+        bracket_regex: Optional[re.Pattern],
+        bracket_sanitize_regex: Optional[re.Pattern],
         ignore_case: bool = True,
-        quote_markers: List[str] = None,
-        word_break_markers: List[str] = None,
     ):
-        self.base_clitic_marker = clitic_markers[0] if len(clitic_markers) else None
-        self.all_punctuation = set()
-        self.punctuation = punctuation
-        self.clitic_markers = clitic_markers
-        self.compound_markers = compound_markers
-        self.quote_markers = quote_markers
-        self.word_break_markers = word_break_markers
-        self.brackets = brackets
-        self.ignore_case = ignore_case
-        non_word_character_set = set(punctuation)
-        if self.clitic_markers:
-            self.all_punctuation.update(self.clitic_markers)
-        if self.compound_markers:
-            self.all_punctuation.update(self.compound_markers)
-        self.quote_regex = None
-        if self.quote_markers:
-            self.all_punctuation.update(self.quote_markers)
-            unambiguous_quote_markers = (
-                set(self.quote_markers) - set(self.clitic_markers) - set(self.compound_markers)
-            )
-            non_word_character_set.update(unambiguous_quote_markers)
-            if self.base_clitic_marker and self.base_clitic_marker in self.quote_markers:
-                self.quote_regex = re.compile(
-                    rf"^{self.base_clitic_marker}+(?P<word>.*){self.base_clitic_marker}+$"
-                )
+        self.clitic_marker = clitic_marker
+        self.clitic_cleanup_regex = clitic_cleanup_regex
+        self.punctuation_regex = punctuation_regex
+        self.word_break_regex = word_break_regex
+        self.bracket_regex = bracket_regex
+        self.bracket_sanitize_regex = bracket_sanitize_regex
 
-        self.bracket_regex = None
-        self.bracket_sanitize_regex = None
-        if self.brackets:
-            left_brackets = [x[0] for x in self.brackets]
-            right_brackets = [x[1] for x in self.brackets]
-            non_word_character_set -= set(left_brackets)
-            non_word_character_set -= set(right_brackets)
-            self.all_punctuation.update(left_brackets)
-            self.all_punctuation.update(right_brackets)
-            self.bracket_regex = re.compile(
-                rf"[{re.escape(''.join(left_brackets))}]+.*?[{re.escape(''.join(right_brackets))}]+"
-            )
-            bracket_sanitize_set = (
-                non_word_character_set | set(self.clitic_markers) | set(self.compound_markers)
-            )
-            extra = ""
-            if "-" in bracket_sanitize_set:
-                extra = "-"
-                bracket_sanitize_set = [x for x in sorted(bracket_sanitize_set) if x != "-"]
-            word_break_character_set = rf"[{extra}\s{re.escape(''.join(bracket_sanitize_set))}]"
-            if self.word_break_markers:
-                self.bracket_sanitize_regex = re.compile(word_break_character_set)
-            else:
-                self.bracket_sanitize_regex = re.compile(r"\s")
-        extra = ""
-        non_word_character_set = sorted(non_word_character_set)
-        if "-" in self.word_break_markers:
-            extra = "-"
-            non_word_character_set = [x for x in non_word_character_set if x != "-"]
-        word_character_set = rf"[^{extra}\s{''.join(non_word_character_set)}]"
-        word_break_set = rf"[{extra}\s{''.join(non_word_character_set)}]"
-        self.word_regex = re.compile(rf"{word_character_set}+")
-        self.word_break_regex = re.compile(rf"{word_break_set}+")
-        self.clitic_cleanup_regex = None
-        if self.clitic_markers and len(self.clitic_markers) > 1:
-            other_clitic_markers = self.clitic_markers[1:]
-            if other_clitic_markers:
-                extra = ""
-                if "-" in other_clitic_markers:
-                    extra = "-"
-                    other_clitic_markers = [x for x in other_clitic_markers if x != "-"]
-                self.clitic_cleanup_regex = re.compile(
-                    rf'[{extra}{"".join(other_clitic_markers)}]'
-                )
-        non_word_character_set = sorted(self.all_punctuation)
-        if "-" in self.all_punctuation:
-            extra = "-"
-            non_word_character_set = [x for x in non_word_character_set if x != "-"]
-        self.punctuation_regex = re.compile(
-            rf"^[{extra}{re.escape(''.join(non_word_character_set))}]+$"
-        )
+        self.ignore_case = ignore_case
 
     def __call__(self, text) -> typing.Generator[str]:
         """
@@ -164,17 +97,17 @@ class SanitizeFunction:
                 text = text.replace(word, new_word)
 
         if self.clitic_cleanup_regex:
-            text = self.clitic_cleanup_regex.sub(self.base_clitic_marker, text)
+            text = self.clitic_cleanup_regex.sub(self.clitic_marker, text)
 
-        clitic_check = self.base_clitic_marker and self.base_clitic_marker in text
+        clitic_check = self.clitic_marker and self.clitic_marker in text
         words = self.word_break_regex.split(text)
 
         for w in words:
             if not w:
                 continue
-            if self.punctuation_regex.match(w):
+            if self.punctuation_regex is not None and self.punctuation_regex.match(w):
                 continue
-            if clitic_check and w[0] == self.base_clitic_marker == w[-1]:
+            if clitic_check and w[0] == self.clitic_marker == w[-1]:
                 w = w[1:-1]
             if w:
                 yield w
@@ -206,52 +139,36 @@ class SplitWordsFunction:
 
     def __init__(
         self,
-        clitic_markers: List[str],
-        compound_markers: List[str],
-        clitic_set: Set[str],
-        brackets: List[Tuple[str, str]],
-        word_mapping: Optional[Dict[str, int]] = None,
-        specials_set: Optional[Set[str]] = None,
+        clitic_marker: str,
+        initial_clitic_regex: Optional[re.Pattern],
+        final_clitic_regex: Optional[re.Pattern],
+        compound_regex: Optional[re.Pattern],
+        non_speech_regexes: Dict[str, re.Pattern],
         oov_word: Optional[str] = None,
-        bracketed_word: Optional[str] = None,
-        laughter_word: Optional[str] = None,
-        laughter_regex: Optional[str] = None,
+        word_mapping: Optional[Dict[str, int]] = None,
+        grapheme_mapping: Optional[Dict[str, int]] = None,
+        specials_set: Optional[Set[str]] = None,
     ):
-        self.clitic_marker = clitic_markers[0] if len(clitic_markers) else None
-        self.compound_markers = compound_markers
-        self.clitic_set = clitic_set
-        self.specials_set = specials_set
+        self.clitic_marker = clitic_marker
+        self.compound_regex = compound_regex
         self.oov_word = oov_word
-        self.bracketed_word = bracketed_word
-        self.laughter_word = laughter_word
+        self.specials_set = specials_set
         if not word_mapping:
             word_mapping = None
         self.word_mapping = word_mapping
+        if not grapheme_mapping:
+            grapheme_mapping = None
+        self.grapheme_mapping = grapheme_mapping
         self.compound_pattern = None
         self.clitic_pattern = None
-        self.initial_clitic_pattern = None
-        self.final_clitic_pattern = None
-        self.bracket_pattern = None
-        self.laughter_regex = re.compile(laughter_regex)
-        if brackets:
-            left_brackets = re.escape("".join(x[0] for x in brackets))
-            right_brackets = "".join(x[1] for x in brackets)
-            self.bracket_pattern = re.compile(rf"^[{left_brackets}].*[{right_brackets}]$")
-        if compound_markers:
-            extra = ""
-            if "-" in compound_markers:
-                extra = "-"
-                compound_markers = [x for x in compound_markers if x != "-"]
-            self.compound_pattern = re.compile(rf"[{extra}{''.join(compound_markers)}]")
-        initial_clitics = sorted(x for x in self.clitic_set if x.endswith(self.clitic_marker))
-        final_clitics = sorted(x for x in self.clitic_set if x.startswith(self.clitic_marker))
+        self.non_speech_regexes = non_speech_regexes
+        self.initial_clitic_regex = initial_clitic_regex
+        self.final_clitic_regex = final_clitic_regex
         self.has_initial = False
         self.has_final = False
-        if initial_clitics:
-            self.initial_clitic_pattern = re.compile(rf"^{'|'.join(initial_clitics)}(?=\w)")
+        if self.initial_clitic_regex is not None:
             self.has_initial = True
-        if final_clitics:
-            self.final_clitic_pattern = re.compile(rf"(?<=\w){'|'.join(final_clitics)}$")
+        if self.final_clitic_regex is not None:
             self.has_final = True
 
     def to_int(self, normalized_text: str) -> int:
@@ -270,12 +187,31 @@ class SplitWordsFunction:
         """
         if normalized_text in self.word_mapping and normalized_text not in self.specials_set:
             return self.word_mapping[normalized_text]
-        elif self.laughter_regex and self.laughter_regex.match(normalized_text):
-            return self.word_mapping[self.laughter_word]
-        elif self.bracket_pattern and self.bracket_pattern.match(normalized_text):
-            return self.word_mapping[self.bracketed_word]
-        else:
-            return self.word_mapping[self.oov_word]
+        for word, regex in self.non_speech_regexes.items():
+            if regex.match(normalized_text):
+                return self.word_mapping[word]
+        return self.word_mapping[self.oov_word]
+
+    def grapheme_to_int(self, character: str) -> int:
+        """
+        Convert normalized text to an integer ID
+
+        Parameters
+        ----------
+        normalized_text:
+            Word to convert
+
+        Returns
+        -------
+        int
+            Integer ID for the word
+        """
+        if character in self.grapheme_mapping and character not in self.specials_set:
+            return self.grapheme_mapping[character]
+        for word, regex in self.non_speech_regexes.items():
+            if regex.match(character):
+                return self.word_mapping[word]
+        return self.grapheme_mapping[self.oov_word]
 
     def split_clitics(
         self,
@@ -295,10 +231,12 @@ class SplitWordsFunction:
             List of subwords
         """
         split = []
-        if self.compound_pattern is not None and not item[-1] in self.compound_markers:
-            s = self.compound_pattern.split(item)
+        if self.compound_regex is not None:
+            s = self.compound_regex.split(item)
         else:
             s = [item]
+        if self.word_mapping is None:
+            return [item]
         benefit = False
         for seg in s:
             if not seg:
@@ -323,7 +261,7 @@ class SplitWordsFunction:
             final_clitics = []
             if self.has_initial:
                 while True:
-                    clitic = self.initial_clitic_pattern.match(seg)
+                    clitic = self.initial_clitic_regex.match(seg)
                     if clitic is None:
                         break
                     benefit = True
@@ -331,7 +269,7 @@ class SplitWordsFunction:
                     seg = seg[clitic.end(0) :]
             if self.has_final:
                 while True:
-                    clitic = self.final_clitic_pattern.search(seg)
+                    clitic = self.final_clitic_regex.search(seg)
                     if clitic is None:
                         break
                     benefit = True
@@ -346,6 +284,22 @@ class SplitWordsFunction:
         if not benefit:
             return [item]
         return split
+
+    def parse_graphemes(
+        self,
+        item: str,
+    ) -> typing.Generator[str]:
+        for word, regex in self.non_speech_regexes.items():
+            if regex.match(item):
+                yield word
+                break
+        else:
+            characters = list(unicodedata.normalize("NFD", item))
+            for c in characters:
+                if self.grapheme_mapping is not None and c in self.grapheme_mapping:
+                    yield c
+                else:
+                    yield self.oov_word
 
     def __call__(
         self,
@@ -367,8 +321,9 @@ class SplitWordsFunction:
         """
         if self.word_mapping is not None and item in self.word_mapping:
             return [item]
-        if self.bracket_pattern and self.bracket_pattern.match(item):
-            return [item]
+        for regex in self.non_speech_regexes.values():
+            if regex.match(item):
+                return [item]
         return self.split_clitics(item)
 
 
@@ -468,6 +423,10 @@ class DictionaryMixin:
             self.punctuation = punctuation
         if clitic_markers is not None:
             self.clitic_markers = clitic_markers
+        self.clitic_marker = None
+        if self.clitic_markers:
+            self.clitic_marker = self.clitic_markers[0]
+
         if compound_markers is not None:
             self.compound_markers = compound_markers
         if brackets is not None:
@@ -510,6 +469,13 @@ class DictionaryMixin:
         self.phone_set_type = phone_set_type
         self.preserve_suprasegmentals = preserve_suprasegmentals
         self.base_phone_mapping = base_phone_mapping
+        self.punctuation_regex = None
+        self.compound_regex = None
+        self.bracket_regex = None
+        self.laughter_regex = None
+        self.word_break_regex = None
+        self.bracket_sanitize_regex = None
+        self.compile_regexes()
 
     @property
     def base_phones(self) -> Dict[str, Set[str]]:
@@ -815,7 +781,10 @@ class DictionaryMixin:
         """
         Phone ID of the optional silence phone
         """
-        return str(self.phone_mapping[self.optional_silence_phone])
+        try:
+            return str(self.phone_mapping[self.optional_silence_phone])
+        except Exception:
+            return ""
 
     @property
     def silence_csl(self) -> str:
@@ -857,6 +826,59 @@ class DictionaryMixin:
                 return True
         return False
 
+    def compile_regexes(self) -> None:
+        if len(self.clitic_markers) >= 1:
+            other_clitic_markers = self.clitic_markers[1:]
+            if other_clitic_markers:
+                extra = ""
+                if "-" in other_clitic_markers:
+                    extra = "-"
+                    other_clitic_markers = [x for x in other_clitic_markers if x != "-"]
+                self.clitic_cleanup_regex = re.compile(
+                    rf'[{extra}{"".join(other_clitic_markers)}]'
+                )
+            self.clitic_marker = self.clitic_markers[0]
+        if self.compound_markers:
+            extra = ""
+            compound_markers = self.compound_markers
+            if "-" in self.compound_markers:
+                extra = "-"
+                compound_markers = [x for x in compound_markers if x != "-"]
+            self.compound_regex = re.compile(rf"(?<=\w)[{extra}{''.join(compound_markers)}](?=\w)")
+        if self.brackets:
+            left_brackets = [x[0] for x in self.brackets]
+            right_brackets = [x[1] for x in self.brackets]
+            self.bracket_regex = re.compile(
+                rf"[{re.escape(''.join(left_brackets))}].*?[{re.escape(''.join(right_brackets))}]+"
+            )
+            self.laughter_regex = re.compile(
+                rf"[{re.escape(''.join(left_brackets))}](laugh(ing|ter)?|lachen|lg)[{re.escape(''.join(right_brackets))}]+",
+                flags=re.IGNORECASE,
+            )
+        all_punctuation = set()
+        non_word_character_set = set(self.punctuation)
+        non_word_character_set -= {b for x in self.brackets for b in x}
+
+        if self.clitic_markers:
+            all_punctuation.update(self.clitic_markers)
+        if self.compound_markers:
+            all_punctuation.update(self.compound_markers)
+        self.bracket_sanitize_regex = None
+        if self.brackets:
+            word_break_set = (
+                non_word_character_set | set(self.clitic_markers) | set(self.compound_markers)
+            )
+            if self.word_break_markers:
+                word_break_set |= set(self.word_break_markers)
+            word_break_set = make_re_character_set_safe(word_break_set, [r"\s"])
+            self.bracket_sanitize_regex = re.compile(f"(?<!^){word_break_set}(?!$)")
+
+        word_break_character_set = make_re_character_set_safe(non_word_character_set, [r"\s"])
+        self.word_break_regex = re.compile(rf"{word_break_character_set}+")
+        if all_punctuation:
+            punctuation_set = make_re_character_set_safe(all_punctuation)
+            self.punctuation_regex = re.compile(rf"^{punctuation_set}+$")
+
     def construct_sanitize_function(self) -> SanitizeFunction:
         """
         Construct a :class:`~montreal_forced_aligner.dictionary.mixins.SanitizeFunction` to use in multiprocessing jobs
@@ -867,13 +889,13 @@ class DictionaryMixin:
             Function for sanitizing text
         """
         f = SanitizeFunction(
-            self.punctuation,
-            self.clitic_markers,
-            self.compound_markers,
-            self.brackets,
+            self.clitic_marker,
+            self.clitic_cleanup_regex,
+            self.punctuation_regex,
+            self.word_break_regex,
+            self.bracket_regex,
+            self.bracket_sanitize_regex,
             self.ignore_case,
-            self.quote_markers,
-            self.word_break_markers,
         )
 
         return f
@@ -1121,6 +1143,11 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         return os.path.join(self.phones_dir, "phones.txt")
 
     @property
+    def grapheme_symbol_table_path(self):
+        """Path to file containing grapheme symbols and their integer IDs"""
+        return os.path.join(self.phones_dir, "graphemes.txt")
+
+    @property
     def disambiguation_symbols_txt_path(self):
         """Path to the file containing phone disambiguation symbols"""
         return os.path.join(self.phones_dir, "disambiguation_symbols.txt")
@@ -1158,3 +1185,6 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
             for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
                 outf.write(f"{d}\n")
                 intf.write(f"{self.phone_mapping[d]}\n")
+        phone_disambig_path = os.path.join(self.phones_dir, "phone_disambig.txt")
+        with open(phone_disambig_path, "w") as f:
+            f.write(str(self.phone_mapping["#0"]))

@@ -4,7 +4,11 @@ import sys
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.validate import run_validate_corpus
+from montreal_forced_aligner.command_line.validate import (
+    run_validate_corpus,
+    run_validate_dictionary,
+)
+from montreal_forced_aligner.exceptions import ArgumentError
 
 
 def test_validate_corpus(
@@ -50,25 +54,44 @@ def test_validate_training_corpus(
     run_validate_corpus(args)
 
 
-@pytest.mark.skip("Outdated models")
-def test_validate_missing_phones(
-    multilingual_ipa_tg_corpus_dir,
-    german_prosodylab_acoustic_model,
-    german_prosodylab_dictionary,
+def test_validate_dictionary(
+    english_us_mfa_g2p_model,
+    english_us_mfa_dictionary_subset,
     temp_dir,
 ):
 
     command = [
-        "validate",
-        multilingual_ipa_tg_corpus_dir,
-        german_prosodylab_dictionary,
-        german_prosodylab_acoustic_model,
+        "validate_dictionary",
+        english_us_mfa_dictionary_subset,
+        "--g2p_model_path",
+        english_us_mfa_g2p_model,
         "-t",
-        temp_dir,
-        "-q",
-        "--clean",
-        "--debug",
-        "--ignore_acoustics",
+        os.path.join(temp_dir, "dictionary_validation"),
+        "-j",
+        "1",
     ]
     args, unknown = parser.parse_known_args(command)
-    run_validate_corpus(args)
+    if sys.platform == "win32":
+        with pytest.raises(ArgumentError):
+            run_validate_dictionary(args)
+    else:
+        run_validate_dictionary(args)
+
+
+def test_validate_dictionary_train(
+    basic_dict_path,
+    temp_dir,
+):
+
+    command = [
+        "validate_dictionary",
+        basic_dict_path,
+        "-t",
+        os.path.join(temp_dir, "dictionary_validation"),
+    ]
+    args, unknown = parser.parse_known_args(command)
+    if sys.platform == "win32":
+        with pytest.raises(ArgumentError):
+            run_validate_dictionary(args)
+    else:
+        run_validate_dictionary(args)

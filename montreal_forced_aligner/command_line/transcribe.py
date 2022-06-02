@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, List, Optional
 
+import yaml
+
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
 from montreal_forced_aligner.transcription import Transcriber
@@ -37,7 +39,18 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[List[str]] = None)
     try:
         transcriber.setup()
         transcriber.transcribe()
-        transcriber.export_files(args.output_directory)
+        transcriber.export_files(
+            args.output_directory,
+            output_format=getattr(args, "output_format", None),
+            include_original_text=getattr(args, "include_original_text", False),
+        )
+        if getattr(args, "reference_directory", ""):
+            mapping = None
+            if getattr(args, "custom_mapping_path", ""):
+                with open(args.custom_mapping_path, "r", encoding="utf8") as f:
+                    mapping = yaml.safe_load(f)
+            transcriber.load_reference_alignments(args.reference_directory)
+            transcriber.evaluate_alignments(mapping, output_directory=args.output_directory)
     except Exception:
         transcriber.dirty = True
         raise

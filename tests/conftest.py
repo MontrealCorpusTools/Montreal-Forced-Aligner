@@ -113,6 +113,23 @@ def english_us_mfa_dictionary(model_manager):
 
 
 @pytest.fixture(scope="session")
+def english_us_mfa_dictionary_subset(english_us_mfa_dictionary, generated_dir):
+    from montreal_forced_aligner.models import DictionaryModel
+
+    path = os.path.join(generated_dir, "subset_english_us.dict")
+    if not os.path.exists(path):
+        model = DictionaryModel(english_us_mfa_dictionary)
+        with open(model.path, "r", encoding="utf8") as inf, open(
+            path, "w", encoding="utf8"
+        ) as outf:
+            for i, line in enumerate(inf):
+                outf.write(line)
+                if i >= 100:
+                    break
+    return path
+
+
+@pytest.fixture(scope="session")
 def swedish_mfa_acoustic_model(model_manager):
     if not model_manager.has_local_model("acoustic", "swedish_mfa"):
         model_manager.download_model("acoustic", "swedish_mfa")
@@ -167,6 +184,13 @@ def english_g2p_model(model_manager):
     if not model_manager.has_local_model("g2p", "english_us_arpa"):
         model_manager.download_model("g2p", "english_us_arpa")
     return "english_us_arpa"
+
+
+@pytest.fixture(scope="session")
+def english_us_mfa_g2p_model(model_manager):
+    if not model_manager.has_local_model("g2p", "english_us_mfa"):
+        model_manager.download_model("g2p", "english_us_mfa")
+    return "english_us_mfa"
 
 
 @pytest.fixture(scope="session")
@@ -618,6 +642,11 @@ def mono_output_directory(generated_dir):
 @pytest.fixture(scope="session")
 def textgrid_output_model_path(generated_dir):
     return os.path.join(generated_dir, "textgrid_output_model.zip")
+
+
+@pytest.fixture(scope="session")
+def acoustic_g2p_model_path(generated_dir):
+    return os.path.join(generated_dir, "acoustic_g2p_output_model.zip")
 
 
 @pytest.fixture(scope="session")

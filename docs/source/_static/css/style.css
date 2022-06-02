@@ -13,13 +13,14 @@
 }
 
 
-
 a.external::after{
-content: "  \f35d";
+content: "\f35d";
 font-size: 0.75em;
 text-align: center;
 vertical-align: middle;
 padding-bottom: 0.45em;
+font-family: "Font Awesome 5 Free";
+font-weight: 900;
 }
 
 :root {

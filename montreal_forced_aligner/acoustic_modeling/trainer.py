@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -88,7 +89,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             self.add_config(k, v)
 
     @classmethod
-    def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
+    def default_training_configurations(cls, train_g2p=False) -> List[Tuple[str, Dict[str, Any]]]:
         """Default MFA training configuration"""
         training_params = []
         training_params.append(("monophone", {"subset": 10000, "boost_silence": 1.25}))
@@ -112,12 +113,17 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         training_params.append(
             ("sat", {"subset": 50000, "num_leaves": 4200, "max_gaussians": 40000})
         )
-        training_params.append(("pronunciation_probabilities", {"subset": 50000}))
+        training_params.append(
+            ("pronunciation_probabilities", {"subset": 50000, "train_g2p": train_g2p})
+        )
         training_params.append(
             ("sat", {"subset": 150000, "num_leaves": 5000, "max_gaussians": 100000})
         )
         training_params.append(
-            ("pronunciation_probabilities", {"subset": 150000, "optional": True})
+            (
+                "pronunciation_probabilities",
+                {"subset": 150000, "optional": True, "train_g2p": train_g2p},
+            )
         )
         training_params.append(
             (
@@ -181,7 +187,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             if training_params:
                 use_default = False
         if use_default:  # default training configuration
-            training_params = TrainableAligner.default_training_configurations()
+            training_params = TrainableAligner.default_training_configurations(
+                train_g2p=getattr(args, "train_g2p", False)
+            )
         if training_params:
             if training_params[0][0] != "monophone":
                 raise ConfigError("The first round of training must be monophone.")
@@ -312,15 +320,40 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 "pronunciation_probabilities"
             ].silence_probabilities
             with self.session() as session:
-                for (d_id,) in session.query(Dictionary.id):
-                    base_name = self.dictionary_base_names[d_id]
-                    output_dictionary_path = os.path.join(export_directory, base_name)
-                    self.export_lexicon(
-                        d_id,
-                        output_dictionary_path,
-                        probability=True,
-                        silence_probabilities=silence_probs,
-                    )
+                for d in session.query(Dictionary):
+                    base_name = self.dictionary_base_names[d.id]
+                    if d.use_g2p:
+                        shutil.copyfile(
+                            self.phone_symbol_table_path,
+                            os.path.join(
+                                self.training_configs[self.final_identifier].working_directory,
+                                "phones.txt",
+                            ),
+                        )
+                        shutil.copyfile(
+                            self.grapheme_symbol_table_path,
+                            os.path.join(
+                                self.training_configs[self.final_identifier].working_directory,
+                                "graphemes.txt",
+                            ),
+                        )
+                        shutil.copyfile(
+                            d.lexicon_fst_path,
+                            os.path.join(
+                                self.training_configs[self.final_identifier].working_directory,
+                                self.dictionary_base_names[d.id] + ".fst",
+                            ),
+                        )
+                    else:
+                        output_dictionary_path = os.path.join(
+                            export_directory, base_name + ".dict"
+                        )
+                        self.export_lexicon(
+                            d.id,
+                            output_dictionary_path,
+                            probability=True,
+                            silence_probabilities=silence_probs,
+                        )
         self.training_configs[self.final_identifier].export_model(output_model_path)
         self.log_info(f"Saved model to {output_model_path}")
 
@@ -353,6 +386,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 self.current_acoustic_model = AcousticModel(
                     previous.exported_model_path, self.working_directory
                 )
+
                 self.align()
             if trainer.identifier.startswith("pronunciation_probabilities"):
                 trainer.train_pronunciation_probabilities()
@@ -369,7 +403,12 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             previous.exported_model_path, self.working_directory
         )
 
-    def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:
+    def export_files(
+        self,
+        output_directory: str,
+        output_format: Optional[str] = None,
+        include_original_text: bool = False,
+    ) -> None:
         """
         Export a TextGrid file for every sound file in the dataset
 
@@ -379,7 +418,9 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             Directory to save to
         """
         self.align()
-        super(TrainableAligner, self).export_files(output_directory, output_format)
+        super(TrainableAligner, self).export_files(
+            output_directory, output_format, include_original_text
+        )
 
     @property
     def num_current_utterances(self) -> int:
@@ -416,6 +457,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             return
         try:
             self.current_acoustic_model.export_model(self.working_directory)
+            self.speaker_independent = True
             self.compile_train_graphs()
             self.align_utterances()
             if self.current_acoustic_model.meta["features"]["uses_speaker_adaptation"]:
@@ -427,7 +469,6 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                         if not os.path.exists(path):
                             missing_transforms = True
                 if missing_transforms:
-                    self.speaker_independent = True
                     assert self.alignment_model_path.endswith(".alimdl")
                     self.calc_fmllr()
                 self.speaker_independent = False

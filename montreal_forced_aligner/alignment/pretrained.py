@@ -1,30 +1,27 @@
 """Class definitions for aligning with pretrained acoustic models"""
 from __future__ import annotations
 
-import csv
-import functools
-import multiprocessing as mp
 import os
+import shutil
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-import sqlalchemy
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
+from montreal_forced_aligner.data import PhoneType
 from montreal_forced_aligner.db import (
-    Corpus,
-    DictBundle,
     Dictionary,
-    File,
+    Grapheme,
+    Phone,
     PhoneInterval,
     Speaker,
     Utterance,
     WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignerError, KaldiProcessingError
-from montreal_forced_aligner.helper import align_phones, load_configuration, parse_old_features
+from montreal_forced_aligner.helper import load_configuration, parse_old_features
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.online.alignment import (
     OnlineAlignmentArguments,
@@ -72,6 +69,111 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         """Working directory"""
         return self.workflow_directory
 
+    def setup_acoustic_model(self) -> None:
+        self.acoustic_model.export_model(self.working_directory)
+        os.makedirs(self.phones_dir, exist_ok=True)
+        exist_check = os.path.exists(self.db_path)
+        if not exist_check:
+            self.initialize_database()
+        for f in ["phones.txt", "graphemes.txt"]:
+            path = os.path.join(self.working_directory, f)
+            if os.path.exists(path):
+                os.rename(path, os.path.join(self.phones_dir, f))
+        dict_info = self.acoustic_model.meta.get("dictionaries", None)
+        if not dict_info:
+            return
+        os.makedirs(self.dictionary_output_directory, exist_ok=True)
+        self.oov_word = dict_info["oov_word"]
+        self.silence_word = dict_info["silence_word"]
+        self.bracketed_word = dict_info["bracketed_word"]
+        self.use_g2p = dict_info["use_g2p"]
+        self.laughter_word = dict_info["laughter_word"]
+        self.clitic_marker = dict_info["clitic_marker"]
+        self.position_dependent_phones = dict_info["position_dependent_phones"]
+        self.compile_regexes()
+        if not self.use_g2p:
+            return
+        dictionary_id_cache = {}
+        with self.session() as session:
+            for speaker_id, speaker_name, dictionary_id, dict_name, path in (
+                session.query(
+                    Speaker.id, Speaker.name, Dictionary.id, Dictionary.name, Dictionary.path
+                )
+                .outerjoin(Speaker.dictionary)
+                .filter(Dictionary.default == False)  # noqa
+            ):
+                if speaker_id is not None:
+                    self._speaker_ids[speaker_name] = speaker_id
+                dictionary_id_cache[path] = dictionary_id
+                self.dictionary_lookup[dict_name] = dictionary_id
+            dictionary = (
+                session.query(Dictionary).filter(Dictionary.default == True).first()  # noqa
+            )
+            if dictionary:
+                self._default_dictionary_id = dictionary.id
+                dictionary_id_cache[dictionary.path] = self._default_dictionary_id
+                self.dictionary_lookup[dictionary.name] = dictionary.id
+            for dict_name in dict_info["names"]:
+                dictionary = Dictionary(
+                    name=dict_name,
+                    path=dict_name,
+                    phone_set_type=self.phone_set_type,
+                    root_temp_directory=self.dictionary_output_directory,
+                    position_dependent_phones=self.position_dependent_phones,
+                    clitic_marker=self.clitic_marker,
+                    bracket_regex=self.bracket_regex.pattern,
+                    clitic_cleanup_regex=self.clitic_cleanup_regex.pattern,
+                    laughter_regex=self.laughter_regex.pattern,
+                    default=dict_name == dict_info["default"],
+                    use_g2p=self.use_g2p,
+                    max_disambiguation_symbol=0,
+                    silence_word=self.silence_word,
+                    oov_word=self.oov_word,
+                    bracketed_word=self.bracketed_word,
+                    laughter_word=self.laughter_word,
+                    optional_silence_phone=self.optional_silence_phone,
+                )
+                session.add(dictionary)
+                session.flush()
+                dictionary_id_cache[dict_name] = dictionary.id
+                if dictionary.default:
+                    self._default_dictionary_id = dictionary.id
+                fst_path = os.path.join(self.acoustic_model.dirname, dict_name + ".fst")
+                if os.path.exists(fst_path):
+                    os.makedirs(dictionary.temp_directory, exist_ok=True)
+                    shutil.copyfile(fst_path, os.path.join(dictionary.temp_directory, "L.fst"))
+            phone_objs = []
+            with open(self.phone_symbol_table_path, "r", encoding="utf8") as f:
+                for line in f:
+                    line = line.strip()
+                    phone, mapping_id = line.split()
+                    mapping_id = int(mapping_id)
+                    phone_type = PhoneType.non_silence
+                    if phone.startswith("#"):
+                        phone_type = PhoneType.disambiguation
+                    elif phone in self.kaldi_silence_phones:
+                        phone_type = PhoneType.silence
+                    phone_objs.append(
+                        {
+                            "id": mapping_id + 1,
+                            "mapping_id": mapping_id,
+                            "phone": phone,
+                            "phone_type": phone_type,
+                        }
+                    )
+            grapheme_objs = []
+            with open(self.grapheme_symbol_table_path, "r", encoding="utf8") as f:
+                for line in f:
+                    line = line.strip()
+                    grapheme, mapping_id = line.split()
+                    mapping_id = int(mapping_id)
+                    grapheme_objs.append(
+                        {"id": mapping_id + 1, "mapping_id": mapping_id, "grapheme": grapheme}
+                    )
+            session.bulk_insert_mappings(Grapheme, grapheme_objs)
+            session.bulk_insert_mappings(Phone, phone_objs)
+            session.commit()
+
     def setup(self) -> None:
         """Setup for alignment"""
         if self.initialized:
@@ -85,6 +187,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     "There were some differences in the current run compared to the last one. "
                     "This may cause issues, run with --clean, if you hit an error."
                 )
+            self.setup_acoustic_model()
             self.load_corpus()
             if self.excluded_pronunciation_count:
                 self.log_warning(
@@ -93,7 +196,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     f"trained acoustic model.  Please run `mfa validate` to get more details."
                 )
             self.acoustic_model.validate(self)
-            self.acoustic_model.export_model(self.working_directory)
             import logging
 
             logger = logging.getLogger(self.identifier)
@@ -163,197 +265,6 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
     def workflow_identifier(self) -> str:
         """Aligner identifier"""
         return "pretrained_aligner"
-
-    def evaluate(
-        self,
-        mapping: Optional[Dict[str, str]] = None,
-        output_directory: Optional[str] = None,
-    ) -> None:
-        """
-        Evaluate alignments against a reference directory
-
-        Parameters
-        ----------
-        mapping: dict[str, Union[str, list[str]]], optional
-            Mapping between phones that should be considered equal across different phone set types
-        output_directory: str, optional
-            Directory to save results, if not specified, it will be saved in the log directory
-        """
-        begin = time.time()
-        if output_directory:
-            csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
-        else:
-            csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
-        csv_header = [
-            "file",
-            "begin",
-            "end",
-            "speaker",
-            "duration",
-            "normalized_text",
-            "oovs",
-            "reference_phone_count",
-            "alignment_score",
-            "phone_error_rate",
-            "alignment_log_likelihood",
-            "word_count",
-            "oov_count",
-        ]
-
-        score_count = 0
-        score_sum = 0
-        phone_edit_sum = 0
-        phone_length_sum = 0
-        if self.alignment_evaluation_done:
-            self.log_info("Exporting saved evaluation...")
-            with self.session() as session, open(csv_path, "w", encoding="utf8", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=csv_header)
-                writer.writeheader()
-                bn = DictBundle(
-                    "evaluation_data",
-                    File.c.name.label("file"),
-                    Utterance.begin,
-                    Utterance.end,
-                    Speaker.c.name.label("speaker"),
-                    Utterance.duration,
-                    Utterance.normalized_text,
-                    Utterance.oovs,
-                    sqlalchemy.func.count(Utterance.reference_phone_intervals).label(
-                        "reference_phone_count"
-                    ),
-                    Utterance.alignment_score,
-                    Utterance.phone_error_rate,
-                    Utterance.alignment_log_likelihood,
-                )
-                utterances = (
-                    session.query(bn)
-                    .join(Utterance.speaker)
-                    .join(Utterance.file)
-                    .group_by(Utterance.id)
-                    .join(Utterance.reference_phone_intervals)
-                )
-                for line in utterances:
-                    data = line["evaluation_data"]
-                    data["word_count"] = len(data["normalized_text"].split())
-                    data["oov_count"] = len(data["oovs"].split())
-                    phone_error_rate = data["phone_error_rate"]
-                    reference_phone_count = data["reference_phone_count"]
-                    if data["alignment_score"] is not None:
-                        score_count += 1
-                        score_sum += data["alignment_score"]
-                    phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                    phone_length_sum += reference_phone_count
-                    writer.writerow(data)
-        else:
-            # Set up
-            self.log_info("Evaluating alignments...")
-            self.log_debug(f"Mapping: {mapping}")
-            update_mappings = []
-            indices = []
-            to_comp = []
-            score_func = functools.partial(
-                align_phones,
-                silence_phone=self.optional_silence_phone,
-                ignored_phones={self.oov_phone},
-                custom_mapping=mapping,
-            )
-            with self.session() as session:
-                unaligned_utts = []
-                utterances = session.query(Utterance).options(
-                    subqueryload(Utterance.reference_phone_intervals),
-                    subqueryload(Utterance.phone_intervals),
-                    joinedload(Utterance.file, innerjoin=True),
-                    joinedload(Utterance.speaker, innerjoin=True),
-                )
-                for u in utterances:
-                    reference_phone_count = len(u.reference_phone_intervals)
-                    if not reference_phone_count:
-                        continue
-                    if u.alignment_log_likelihood is None:  # couldn't be aligned
-                        phone_error_rate = reference_phone_count
-                        unaligned_utts.append(u)
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "alignment_score": None,
-                                "phone_error_rate": phone_error_rate,
-                            }
-                        )
-                        continue
-                    reference_phone_labels = [x.as_ctm() for x in u.reference_phone_intervals]
-                    phone_labels = [x.as_ctm() for x in u.phone_intervals]
-                    indices.append(u)
-                    to_comp.append((reference_phone_labels, phone_labels))
-
-                with mp.Pool(self.num_jobs) as pool, open(
-                    csv_path, "w", encoding="utf8", newline=""
-                ) as f:
-                    writer = csv.DictWriter(f, fieldnames=csv_header)
-                    writer.writeheader()
-                    gen = pool.starmap(score_func, to_comp)
-                    for u in unaligned_utts:
-                        word_count = len(u.normalized_text.split())
-                        oov_count = len(u.oovs.split())
-                        reference_phone_count = len(u.reference_phone_intervals)
-                        writer.writerow(
-                            {
-                                "file": u.file_name,
-                                "begin": u.begin,
-                                "end": u.end,
-                                "speaker": u.speaker_name,
-                                "duration": u.duration,
-                                "normalized_text": u.normalized_text,
-                                "oovs": u.oovs,
-                                "reference_phone_count": reference_phone_count,
-                                "alignment_score": None,
-                                "phone_error_rate": reference_phone_count,
-                                "alignment_log_likelihood": None,
-                                "word_count": word_count,
-                                "oov_count": oov_count,
-                            }
-                        )
-                    for i, (score, phone_error_rate) in enumerate(gen):
-                        if score is None:
-                            continue
-                        u = indices[i]
-
-                        word_count = len(u.normalized_text.split())
-                        oov_count = len(u.oovs.split())
-                        reference_phone_count = len(u.reference_phone_intervals)
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "alignment_score": score,
-                                "phone_error_rate": phone_error_rate,
-                            }
-                        )
-                        writer.writerow(
-                            {
-                                "file": u.file_name,
-                                "begin": u.begin,
-                                "end": u.end,
-                                "speaker": u.speaker_name,
-                                "duration": u.duration,
-                                "normalized_text": u.normalized_text,
-                                "oovs": u.oovs,
-                                "reference_phone_count": reference_phone_count,
-                                "alignment_score": score,
-                                "phone_error_rate": phone_error_rate,
-                                "alignment_log_likelihood": u.alignment_log_likelihood,
-                                "word_count": word_count,
-                                "oov_count": oov_count,
-                            }
-                        )
-                        score_count += 1
-                        score_sum += score
-                        phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                        phone_length_sum += reference_phone_count
-                session.bulk_update_mappings(Utterance, update_mappings)
-                session.query(Corpus).update({"alignment_evaluation_done": True})
-                session.commit()
-        self.log_info(f"Average overlap score: {score_sum/score_count}")
-        self.log_info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
-        self.log_debug(f"Alignment evaluation took {time.time()-begin} seconds")
 
     def align_one_utterance(self, utterance: Utterance, session: Session) -> None:
         """

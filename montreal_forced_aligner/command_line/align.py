@@ -38,14 +38,18 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
     try:
         aligner.align()
         output_format = getattr(args, "output_format", None)
-        aligner.export_files(args.output_directory, output_format=output_format)
+        aligner.export_files(
+            args.output_directory,
+            output_format=output_format,
+            include_original_text=getattr(args, "include_original_text", False),
+        )
         if getattr(args, "reference_directory", ""):
             mapping = None
             if getattr(args, "custom_mapping_path", ""):
                 with open(args.custom_mapping_path, "r", encoding="utf8") as f:
                     mapping = yaml.safe_load(f)
             aligner.load_reference_alignments(args.reference_directory)
-            aligner.evaluate(mapping, output_directory=args.output_directory)
+            aligner.evaluate_alignments(mapping, output_directory=args.output_directory)
     except Exception:
         aligner.dirty = True
         raise

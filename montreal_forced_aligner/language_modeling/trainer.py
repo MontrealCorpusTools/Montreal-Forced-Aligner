@@ -259,13 +259,13 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             num_oovs = None
             perplexity = None
             for line in stdout.splitlines():
-                m = re.search(r"(\d+) sentences", line)
+                m = re.search(r"\d+ sentences", line)
                 if m:
                     num_sentences = m.group(0)
-                m = re.search(r"(\d+) words", line)
+                m = re.search(r"\d+ words", line)
                 if m:
                     num_words = m.group(0)
-                m = re.search(r"(\d+) OOVs", line)
+                m = re.search(r"\d+ OOVs", line)
                 if m:
                     num_oovs = m.group(0)
                 m = re.search(r"perplexity = (?P<perplexity>[\d.]+)", line)
@@ -275,7 +275,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             self.num_sentences = num_sentences
             self.num_words = num_words
             self.num_oovs = num_oovs
-            self.log_info(f"{num_sentences} sentences, {num_words} words, {num_oovs} oovs")
+            self.log_info(f"{num_sentences}, {num_words}, {num_oovs}")
             self.log_info(f"Perplexity of large model: {perplexity}")
 
             perplexity_proc = subprocess.Popen(
@@ -333,7 +333,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         str
             Normalized text
         """
-        unk_words = {k for k, v in self.word_counts.items() if v <= min_count}
+        unk_words = {k for k, v in self.word_counts.items() if v <= min_count} | self.specials_set
 
         with self.session() as session:
             utterances = session.query(Utterance.normalized_text)
@@ -369,7 +369,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         subprocess.check_call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
         assert os.path.exists(self.large_arpa_path)
 
-        self.log_info("Large ngam model created!")
+        self.log_info("Large ngram model created!")
 
     def train(self) -> None:
         """
@@ -462,7 +462,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
             )
         assert os.path.exists(self.mod_path)
 
-        self.log_info("Large ngam model parsed!")
+        self.log_info("Large ngram model parsed!")
 
         self.prune_large_language_model()
 

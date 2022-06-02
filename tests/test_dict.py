@@ -67,9 +67,13 @@ def test_extra_annotations(extra_annotations_path, generated_dir):
     dictionary = MultispeakerDictionary(
         dictionary_path=extra_annotations_path, temporary_directory=output_directory
     )
-    graphemes, _ = dictionary.dictionary_setup()
+    dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
-    assert "{" in graphemes
+    from montreal_forced_aligner.db import Grapheme
+
+    with dictionary.session() as session:
+        g = session.query(Grapheme).filter_by(grapheme="{").first()
+        assert g is not None
 
 
 def test_abstract_noposition(abstract_dict_path, generated_dir):
@@ -80,7 +84,7 @@ def test_abstract_noposition(abstract_dict_path, generated_dir):
         position_dependent_phones=False,
         temporary_directory=output_directory,
     )
-    graphemes, _ = dictionary.dictionary_setup()
+    dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     assert set(dictionary.phones) == {"sil", "spn", "phonea", "phoneb", "phonec"}
 
@@ -248,7 +252,6 @@ def test_xsampa_dir(xsampa_dict_path, generated_dir):
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     s, spl = dictionary.sanitize_function.get_functions_for_speaker("default")
-    assert not spl.clitic_set
     assert spl.split_clitics(r"r\{und") == [r"r\{und"]
     assert spl.split_clitics("{bI5s@`n") == ["{bI5s@`n"]
     assert dictionary.word_mapping(1)[r"r\{und"]
@@ -276,9 +279,8 @@ def test_vietnamese_tones(vietnamese_dict_path, generated_dir):
         temporary_directory=output_directory,
         phone_set_type="IPA",
     )
-    graphemes, phone_counts = d.dictionary_setup()
+    d.dictionary_setup()
     assert d.get_base_phone("o˨˩ˀ") == "o"
-    assert "o˦˩" in phone_counts
     assert "o" in d.kaldi_grouped_phones
     assert "o˨˩ˀ" in d.kaldi_grouped_phones["o"]
     assert "o˦˩" in d.kaldi_grouped_phones["o"]
@@ -292,7 +294,7 @@ def test_vietnamese_tones(vietnamese_dict_path, generated_dir):
         preserve_suprasegmentals=True,
         phone_set_type="IPA",
     )
-    graphemes, phone_counts = d.dictionary_setup()
+    d.dictionary_setup()
 
     assert d.get_base_phone("o˨˩ˀ") == "o˨˩ˀ"
     assert "o" not in d.kaldi_grouped_phones

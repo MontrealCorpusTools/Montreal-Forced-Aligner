@@ -11,9 +11,10 @@ import typing
 from typing import Dict, List
 
 from praatio import textgrid as tgio
+from praatio.data_classes.interval_tier import Interval
 
 from montreal_forced_aligner.data import CtmInterval, TextFileType
-from montreal_forced_aligner.exceptions import TextGridParseError
+from montreal_forced_aligner.exceptions import AlignmentExportError, TextGridParseError
 
 __all__ = [
     "process_ctm_line",
@@ -51,7 +52,9 @@ def process_ctm_line(line: str) -> CtmInterval:
     return CtmInterval(begin, end, label, utt)
 
 
-def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[str, str]) -> None:
+def output_textgrid_writing_errors(
+    output_directory: str, export_errors: Dict[str, AlignmentExportError]
+) -> None:
     """
     Output any errors that were encountered in writing TextGrids
 
@@ -59,21 +62,20 @@ def output_textgrid_writing_errors(output_directory: str, export_errors: Dict[st
     ----------
     output_directory: str
         Directory to save TextGrids files
-    export_errors: dict[str, str]
+    export_errors: dict[str, :class:`~montreal_forced_aligner.exceptions.AlignmentExportError]
         Dictionary of errors encountered
     """
     error_log = os.path.join(output_directory, "output_errors.txt")
     if os.path.exists(error_log):
         os.remove(error_log)
-    for file_name, result in export_errors.items():
+    for result in export_errors.values():
         if not os.path.exists(error_log):
             with open(error_log, "w", encoding="utf8") as f:
                 f.write(
                     "The following exceptions were encountered during the output of the alignments to TextGrids:\n\n"
                 )
         with open(error_log, "a", encoding="utf8") as f:
-            f.write(f"{file_name}:\n")
-            f.write(f"{result}\n\n")
+            f.write(f"{str(result)}\n\n")
 
 
 def parse_aligned_textgrid(
@@ -139,49 +141,48 @@ def export_textgrid(
     tg = tgio.Textgrid()
     tg.minTimestamp = 0
     tg.maxTimestamp = duration
-
+    include_utterance_text = False
     if len(speaker_data) > 1:
         for speaker in speaker_data:
-            word_tier_name = f"{speaker} - words"
-            phone_tier_name = f"{speaker} - phones"
+            if "utterances" in speaker_data[speaker]:
+                include_utterance_text = True
+                tg.addTier(tgio.IntervalTier(f"{speaker} - utterances", [], minT=0, maxT=duration))
 
-            word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=duration)
-            phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=duration)
-            tg.addTier(word_tier)
-            tg.addTier(phone_tier)
+            tg.addTier(tgio.IntervalTier(f"{speaker} - words", [], minT=0, maxT=duration))
+            tg.addTier(tgio.IntervalTier(f"{speaker} - phones", [], minT=0, maxT=duration))
     else:
-        word_tier_name = "words"
-        phone_tier_name = "phones"
-        word_tier = tgio.IntervalTier(word_tier_name, [], minT=0, maxT=duration)
-        phone_tier = tgio.IntervalTier(phone_tier_name, [], minT=0, maxT=duration)
-        tg.addTier(word_tier)
-        tg.addTier(phone_tier)
+        if "utterances" in list(speaker_data.values())[0]:
+            include_utterance_text = True
+            tg.addTier(tgio.IntervalTier("utterances", [], minT=0, maxT=duration))
+        tg.addTier(tgio.IntervalTier("words", [], minT=0, maxT=duration))
+        tg.addTier(tgio.IntervalTier("phones", [], minT=0, maxT=duration))
     has_data = False
     for speaker, data in speaker_data.items():
-        words = data["words"]
-        phones = data["phones"]
-        if len(words) and len(phones):
+        if len(data["phones"]):
             has_data = True
-        tg_words = []
-        tg_phones = []
-        for w in words:
-            if duration - w.end < frame_shift:  # Fix rounding issues
-                w.end = duration
-            tg_words.append(w.to_tg_interval())
-        for p in phones:
-            if duration - p.end < frame_shift:  # Fix rounding issues
-                p.end = duration
-            tg_phones.append(p.to_tg_interval())
-
         if len(speaker_data) > 1:
             word_tier_name = f"{speaker} - words"
             phone_tier_name = f"{speaker} - phones"
+            utterance_tier_name = f"{speaker} - utterances"
         else:
             word_tier_name = "words"
             phone_tier_name = "phones"
-        word_tier = tgio.IntervalTier(word_tier_name, tg_words, minT=0, maxT=duration)
-        phone_tier = tgio.IntervalTier(phone_tier_name, tg_phones, minT=0, maxT=duration)
-        tg.replaceTier(word_tier_name, word_tier)
-        tg.replaceTier(phone_tier_name, phone_tier)
+            utterance_tier_name = "utterances"
+        for w in data["words"]:
+            if duration - w.end < (frame_shift * 2):  # Fix rounding issues
+                w.end = duration
+            tg.tierDict[word_tier_name].entryList.append(w.to_tg_interval())
+        for p in data["phones"]:
+            if duration - p.end < (frame_shift * 2):  # Fix rounding issues
+                p.end = duration
+            tg.tierDict[phone_tier_name].entryList.append(p.to_tg_interval())
+        if include_utterance_text:
+            for u in data["utterances"]:
+                tg.tierDict[utterance_tier_name].entryList.append(u.to_tg_interval())
+    for tier in tg.tierDict.values():
+        if tier.entryList[-1][1] > tg.maxTimestamp:
+            tier.entryList[-1] = Interval(
+                tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
+            )
     if has_data:
         tg.save(output_path, includeBlankSpaces=True, format=output_format, reportingMode="error")

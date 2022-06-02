@@ -189,15 +189,15 @@ def get_wav_info(
                     use_sox = True
             except Exception:
                 use_sox = True
+        sample_rate_string = ""
+        if enforce_sample_rate is not None:
+            sample_rate_string = f" -r {enforce_sample_rate}"
         if format != "wav":
             use_sox = True
         if num_channels > 1 and enforce_mono:
             use_sox = True
         elif enforce_sample_rate is not None and sample_rate != enforce_sample_rate:
             use_sox = True
-        sample_rate_string = ""
-        if enforce_sample_rate is not None:
-            sample_rate_string = f" -r {enforce_sample_rate}"
         if num_channels > 1 and enforce_mono:
             sox_string = f'sox "{file_path}" -t wav -b 16{sample_rate_string} - remix 1  |'
         elif use_sox:

@@ -21,11 +21,12 @@ import tqdm
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
 
-from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.abc import TopLevelMfaWorker
+from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
-from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.data import TextgridFormats
+from montreal_forced_aligner.data import TextFileType, TextgridFormats
 from montreal_forced_aligner.db import (
+    Corpus,
     Dictionary,
     File,
     SoundFile,
@@ -233,7 +234,9 @@ class TranscriberMixin:
 
         update_mappings = []
         with self.session() as session:
-            utterances = session.query(Utterance).filter(Utterance.normalized_text != None)  # noqa
+            utterances = session.query(Utterance)
+            utterances = utterances.filter(Utterance.normalized_text != None)  # noqa
+            utterances = utterances.filter(Utterance.normalized_text != "")
             for utt in utterances:
                 g = utt.normalized_text.split()
                 total_count += 1
@@ -321,9 +324,7 @@ class TranscriberMixin:
         }
 
 
-class Transcriber(
-    AcousticCorpusPronunciationMixin, TranscriberMixin, FileExporterMixin, TopLevelMfaWorker
-):
+class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
     """
     Class for performing transcription.
 
@@ -369,6 +370,7 @@ class Transcriber(
         min_language_model_weight: int = 7,
         max_language_model_weight: int = 17,
         word_insertion_penalties: List[float] = None,
+        output_type: str = "transcription",
         **kwargs,
     ):
         self.acoustic_model = AcousticModel(acoustic_model_path)
@@ -381,6 +383,7 @@ class Transcriber(
         self.max_language_model_weight = max_language_model_weight
         self.evaluation_mode = evaluation_mode
         self.word_insertion_penalties = word_insertion_penalties
+        self.output_type = output_type
 
     @classmethod
     def parse_parameters(
@@ -536,6 +539,7 @@ class Transcriber(
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
                 j.construct_dictionary_dependent_paths(self.model_directory, "words", "txt"),
                 j.construct_path_dictionary(self.evaluation_directory, "tra", "scp"),
+                j.construct_path_dictionary(self.evaluation_directory, "ali", "ark"),
             )
             for j in self.jobs
         ]
@@ -798,6 +802,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -806,9 +813,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     result, hclg_path = result
                     if result:
@@ -958,6 +962,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -968,9 +975,6 @@ class Transcriber(
                             break
                         continue
                     pbar.update(1)
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
 
                     (
                         utterance,
@@ -1035,7 +1039,7 @@ class Transcriber(
                     )
                     self.score()
 
-                    ser, wer = self.evaluate()
+                    ser, wer = self.evaluate_transcriptions()
                     if wer < best_wer:
                         best = (lmwt, wip)
                         best_wer = wer
@@ -1066,7 +1070,7 @@ class Transcriber(
         """
         self.log_info("Calculating initial fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1080,6 +1084,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1089,12 +1096,7 @@ class Transcriber(
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
-                    done, no_gpost, other_errors = result
-                    sum_errors += no_gpost + other_errors
-                    pbar.update(done + no_gpost + other_errors)
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1103,9 +1105,8 @@ class Transcriber(
             else:
                 for args in self.initial_fmllr_arguments():
                     function = InitialFmllrFunction(args)
-                    for done, no_gpost, other_errors in function.run():
-                        sum_errors += no_gpost + other_errors
-                        pbar.update(done + no_gpost + other_errors)
+                    for _ in function.run():
+                        pbar.update(1)
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
@@ -1142,6 +1143,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1150,9 +1154,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     pbar.update(1)
                     utterance, log_likelihood, num_frames = result
@@ -1182,7 +1183,7 @@ class Transcriber(
         """
         self.log_info("Calculating final fMLLR transforms...")
         sum_errors = 0
-        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
+        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
             if self.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
@@ -1196,6 +1197,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1205,12 +1209,7 @@ class Transcriber(
                         else:
                             break
                         continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
-                    done, no_gpost, other_errors = result
-                    sum_errors += no_gpost + other_errors
-                    pbar.update(done + no_gpost + other_errors)
+                    pbar.update(1)
                 for p in procs:
                     p.join()
                 if error_dict:
@@ -1219,9 +1218,8 @@ class Transcriber(
             else:
                 for args in self.final_fmllr_arguments():
                     function = FinalFmllrFunction(args)
-                    for done, no_gpost, other_errors in function.run():
-                        sum_errors += no_gpost + other_errors
-                        pbar.update(done + no_gpost + other_errors)
+                    for _ in function.run():
+                        pbar.update(1)
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
@@ -1252,6 +1250,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1260,9 +1261,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     done, errors = result
                     sum_errors += errors
@@ -1346,6 +1344,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1354,9 +1355,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     utterance, log_likelihood, num_frames = result
                     log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
@@ -1401,6 +1399,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1409,9 +1410,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     succeeded, failed = result
                     if failed:
@@ -1459,6 +1457,9 @@ class Transcriber(
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -1467,9 +1468,6 @@ class Transcriber(
                                 break
                         else:
                             break
-                        continue
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
                         continue
                     succeeded, failed = result
                     if failed:
@@ -1537,7 +1535,7 @@ class Transcriber(
                 e.update_log_file(logger)
             raise
 
-    def evaluate(self):
+    def evaluate_transcriptions(self):
         """
         Evaluates the transcripts if there are reference transcripts
 
@@ -1573,20 +1571,21 @@ class Transcriber(
                                 }
                             )
             session.bulk_update_mappings(Utterance, records)
+            self.transcription_done = True
+            session.query(Corpus).update({"transcription_done": True})
             session.commit()
 
-    def export_files(self, output_directory: str) -> None:
+    def collect_alignments(self) -> None:
         """
-        Export transcriptions
+        Collect word and phone alignments from alignment archives
+        """
+        if self.alignment_done:
+            if self.export_output_directory is not None:
+                self.export_textgrids()
+            return
+        self._collect_alignments()
 
-        Parameters
-        ----------
-        output_directory: str
-            Directory to save transcriptions
-        """
-        if not self.overwrite and os.path.exists(output_directory):
-            output_directory = os.path.join(self.working_directory, "transcriptions")
-        os.makedirs(output_directory, exist_ok=True)
+    def export_transcriptions(self):
         self._load_transcripts()
         with self.session() as session:
             files = session.query(File).options(
@@ -1609,7 +1608,10 @@ class Transcriber(
                 else:
                     output_format = TextgridFormats.SHORT_TEXTGRID
                 output_path = construct_output_path(
-                    file.name, file.relative_path, output_directory, output_format=output_format
+                    file.name,
+                    file.relative_path,
+                    self.export_output_directory,
+                    output_format=output_format,
                 )
                 data = file.construct_transcription_tiers()
                 if output_format == "lab":
@@ -1630,4 +1632,29 @@ class Transcriber(
                         tg.addTier(tier)
                     tg.save(output_path, includeBlankSpaces=True, format=output_format)
         if self.evaluation_mode:
-            self.save_transcription_evaluation(output_directory)
+            self.save_transcription_evaluation(self.export_output_directory)
+
+    def export_files(
+        self,
+        output_directory: str,
+        output_format: Optional[str] = None,
+        include_original_text: bool = False,
+    ) -> None:
+        """
+        Export transcriptions
+
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save transcriptions
+        output_format: str, optional
+            Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
+        """
+        if output_format is None:
+            output_format = TextFileType.TEXTGRID.value
+        self.export_output_directory = output_directory
+        os.makedirs(self.export_output_directory, exist_ok=True)
+        if self.output_type == "transcription":
+            self.export_transcriptions()
+        else:
+            self.export_textgrids(output_format, include_original_text)

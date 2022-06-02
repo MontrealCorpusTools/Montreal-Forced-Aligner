@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import itertools
 import json
+import re
 import typing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
@@ -20,7 +21,6 @@ from colorama import Fore, Style
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.data import WordData
     from montreal_forced_aligner.textgrid import CtmInterval
 
 
@@ -482,6 +482,19 @@ def comma_join(sequence: List[Any]) -> str:
     return f"{', '.join(sequence[:-1])}, and {sequence[-1]}"
 
 
+def make_re_character_set_safe(
+    characters: typing.Collection[str], extra_strings: Optional[List[str]] = None
+):
+    characters = sorted(characters)
+    extra = ""
+    if "-" in characters:
+        extra = "-"
+        characters = [x for x in characters if x != "-"]
+    if extra_strings:
+        extra += "".join(extra_strings)
+    return f"[{extra}{re.escape(''.join(characters))}]"
+
+
 def make_safe(element: Any) -> str:
     """
     Helper function to make an element a string
@@ -650,7 +663,7 @@ def edit_distance(x: List[str], y: List[str]) -> int:
     return int(table[-1][-1])
 
 
-def score_g2p(gold: WordData, hypo: WordData) -> Tuple[int, int]:
+def score_g2p(gold: List[str], hypo: List[str]) -> Tuple[int, int]:
     """
     Computes sufficient statistics for LER calculation.
 
@@ -668,13 +681,13 @@ def score_g2p(gold: WordData, hypo: WordData) -> Tuple[int, int]:
     int
         Length of the gold labels
     """
-    for h in hypo.pronunciations:
-        if h in gold.pronunciations:
+    for h in hypo:
+        if h in gold:
             return 0, len(h)
     edits = 100000
     best_length = 100000
-    for (g, h) in itertools.product(gold.pronunciations, hypo.pronunciations):
-        e = edit_distance(g, h)
+    for (g, h) in itertools.product(gold, hypo):
+        e = edit_distance(g.split(), h.split())
         if e < edits:
             edits = e
             best_length = len(g)

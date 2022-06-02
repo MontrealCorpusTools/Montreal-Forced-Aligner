@@ -30,8 +30,22 @@ and logs any of the following issues:
 
 .. _running_the_validator:
 
-Running the validation utility
-==============================
+Running the corpus validation utility
+=====================================
+
+
+Command reference
+-----------------
+
+.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
+   :prog: mfa
+   :start_command: validate
+   :groups:
+
+.. _running_the_dictionary_validator:
+
+Running the dictionary validation utility
+=========================================
 
 
 Command reference

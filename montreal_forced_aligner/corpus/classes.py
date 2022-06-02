@@ -182,14 +182,20 @@ class FileData:
                     self.speaker_ordering.append(speaker_name)
                 else:
                     speaker_name = root_speaker
+                num_channels = 1
+                if self.wav_info is not None:
+                    duration = self.wav_info.duration
+                    num_channels = self.wav_info.num_channels
+                else:
+                    duration = tg.maxTimestamp
                 for begin, end, text in ti.entryList:
                     text = text.lower().strip()
                     if not text:
                         continue
                     begin, end = round(begin, 4), round(end, 4)
-                    end = min(end, self.wav_info.duration)
+                    end = min(end, duration)
                     channel = 0
-                    if self.wav_info.num_channels == 2 and i >= i / len(tg.tierNameList):
+                    if num_channels == 2 and i >= i / len(tg.tierNameList):
                         channel = 1
                     utt = UtteranceData(
                         speaker_name=speaker_name,
@@ -204,12 +210,16 @@ class FileData:
                         continue
                     self.utterances.append(utt)
         else:
+            if self.wav_info is not None:
+                duration = self.wav_info.duration
+            else:
+                duration = 1
             utt = UtteranceData(
                 speaker_name=root_speaker,
                 file_name=self.name,
                 begin=0,
                 channel=0,
-                end=self.wav_info.duration,
+                end=duration,
             )
             self.utterances.append(utt)
             self.speaker_ordering.append(root_speaker)
@@ -247,7 +257,9 @@ class UtteranceData:
     channel: int = 0
     text: str = ""
     normalized_text: str = ""
+    normalized_character_text: str = ""
     normalized_text_int: str = ""
+    normalized_character_text_int: str = ""
     oovs: str = ""
 
     def parse_transcription(self, sanitize_function=Optional[MultispeakerSanitizationFunction]):
@@ -262,7 +274,9 @@ class UtteranceData:
         """
         oovs = set()
         normalized_text = []
+        normalized_character_text = []
         normalized_text_int = []
+        normalized_character_text_int = []
         if not self.text:
             return
         if sanitize_function is not None:
@@ -281,10 +295,19 @@ class UtteranceData:
                         ):
                             oovs.add(new_w)
                         normalized_text.append(new_w)
-                        normalized_text_int.append(str(split.to_int(new_w)))
+                        if split.word_mapping is not None:
+                            normalized_text_int.append(str(split.to_int(new_w)))
+                    if normalized_character_text:
+                        normalized_character_text.append("<space>")
+                        normalized_character_text_int.append(str(split.grapheme_to_int("<space>")))
+                    for c in split.parse_graphemes(w):
+                        normalized_character_text.append(c)
+                        normalized_character_text_int.append(str(split.grapheme_to_int(c)))
                     if text:
                         text += " "
                     text += w
                 self.oovs = " ".join(sorted(oovs))
                 self.normalized_text = " ".join(normalized_text)
+                self.normalized_character_text = " ".join(normalized_character_text)
                 self.normalized_text_int = " ".join(normalized_text_int)
+                self.normalized_character_text_int = " ".join(normalized_character_text_int)

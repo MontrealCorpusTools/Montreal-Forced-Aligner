@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,7 +30,7 @@ import sqlalchemy
 import yaml
 from sqlalchemy.orm import Session
 
-from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
 from montreal_forced_aligner.helper import comma_join, load_configuration
 
 if TYPE_CHECKING:
@@ -65,10 +66,18 @@ class KaldiFunction(metaclass=abc.ABCMeta):
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
 
-    @abc.abstractmethod
     def run(self):
-        """Run the function"""
-        ...
+        """Run the function, calls :meth:`~KaldiFunction._run` with error handling"""
+        try:
+            yield from self._run()
+        except Exception:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            raise MultiprocessingError(self.job_name, error_text)
+
+    def _run(self):
+        """Internal logic for running the worker"""
+        pass
 
     def check_call(self, proc: subprocess.Popen):
         """
@@ -178,6 +187,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     ):
         super().__init__(**kwargs)
         self._db_engine = None
+        self._db_path = None
 
     def initialize_database(self) -> None:
         """
@@ -198,6 +208,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     @property
     def db_path(self) -> str:
         """Path to SQLite database file"""
+        if self._db_path is not None:
+            return self._db_path
         return os.path.join(self.output_directory, f"{self.identifier}.db")
 
     def construct_engine(self, same_thread=True, read_only=False) -> sqlalchemy.engine.Engine:

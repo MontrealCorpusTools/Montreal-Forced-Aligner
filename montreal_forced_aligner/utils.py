@@ -15,11 +15,18 @@ from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ansiwrap
+import sqlalchemy
 from colorama import Fore, Style
+from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import MfaArguments
-from montreal_forced_aligner.exceptions import KaldiProcessingError, ThirdpartyError
+from montreal_forced_aligner.data import DatasetType, MfaArguments
+from montreal_forced_aligner.db import Corpus, Dictionary
+from montreal_forced_aligner.exceptions import (
+    KaldiProcessingError,
+    MultiprocessingError,
+    ThirdpartyError,
+)
 from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
@@ -35,6 +42,59 @@ __all__ = [
     "run_mp",
     "run_non_mp",
 ]
+canary_kaldi_bins = [
+    "compute-mfcc-feats",
+    "compute-and-process-kaldi-pitch-feats",
+    "gmm-align-compiled",
+    "gmm-est-fmllr",
+    "gmm-est-fmllr-gpost",
+    "lattice-oracle",
+    "gmm-latgen-faster",
+    "fstdeterminizestar",
+    "fsttablecompose",
+    "gmm-rescore-lattice",
+]
+
+
+def inspect_database(path: str) -> DatasetType:
+    if not os.path.exists(path):
+        return DatasetType.NONE
+    engine = sqlalchemy.create_engine(f"sqlite:///file:{path}?mode=ro&nolock=1&uri=true")
+    with Session(engine) as session:
+        corpus = session.query(Corpus).first()
+        dictionary = session.query(Dictionary).first()
+        if corpus is None and dictionary is None:
+            return DatasetType.NONE
+        elif corpus is None:
+            return DatasetType.DICTIONARY
+        elif dictionary is None:
+            if corpus.has_sound_files:
+                return DatasetType.ACOUSTIC_CORPUS
+            else:
+                return DatasetType.TEXT_CORPUS
+        if corpus.has_sound_files:
+            return DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY
+        else:
+            return DatasetType.TEXT_CORPUS_WITH_DICTIONARY
+
+
+def get_class_for_dataset_type(dataset_type: DatasetType):
+    from montreal_forced_aligner.corpus.acoustic_corpus import (
+        AcousticCorpus,
+        AcousticCorpusWithPronunciations,
+    )
+    from montreal_forced_aligner.corpus.text_corpus import DictionaryTextCorpus, TextCorpus
+    from montreal_forced_aligner.dictionary import MultispeakerDictionary
+
+    mapping = {
+        DatasetType.NONE: None,
+        DatasetType.ACOUSTIC_CORPUS: AcousticCorpus,
+        DatasetType.TEXT_CORPUS: TextCorpus,
+        DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY: AcousticCorpusWithPronunciations,
+        DatasetType.TEXT_CORPUS_WITH_DICTIONARY: DictionaryTextCorpus,
+        DatasetType.DICTIONARY: MultispeakerDictionary,
+    }
+    return mapping[dataset_type]
 
 
 def get_mfa_version() -> str:
@@ -67,17 +127,14 @@ def check_third_party():
     bin_path = shutil.which("fstcompile")
     if bin_path is None:
         raise ThirdpartyError("fstcompile", open_fst=True)
-    bin_path = shutil.which("compute-mfcc-feats")
-    if bin_path is None:
-        raise ThirdpartyError("compute-mfcc-feats")
 
     p = subprocess.run(["fstcompile", "--help"], capture_output=True, text=True)
     if p.returncode == 1 and p.stderr:
         raise ThirdpartyError("fstcompile", open_fst=True, error_text=p.stderr)
-
-    p = subprocess.run(["compute-mfcc-feats", "--help"], capture_output=True, text=True)
-    if p.returncode == 1 and p.stderr:
-        raise ThirdpartyError("compute-mfcc-feats", error_text=p.stderr)
+    for fn in canary_kaldi_bins:
+        p = subprocess.run([thirdparty_binary(fn), "--help"], capture_output=True, text=True)
+        if p.returncode == 1 and p.stderr:
+            raise ThirdpartyError(fn, error_text=p.stderr)
 
 
 def thirdparty_binary(binary_name: str) -> str:
@@ -104,6 +161,8 @@ def thirdparty_binary(binary_name: str) -> str:
             raise ThirdpartyError(binary_name, open_fst=True)
         else:
             raise ThirdpartyError(binary_name)
+    if " " in bin_path:
+        return f'"{bin_path}"'
     return bin_path
 
 
@@ -364,7 +423,7 @@ class ProcessWorker(mp.Process):
                 self.return_q.put((self.job_name, result))
             except Exception as e:
                 self.stopped.stop()
-                if isinstance(e, KaldiProcessingError):
+                if isinstance(e, (KaldiProcessingError, MultiprocessingError)):
                     e.job_name = self.job_name
                 self.return_q.put((self.job_name, e))
 
@@ -513,7 +572,7 @@ def run_mp(
             else:
                 break
             continue
-        if isinstance(result, KaldiProcessingError):
+        if isinstance(result, (KaldiProcessingError, MultiprocessingError)):
             error_dict[job_name] = result
             continue
         info[job_name] = result

@@ -68,6 +68,22 @@ def github_issue_role(
     return [pnode], []
 
 
+def github_pr_role(
+    typ: str,
+    rawtext: str,
+    text: str,
+    lineno: int,
+    inliner: Inliner,
+    options: dict = None,
+    content: List[str] = None,
+) -> Tuple[List[Node], List[system_message]]:
+    text = utils.unescape(text)
+    full_url = f"https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner/pull/{text}"
+    title = f"GitHub #{text}"
+    pnode = nodes.reference(title, title, internal=False, refuri=full_url)
+    return [pnode], []
+
+
 def kaldi_steps_role(
     typ: str,
     rawtext: str,
@@ -444,6 +460,7 @@ def get_refs(app):
 def setup(app: Sphinx) -> Dict[str, Any]:
     app.add_config_value("xref_links", {}, "env")
     app.add_role("github_issue", github_issue_role)
+    app.add_role("github_pr", github_pr_role)
     app.add_role("kaldi_steps", kaldi_steps_role)
     app.add_role("kaldi_utils", kaldi_utils_role)
     app.add_role("kaldi_steps_sid", kaldi_steps_sid_role)

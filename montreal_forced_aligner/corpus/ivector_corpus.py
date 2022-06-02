@@ -13,7 +13,6 @@ from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsFunction,
     IvectorConfigMixin,
 )
-from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
 
 __all__ = ["IvectorCorpusMixin"]
@@ -102,6 +101,9 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 while True:
                     try:
                         result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
                         if stopped.stop_check():
                             continue
                     except Empty:
@@ -112,9 +114,6 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                             break
                         continue
                     pbar.update(1)
-                    if isinstance(result, KaldiProcessingError):
-                        error_dict[result.job_name] = result
-                        continue
                 for p in procs:
                     p.join()
                 if error_dict:

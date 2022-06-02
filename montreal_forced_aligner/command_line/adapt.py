@@ -52,7 +52,11 @@ def adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -> No
                 f"Generated alignments with adapted model in {time.time() - begin} seconds"
             )
             output_format = getattr(args, "output_format", None)
-            adapter.export_files(args.output_directory, output_format)
+            adapter.export_files(
+                args.output_directory,
+                output_format,
+                include_original_text=getattr(args, "include_original_text", False),
+            )
         if export_model:
             adapter.export_model(args.output_model_path)
     except Exception:

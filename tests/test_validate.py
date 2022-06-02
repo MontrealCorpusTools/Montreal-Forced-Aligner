@@ -1,7 +1,7 @@
 import itertools
 import os
 
-from montreal_forced_aligner.validator import TrainingValidator
+from montreal_forced_aligner.validation.corpus_validator import TrainingValidator
 
 
 def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir):

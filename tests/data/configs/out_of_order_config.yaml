@@ -5,7 +5,7 @@ features:
   type: "mfcc"
   use_energy: false
   frame_shift: 10
-  pitch: false
+  use_pitch: false
 
 training:
   - triphone:
