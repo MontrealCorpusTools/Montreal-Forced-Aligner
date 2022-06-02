@@ -122,7 +122,6 @@ def test_text_corpus_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_
         shutil.rmtree(output_directory, ignore_errors=True)
     corpus = TextCorpus(
         corpus_directory=basic_corpus_txt_dir,
-        dictionary_path=basic_dict_path,
         use_mp=False,
         temporary_directory=output_directory,
     )

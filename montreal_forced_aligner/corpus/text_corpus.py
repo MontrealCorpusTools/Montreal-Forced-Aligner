@@ -291,6 +291,16 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
         super().__init__(**kwargs)
         self.num_jobs = num_jobs
 
+    def load_corpus(self) -> None:
+        """
+        Load the corpus
+        """
+        self.initialize_database()
+
+        self._load_corpus()
+        self.initialize_jobs()
+        self.create_corpus_split()
+
     @property
     def identifier(self) -> str:
         """Identifier for the corpus"""

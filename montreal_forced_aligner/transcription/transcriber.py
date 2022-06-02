@@ -26,6 +26,7 @@ from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 from montreal_forced_aligner.data import TextFileType, TextgridFormats
 from montreal_forced_aligner.db import (
+    Corpus,
     Dictionary,
     File,
     SoundFile,
@@ -1570,6 +1571,8 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                                 }
                             )
             session.bulk_update_mappings(Utterance, records)
+            self.transcription_done = True
+            session.query(Corpus).update({"transcription_done": True})
             session.commit()
 
     def collect_alignments(self) -> None:

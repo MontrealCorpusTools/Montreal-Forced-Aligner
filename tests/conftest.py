@@ -118,7 +118,7 @@ def english_us_mfa_dictionary_subset(english_us_mfa_dictionary, generated_dir):
 
     path = os.path.join(generated_dir, "subset_english_us.dict")
     if not os.path.exists(path):
-        model = DictionaryModel(path)
+        model = DictionaryModel(english_us_mfa_dictionary)
         with open(model.path, "r", encoding="utf8") as inf, open(
             path, "w", encoding="utf8"
         ) as outf:

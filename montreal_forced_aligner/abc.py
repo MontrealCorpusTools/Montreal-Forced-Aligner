@@ -69,7 +69,7 @@ class KaldiFunction(metaclass=abc.ABCMeta):
     def run(self):
         """Run the function, calls :meth:`~KaldiFunction._run` with error handling"""
         try:
-            return self._run()
+            yield from self._run()
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -187,6 +187,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     ):
         super().__init__(**kwargs)
         self._db_engine = None
+        self._db_path = None
 
     def initialize_database(self) -> None:
         """
@@ -207,6 +208,8 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     @property
     def db_path(self) -> str:
         """Path to SQLite database file"""
+        if self._db_path is not None:
+            return self._db_path
         return os.path.join(self.output_directory, f"{self.identifier}.db")
 
     def construct_engine(self, same_thread=True, read_only=False) -> sqlalchemy.engine.Engine:

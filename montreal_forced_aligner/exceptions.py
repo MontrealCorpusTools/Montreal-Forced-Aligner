@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import sys
 import typing
 from typing import TYPE_CHECKING, Collection, Dict, List, Optional
@@ -73,11 +74,11 @@ class MFAError(Exception):
 
     def __str__(self) -> str:
         """Output the error"""
-        return "\n".join(
-            self.printer.format_info_lines(
-                [self.printer.error_text(type(self).__name__) + f": {self.message}"]
-            )
-        )
+        message = self.printer.error_text(type(self).__name__) + ":"
+        self.printer.indent_level += 1
+        message += "\n\n" + self.message
+        self.printer.indent_level -= 1
+        return message
 
 
 class PlatformError(MFAError):
@@ -738,8 +739,18 @@ class LanguageModelNotFoundError(LMError):
 class MultiprocessingError(MFAError):
     def __init__(self, job_name: int, error_text: str):
         super().__init__(f"Job {job_name} encountered an error:")
+        self.message_lines = [f"Job {self.printer.error_text(job_name)} encountered an error:"]
         self.job_name = job_name
-        self.message_lines.extend(error_text.splitlines(keepends=False))
+        self.message_lines.extend(
+            [self.highlight_line(x) for x in error_text.splitlines(keepends=False)]
+        )
+
+    def highlight_line(self, line):
+        emph_replacement = self.printer.emphasized_text(r"\1")
+        err_replacement = self.printer.error_text(r"\1")
+        line = re.sub(r"File \"(.*)\"", f'File "{emph_replacement}"', line)
+        line = re.sub(r"line (\d+)", f"line {err_replacement}", line)
+        return line
 
 
 class KaldiProcessingError(MFAError):

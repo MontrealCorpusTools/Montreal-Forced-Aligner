@@ -512,7 +512,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     p.join()
                 if error_dict:
                     for v in error_dict.values():
-                        raise v
+                        print(v)
+                    self.dirty = True
+                    sys.exit(1)
             else:
                 for args in arguments:
                     function = MfccFunction(args)

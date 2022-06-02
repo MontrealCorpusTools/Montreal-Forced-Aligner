@@ -308,26 +308,33 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             pretrained = True
 
         self._speaker_ids = getattr(self, "_speaker_ids", {})
+        self._current_speaker_index = getattr(self, "_current_speaker_index", 1)
         dictionary_id_cache = {}
         with self.session() as session:
-            for speaker_id, speaker_name, dictionary_id, dict_name, path in (
-                session.query(
-                    Speaker.id, Speaker.name, Dictionary.id, Dictionary.name, Dictionary.path
-                )
-                .outerjoin(Speaker.dictionary)
-                .filter(Dictionary.default == False)  # noqa
+            for speaker_id, speaker_name in session.query(Speaker.id, Speaker.name):
+                self._speaker_ids[speaker_name] = speaker_id
+                if speaker_id >= self._current_speaker_index:
+                    self._current_speaker_index = speaker_id + 1
+            for (
+                dictionary_id,
+                dict_name,
+                default,
+                max_disambiguation_symbol,
+                path,
+            ) in session.query(
+                Dictionary.id,
+                Dictionary.name,
+                Dictionary.default,
+                Dictionary.max_disambiguation_symbol,
+                Dictionary.path,
             ):
-                if speaker_id is not None:
-                    self._speaker_ids[speaker_name] = speaker_id
                 dictionary_id_cache[path] = dictionary_id
                 self.dictionary_lookup[dict_name] = dictionary_id
-            dictionary = (
-                session.query(Dictionary).filter(Dictionary.default == True).first()  # noqa
-            )
-            if dictionary:
-                self._default_dictionary_id = dictionary.id
-                dictionary_id_cache[dictionary.path] = self._default_dictionary_id
-                self.dictionary_lookup[dictionary.name] = dictionary.id
+                self.max_disambiguation_symbol = max(
+                    self.max_disambiguation_symbol, max_disambiguation_symbol
+                )
+                if default:
+                    self._default_dictionary_id = dictionary_id
             word_primary_key = 1
             pronunciation_primary_key = 1
             word_objs = []
@@ -335,7 +342,6 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             speaker_objs = []
             phone_counts = collections.Counter()
             graphemes = set()
-            self._current_speaker_index = getattr(self, "_current_speaker_index", 1)
             for (
                 dictionary_model,
                 speakers,
@@ -584,6 +590,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     self.max_disambiguation_symbol = max(
                         self.max_disambiguation_symbol, dictionary.max_disambiguation_symbol
                     )
+                    self.dictionary_lookup[dictionary.name] = dictionary.id
+                    dictionary_id_cache[dictionary_model.path] = dictionary.id
                 for speaker in speakers:
                     if speaker != "default":
                         if speaker not in self._speaker_ids:
@@ -591,12 +599,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 {
                                     "id": self._current_speaker_index,
                                     "name": speaker,
-                                    "dictionary_id": dictionary.id,
+                                    "dictionary_id": dictionary_id_cache[dictionary_model.path],
                                 }
                             )
                             self._speaker_ids[speaker] = self._current_speaker_index
                             self._current_speaker_index += 1
-                self.dictionary_lookup[dictionary.name] = dictionary.id
                 session.commit()
 
             self.non_silence_phones -= self.silence_phones

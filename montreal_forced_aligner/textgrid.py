@@ -11,6 +11,7 @@ import typing
 from typing import Dict, List
 
 from praatio import textgrid as tgio
+from praatio.data_classes.interval_tier import Interval
 
 from montreal_forced_aligner.data import CtmInterval, TextFileType
 from montreal_forced_aligner.exceptions import AlignmentExportError, TextGridParseError
@@ -178,6 +179,10 @@ def export_textgrid(
         if include_utterance_text:
             for u in data["utterances"]:
                 tg.tierDict[utterance_tier_name].entryList.append(u.to_tg_interval())
-
+    for tier in tg.tierDict.values():
+        if tier.entryList[-1][1] > tg.maxTimestamp:
+            tier.entryList[-1] = Interval(
+                tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
+            )
     if has_data:
         tg.save(output_path, includeBlankSpaces=True, format=output_format, reportingMode="error")
