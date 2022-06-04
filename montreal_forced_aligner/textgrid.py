@@ -179,10 +179,10 @@ def export_textgrid(
         if include_utterance_text:
             for u in data["utterances"]:
                 tg.tierDict[utterance_tier_name].entryList.append(u.to_tg_interval())
-    for tier in tg.tierDict.values():
-        if tier.entryList[-1][1] > tg.maxTimestamp:
-            tier.entryList[-1] = Interval(
-                tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
-            )
     if has_data:
+        for tier in tg.tierDict.values():
+            if len(tier.entryList) > 0 and tier.entryList[-1][1] > tg.maxTimestamp:
+                tier.entryList[-1] = Interval(
+                    tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
+                )
         tg.save(output_path, includeBlankSpaces=True, format=output_format, reportingMode="error")
