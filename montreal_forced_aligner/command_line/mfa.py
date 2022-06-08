@@ -605,6 +605,12 @@ def create_parser() -> ArgumentParser:
         nargs="?",
         help="Type of model to list",
     )
+    model_list_parser.add_argument(
+        "--github_token",
+        type=str,
+        default="",
+        help="Personal access token to use for requests to GitHub to increase rate limit",
+    )
 
     help_message = "Inspect a model and output its metadata"
     model_inspect_parser = model_subparsers.add_parser(
@@ -615,7 +621,7 @@ def create_parser() -> ArgumentParser:
         choices=sorted(MODEL_TYPES),
         type=str,
         nargs="?",
-        help="Type of model to download",
+        help="Type of model to inspect",
     )
     model_inspect_parser.add_argument(
         "name", type=str, help="Name of pretrained model or path to MFA model to inspect"
