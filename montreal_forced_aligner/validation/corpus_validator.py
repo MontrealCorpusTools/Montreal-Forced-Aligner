@@ -726,7 +726,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                         f.write(f"{relative_path + '/' + file_name},{begin},{end}\n")
 
                 self.printer.print_info_lines(
-                    f"There were {self.printer.colorize(len(utterances), 'red')} utterances missing features. "
+                    f"There were {self.printer.colorize(utterances.count(), 'red')} utterances missing features. "
                     f"Please see {self.printer.colorize(path, 'bright')} for a list."
                 )
             else:
