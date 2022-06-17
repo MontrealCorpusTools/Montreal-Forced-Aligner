@@ -23,8 +23,17 @@ from montreal_forced_aligner.data import (
     MfaArguments,
     PronunciationProbabilityCounter,
     TextgridFormats,
+    WordType,
 )
-from montreal_forced_aligner.db import Dictionary, File, Phone, Speaker, Utterance, Word
+from montreal_forced_aligner.db import (
+    Dictionary,
+    File,
+    Phone,
+    Pronunciation,
+    Speaker,
+    Utterance,
+    Word,
+)
 from montreal_forced_aligner.exceptions import AlignmentExportError
 from montreal_forced_aligner.helper import split_phone_position
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
@@ -805,6 +814,16 @@ class AlignmentExtractionFunction(KaldiFunction):
             if phone_label == self.optional_silence_phone:
                 if words_index < len(words) and words[words_index] in self.silence_words:
                     interval.label = phone_label
+                    actual_phone_intervals.append(interval)
+                    actual_word_intervals.append(
+                        CtmInterval(
+                            interval.begin, interval.end, words[words_index], utterance_name
+                        )
+                    )
+                    current_word_begin = None
+                    current_phones = []
+                    words_index += 1
+                    continue
                 elif self.cleanup_textgrids:
                     continue
                 else:
@@ -863,21 +882,7 @@ class AlignmentExtractionFunction(KaldiFunction):
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with Session(db_engine) as session:
             for dict_id in self.ali_paths.keys():
-                d = (
-                    session.query(Dictionary)
-                    .options(
-                        selectinload(Dictionary.words).selectinload(Word.pronunciations),
-                        load_only(
-                            Dictionary.position_dependent_phones,
-                            Dictionary.clitic_marker,
-                            Dictionary.silence_word,
-                            Dictionary.oov_word,
-                            Dictionary.root_temp_directory,
-                            Dictionary.optional_silence_phone,
-                        ),
-                    )
-                    .get(dict_id)
-                )
+                d = session.query(Dictionary).get(dict_id)
 
                 self.position_dependent_phones = d.position_dependent_phones
                 self.clitic_marker = d.clitic_marker
@@ -886,13 +891,24 @@ class AlignmentExtractionFunction(KaldiFunction):
                 self.optional_silence_phone = d.optional_silence_phone
                 self.word_boundary_int_paths[dict_id] = d.word_boundary_int_path
 
+                silence_words = (
+                    session.query(Word.word)
+                    .filter(Word.dictionary_id == dict_id)
+                    .filter(Word.word_type == WordType.silence)
+                )
+                self.silence_words.update(x for x, in silence_words)
+
+                words = (
+                    session.query(Word.word, Pronunciation.pronunciation)
+                    .join(Pronunciation.word)
+                    .filter(Word.dictionary_id == dict_id)
+                    .filter(Word.word_type != WordType.silence)
+                )
                 self.words[dict_id] = {}
-                for w in d.words:
-                    self.words[dict_id][w.word] = set()
-                    for pron in w.pronunciations:
-                        if pron == self.optional_silence_phone:
-                            self.silence_words.add(w.word)
-                        self.words[dict_id][w.word].add(tuple(pron.pronunciation.split(" ")))
+                for w, pron in words:
+                    if w not in self.words[dict_id]:
+                        self.words[dict_id][w] = set()
+                    self.words[dict_id][w].add(tuple(pron.split(" ")))
                 utts = (
                     session.query(Utterance)
                     .join(Utterance.speaker)
