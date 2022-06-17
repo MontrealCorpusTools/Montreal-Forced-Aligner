@@ -84,6 +84,29 @@ def test_train_g2p(basic_dict_path, basic_g2p_model_path, temp_dir, train_g2p_co
     assert os.path.exists(basic_g2p_model_path)
 
 
+def test_train_g2p_phonetisaurus(
+    basic_dict_path, basic_phonetisaurus_g2p_model_path, temp_dir, train_g2p_config_path
+):
+    if G2P_DISABLED:
+        pytest.skip("No Pynini found")
+    command = [
+        "train_g2p",
+        basic_dict_path,
+        basic_phonetisaurus_g2p_model_path,
+        "-t",
+        os.path.join(temp_dir, "test_train_g2p"),
+        "-q",
+        "--clean",
+        "--debug",
+        "--validate",
+        "--phonetisaurus" "--config_path",
+        train_g2p_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_train_g2p(args, unknown)
+    assert os.path.exists(basic_phonetisaurus_g2p_model_path)
+
+
 def test_generate_dict(
     basic_corpus_dir,
     basic_g2p_model_path,
@@ -110,6 +133,38 @@ def test_generate_dict(
     run_g2p(args, unknown)
     assert os.path.exists(g2p_basic_output)
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output, temporary_directory=temp_dir)
+    d.dictionary_setup()
+    assert len(d.word_mapping()) > 0
+
+
+def test_generate_dict_phonetisaurus(
+    basic_corpus_dir,
+    basic_phonetisaurus_g2p_model_path,
+    g2p_basic_phonetisaurus_output,
+    temp_dir,
+    g2p_config_path,
+):
+    if G2P_DISABLED:
+        pytest.skip("No Pynini found")
+    command = [
+        "g2p",
+        basic_phonetisaurus_g2p_model_path,
+        basic_corpus_dir,
+        g2p_basic_phonetisaurus_output,
+        "-t",
+        temp_dir,
+        "-q",
+        "--clean",
+        "--debug",
+        "--config_path",
+        g2p_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_g2p(args, unknown)
+    assert os.path.exists(g2p_basic_phonetisaurus_output)
+    d = MultispeakerDictionary(
+        dictionary_path=g2p_basic_phonetisaurus_output, temporary_directory=temp_dir
+    )
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
 

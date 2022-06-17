@@ -16,6 +16,7 @@ dependencies:
   - pynini
   - openfst
   - baumwelch
+  - setuptools_scm
   - ngram
   - praatio
   - biopython

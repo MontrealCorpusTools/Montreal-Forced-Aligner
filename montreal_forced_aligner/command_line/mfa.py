@@ -290,8 +290,8 @@ def create_parser() -> ArgumentParser:
         "--output_format",
         type=str,
         default="long_textgrid",
-        choices=["short_textgrid", "long_textgrid", "json"],
-        help="Format for aligned output files",
+        choices=["long_textgrid", "short_textgrid", "json", "csv"],
+        help="Format for aligned output files (default is long_textgrid)",
     )
     align_parser.add_argument(
         "--include_original_text",
@@ -498,15 +498,8 @@ def create_parser() -> ArgumentParser:
     validate_dictionary_parser.add_argument(
         "--g2p_threshold",
         type=float,
-        default=3.0,
+        default=1.5,
         help="Threshold to use when running G2P. Paths with costs less than the best path times the threshold value will be included.",
-    )
-    validate_dictionary_parser.add_argument(
-        "--score_threshold",
-        type=float,
-        default=1.0,
-        help="Threshold to use when filtering scored pronunciations, only include pronunciations with relative scores less than this value."
-        "1.0 represents the best pronunciation, 0.0 represents a pronunciation that was not generated with the specified g2p_threshold.",
     )
     validate_dictionary_parser.add_argument(
         "--config_path",
@@ -552,6 +545,9 @@ def create_parser() -> ArgumentParser:
     )
     train_g2p_parser.add_argument(
         "--config_path", type=str, default="", help="Path to config file to use for G2P"
+    )
+    train_g2p_parser.add_argument(
+        "--phonetisaurus", action="store_true", help="Flag for using Phonetisaurus-style models"
     )
     train_g2p_parser.add_argument(
         "--evaluate",
@@ -1007,7 +1003,15 @@ def create_parser() -> ArgumentParser:
 parser = create_parser()
 
 
-def print_history(args):
+def print_history(args: argparse.Namespace) -> None:
+    """
+    Print the history of MFA commands
+
+    Parameters
+    ----------
+    args: argparse.Namespace
+        Parsed args
+    """
     depth = args.depth
     history = load_command_history()[-depth:]
     if args.verbose:

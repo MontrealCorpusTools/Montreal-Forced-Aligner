@@ -66,6 +66,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 self.dubm_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def extract_ivectors(self) -> None:

@@ -25,6 +25,7 @@ from docutils.nodes import Node, system_message
 from docutils.parsers.rst.states import Inliner
 from sphinx.application import Sphinx
 from sphinx.util import caption_ref_re
+from sphinx_design.icons import FontawesomeRole, fontawesome
 
 MODEL_TYPE_MAPPING = {
     "acoustic": "acoustic model",
@@ -457,6 +458,25 @@ def get_refs(app):
     xref.links = app.config.xref_links
 
 
+icon_short_cuts = {"right-arrow": "long-arrow-alt-right"}
+
+
+class IpaFontAwesome(FontawesomeRole):
+    def __init__(self):
+        super(IpaFontAwesome, self).__init__("fas")
+
+    def run(self) -> Tuple[List[nodes.Node], List[nodes.system_message]]:
+        """Run the role."""
+        icon, classes = self.text.split(";", 1) if ";" in self.text else [self.text, ""]
+        icon = icon.strip()
+        icon = icon_short_cuts.get(icon, icon)
+        node = fontawesome(
+            icon=icon, classes=[self.style, f"fa-{icon}", "ipa-icon"] + classes.split()
+        )
+        self.set_source_info(node)
+        return [node], []
+
+
 def setup(app: Sphinx) -> Dict[str, Any]:
     app.add_config_value("xref_links", {}, "env")
     app.add_role("github_issue", github_issue_role)
@@ -468,6 +488,7 @@ def setup(app: Sphinx) -> Dict[str, Any]:
     app.add_role("openfst_src", openfst_src_role)
     app.add_role("ngram_src", ngram_src_role)
     app.add_role("kaldi_docs", kaldi_docs_role)
+    app.add_role("ipa_icon", IpaFontAwesome())
     app.add_role("xref", xref)
     app.connect("builder-inited", get_refs)
     return {"version": sphinx.__display_version__, "parallel_read_safe": True}

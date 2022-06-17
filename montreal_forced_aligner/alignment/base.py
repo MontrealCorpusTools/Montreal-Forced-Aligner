@@ -80,6 +80,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         """
         arguments = []
         for j in self.jobs:
+            if not j.has_data:
+                continue
             arguments.append(
                 AlignmentExtractionArguments(
                     j.name,
@@ -122,6 +124,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 include_original_text,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def generate_pronunciations_arguments(
@@ -147,6 +150,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 False,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def compute_pronunciation_probabilities(self, compute_silence_probabilities=True):
@@ -517,7 +521,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     .join(File.sound_file)
                     .join(File.text_file)
                 )
-                if self.use_mp:
+                if self.use_mp and self.num_jobs > 1:
                     stopped = Stopped()
 
                     finished_adding = Stopped()
@@ -530,6 +534,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     export_procs = []
                     self.db_engine.dispose()
                     for j in self.jobs:
+                        if not j.has_data:
+                            continue
                         export_proc = ExportTextGridProcessWorker(
                             self.db_path,
                             for_write_queue,
@@ -544,6 +550,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     try:
                         for args in files:
                             for_write_queue.put(args)
+                        time.sleep(1)
                         finished_adding.stop()
                         while True:
                             try:
@@ -604,7 +611,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                                 data[utt.speaker.name]["phones"].append(
                                     CtmInterval(pi.begin, pi.end, pi.label, utt.id)
                                 )
-                        export_textgrid(data, output_path, duration, self.frame_shift)
+                        export_textgrid(
+                            data,
+                            output_path,
+                            duration,
+                            self.frame_shift,
+                            output_format=output_format,
+                        )
                         pbar.update(1)
 
         if error_dict:

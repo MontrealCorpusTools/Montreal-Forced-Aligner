@@ -7,9 +7,8 @@ from montreal_forced_aligner.g2p.generator import (
     PyniniCorpusGenerator,
     PyniniWordListGenerator,
     clean_up_word,
-    scored_match,
 )
-from montreal_forced_aligner.g2p.trainer import G2P_DISABLED, PyniniTrainer, pynini
+from montreal_forced_aligner.g2p.trainer import G2P_DISABLED, PyniniTrainer
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import get_mfa_version
 
@@ -27,37 +26,6 @@ def test_check_bracketed(basic_dict_path):
     expected_result = ["uh", "sick", ""]
     dictionary_config = MultispeakerDictionary(dictionary_path=basic_dict_path)
     assert [x for x in word_set if not dictionary_config.check_bracketed(x)] == expected_result
-
-
-def test_scored_match(english_g2p_model, temp_dir):
-    if G2P_DISABLED:
-        pytest.skip("No Pynini found")
-    g2p_model = G2PModel(english_g2p_model)
-    pron_scores = {
-        ("read", "R IY1 D"): 12.3903465,
-        ("read", "R EH1 D"): 3.03866529,
-        ("theatres", "TH IY1 AH0 T ER0 Z"): 12.3603706,
-        ("theatres", "DH IY1"): 39.7762604,
-        ("the", "DH"): 11.7815981,
-        ("the", "TH"): 12.3016987,
-        ("the", "DH AH0"): 16.9708042,
-        ("the", "DH IY1"): 16.2190933,
-        ("the", "DH IY0"): 15.3279858,
-        ("them", "DH EH0 M"): 9.89364433,
-        ("them", "DH AH0 M"): 11.9653378,
-        ("them", "DH EY1"): 25.8712311,
-    }
-    fst = pynini.Fst.read(g2p_model.fst_path)
-    for (word, pron), absolute_reference in pron_scores.items():
-        print(word, pron, absolute_reference)
-        absolute_score = scored_match(
-            word,
-            pron,
-            fst,
-            input_token_type="utf8",
-            output_token_type=pynini.SymbolTable.read_text(g2p_model.sym_path),
-        )
-        assert abs(absolute_score - absolute_reference) < 2
 
 
 def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):

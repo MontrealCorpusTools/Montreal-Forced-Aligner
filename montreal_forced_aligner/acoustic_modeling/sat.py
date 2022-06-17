@@ -176,9 +176,11 @@ class SatTrainer(TriphoneTrainer):
                 si_feat_strings[j.name],
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def calc_fmllr(self) -> None:
+        """Calculate fMLLR transforms for the current iteration"""
         self.worker.calc_fmllr(iteration=self.iteration)
 
     def compute_calculated_properties(self) -> None:
@@ -208,6 +210,8 @@ class SatTrainer(TriphoneTrainer):
                 os.path.join(self.working_directory, "lda.mat"),
             )
         for j in self.jobs:
+            if not j.has_data:
+                continue
             for path in j.construct_path_dictionary(
                 self.previous_aligner.working_directory, "trans", "ark"
             ).values():
@@ -223,6 +227,8 @@ class SatTrainer(TriphoneTrainer):
         self.speaker_independent = False
         self.worker.speaker_independent = False
         for j in self.jobs:
+            if not j.has_data:
+                continue
             transform_paths = j.construct_path_dictionary(
                 self.previous_aligner.working_directory, "trans", "ark"
             )

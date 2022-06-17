@@ -86,6 +86,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 model_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def acc_stats(self, alignment: bool = False) -> None:

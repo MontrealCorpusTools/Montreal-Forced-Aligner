@@ -21,6 +21,17 @@ See :ref:`g2p_model_training_example` for an example of how to train a G2P model
 
    Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
 
+.. _g2p_phonetisaurus_training:
+
+Phonetisaurus style models
+--------------------------
+
+As of MFA release 2.0, Phonetisaurus style G2P models are trainable! The default Pynini implementation is based off of a `general pair ngram model <https://github.com/google-research/google-research/tree/master/pair_ngram>`_, however this has the assumption that there is a reasonable one-to-one correspondence between graphemes and phones, with allowances for deletion/insertions covering some one-to-many correspondences.  This works reasonably well for languages that use some form of alphabet, even more non-transparent orthographies like English and French.
+
+However, the basic pair ngram implementation struggles with languages that use syllabaries or logographic systems like Japanese and Chinese.  MFA 1.0 used :xref:`phonetisaurus` as the backend for G2P that had better support for one-to-many mappings.  The Pynini 2.0 implementation encodes strings as paired linear FSAs, so each grapheme leads to the next one, and the model that's being optimized has mappings from all graphemes to all phones and learns their weights.  Phonetisaurus does not encode the input as separate linear FSAs, but rather has single FSTs that cover all the alignments between graphemes and phonemes and then optimizes the FSTs from there.  Phonetisaurus has explicit support for windows of surrounding graphemes and and phonemes, allowing for more efficient learning of patterns like :ipa_inline:`に` :ipa_icon:`right-arrow` :ipa_inline:`[ɲ i]`.
+
+The original Pynini implementation of pair ngram models for G2P was motivated primarily by ease of installation, as Phonetisaurus is not on Conda Forge or has easily installable binaries, so the ``--phonetisaurus`` flag implements the `Phonetisaurus algorithm <https://www.cambridge.org/core/journals/natural-language-engineering/article/abs/phonetisaurus-exploring-graphemetophoneme-conversion-with-joint-ngram-models-in-the-wfst-framework/F1160C3866842F0B707924EB30B8E753>`_ using Pynini.
+
 Command reference
 -----------------
 

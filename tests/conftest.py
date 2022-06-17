@@ -616,6 +616,11 @@ def xsampa_dict_path(dict_dir):
 
 
 @pytest.fixture(scope="session")
+def mixed_dict_path(dict_dir):
+    return os.path.join(dict_dir, "mixed_format_dictionary.txt")
+
+
+@pytest.fixture(scope="session")
 def vietnamese_dict_path(dict_dir):
     return os.path.join(dict_dir, "vietnamese_ipa.txt")
 
@@ -660,8 +665,18 @@ def basic_g2p_model_path(generated_dir):
 
 
 @pytest.fixture(scope="session")
+def basic_phonetisaurus_g2p_model_path(generated_dir):
+    return os.path.join(generated_dir, "basic_phonetisaurus_g2p.zip")
+
+
+@pytest.fixture(scope="session")
 def g2p_basic_output(generated_dir):
     return os.path.join(generated_dir, "g2p_basic.txt")
+
+
+@pytest.fixture(scope="session")
+def g2p_basic_phonetisaurus_output(generated_dir):
+    return os.path.join(generated_dir, "phonetisaurus_g2p_basic.txt")
 
 
 @pytest.fixture(scope="session")

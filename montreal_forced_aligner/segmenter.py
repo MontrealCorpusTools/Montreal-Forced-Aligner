@@ -264,6 +264,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                 self.segmentation_options,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property

@@ -15,4 +15,5 @@ dependencies:
   - ffmpeg
   - praatio
   - biopython
+  - setuptools_scm
   - sqlalchemy>=1.4

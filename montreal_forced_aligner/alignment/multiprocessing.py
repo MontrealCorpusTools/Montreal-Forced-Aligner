@@ -1042,6 +1042,8 @@ def construct_output_path(
         extension = ".lab"
     elif output_format.upper() == "JSON":
         extension = ".json"
+    elif output_format.upper() == "CSV":
+        extension = ".csv"
     else:
         extension = ".TextGrid"
     if relative_path:

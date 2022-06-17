@@ -25,9 +25,12 @@ For the Kaldi recipe that monophone training is based on, see :kaldi_steps:`trai
    :widths: 20, 20, 60
    :header: "Parameter", "Default value", "Notes"
 
-   "subset", 0, "Number of utterances to use (0 uses the full corpus)"
+   "subset", 10000, "Number of utterances to use (0 uses the full corpus)"
+   "initial_beam", 6, "Initial beam width for first alignment iteration"
+   "beam", 10, "Beam width for alignment iterations other than the first"
    "num_iterations", 40, "Number of training iterations"
    "max_gaussians", 1000, "Total number of gaussians"
+   "boost_silence", 1.25, "Factor to boost silence probabilities"
    "power", 0.25, "Exponent for gaussians based on occurrence counts"
 
 

@@ -712,7 +712,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         """
         Construct a logger for a command line run
         """
-        from .utils import CustomFormatter, get_mfa_version
+        from .utils import configure_logger, get_mfa_version
 
         current_version = get_mfa_version()
         # Remove previous directory if versions are different
@@ -723,22 +723,9 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         if self.clean:
             shutil.rmtree(self.output_directory, ignore_errors=True)
         os.makedirs(self.workflow_directory, exist_ok=True)
-        logger = logging.getLogger(self.identifier)
-        logger.setLevel(logging.DEBUG)
-
-        file_handler = logging.FileHandler(self.log_file, encoding="utf8")
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-        if not self.quiet:
-            handler = logging.StreamHandler(sys.stdout)
-            if self.verbose:
-                handler.setLevel(logging.DEBUG)
-            else:
-                handler.setLevel(logging.INFO)
-            handler.setFormatter(CustomFormatter())
-            logger.addHandler(handler)
+        logger = configure_logger(
+            self.identifier, log_file=self.log_file, quiet=self.quiet, verbose=self.verbose
+        )
         logger.debug(
             f"Beginning run for {self.workflow_identifier} on {self.data_source_identifier}"
         )

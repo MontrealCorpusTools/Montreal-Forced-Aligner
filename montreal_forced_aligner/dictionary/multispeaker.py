@@ -10,7 +10,6 @@ import re
 import subprocess
 import sys
 import typing
-import unicodedata
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 import sqlalchemy.orm.session
@@ -292,7 +291,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             speaker_mapping, sanitize_function, split_functions
         )
 
-    def dictionary_setup(self) -> None:
+    def dictionary_setup(self) -> Tuple[typing.Set[str], collections.Counter]:
         """Set up the dictionary for processing"""
         self.compile_regexes()
         exist_check = os.path.exists(self.db_path)
@@ -434,16 +433,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             line = line.strip()
                             if not line:
                                 continue
-                            try:
-                                if "\t" in line:
-                                    word, line = line.split("\t", maxsplit=1)
-                                    line = line.strip().split()
-                                else:
-                                    line = line.split()
-                                    word = line.pop(0)
-                            except Exception as e:
+                            line = line.split()
+                            word = line.pop(0)
+                            if len(line) == 0:
                                 raise DictionaryError(
-                                    f'Error parsing line {i} of {dictionary_model.path}: "{line}" had error "{e}"'
+                                    f'Error parsing line {i} of {dictionary_model.path}: "{line}" did not have a pronunciation'
                                 )
                             if self.ignore_case:
                                 word = word.lower()
@@ -457,21 +451,43 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 )
                             if word in self.specials_set:
                                 continue
-                            characters = list(unicodedata.normalize("NFD", word))
+                            characters = list(word)
                             if word not in special_words:
                                 graphemes.update(characters)
-                            prob = 1
-                            if dictionary_model.pronunciation_probabilities:
-                                prob = float(line.pop(0))
-                                if prob > 1 or prob < 0:
+                            prob = None
+                            try:
+                                if len(line) <= 1:
                                     raise ValueError
+                                prob = float(line[0])
+                                if prob > 1 or prob < 0.01:
+                                    raise ValueError
+                                line.pop(0)
+                            except ValueError:
+                                pass
                             silence_after_prob = None
                             silence_before_correct = None
                             non_silence_before_correct = None
-                            if dictionary_model.silence_probabilities:
-                                silence_after_prob = float(line.pop(0))
-                                silence_before_correct = float(line.pop(0))
-                                non_silence_before_correct = float(line.pop(0))
+                            try:
+                                if len(line) <= 3:
+                                    raise ValueError
+                                silence_after_prob = float(line[0])
+                                if (
+                                    silence_after_prob == dictionary.silence_probability
+                                    or silence_after_prob == 0
+                                ):
+                                    silence_after_prob = None
+                                silence_before_correct = float(line[1])
+                                if silence_before_correct == 1.0 or silence_before_correct == 0:
+                                    silence_before_correct = None
+                                non_silence_before_correct = float(line[2])
+                                if (
+                                    non_silence_before_correct == 1.0
+                                    or non_silence_before_correct == 0
+                                ):
+                                    non_silence_before_correct = None
+                                line = line[3:]
+                            except ValueError:
+                                pass
                             pron = tuple(line)
                             if pretrained:
                                 difference = (
@@ -764,41 +780,29 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         else:
             final_silence_cost = str(-math.log(self.final_silence_correction))
             final_non_silence_cost = str(-math.log(self.final_non_silence_correction))
-        base_silence_before_cost = 0.0
-        base_non_silence_before_cost = 0.0
         base_silence_following_cost = -math.log(self.silence_probability)
         base_non_silence_following_cost = -math.log(1 - self.silence_probability)
         with open(path, "w", encoding="utf8") as outf:
-            if self.final_non_silence_correction is not None:
-                outf.write(
-                    f"{start_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t{initial_non_silence_cost}\n"
-                )  # initial no silence
+            outf.write(
+                f"{start_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t{initial_non_silence_cost}\n"
+            )  # initial no silence
 
+            outf.write(
+                f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
+            )  # initial silence
+            if disambiguation:
+                sil_disambiguation_state = next_state
+                next_state += 1
                 outf.write(
-                    f"{start_state}\t{silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t{initial_silence_cost}\n"
-                )  # initial silence
+                    f"{silence_state}\t{sil_disambiguation_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
+                )
+                outf.write(
+                    f"{sil_disambiguation_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t0.0\n"
+                )
             else:
                 outf.write(
-                    f"{start_state}\t{non_silence_state}\t<eps>\t<eps>\t{initial_non_silence_cost}\n"
-                )  # initial no silence
-
-                outf.write(
-                    f"{start_state}\t{silence_state}\t<eps>\t<eps>\t{initial_silence_cost}\n"
-                )  # initial silence
-
-                if disambiguation:
-                    sil_disambiguation_state = next_state
-                    next_state += 1
-                    outf.write(
-                        f"{silence_state}\t{sil_disambiguation_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
-                    )
-                    outf.write(
-                        f"{sil_disambiguation_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t0.0\n"
-                    )
-                else:
-                    outf.write(
-                        f"{silence_state}\t{non_silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
-                    )
+                    f"{silence_state}\t{non_silence_state}\t{self.optional_silence_phone}\t{self.silence_word}\t0.0\n"
+                )
             silence_query = (
                 session.query(Word.word)
                 .filter(Word.word_type == WordType.silence)
@@ -813,15 +817,15 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 outf.write(
                     f"{start_state}\t{non_silence_state}\t{self.optional_silence_phone}\t{word}\t0.0\n"
                 )  # initial silence
-            columns = [Word.word, Pronunciation.pronunciation, Pronunciation.probability]
-            if self.final_non_silence_correction is not None:
-                columns.extend(
-                    [
-                        Pronunciation.silence_after_probability,
-                        Pronunciation.silence_before_correction,
-                        Pronunciation.non_silence_before_correction,
-                    ]
-                )
+            columns = [
+                Word.word,
+                Pronunciation.pronunciation,
+                Pronunciation.probability,
+                Pronunciation.silence_after_probability,
+                Pronunciation.silence_before_correction,
+                Pronunciation.non_silence_before_correction,
+            ]
+
             if disambiguation:
                 columns.append(Pronunciation.disambiguation)
             bn = DictBundle("pronunciation_data", *columns)
@@ -835,26 +839,23 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 data = row.pronunciation_data
                 phones = data["pronunciation"].split()
                 probability = data["probability"]
-                if self.final_non_silence_correction is not None:
-                    silence_after_probability = data["silence_after_probability"]
-                    silence_before_correction = data["silence_before_correction"]
-                    non_silence_before_correction = data["non_silence_before_correction"]
-                    silence_before_cost = 0.0
-                    non_silence_before_cost = 0.0
-                    if not silence_after_probability:
-                        silence_after_probability = self.silence_probability
+                silence_before_cost = 0.0
+                non_silence_before_cost = 0.0
+                silence_following_cost = base_silence_following_cost
+                non_silence_following_cost = base_non_silence_following_cost
 
+                silence_after_probability = data.get("silence_after_probability", None)
+                if silence_after_probability is not None:
                     silence_following_cost = -math.log(silence_after_probability)
                     non_silence_following_cost = -math.log(1 - (silence_after_probability))
-                    if silence_before_correction:
-                        silence_before_cost = -math.log(silence_before_correction)
-                    if non_silence_before_correction:
-                        non_silence_before_cost = -math.log(non_silence_before_correction)
-                else:
-                    silence_before_cost = base_silence_before_cost
-                    non_silence_before_cost = base_non_silence_before_cost
-                    silence_following_cost = base_silence_following_cost
-                    non_silence_following_cost = base_non_silence_following_cost
+
+                silence_before_correction = data.get("silence_before_correction", None)
+                if silence_before_correction is not None:
+                    silence_before_cost = -math.log(silence_before_correction)
+
+                non_silence_before_correction = data.get("non_silence_before_correction", None)
+                if non_silence_before_correction is not None:
+                    non_silence_before_cost = -math.log(non_silence_before_correction)
                 if self.position_dependent_phones:
                     if len(phones) == 1:
                         phones[0] += "_S"
@@ -863,60 +864,38 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                         phones[-1] += "_E"
                         for i in range(1, len(phones) - 1):
                             phones[i] += "_I"
-                if probability == 0:
-                    probability = 0.01  # Dithering to ensure low probability entries
-                elif probability is None:
+                if probability is None:
                     probability = 1
+                elif probability < 0.01:
+                    probability = 0.01  # Dithering to ensure low probability entries
                 pron_cost = abs(math.log(probability))
                 if disambiguation and data["disambiguation"] is not None:
                     phones += [f"#{data['disambiguation']}"]
 
-                if self.final_non_silence_correction is not None:
+                new_state = next_state
+                outf.write(
+                    f"{non_silence_state}\t{new_state}\t{phones[0]}\t{data['word']}\t{pron_cost+non_silence_before_cost}\n"
+                )
+                outf.write(
+                    f"{silence_state}\t{new_state}\t{phones[0]}\t{data['word']}\t{pron_cost+silence_before_cost}\n"
+                )
+
+                next_state += 1
+                current_state = new_state
+                for i in range(1, len(phones)):
                     new_state = next_state
-                    outf.write(
-                        f"{non_silence_state}\t{new_state}\t{phones[0]}\t{data['word']}\t{pron_cost+non_silence_before_cost}\n"
-                    )
-                    outf.write(
-                        f"{silence_state}\t{new_state}\t{phones[0]}\t{data['word']}\t{pron_cost+silence_before_cost}\n"
-                    )
-
                     next_state += 1
+                    outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
                     current_state = new_state
-                    for i in range(1, len(phones)):
-                        new_state = next_state
-                        next_state += 1
-                        outf.write(f"{current_state}\t{new_state}\t{phones[i]}\t<eps>\n")
-                        current_state = new_state
-                    outf.write(
-                        f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
-                    )
-                    outf.write(
-                        f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
-                    )
-                else:
-                    current_state = non_silence_state
-                    for i in range(len(phones) - 1):
-                        w_or_eps = data["word"] if i == 0 else "<eps>"
-                        cost = pron_cost if i == 0 else 0.0
-                        outf.write(
-                            f"{current_state}\t{next_state}\t{phones[i]}\t{w_or_eps}\t{cost}\n"
-                        )
-                        current_state = next_state
-                        next_state += 1
+                outf.write(
+                    f"{current_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t<eps>\t{non_silence_following_cost}\n"
+                )
+                outf.write(
+                    f"{current_state}\t{silence_state}\t{self.optional_silence_phone}\t<eps>\t{silence_following_cost}\n"
+                )
 
-                    i = len(phones) - 1
-                    p = phones[i] if i >= 0 else "<eps>"
-                    w = data["word"] if i <= 0 else "<eps>"
-                    sil_cost = silence_following_cost + (pron_cost if i <= 0 else 0.0)
-                    non_sil_cost = non_silence_following_cost + (pron_cost if i <= 0 else 0.0)
-                    outf.write(f"{current_state}\t{non_silence_state}\t{p}\t{w}\t{non_sil_cost}\n")
-                    outf.write(f"{current_state}\t{silence_state}\t{p}\t{w}\t{sil_cost}\n")
-
-            if self.final_non_silence_correction is not None:
-                outf.write(f"{silence_state}\t{final_silence_cost}\n")
-                outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
-            else:
-                outf.write(f"{non_silence_state}\t0.0\n")
+            outf.write(f"{silence_state}\t{final_silence_cost}\n")
+            outf.write(f"{non_silence_state}\t{final_non_silence_cost}\n")
 
     def export_lexicon(
         self,
@@ -963,7 +942,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 if write_disambiguation and data["disambiguation"] is not None:
                     phones += f" #{data['disambiguation']}"
                 probability_string = ""
-                if probability:
+                if probability and data["probability"] is not None:
                     probability_string = f"{data['probability']}"
 
                     if silence_probabilities:
@@ -972,8 +951,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             data["silence_before_correction"],
                             data["non_silence_before_correction"],
                         ]
+                        if all(x is None for x in extra_probs):
+                            continue
                         for x in extra_probs:
-                            probability_string += f"\t{x if x else 0.0}"
+                            if x is None:
+                                continue
+                            probability_string += f"\t{x}"
                 if probability:
                     f.write(f"{data['word']}\t{probability_string}\t{phones}\n")
                 else:
@@ -1119,7 +1102,20 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                 self._grapheme_mapping = {x[0]: x[1] for x in graphemes}
         return self._grapheme_mapping
 
-    def lookup_grapheme(self, grapheme):
+    def lookup_grapheme(self, grapheme: str) -> int:
+        """
+        Look up grapheme in the dictionary's mapping
+
+        Parameters
+        ----------
+        grapheme: str
+            Grapheme
+
+        Returns
+        -------
+        int
+            Integer ID for the grapheme
+        """
         if grapheme in self.grapheme_mapping:
             return self.grapheme_mapping[grapheme]
         return self.grapheme_mapping[self.oov_word]

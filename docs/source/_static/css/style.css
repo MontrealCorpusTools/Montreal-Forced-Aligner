@@ -1,3 +1,32 @@
+
+/* use Gentium Plus - Regular in .woff format */
+@font-face {
+  font-family: GentiumPlusW;
+  src: url(../fonts/GentiumPlus-Regular.woff2);
+}
+/* use Gentium Plus - Italic in .woff2 format */
+@font-face {
+  font-family: GentiumPlusW;
+  font-style: italic;
+  src: url(../fonts/GentiumPlus-Italic.woff2);
+}
+/* use Gentium Plus - Bold in .woff2 format */
+@font-face {
+	font-family: GentiumPlusW;
+	font-weight: bold;
+	src: url(../fonts/GentiumPlus-Bold.woff2);
+}
+/* use Gentium Plus - Bold Italic in .woff2 format */
+@font-face {
+	font-family: GentiumPlusW;
+	font-weight: bold;
+	font-style: italic;
+	src: url(../fonts/GentiumPlus-BoldItalic.woff2);
+}
+.container, .container-xl, .container-lg {
+    max-width: 2400px !important;
+}
+
 .wy-nav-content {
     max-width: 1200px !important;
 }
@@ -23,12 +52,17 @@ font-family: "Font Awesome 5 Free";
 font-weight: 900;
 }
 
-:root {
-  --base-blue: 0, 53, 102;
-  --dark-blue: 0, 29, 61;
-  --light-blue: 14, 99, 179;
-  --base-yellow: 255, 195, 0;
-  --light-yellow: 255, 214, 10;
+/*******************************************************************************
+* light theme
+*
+* all the variables used for light theme coloring
+*/
+html[data-theme="light"] {
+  --base-blue: #003566;
+  --dark-blue: #001D3D;
+  --light-blue: #0E63B3;
+  --base-yellow: #FFC300;
+  --light-yellow: #FFD60A;
   --sd-color-primary: #003566;
   --sd-color-dark: #003566;
   --sd-color-primary-text: #FFC300;
@@ -56,17 +90,59 @@ font-weight: 900;
     --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
     --pst-color-toc-link-active: var(--pst-color-active-navigation);
 }
+/*******************************************************************************
+* light theme
+*
+* all the variables used for light theme coloring
+*/
+html[data-theme="dark"] {
+  --base-blue: #003566;
+  --dark-blue: #001D3D;
+  --light-blue: #0E63B3;
+  --very-light-blue: #7AB5E6;
+  --base-yellow: #FFC300;
+  --light-yellow: #FFD60A;
+  --sd-color-primary: #003566;
+  --sd-color-dark: #003566;
+  --sd-color-primary-text: #FFC300;
+  --sd-color-primary-highlight: #FFC300;
+  --pst-color-primary: var(--base-yellow);
+  --pst-color-warning: var(--light-yellow);
+  --pst-color-info: var(--light-blue);
+
+    --pst-color-link: var(--very-light-blue);
+    --pst-color-link-hover: var(--light-yellow);
+
+    --pst-color-active-navigation: var(--base-yellow);
+    --pst-color-hover-navigation: var(--very-light-blue);
+
+    --pst-color-navbar-link: var(--light-blue);
+    --pst-color-navbar-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-navbar-link-active: var(--pst-color-active-navigation);
+
+    --pst-color-sidebar-link: var(--base-yellow);
+    --pst-color-sidebar-caption: var(--base-yellow);
+    --pst-color-sidebar-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-sidebar-link-active: var(--pst-color-active-navigation);
+
+    --pst-color-toc-link: var(--base-yellow);
+    --pst-color-toc-link-hover: var(--pst-color-hover-navigation);
+    --pst-color-toc-link-active: var(--pst-color-active-navigation);
+}
 
 .sd-btn-primary{
 font-weight: bold;
 }
 
 .sd-btn-primary:hover{
-color: #003566 !important;
+color: var(--sd-color-primary) !important;
 }
 .i-navigation{
-    color: #003566;
+    color: var(--sd-color-primary);
     padding: 20px;
+}
+html[data-theme="dark"] .i-navigation{
+    color: var(--sd-color-primary-text);
 }
 
 .navbar-light .navbar-nav li a.nav-link:{
@@ -83,6 +159,12 @@ text-align: center;
 div[class*="highlight-"] {
   text-align: left;
 }
+
+ipa-inline {
+  font-family: "GentiumPlusW";
+  font-size: 1.1em;
+  font-weight: 500;
+ }
 
 .supported {
 background-color: #E9F6EC;

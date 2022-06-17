@@ -64,7 +64,7 @@ __all__ = ["TrainingValidator", "PretrainedValidator"]
 
 @dataclass
 class TestUtterancesArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.validator.TestUtterancesFunction`"""
+    """Arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.TestUtterancesFunction`"""
 
     feature_strings: Dict[str, str]
     text_int_paths: Dict[str, str]
@@ -80,7 +80,7 @@ class TestUtterancesArguments(MfaArguments):
 
 @dataclass
 class TrainSpeakerLmArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.validator.TrainSpeakerLmFunction`"""
+    """Arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.TrainSpeakerLmFunction`"""
 
     word_symbols_paths: Dict[str, str]
     speaker_mapping: Dict[str, List[str]]
@@ -114,7 +114,7 @@ class TestUtterancesFunction(KaldiFunction):
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.validator.TestUtterancesArguments`
+    args: :class:`~montreal_forced_aligner.validation.corpus_validator.TestUtterancesArguments`
         Arguments for the function
     """
 
@@ -314,7 +314,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
 
     Parameters
     ----------
-    args: :class:`~montreal_forced_aligner.validator.TrainSpeakerLmArguments`
+    args: :class:`~montreal_forced_aligner.validation.corpus_validator.TrainSpeakerLmArguments`
         Arguments for the function
     """
 
@@ -436,6 +436,8 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
         with self.session() as session:
             for j in self.jobs:
+                if not j.has_data:
+                    continue
                 for dict_id in j.dictionary_ids:
                     utterances = (
                         session.query(Utterance.kaldi_id, Utterance.speaker_id)
@@ -458,16 +460,18 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         self,
     ) -> List[TrainSpeakerLmArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.validator.TrainSpeakerLmFunction`
+        Generate Job arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.TrainSpeakerLmFunction`
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.validator.TrainSpeakerLmArguments`]
+        list[:class:`~montreal_forced_aligner.validation.corpus_validator.TrainSpeakerLmArguments`]
             Arguments for processing
         """
         arguments = []
         with self.session() as session:
             for j in self.jobs:
+                if not j.has_data:
+                    continue
                 speaker_mapping = {}
                 speaker_paths = {}
                 words_symbol_paths = {}
@@ -502,11 +506,11 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
     def test_utterances_arguments(self) -> List[TestUtterancesArguments]:
         """
-        Generate Job arguments for :class:`~montreal_forced_aligner.validator.TestUtterancesFunction`
+        Generate Job arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.TestUtterancesFunction`
 
         Returns
         -------
-        list[:class:`~montreal_forced_aligner.validator.TestUtterancesArguments`]
+        list[:class:`~montreal_forced_aligner.validation.corpus_validator.TestUtterancesArguments`]
             Arguments for processing
         """
         feat_strings = self.construct_feature_proc_strings()
@@ -528,6 +532,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 self.method,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property
@@ -944,6 +949,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
 
     @property
     def score_options(self) -> MetaDict:
+        """Parameters for scoring transcript lattices"""
         return {
             "self_loop_scale": 0.1,
             "transition_scale": 1.0,
@@ -954,6 +960,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         }
 
     def train_speaker_lms(self) -> None:
+        """Train language models for each speaker based on their utterances"""
         begin = time.time()
         self.calculate_word_counts()
         log_directory = self.working_log_directory
@@ -1141,7 +1148,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
     --------
     :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TrainableAligner`
         For training configuration
-    :class:`~montreal_forced_aligner.validator.ValidationMixin`
+    :class:`~montreal_forced_aligner.validation.corpus_validator.ValidationMixin`
         For validation parameters
 
     Attributes
@@ -1308,7 +1315,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     --------
     :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`
         For alignment configuration
-    :class:`~montreal_forced_aligner.validator.ValidationMixin`
+    :class:`~montreal_forced_aligner.validation.corpus_validator.ValidationMixin`
         For validation parameters
     """
 
@@ -1371,7 +1378,6 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     def align(self) -> None:
         """
         Validate alignment
-
         """
         done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")

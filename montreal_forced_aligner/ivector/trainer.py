@@ -472,6 +472,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                 j.construct_path(self.working_directory, "gselect", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def acc_global_stats_arguments(
@@ -502,6 +503,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
                 self.model_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def gmm_gselect(self) -> None:
@@ -793,6 +795,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                 j.construct_path(self.working_directory, "ivector", "acc"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
         return arguments
@@ -848,6 +851,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
                 self.dubm_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def gauss_to_post(self) -> None:

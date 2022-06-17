@@ -5,10 +5,25 @@
 2.0 Changelog
 *************
 
+2.0.0
+=====
+
+- Updated and expanded documentation
+- Added ability to :ref:`train  Phonetisaurus style G2P models <g2p_phonetisaurus_training>`
+- Added support for mixing dictionary formats (i.e., lines can be a mix of non-probabilistic or include pronunciation and silence probabilities)
+- Added support for exporting alignments in CSV format
+- Updated JSON export format to be more idiomatic JSON :github_issue:`453`
+- Fixed a crash where initial training rounds with many jobs would result in jobs that had no utterances :github_issue:`468`
+
 .. _2.0r:
 
 Release candidates
 ==================
+
+2.0.0rc9
+--------
+
+- Fixed a bug where exporting TextGrids would fail if any were empty :github_issue:`459`
 
 2.0.0rc8
 --------
@@ -18,6 +33,7 @@ Release candidates
 - Fixed a crash with unspecified github_token values for ``mfa model`` commands
 - Added a utility function for :ref:`validating_dictionaries`
 - Fixed a bug where errors in multiprocessing workers were not properly raised by the main thread, obscuring the source of errors :github_issue:`452`
+- Fixed an error in parsing text files in corpora for G2P generation or language model training :github_issue:`449`
 - Added an experimental training flag for training a G2P model as part of the acoustic model training
 - Fixed a bug where models trained in 1.0 would not use speaker adaptation during alignment or transcription
 - Add support for exporting original text alongside word and phone alignments :github_issue:`414`

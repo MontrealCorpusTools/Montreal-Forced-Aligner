@@ -220,6 +220,7 @@ class Job:
         self.dictionary_ids = []
         with Session(self.db_engine) as session:
             self.refresh_dictionaries(session)
+        self.has_data = True
 
     def refresh_dictionaries(self, session: Session) -> None:
         """
@@ -424,23 +425,26 @@ class Job:
         text_ints = {}
         texts = {}
         _current_dict_id = None
-        if not self.dictionary_ids:
-            utterances = (
-                session.query(
-                    Utterance.id,
-                    Utterance.speaker_id,
-                    Utterance.features,
-                    Utterance.normalized_text,
-                    Utterance.normalized_text_int,
-                    Speaker.cmvn,
-                )
-                .join(Utterance.speaker)
-                .filter(Speaker.job_id == self.name)
-                .filter(Utterance.ignored == False)  # noqa
-                .order_by(Utterance.kaldi_id)
+        utterances = (
+            session.query(
+                Utterance.id,
+                Utterance.speaker_id,
+                Utterance.features,
+                Utterance.normalized_text,
+                Utterance.normalized_text_int,
+                Speaker.cmvn,
             )
-            if subset:
-                utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+            .join(Utterance.speaker)
+            .filter(Speaker.job_id == self.name)
+            .filter(Utterance.ignored == False)  # noqa
+            .order_by(Utterance.kaldi_id)
+        )
+        if subset:
+            utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+        if utterances.count() == 0:
+            self.has_data = False
+            return
+        if not self.dictionary_ids:
             for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
                 utterance = str(u_id)
                 speaker = str(s_id)

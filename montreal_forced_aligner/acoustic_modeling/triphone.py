@@ -224,6 +224,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 j.construct_path_dictionary(self.working_directory, "tree", "acc"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def convert_alignments_arguments(self) -> List[ConvertAlignmentsArguments]:
@@ -248,6 +249,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def convert_alignments(self) -> None:

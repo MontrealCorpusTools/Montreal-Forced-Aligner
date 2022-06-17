@@ -10,6 +10,5 @@
        run_non_mp
        thirdparty_binary
        log_kaldi_errors
-       guess_model_type
        parse_logs
        CustomFormatter

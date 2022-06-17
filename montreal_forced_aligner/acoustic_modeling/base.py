@@ -115,6 +115,7 @@ class AcousticModelTrainingMixin(
 
     @property
     def db_path(self):
+        """Root worker's path to database file"""
         return self.worker.db_path
 
     def acc_stats_arguments(self) -> List[AccStatsArguments]:
@@ -139,6 +140,7 @@ class AcousticModelTrainingMixin(
                 self.model_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property
@@ -213,11 +215,11 @@ class AcousticModelTrainingMixin(
 
     @property
     def db_engine(self) -> sqlalchemy.engine.Engine:
-        """Top-level worker's DB engine"""
+        """Top-level worker's database engine"""
         return self.worker.db_engine
 
     def session(self, **kwargs) -> sqlalchemy.orm.session.Session:
-        """Top-level worker's DB engine"""
+        """Top-level worker's database session"""
         return self.worker.session(**kwargs)
 
     def construct_feature_proc_strings(
@@ -480,7 +482,8 @@ class AcousticModelTrainingMixin(
             for f in acc_files:
                 os.remove(f)
 
-    def align_iteration(self):
+    def align_iteration(self) -> None:
+        """Run alignment for a training iteration"""
         begin = time.time()
         self.align_utterances()
         self.log_debug(
@@ -493,7 +496,7 @@ class AcousticModelTrainingMixin(
             f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
         )
 
-    def train_iteration(self):
+    def train_iteration(self) -> None:
         """Perform an iteration of training"""
         if os.path.exists(self.next_model_path):
             self.iteration += 1
@@ -507,7 +510,7 @@ class AcousticModelTrainingMixin(
             self.increment_gaussians()
         self.iteration += 1
 
-    def train(self):
+    def train(self) -> None:
         """
         Train the model
 

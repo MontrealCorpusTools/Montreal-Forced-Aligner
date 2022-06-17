@@ -25,6 +25,7 @@ from montreal_forced_aligner.exceptions import (
     PronunciationAcousticMismatchError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter
+from montreal_forced_aligner.utils import configure_logger
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -49,7 +50,32 @@ __all__ = [
     "ModelManager",
     "ModelRelease",
     "MODEL_TYPES",
+    "guess_model_type",
 ]
+
+
+def guess_model_type(path: str) -> List[str]:
+    """
+    Guess a model type given a path
+
+    Parameters
+    ----------
+    path: str
+        Model archive to guess
+
+    Returns
+    -------
+    list[str]
+        Possible model types that use that extension
+    """
+    ext = os.path.splitext(path)[1]
+    if not ext:
+        return []
+    possible = []
+    for m, mc in MODEL_TYPES.items():
+        if ext in mc.extensions:
+            possible.append(m)
+    return possible
 
 
 class Archive(MfaModel):
@@ -403,6 +429,8 @@ class AcousticModel(Archive):
                         self._meta = json.load(f)
                 if self._meta["features"] == "mfcc+deltas":
                     self._meta["features"] = default_features
+                    if "pitch" in self._meta["features"]:
+                        self._meta["features"]["use_pitch"] = self._meta["features"].pop("pitch")
             if "phone_type" not in self._meta:
                 self._meta["phone_type"] = "triphone"
             if "optional_silence_phone" not in self._meta:
@@ -692,6 +720,14 @@ class G2PModel(Archive):
             return path
         return os.path.join(self.dirname, "phones.sym")
 
+    @property
+    def grapheme_sym_path(self) -> str:
+        """G2P model's grapheme symbols path"""
+        path = os.path.join(self.dirname, "graphemes.txt")
+        if os.path.exists(path):
+            return path
+        return os.path.join(self.dirname, "graphemes.sym")
+
     def add_sym_path(self, source_directory: str) -> None:
         """
         Add symbols file into archive
@@ -703,6 +739,10 @@ class G2PModel(Archive):
         """
         if not os.path.exists(self.sym_path):
             copyfile(os.path.join(source_directory, "phones.txt"), self.sym_path)
+        if not os.path.exists(self.grapheme_sym_path) and os.path.exists(
+            os.path.join(source_directory, "graphemes.txt")
+        ):
+            copyfile(os.path.join(source_directory, "graphemes.txt"), self.grapheme_sym_path)
 
     def add_fst_model(self, source_directory: str) -> None:
         """
@@ -1155,15 +1195,25 @@ class ModelManager:
         self.token = token
         self.synced_remote = False
         self.printer = TerminalPrinter()
+
+        self.logger = configure_logger("models")
         self._cache_info = {}
         self.refresh_local()
 
     @property
     def cache_path(self):
+        """Path to json file with cached etags and download links"""
         from montreal_forced_aligner.config import get_temporary_directory
 
         pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
         return os.path.join(pretrained_dir, "cache.json")
+
+    def reset_local(self) -> None:
+        """Reset cached models"""
+        from montreal_forced_aligner.config import get_temporary_directory
+
+        pretrained_dir = os.path.join(get_temporary_directory(), "pretrained_models")
+        shutil.rmtree(pretrained_dir, ignore_errors=True)
 
     def refresh_local(self) -> None:
         """Refresh cached information with the latest list of local model"""
@@ -1357,3 +1407,6 @@ class ModelManager:
         with open(local_path, "wb") as f:
             f.write(r.content)
         self.refresh_local()
+        self.logger.info(
+            f"Saved model to f{local_path}, you can now use {model_name} in place of {model_type} paths in mfa commands."
+        )

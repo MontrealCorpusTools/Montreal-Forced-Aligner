@@ -1,10 +1,11 @@
 Validators
 ==========
 
-.. currentmodule:: montreal_forced_aligner.validator
+.. currentmodule:: montreal_forced_aligner.validation
 
 .. autosummary::
   :toctree: generated/
 
   TrainingValidator
   PretrainedValidator
+  DictionaryValidator

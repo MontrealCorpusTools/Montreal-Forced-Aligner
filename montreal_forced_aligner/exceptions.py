@@ -70,6 +70,7 @@ class MFAError(Exception):
 
     @property
     def message(self) -> str:
+        """Formatted exception message"""
         return "\n".join(self.printer.format_info_lines(self.message_lines))
 
     def __str__(self) -> str:
@@ -195,6 +196,15 @@ class ModelLoadError(ModelError):
 class ModelsConnectionError(ModelError):
     """
     Exception during connecting to online repo for downloading models
+
+    Parameters
+    ----------
+    response_code: int
+        Response code for the request
+    response: dict[str, Any]
+        Response dictionary
+    headers: requests.structures.CaseInsensitiveDict
+        Request headers
     """
 
     def __init__(
@@ -388,6 +398,28 @@ class AlignerError(MFAError):
     pass
 
 
+class NoAlignmentsError(MFAError):
+    """
+    Class for errors during alignment
+    """
+
+    def __init__(self, num_utterances, beam_size, retry_beam_size):
+        super(NoAlignmentsError, self).__init__(
+            f"There were no successful alignments for {num_utterances} utterances."
+        )
+        self.message_lines.append(
+            f"The current set up used a beam of {beam_size} and a retry beam of {retry_beam_size}."
+        )
+        suggested_beam_size = beam_size * 10
+        suggested_retry_beam_size = suggested_beam_size * 4
+        self.message_lines.append(
+            f'You can try rerunning with a larger beam (i.e. "mfa align ... --beam={suggested_beam_size} --retry_beam={suggested_retry_beam_size}").'
+        )
+        self.message_lines.append(
+            'If increasing the beam size does not help, then there are likely issues with the corpus, dictionary, or acoustic model, and can be further diagnosed with the "mfa validate" command'
+        )
+
+
 class AlignmentError(MFAError):
     """
     Class for errors during alignment
@@ -436,7 +468,7 @@ class CtmError(AlignmentError):
 
     Parameters
     ----------
-    ctm: CtmInterval
+    ctm: :class:`~montreal_forced_aligner.data.CtmInterval`
         CTM interval that was not parsed correctly
 
     """
@@ -737,6 +769,17 @@ class LanguageModelNotFoundError(LMError):
 
 
 class MultiprocessingError(MFAError):
+    """
+    Exception class for exceptions in multiprocessing workers
+
+    Parameters
+    ----------
+    job_name: int
+        Job identifier
+    error_text:str
+        Traceback for exception in worker
+    """
+
     def __init__(self, job_name: int, error_text: str):
         super().__init__(f"Job {job_name} encountered an error:")
         self.message_lines = [f"Job {self.printer.error_text(job_name)} encountered an error:"]
@@ -745,7 +788,20 @@ class MultiprocessingError(MFAError):
             [self.highlight_line(x) for x in error_text.splitlines(keepends=False)]
         )
 
-    def highlight_line(self, line):
+    def highlight_line(self, line: str) -> str:
+        """
+        Highlight a line in traceback
+
+        Parameters
+        ----------
+        line: str
+            Line to highlight
+
+        Returns
+        -------
+        str
+            Highlighted line
+        """
         emph_replacement = self.printer.emphasized_text(r"\1")
         err_replacement = self.printer.error_text(r"\1")
         line = re.sub(r"File \"(.*)\"", f'File "{emph_replacement}"', line)
@@ -774,7 +830,8 @@ class KaldiProcessingError(MFAError):
         self.log_file = log_file
         self.refresh_message()
 
-    def refresh_message(self):
+    def refresh_message(self) -> None:
+        """Regenerate the exceptions message"""
         self.message_lines = [
             f"There were {len(self.error_logs)} job(s) with errors when running Kaldi binaries.",
             "See the log files below for more information.",
@@ -786,7 +843,15 @@ class KaldiProcessingError(MFAError):
                 f" For more details, please check {self.printer.error_text(self.log_file)}"
             )
 
-    def append_error_log(self, error_log: str):
+    def append_error_log(self, error_log: str) -> None:
+        """
+        Add error log for the exception
+
+        Parameters
+        ----------
+        error_log: str
+            Path to error log
+        """
         self.error_logs.append(error_log)
         self.refresh_message()
 

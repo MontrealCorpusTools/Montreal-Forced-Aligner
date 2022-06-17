@@ -15,11 +15,10 @@ The primary workflow in MFA is forced alignment, where text is aligned to speech
    See :ref:`pretrained_models` for details about commands to inspect, download, and save various pretrained MFA models.
 
 .. toctree::
-   :maxdepth: 2
+   :hidden:
 
    alignment
    adapt_acoustic_model
    train_acoustic_model
    dictionary_generating
    g2p_train
-   corpus_creation
