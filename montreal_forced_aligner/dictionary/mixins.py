@@ -6,7 +6,6 @@ import abc
 import os
 import re
 import typing
-import unicodedata
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
@@ -294,7 +293,7 @@ class SplitWordsFunction:
                 yield word
                 break
         else:
-            characters = list(unicodedata.normalize("NFD", item))
+            characters = list(item)
             for c in characters:
                 if self.grapheme_mapping is not None and c in self.grapheme_mapping:
                     yield c
@@ -827,6 +826,7 @@ class DictionaryMixin:
         return False
 
     def compile_regexes(self) -> None:
+        """Compile regular expressions necessary for corpus parsing"""
         if len(self.clitic_markers) >= 1:
             other_clitic_markers = self.clitic_markers[1:]
             if other_clitic_markers:

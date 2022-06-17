@@ -60,6 +60,10 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "Bio": ("https://biopython.org/docs/latest/api/", None),
 }
+rst_prolog = """
+.. role:: ipa_inline
+   :class: ipa-inline ipa-highlight
+"""
 
 
 extlinks = {
@@ -99,6 +103,12 @@ xref_links = {
     "sonderegger": ("Morgan Sonderegger", "http://people.linguistics.mcgill.ca/~morgan/"),
     "wagner": ("Michael Wagner", "https://prosodylab.org/"),
     "coles": ("Arlie Coles", "https://a-coles.github.io/"),
+    "chodroff": ("Eleanor Chodroff", "https://www.eleanorchodroff.com/"),
+    "dias": ("Danoja Dias", "https://medium.com/breaktheloop"),
+    "rutgers_spanish_portuguese": (
+        "Rutgers University Department of Spanish and Portuguese",
+        "https://span-port.rutgers.edu/",
+    ),
     "stengel-eskin": ("Elias Stengel-Eskin", "https://esteng.github.io/"),
     "socolof": ("Michaela Socolof", "https://mcqll.org/people/socolof.michaela/"),
     "mihuc": ("Sarah Mihuc", "https://www.cs.mcgill.ca/~smihuc/"),
@@ -294,7 +304,7 @@ todo_include_todos = False
 #
 html_theme = "pydata_sphinx_theme"
 
-html_logo = "_static/logo_long.svg"
+html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.ico"
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -302,6 +312,12 @@ html_favicon = "_static/favicon.ico"
 # documentation.
 #
 html_theme_options = {
+    "external_links": [
+        {
+            "url": "https://mfa-models.readthedocs.io/",
+            "name": "Pretrained MFA models",
+        },
+    ],
     "icon_links": [
         {
             "name": "GitHub",
@@ -319,6 +335,10 @@ html_theme_options = {
             "icon": "fas fa-toolbox",
         },
     ],
+    "logo": {
+        "text": "Montreal Forced Aligner",
+        # "image_dark": "logo-dark.svg",
+    },
     "google_analytics_id": "UA-73068199-4",
     "show_nav_level": 1,
     "navigation_depth": 4,
@@ -361,6 +381,7 @@ html_context = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 html_css_files = [
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css",
     "css/style.css",
 ]
 

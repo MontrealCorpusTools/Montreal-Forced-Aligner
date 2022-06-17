@@ -9,10 +9,9 @@ import queue
 import random
 import re
 import shutil
-import statistics
 import subprocess
 import time
-from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, List, NamedTuple, Optional, Set
 
 import tqdm
 
@@ -20,13 +19,8 @@ from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, 
 from montreal_forced_aligner.data import WordType
 from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
-from montreal_forced_aligner.exceptions import (
-    KaldiProcessingError,
-    PyniniAlignmentError,
-    PyniniGenerationError,
-)
-from montreal_forced_aligner.g2p.generator import MatchScorer, PyniniValidator, RewriterWorker
-from montreal_forced_aligner.helper import score_g2p
+from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlignmentError
+from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Stopped, thirdparty_binary
 
@@ -235,6 +229,42 @@ class G2PTrainer(MfaWorker, TrainerMixin):
 
 
 class PyniniTrainerMixin:
+    """
+    Mixin for training Pynini G2P models
+
+    Parameters
+    ----------
+    order: int
+        Order of the ngram model, defaults to 7
+    random_starts: int
+        Number of random starts to use in initialization, defaults to 25
+    seed: int
+        Seed for randomization, defaults to 1917
+    delta: float
+        Comparison/quantization delta for Baum-Welch training, defaults to 1/1024
+    alpha: float
+        Step size reduction power parameter for Baum-Welch training;
+        full standard batch EM is run (not stepwise) if set to 0, defaults to 1.0
+    batch_size:int
+        Batch size for Baum-Welch training, defaults to 200
+    num_iterations:int
+        Maximum number of iterations to use in Baum-Welch training, defaults to 10
+    smoothing_method:str
+        Smoothing method for the ngram model, defaults to "kneser_ney"
+    pruning_method:str
+        Pruning method for pruning the ngram model, defaults to "relative_entropy"
+    model_size: int
+        Target number of ngrams for pruning, defaults to 1000000
+    insertions: bool
+        Flag for whether to allow for insertions, default True
+    deletions: bool
+        Flag for whether to allow for deletions, default True
+    fst_default_cache_gc: str
+        String to pass to OpenFst binaries for GC behavior
+    fst_default_cache_gc_limit: str
+        String to pass to OpenFst binaries for GC behavior
+    """
+
     def __init__(
         self,
         order: int = 8,
@@ -297,32 +327,32 @@ class PyniniTrainerMixin:
 
     @property
     def output_far_path(self) -> str:
-        """Path to store grapheme archive"""
+        """Path to store phone archive"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.p.far")
 
     @property
     def cg_path(self) -> str:
-        """Path to store grapheme archive"""
+        """Path to covering grammar FST"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.cg.fst")
 
     @property
     def align_path(self) -> str:
-        """Path to store grapheme archive"""
+        """Path to store alignment models"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.align.fst")
 
     @property
     def afst_path(self) -> str:
-        """Path to store grapheme archive"""
+        """Path to store aligned FSTs"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.afst.far")
 
     @property
     def input_path(self) -> str:
-        """Path to temporary file to store training data"""
+        """Path to temporary file to store grapheme training data"""
         return os.path.join(self.working_directory, f"input_{self.data_source_identifier}.txt")
 
     @property
     def output_path(self) -> str:
-        """Path to temporary file to store training data"""
+        """Path to temporary file to store phone training data"""
         return os.path.join(self.working_directory, f"output_{self.data_source_identifier}.txt")
 
     def generate_model(self) -> None:
@@ -360,7 +390,6 @@ class PyniniTrainerMixin:
                 [
                     thirdparty_binary("ngramshrink"),
                     f"--method={self.pruning_method}",
-                    # f"--theta=0.000000001",
                     f"--target_number_of_ngrams={self.model_size}",
                 ],
                 stdin=ngrammake_proc.stdout,
@@ -607,38 +636,6 @@ class PyniniTrainer(
     """
     Top-level G2P trainer that uses Pynini functionality
 
-    Parameters
-    ----------
-    order: int
-        Order of the ngram model, defaults to 7
-    random_starts: int
-        Number of random starts to use in initialization, defaults to 25
-    seed: int
-        Seed for randomization, defaults to 1917
-    delta: float
-        Comparison/quantization delta for Baum-Welch training, defaults to 1/1024
-    alpha: float
-        Step size reduction power parameter for Baum-Welch training;
-        full standard batch EM is run (not stepwise) if set to 0, defaults to 1.0
-    batch_size:int
-        Batch size for Baum-Welch training, defaults to 200
-    num_iterations:int
-        Maximum number of iterations to use in Baum-Welch training, defaults to 10
-    smoothing_method:str
-        Smoothing method for the ngram model, defaults to "kneser_ney"
-    pruning_method:str
-        Pruning method for pruning the ngram model, defaults to "relative_entropy"
-    model_size: int
-        Target number of ngrams for pruning, defaults to 1000000
-    insertions: bool
-        Flag for whether to allow for insertions, default True
-    deletions: bool
-        Flag for whether to allow for deletions, default True
-    fst_default_cache_gc: str
-        String to pass to OpenFst binaries for GC behavior
-    fst_default_cache_gc_limit: str
-        String to pass to OpenFst binaries for GC behavior
-
     See Also
     --------
     :class:`~montreal_forced_aligner.g2p.trainer.G2PTrainer`
@@ -653,11 +650,11 @@ class PyniniTrainer(
     ):
         self._data_source = os.path.splitext(os.path.basename(kwargs["dictionary_path"]))[0]
         super().__init__(**kwargs)
-        self.wer = None
-        self.ler = None
         self._fst_path = None
         self._sym_path = None
         self.position_dependent_phones = False
+        self.wer = None
+        self.ler = None
 
     @property
     def data_directory(self) -> str:
@@ -823,90 +820,6 @@ class PyniniTrainer(
         # self.clean_up()
         self.log_info(f"Saved model to {output_model_path}")
 
-    def score_pronunciations(
-        self, score_threshold: Optional[float] = 1.0
-    ) -> Dict[Tuple[str, str], Tuple[float, float]]:
-        """
-        Scored pronunciations according to their cost in the G2P model
-
-        Returns
-        -------
-        dict[tuple[str, str], float]
-            Scores for given pronunciations
-        """
-        fst = pynini.Fst.read(self.fst_path)
-
-        matcher = MatchScorer(
-            fst,
-            self.input_token_type,
-            self.output_token_type,
-            threshold=self.g2p_threshold,
-        )
-
-        num_words = len(self.g2p_training_dictionary)
-        begin = time.time()
-        self.log_info("Scoring pronunciations...")
-        to_return = {}
-
-        if num_words < 30 or self.num_jobs < 2:
-            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
-                for word, pronunciations in self.g2p_training_dictionary.items():
-                    pbar.update(1)
-                    try:
-                        scored_prons = matcher((word, pronunciations))
-                    except rewrite.Error as e:
-                        self.log_debug(f"Skipping {word} due to {e}")
-                        continue
-                    for p, (absolute_score, relative_score) in scored_prons.items():
-                        if relative_score <= score_threshold:
-                            to_return[(word, p)] = (absolute_score, relative_score)
-        else:
-            stopped = Stopped()
-            job_queue = mp.Queue()
-            return_queue = mp.Queue()
-            procs = []
-            for _ in range(self.num_jobs):
-                p = RewriterWorker(
-                    job_queue,
-                    return_queue,
-                    matcher,
-                    stopped,
-                )
-                procs.append(p)
-                p.start()
-            for word, pronunciations in self.g2p_training_dictionary.items():
-                job_queue.put((word, pronunciations))
-            error_dict = {}
-            with tqdm.tqdm(total=num_words, disable=getattr(self, "quiet", False)) as pbar:
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if stopped.stop_check():
-                            continue
-                    except queue.Empty:
-                        for proc in procs:
-                            # print(proc.name, proc.finished.stop_check())
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    pbar.update(1)
-                    if isinstance(result, Exception):
-                        stopped.stop()
-                        error_dict[word] = result
-                        continue
-                    (word, _), result = result
-                    for p, (absolute_score, relative_score) in result.items():
-                        if relative_score <= score_threshold:
-                            to_return[(word, p)] = (absolute_score, relative_score)
-            for p in procs:
-                p.join()
-            if error_dict:
-                raise PyniniGenerationError(error_dict)
-        self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
-        return to_return
-
     def train(self) -> None:
         """
         Train a G2P model
@@ -950,68 +863,6 @@ class PyniniTrainer(
             num_jobs=self.num_jobs,
             num_pronunciations=self.num_pronunciations,
         )
-        output = gen.generate_pronunciations()
-        self.compute_validation_errors(output)
-
-    def compute_validation_errors(
-        self,
-        hypothesis_values: Dict[str, List[str]],
-    ):
-        """
-        Computes validation errors
-
-        Parameters
-        ----------
-        hypothesis_values: dict[str, list[str]]
-            Hypothesis labels
-        """
-        begin = time.time()
-        # Word-level measures.
-        correct = 0
-        incorrect = 0
-        # Label-level measures.
-        total_edits = 0
-        total_length = 0
-        # Since the edit distance algorithm is quadratic, let's do this with
-        # multiprocessing.
-        self.log_debug(f"Processing results for {len(hypothesis_values)} hypotheses")
-        to_comp = []
-        hyp_pron_count = 0
-        gold_pron_count = 0
-        for word, gold_pronunciations in self.g2p_validation_dictionary.items():
-            if word not in hypothesis_values:
-                incorrect += 1
-                gold_length = statistics.mean(len(x.split()) for x in gold_pronunciations)
-                total_edits += gold_length
-                total_length += gold_length
-                continue
-            hyp = hypothesis_values[word]
-            for h in hyp:
-                if h in gold_pronunciations:
-                    correct += 1
-                    total_length += len(h)
-                    break
-            else:
-                incorrect += 1
-                to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
-            self.log_debug(
-                f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
-            )
-            hyp_pron_count += len(hyp)
-            gold_pron_count += len(gold_pronunciations)
-        self.log_debug(
-            f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
-            f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
-        )
-        with mp.Pool(self.num_jobs) as pool:
-            gen = pool.starmap(score_g2p, to_comp)
-            for (edits, length) in gen:
-                total_edits += edits
-                total_length += length
-        self.wer = 100 * incorrect / (correct + incorrect)
-        self.ler = 100 * total_edits / total_length
-        self.log_info(f"WER:\t{self.wer:.2f}")
-        self.log_info(f"LER:\t{self.ler:.2f}")
-        self.log_debug(
-            f"Computation of errors for {len(self.g2p_validation_dictionary)} words took {time.time() - begin} seconds"
-        )
+        gen.evaluate_g2p_model(self.g2p_training_dictionary)
+        self.wer = gen.wer
+        self.ler = gen.ler

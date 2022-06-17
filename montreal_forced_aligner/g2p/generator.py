@@ -1,26 +1,28 @@
 """Class for generating pronunciations from G2P models"""
 from __future__ import annotations
 
+import csv
 import functools
 import multiprocessing as mp
 import os
 import queue
+import statistics
 import time
-from typing import TYPE_CHECKING, Collection, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
-from montreal_forced_aligner.exceptions import G2PError, PyniniGenerationError
+from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
-from montreal_forced_aligner.helper import comma_join
+from montreal_forced_aligner.helper import comma_join, score_g2p
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Stopped
 
 try:
     import pynini
-    from pynini import Fst, TokenType
+    from pynini import Fst, SymbolTable, TokenType
     from pynini.lib import rewrite
 
     G2P_DISABLED = False
@@ -28,6 +30,7 @@ except ImportError:
     pynini = None
     TokenType = str
     Fst = None
+    SymbolTable = None
     rewrite = None
     G2P_DISABLED = True
 
@@ -45,7 +48,7 @@ __all__ = [
 
 
 def threshold_lattice_to_dfa(
-    lattice: pynini.Fst, threshold: float = 0.99, state_multiplier: int = 2
+    lattice: pynini.Fst, threshold: float = 1.0, state_multiplier: int = 2
 ) -> pynini.Fst:
     """Constructs a (possibly pruned) weighted DFA of output strings.
     Given an epsilon-free lattice of output strings (such as produced by
@@ -56,13 +59,21 @@ def threshold_lattice_to_dfa(
     threshold is a multiplier of the size of input lattice (by default, 4), plus
     a small constant factor. This is intended by a sensible default and is not an
     inherently meaningful value in and of itself.
-    Args:
-    lattice: Epsilon-free non-deterministic finite acceptor.
-    threshold: Threshold for weights (1 is optimal only, 0 is for all paths)
-    state_multiplier: Max ratio for the number of states in the DFA lattice to
-      the NFA lattice; if exceeded, a warning is logged.
-    Returns:
-    Epsilon-free deterministic finite acceptor.
+
+    Parameters
+    ----------
+    lattice: :class:`~pynini.Fst`
+        Epsilon-free non-deterministic finite acceptor.
+    threshold: float
+        Threshold for weights, 1.0 is optimal only, 0 is for all paths, greater than 1
+        prunes the lattice to include paths with costs less than the optimal path's score times the threshold
+    state_multiplier: int
+        Max ratio for the number of states in the DFA lattice to the NFA lattice; if exceeded, a warning is logged.
+
+    Returns
+    -------
+    :class:`~pynini.Fst`
+        Epsilon-free deterministic finite acceptor.
     """
     weight_type = lattice.weight_type()
     weight_threshold = pynini.Weight(weight_type, threshold)
@@ -74,8 +85,8 @@ def threshold_lattice_to_dfa(
 def optimal_rewrites(
     string: pynini.FstLike,
     rule: pynini.Fst,
-    input_token_type: Optional[pynini.TokenType] = None,
-    output_token_type: Optional[pynini.TokenType] = None,
+    input_token_type: Optional[TokenType] = None,
+    output_token_type: Optional[TokenType] = None,
     threshold: float = 1,
 ) -> List[str]:
     """Returns all optimal rewrites.
@@ -89,39 +100,33 @@ def optimal_rewrites(
     A tuple of output strings.
     """
     lattice = rewrite.rewrite_lattice(string, rule, input_token_type)
-    lattice = threshold_lattice_to_dfa(lattice, threshold)
+    lattice = threshold_lattice_to_dfa(lattice, threshold, 4)
     return rewrite.lattice_to_strings(lattice, output_token_type)
 
 
-def scored_match(
-    input_string: pynini.FstLike,
-    output_string: pynini.FstLike,
-    rule: pynini.Fst,
-    input_token_type: Optional[pynini.TokenType] = None,
-    output_token_type: Optional[pynini.TokenType] = None,
-    threshold: float = 6,
-    state_multiplier: int = 4,
-    lattice=None,
-) -> float:
-    if lattice is None:
-        lattice = rewrite.rewrite_lattice(input_string, rule, input_token_type)
-    with pynini.default_token_type(output_token_type):
-        matched_lattice = pynini.intersect(lattice, output_string, compose_filter="sequence")
-        matched_lattice = rewrite.lattice_to_dfa(matched_lattice, True, state_multiplier)
-    if matched_lattice.start() == pynini.NO_STATE_ID:
-        return -1
-    matched_weight = float(matched_lattice.paths().weight())
-    return matched_weight
-
-
 class Rewriter:
-    """Helper object for rewriting."""
+    """
+    Helper object for rewriting
+
+    Parameters
+    ----------
+    fst: pynini.Fst
+        G2P FST model
+    input_token_type: pynini.TokenType
+        Grapheme symbol table or "utf8"
+    output_token_type: pynini.SymbolTable
+        Phone symbol table
+    num_pronunciations: int
+        Number of pronunciations, default to 0.  If this is 0, thresholding is used
+    threshold: float
+        Threshold to use for pruning rewrite lattice, defaults to 1.5, only used if num_pronunciations is 0
+    """
 
     def __init__(
         self,
         fst: Fst,
         input_token_type: TokenType,
-        output_token_type: TokenType,
+        output_token_type: SymbolTable,
         num_pronunciations: int = 0,
         threshold: float = 1,
     ):
@@ -148,64 +153,110 @@ class Rewriter:
         return [x for x in hypotheses if x]
 
 
-class MatchScorer:
-    """Helper object for matches input and output strings."""
+class PhonetisaurusRewriter:
+    """
+    Helper function for rewriting
+
+    Parameters
+    ----------
+    fst: pynini.Fst
+        G2P FST model
+    input_token_type: pynini.SymbolTable
+        Grapheme symbol table
+    output_token_type: pynini.SymbolTable
+    num_pronunciations: int
+        Number of pronunciations, default to 0.  If this is 0, thresholding is used
+    threshold: float
+        Threshold to use for pruning rewrite lattice, defaults to 1.5, only used if num_pronunciations is 0
+    grapheme_order: int
+        Maximum number of graphemes to consider single segment
+    seq_sep: str
+        Separator to use between grapheme symbols
+    """
 
     def __init__(
         self,
         fst: Fst,
-        input_token_type: TokenType,
-        output_token_type: TokenType,
-        threshold: float = 1.0,
+        input_token_type: SymbolTable,
+        output_token_type: SymbolTable,
+        num_pronunciations: int = 0,
+        threshold: float = 1.5,
+        grapheme_order: int = 2,
+        seq_sep: str = "|",
     ):
         self.fst = fst
+        self.seq_sep = seq_sep
         self.input_token_type = input_token_type
         self.output_token_type = output_token_type
-        self.threshold = threshold
-        self.match = functools.partial(
-            scored_match,
-            threshold=threshold,
-            rule=fst,
-            input_token_type=input_token_type,
-            output_token_type=output_token_type,
-        )
+        self.grapheme_order = grapheme_order
+        if num_pronunciations > 0:
+            self.rewrite = functools.partial(
+                rewrite.top_rewrites,
+                nshortest=num_pronunciations,
+                rule=fst,
+                input_token_type=None,
+                output_token_type=output_token_type,
+            )
+        else:
+            self.rewrite = functools.partial(
+                optimal_rewrites,
+                threshold=threshold,
+                rule=fst,
+                input_token_type=None,
+                output_token_type=output_token_type,
+            )
 
-    def __call__(self, i: Tuple[str, Collection[str]]) -> Dict[str, float]:  # pragma: no cover
+    def __call__(self, graphemes: str) -> List[Tuple[str, ...]]:  # pragma: no cover
         """Call the rewrite function"""
-        best_score = 100000
-        word, pronunciations = i
-        lattice = rewrite.rewrite_lattice(word, self.fst, self.input_token_type)
-        output = {}
-        for p in pronunciations:
-            score = self.match(word, p, lattice=lattice)
-            if score >= 0 and score < best_score:
-                best_score = score
-            output[p] = score
-        for p, score in output.items():
-            if score > 0:
-                relative_score = best_score / score
-            elif score == 0:
-                relative_score = 1.0
-            else:
-                relative_score = 0.0
-            output[p] = (score, relative_score)
-        return output
+        fst = pynini.Fst()
+        one = pynini.Weight.one(fst.weight_type())
+        max_state = 0
+        for i in range(len(graphemes)):
+            start_state = fst.add_state()
+            for j in range(1, self.grapheme_order + 1):
+                if i + j <= len(graphemes):
+                    substring = self.seq_sep.join(graphemes[i : i + j])
+                    state = self.input_token_type.find(substring)
+                    if state != pynini.NO_SYMBOL:
+                        fst.add_arc(start_state, pynini.Arc(state, state, one, i + j))
+                    if i + j >= max_state:
+                        max_state = i + j
+        for _ in range(fst.num_states(), max_state + 1):
+            fst.add_state()
+        fst.set_start(0)
+        fst.set_final(len(graphemes), one)
+        fst.set_input_symbols(self.input_token_type)
+        fst.set_output_symbols(self.input_token_type)
+        hypotheses = self.rewrite(fst)
+        hypotheses = [x.replace(self.seq_sep, " ") for x in hypotheses if x]
+        return hypotheses
 
 
 class RewriterWorker(mp.Process):
     """
     Rewriter process
+
+    Parameters
+    ----------
+    job_queue: :class:`~multiprocessing.Queue`
+        Queue to pull words from
+    return_queue: :class:`~multiprocessing.Queue`
+        Queue to put pronunciations
+    rewriter: :class:`~montreal_forced_aligner.g2p.generator.Rewriter`
+        Function to generate pronunciations of words
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Stop check
     """
 
     def __init__(
         self,
-        job_q: mp.Queue,
+        job_queue: mp.Queue,
         return_queue: mp.Queue,
         rewriter: Rewriter,
         stopped: Stopped,
     ):
         mp.Process.__init__(self)
-        self.job_q = job_q
+        self.job_queue = job_queue
         self.return_queue = return_queue
         self.rewriter = rewriter
         self.stopped = stopped
@@ -215,7 +266,7 @@ class RewriterWorker(mp.Process):
         """Run the rewriting function"""
         while True:
             try:
-                word = self.job_q.get(timeout=1)
+                word = self.job_queue.get(timeout=1)
             except queue.Empty:
                 break
             if self.stopped.stop_check():
@@ -309,9 +360,11 @@ class PyniniGenerator(G2PTopLevelMixin):
     """
 
     def __init__(self, g2p_model_path: str, strict_graphemes: bool = False, **kwargs):
-        self.g2p_model = G2PModel(g2p_model_path)
         self.strict_graphemes = strict_graphemes
         super().__init__(**kwargs)
+        self.g2p_model = G2PModel(
+            g2p_model_path, root_directory=getattr(self, "workflow_directory", None)
+        )
 
     def generate_pronunciations(self) -> Dict[str, List[str]]:
         """
@@ -322,25 +375,32 @@ class PyniniGenerator(G2PTopLevelMixin):
         dict[str, list[str]]
             Mappings of keys to their generated pronunciations
         """
-        if self.g2p_model.meta["architecture"] == "phonetisaurus":
-            raise G2PError(
-                "Previously trained Phonetisaurus models from 1.1 and earlier are not currently supported. "
-                "Please retrain your model using 2.0+"
-            )
 
-        input_token_type = "utf8"
         fst = pynini.Fst.read(self.g2p_model.fst_path)
-
-        output_token_type = "utf8"
-        if self.g2p_model.sym_path is not None and os.path.exists(self.g2p_model.sym_path):
+        if self.g2p_model.meta["architecture"] == "phonetisaurus":
             output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
-        rewriter = Rewriter(
-            fst,
-            input_token_type,
-            output_token_type,
-            num_pronunciations=self.num_pronunciations,
-            threshold=self.g2p_threshold,
-        )
+            input_token_type = pynini.SymbolTable.read_text(self.g2p_model.grapheme_sym_path)
+            fst.set_input_symbols(input_token_type)
+            fst.set_output_symbols(output_token_type)
+            rewriter = PhonetisaurusRewriter(
+                fst,
+                input_token_type,
+                output_token_type,
+                num_pronunciations=self.num_pronunciations,
+                threshold=self.g2p_threshold,
+            )
+        else:
+            output_token_type = "utf8"
+            input_token_type = "utf8"
+            if self.g2p_model.sym_path is not None and os.path.exists(self.g2p_model.sym_path):
+                output_token_type = pynini.SymbolTable.read_text(self.g2p_model.sym_path)
+            rewriter = Rewriter(
+                fst,
+                input_token_type,
+                output_token_type,
+                num_pronunciations=self.num_pronunciations,
+                threshold=self.g2p_threshold,
+            )
 
         num_words = len(self.words_to_g2p)
         begin = time.time()
@@ -454,20 +514,156 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
 
     @property
     def data_source_identifier(self) -> str:
-        """Data directory"""
-        return ""
+        """Dummy "validation" data source"""
+        return "validation"
 
     @property
     def data_directory(self) -> str:
         """Data directory"""
         return self.working_directory
 
+    @property
+    def evaluation_csv_path(self) -> str:
+        """Path to working directory's CSV file"""
+        return os.path.join(self.working_directory, "pronunciation_evaluation.csv")
+
     def setup(self) -> None:
-        """Set up the G2P generator"""
+        """Set up the G2P validator"""
         if self.initialized:
             return
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
+        self.wer = None
+        self.ler = None
+
+    def compute_validation_errors(
+        self,
+        gold_values: Dict[str, Set[str]],
+        hypothesis_values: Dict[str, List[str]],
+    ):
+        """
+        Computes validation errors
+
+        Parameters
+        ----------
+        gold_values: dict[str, set[str]]
+            Gold pronunciations
+        hypothesis_values: dict[str, list[str]]
+            Hypothesis pronunciations
+        """
+        begin = time.time()
+        # Word-level measures.
+        correct = 0
+        incorrect = 0
+        # Label-level measures.
+        total_edits = 0
+        total_length = 0
+        # Since the edit distance algorithm is quadratic, let's do this with
+        # multiprocessing.
+        self.log_debug(f"Processing results for {len(hypothesis_values)} hypotheses")
+        to_comp = []
+        indices = []
+        hyp_pron_count = 0
+        gold_pron_count = 0
+        output = []
+        for word, gold_pronunciations in gold_values.items():
+            if word not in hypothesis_values:
+                incorrect += 1
+                gold_length = statistics.mean(len(x.split()) for x in gold_pronunciations)
+                total_edits += gold_length
+                total_length += gold_length
+                output.append(
+                    {
+                        "Word": word,
+                        "Gold pronunciations": ", ".join(gold_pronunciations),
+                        "Hypothesis pronunciations": "",
+                        "Accuracy": 0,
+                        "Error rate": 1.0,
+                        "Length": gold_length,
+                    }
+                )
+                continue
+            hyp = hypothesis_values[word]
+            for h in hyp:
+                if h in gold_pronunciations:
+                    correct += 1
+                    total_length += len(h)
+                    output.append(
+                        {
+                            "Word": word,
+                            "Gold pronunciations": ", ".join(gold_pronunciations),
+                            "Hypothesis pronunciations": ", ".join(hyp),
+                            "Accuracy": 1,
+                            "Error rate": 0.0,
+                            "Length": len(h),
+                        }
+                    )
+                    break
+            else:
+                incorrect += 1
+                indices.append(word)
+                to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
+            self.log_debug(
+                f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
+            )
+            hyp_pron_count += len(hyp)
+            gold_pron_count += len(gold_pronunciations)
+        self.log_debug(
+            f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
+            f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
+        )
+        with mp.Pool(self.num_jobs) as pool:
+            gen = pool.starmap(score_g2p, to_comp)
+            for i, (edits, length) in enumerate(gen):
+                word = indices[i]
+                gold_pronunciations = gold_values[word]
+                hyp = hypothesis_values[word]
+                output.append(
+                    {
+                        "Word": word,
+                        "Gold pronunciations": ", ".join(gold_pronunciations),
+                        "Hypothesis pronunciations": ", ".join(hyp),
+                        "Accuracy": 1,
+                        "Error rate": edits / length,
+                        "Length": length,
+                    }
+                )
+                total_edits += edits
+                total_length += length
+        with open(self.evaluation_csv_path, "w", encoding="utf8", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "Word",
+                    "Gold pronunciations",
+                    "Hypothesis pronunciations",
+                    "Accuracy",
+                    "Error rate",
+                    "Length",
+                ],
+            )
+            writer.writeheader()
+            for line in output:
+                writer.writerow(line)
+        self.wer = 100 * incorrect / (correct + incorrect)
+        self.ler = 100 * total_edits / total_length
+        self.log_info(f"WER:\t{self.wer:.2f}")
+        self.log_info(f"LER:\t{self.ler:.2f}")
+        self.log_debug(
+            f"Computation of errors for {len(gold_values)} words took {time.time() - begin} seconds"
+        )
+
+    def evaluate_g2p_model(self, gold_pronunciations: Dict[str, Set[str]]) -> None:
+        """
+        Evaluate a G2P model on the word list
+
+        Parameters
+        ----------
+        gold_pronunciations: dict[str, set[str]]
+            Gold pronunciations
+        """
+        output = self.generate_pronunciations()
+        self.compute_validation_errors(gold_pronunciations, output)
 
 
 class PyniniWordListGenerator(PyniniValidator):

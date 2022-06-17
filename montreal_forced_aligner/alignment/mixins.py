@@ -22,6 +22,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 )
 from montreal_forced_aligner.db import File, Speaker, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+from montreal_forced_aligner.exceptions import NoAlignmentsError
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
 
 if TYPE_CHECKING:
@@ -116,6 +117,8 @@ class AlignMixin(DictionaryMixin):
         """
         args = []
         for j in self.jobs:
+            if not j.has_data:
+                continue
             model_path = self.model_path
             if not os.path.exists(model_path):
                 model_path = self.alignment_model_path
@@ -146,6 +149,8 @@ class AlignMixin(DictionaryMixin):
         feat_strings = self.construct_feature_proc_strings()
         iteration = getattr(self, "iteration", None)
         for j in self.jobs:
+            if not j.has_data:
+                continue
             if iteration is not None:
                 log_path = os.path.join(
                     self.working_log_directory, f"align.{iteration}.{j.name}.log"
@@ -181,6 +186,8 @@ class AlignMixin(DictionaryMixin):
         args = []
         iteration = getattr(self, "iteration", None)
         for j in self.jobs:
+            if not j.has_data:
+                continue
             if iteration is not None:
                 log_path = os.path.join(
                     self.working_log_directory, f"align.{iteration}.{j.name}.log"
@@ -352,6 +359,11 @@ class AlignMixin(DictionaryMixin):
                     pbar.update(1)
                 for p in procs:
                     p.join()
+
+                if len(update_mappings) == 0:
+                    raise NoAlignmentsError(
+                        self.num_current_utterances, self.beam, self.retry_beam
+                    )
                 if error_dict:
                     for v in error_dict.values():
                         raise v
@@ -365,6 +377,10 @@ class AlignMixin(DictionaryMixin):
                             {"id": utterance, "alignment_log_likelihood": log_likelihood}
                         )
                         pbar.update(1)
+                if len(update_mappings) == 0:
+                    raise NoAlignmentsError(
+                        self.num_current_utterances, self.beam, self.retry_beam
+                    )
             session.bulk_update_mappings(Utterance, update_mappings)
             session.query(Utterance).filter(
                 Utterance.alignment_log_likelihood != None  # noqa

@@ -310,6 +310,7 @@ class LdaTrainer(TriphoneTrainer):
                 j.construct_path_dictionary(self.working_directory, "lda", "acc"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def calc_lda_mllt_arguments(self) -> List[CalcLdaMlltArguments]:
@@ -337,6 +338,7 @@ class LdaTrainer(TriphoneTrainer):
                 j.construct_path_dictionary(self.working_directory, "lda", "macc"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property

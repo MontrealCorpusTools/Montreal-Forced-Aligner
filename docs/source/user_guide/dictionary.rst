@@ -157,6 +157,10 @@ The format for this dictionary format is:
 
 The first float column is the probability of the pronunciation, the next float is the probability of silence following the pronunciation, and the final two floats are correction terms for preceding silence and non-silence. Given that each entry in a dictionary is independent and there is no way to encode information about the preceding context, the correction terms are calculated as how much more common was silence or non-silence compared to what we would expect factoring out the likelihood of silence from the previous word. More details are found in :kaldi_steps:`get_prons` and the `related paper <https://www.danielpovey.com/files/2015_interspeech_silprob.pdf>`_.
 
+.. note::
+
+   You can include entries that only have pronunciations or pronunciation probabilities mixed with those with silence probabilities.  If an entry doesn't have a pronunciation probability, it will default to ``1.0`` (assumes equal weight between pronunciation variants as above).  If an entry does not have the three silence numbers, then the probability following silence will use the default (:ref:`defaults to 0.5 for non-pretrained models <configuration_dictionary>`, or :ref:`whatever probability was estimated during training <train_silence_probability>`), along with no correction for when the pronunciation follows silence or non-silence.
+
 Non-speech annotations
 ======================
 

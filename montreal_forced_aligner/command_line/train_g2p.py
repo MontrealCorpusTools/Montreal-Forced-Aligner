@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
+from montreal_forced_aligner.g2p.phonetisaurus_trainer import PhonetisaurusTrainer
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
 if TYPE_CHECKING:
@@ -24,12 +25,19 @@ def train_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None
     unknown_args: list[str]
         Optional arguments that will be passed to configuration objects
     """
+    if getattr(args, "phonetisaurus", True):
+        trainer = PhonetisaurusTrainer(
+            dictionary_path=args.dictionary_path,
+            temporary_directory=args.temporary_directory,
+            **PhonetisaurusTrainer.parse_parameters(args.config_path, args, unknown_args)
+        )
 
-    trainer = PyniniTrainer(
-        dictionary_path=args.dictionary_path,
-        temporary_directory=args.temporary_directory,
-        **PyniniTrainer.parse_parameters(args.config_path, args, unknown_args)
-    )
+    else:
+        trainer = PyniniTrainer(
+            dictionary_path=args.dictionary_path,
+            temporary_directory=args.temporary_directory,
+            **PyniniTrainer.parse_parameters(args.config_path, args, unknown_args)
+        )
 
     try:
         trainer.setup()

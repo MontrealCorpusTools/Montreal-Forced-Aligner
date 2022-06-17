@@ -66,7 +66,20 @@ def load_configuration(config_path: str) -> Dict[str, Any]:
     return data
 
 
-def split_phone_position(phone_label):
+def split_phone_position(phone_label: str) -> List[str]:
+    """
+    Splits a phone label into its original phone and it's positional label
+
+    Parameters
+    ----------
+    phone_label: str
+        Phone label
+
+    Returns
+    -------
+    List[str]
+        Phone and position
+    """
     return phone_label.rsplit("_", maxsplit=1)
 
 
@@ -484,7 +497,23 @@ def comma_join(sequence: List[Any]) -> str:
 
 def make_re_character_set_safe(
     characters: typing.Collection[str], extra_strings: Optional[List[str]] = None
-):
+) -> str:
+    """
+    Construct a character set string for use in regex, escaping necessary characters and
+    moving "-" to the initial position
+
+    Parameters
+    ----------
+    characters: Collection[str]
+        Characters to compile
+    extra_strings: list[str], optional
+        Optional other strings to put in the character class
+
+    Returns
+    -------
+    str
+        Character set specifier for re functions
+    """
     characters = sorted(characters)
     extra = ""
     if "-" in characters:

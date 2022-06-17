@@ -70,6 +70,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         return self.workflow_directory
 
     def setup_acoustic_model(self) -> None:
+        """Set up the acoustic model"""
         self.acoustic_model.export_model(self.working_directory)
         os.makedirs(self.phones_dir, exist_ok=True)
         exist_check = os.path.exists(self.db_path)

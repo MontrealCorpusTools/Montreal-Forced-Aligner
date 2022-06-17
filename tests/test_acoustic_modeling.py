@@ -20,7 +20,7 @@ def test_trainer(basic_dict_path, basic_corpus_dir, generated_dir):
 
 
 def test_basic_mono(
-    basic_dict_path,
+    mixed_dict_path,
     basic_corpus_dir,
     generated_dir,
     mono_train_config_path,
@@ -32,7 +32,7 @@ def test_basic_mono(
     args = argparse.Namespace(use_mp=True, debug=False, verbose=True)
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
+        dictionary_path=mixed_dict_path,
         temporary_directory=data_directory,
         **TrainableAligner.parse_parameters(mono_train_config_path, args=args)
     )
@@ -43,7 +43,7 @@ def test_basic_mono(
     shutil.rmtree(data_directory, ignore_errors=True)
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
+        dictionary_path=mixed_dict_path,
         acoustic_model_path=mono_align_model_path,
         temporary_directory=data_directory,
         **PretrainedAligner.parse_parameters(args=args)
@@ -53,7 +53,7 @@ def test_basic_mono(
 
 
 def test_pronunciation_training(
-    basic_dict_path, basic_corpus_dir, generated_dir, pron_train_config_path
+    mixed_dict_path, basic_corpus_dir, generated_dir, pron_train_config_path
 ):
     data_directory = os.path.join(generated_dir, "temp", "pron_train_test")
     export_path = os.path.join(generated_dir, "pron_train_test_export", "model.zip")
@@ -61,7 +61,7 @@ def test_pronunciation_training(
     args = argparse.Namespace(use_mp=True, debug=False, verbose=True)
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
+        dictionary_path=mixed_dict_path,
         temporary_directory=data_directory,
         **TrainableAligner.parse_parameters(pron_train_config_path, args=args)
     )
@@ -70,11 +70,11 @@ def test_pronunciation_training(
     a.cleanup()
     assert not os.path.exists(export_path)
     assert not os.path.exists(
-        os.path.join(generated_dir, "pron_train_test_export", os.path.basename(basic_dict_path))
+        os.path.join(generated_dir, "pron_train_test_export", os.path.basename(mixed_dict_path))
     )
     a = TrainableAligner(
         corpus_directory=basic_corpus_dir,
-        dictionary_path=basic_dict_path,
+        dictionary_path=mixed_dict_path,
         temporary_directory=data_directory,
         **TrainableAligner.parse_parameters(pron_train_config_path, args=args)
     )
@@ -85,7 +85,7 @@ def test_pronunciation_training(
         os.path.join(
             generated_dir,
             "pron_train_test_export",
-            os.path.basename(basic_dict_path).replace(".txt", ".dict"),
+            os.path.basename(mixed_dict_path).replace(".txt", ".dict"),
         )
     )
 

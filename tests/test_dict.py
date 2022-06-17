@@ -4,6 +4,7 @@ import shutil
 import pytest
 
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
+from montreal_forced_aligner.db import Pronunciation
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
 
@@ -268,6 +269,43 @@ def test_multispeaker_config(multispeaker_dictionary_config_path, generated_dir)
     )
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
+
+
+def test_mixed_dictionary(mixed_dict_path, generated_dir):
+    output_directory = os.path.join(generated_dir, "dictionary_tests", "mixed")
+    shutil.rmtree(output_directory, ignore_errors=True)
+    dictionary = MultispeakerDictionary(
+        dictionary_path=mixed_dict_path,
+        position_dependent_phones=False,
+        temporary_directory=output_directory,
+    )
+    dictionary.dictionary_setup()
+    dictionary.write_lexicon_information()
+    with dictionary.session() as session:
+        pron = (
+            session.query(Pronunciation).filter(Pronunciation.pronunciation == "dh ih s").first()
+        )
+        assert pron is not None
+        assert pron.probability == 1.0
+        assert pron.silence_after_probability == 0.43
+        assert pron.silence_before_correction == 1.23
+        assert pron.non_silence_before_correction == 0.85
+
+        pron = (
+            session.query(Pronunciation).filter(Pronunciation.pronunciation == "ay m ih").first()
+        )
+        assert pron is not None
+        assert pron.probability == 0.01
+        assert pron.silence_after_probability is None
+        assert pron.silence_before_correction is None
+        assert pron.non_silence_before_correction is None
+
+        pron = session.query(Pronunciation).filter(Pronunciation.pronunciation == "dh ah").first()
+        assert pron is not None
+        assert pron.probability == 1
+        assert pron.silence_after_probability is None
+        assert pron.silence_before_correction is None
+        assert pron.non_silence_before_correction is None
 
 
 def test_vietnamese_tones(vietnamese_dict_path, generated_dir):

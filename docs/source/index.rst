@@ -80,5 +80,4 @@ Montreal Forced Aligner documentation
    Getting started <getting_started.rst>
    User guide <user_guide/index.rst>
    API reference <reference/index.rst>
-   Release notes <changelog/index.rst>
-   Pretrained MFA models <https://mfa-models.readthedocs.io/>
+   Changelog <changelog/index.rst>

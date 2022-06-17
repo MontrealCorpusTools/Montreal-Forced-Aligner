@@ -324,6 +324,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         strings = []
         for j in self.jobs:
+            if not j.has_data:
+                continue
             lda_mat_path = None
             fmllrs = {}
             if self.working_directory is not None:
@@ -407,6 +409,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 self.vad_options,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def calc_fmllr_arguments(self, iteration: Optional[int] = None) -> List[CalcFmllrArguments]:
@@ -437,6 +440,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 self.fmllr_options,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def mfcc_arguments(self) -> List[MfccArguments]:
@@ -460,6 +464,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 self.pitch_options,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def mfcc(self) -> None:
@@ -575,7 +580,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def calc_fmllr(self, iteration: Optional[int] = None) -> None:
         """
         Multiprocessing function that computes speaker adaptation transforms via
-        Feature space Maximum Likelihood Linear Regression (fMLLR).
+        feature-space Maximum Likelihood Linear Regression (fMLLR).
 
         See Also
         --------
@@ -1102,6 +1107,15 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryD
 class AcousticCorpusWithPronunciations(
     AcousticCorpusPronunciationMixin, MfaWorker, TemporaryDirectoryMixin
 ):
+    """
+    Standalone class for parsing an acoustic corpus with a pronunciation dictionary
+
+    Parameters
+    ----------
+    num_jobs: int
+        Number of jobs to use in parsing
+    """
+
     def __init__(self, num_jobs=3, **kwargs):
         super().__init__(**kwargs)
         self.num_jobs = num_jobs

@@ -516,6 +516,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_dictionary_dependent_paths(self.model_directory, "HCLG", "fst"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def score_arguments(self) -> List[ScoreArguments]:
@@ -542,6 +543,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_path_dictionary(self.evaluation_directory, "ali", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def lm_rescore_arguments(self) -> List[LmRescoreArguments]:
@@ -566,6 +568,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def carpa_lm_rescore_arguments(self) -> List[CarpaLmRescoreArguments]:
@@ -589,6 +592,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_dictionary_dependent_paths(self.model_directory, "G", "carpa"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property
@@ -624,6 +628,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def lat_gen_fmllr_arguments(self) -> List[LatGenFmllrArguments]:
@@ -650,6 +655,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def final_fmllr_arguments(self) -> List[FinalFmllrArguments]:
@@ -676,6 +682,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def fmllr_rescore_arguments(self) -> List[FmllrRescoreArguments]:
@@ -701,6 +708,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     @property
@@ -1006,7 +1014,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                         )
                         pbar.update(1)
 
-    def score_transcriptions(self):
+    def score_transcriptions(self) -> None:
         """
         Score transcriptions if reference text is available in the corpus
 
@@ -1057,7 +1065,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         else:
             self.score()
 
-    def calc_initial_fmllr(self):
+    def calc_initial_fmllr(self) -> None:
         """
         Calculate initial fMLLR transforms
 
@@ -1110,7 +1118,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
-    def lat_gen_fmllr(self):
+    def lat_gen_fmllr(self) -> None:
         """
         Generate lattice with fMLLR transforms
 
@@ -1170,7 +1178,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                         log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
                         pbar.update(1)
 
-    def calc_final_fmllr(self):
+    def calc_final_fmllr(self) -> None:
         """
         Calculate final fMLLR transforms
 
@@ -1223,7 +1231,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
             if sum_errors:
                 self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
-    def fmllr_rescore(self):
+    def fmllr_rescore(self) -> None:
         """
         Rescore lattices with final fMLLR transforms
 
@@ -1313,7 +1321,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
 
         self.carpa_lm_rescore()
 
-    def decode(self):
+    def decode(self) -> None:
         """
         Generate lattices
 
@@ -1371,7 +1379,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                         log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
                         pbar.update(1)
 
-    def lm_rescore(self):
+    def lm_rescore(self) -> None:
         """
         Rescore lattices with bigger language model
 
@@ -1429,7 +1437,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                             self.log_warning("Some lattices failed to be rescored")
                         pbar.update(succeeded + failed)
 
-    def carpa_lm_rescore(self):
+    def carpa_lm_rescore(self) -> None:
         """
         Rescore lattices with CARPA language model
 
@@ -1535,9 +1543,14 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 e.update_log_file(logger)
             raise
 
-    def evaluate_transcriptions(self):
+    def evaluate_transcriptions(self) -> Tuple[float, float]:
         """
         Evaluates the transcripts if there are reference transcripts
+
+        Returns
+        -------
+        float, float
+            Sentence error rate and word error rate
 
         Raises
         ------
@@ -1550,7 +1563,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         self.log_info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
         return ser, wer
 
-    def _load_transcripts(self):
+    def _load_transcripts(self) -> None:
         """Load transcripts from Kaldi temporary files"""
         with self.session() as session:
             records = []
@@ -1585,7 +1598,8 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
             return
         self._collect_alignments()
 
-    def export_transcriptions(self):
+    def export_transcriptions(self) -> None:
+        """Export transcriptions"""
         self._load_transcripts()
         with self.session() as session:
             files = session.query(File).options(

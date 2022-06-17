@@ -12,20 +12,20 @@ class G2PMixin(metaclass=ABCMeta):
 
     Parameters
     ----------
-    include_bracketed: bool
-        Flag for whether to generate pronunciations for fully bracketed words, defaults to False
     num_pronunciations: int
         Number of pronunciations to generate, defaults to 0
     g2p_threshold: float
         Weight threshold for generating pronunciations between 0 and 1,
         1 returns the optimal path only, 0 returns all pronunciations, defaults to 0.99 (only used if num_pronunciations is 0)
+    include_bracketed: bool
+        Flag for whether to generate pronunciations for fully bracketed words, defaults to False
     """
 
     def __init__(
         self,
-        include_bracketed: bool = False,
         num_pronunciations: int = 0,
         g2p_threshold: float = 1.5,
+        include_bracketed: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)

@@ -41,5 +41,4 @@ repos:
       - id: debug-statements
       - id: end-of-file-fixer
       - id: trailing-whitespace
-      - id: check-added-large-files
       - id: mixed-line-ending

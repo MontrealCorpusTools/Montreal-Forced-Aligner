@@ -169,6 +169,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                 self.model_path,
             )
             for j in self.jobs
+            if j.has_data
         ]
 
     def compute_calculated_properties(self) -> None:
@@ -197,6 +198,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
     @property
     def align_options(self) -> MetaDict:
+        """Alignment parameters"""
         options = super().align_options
         if self.iteration == 1:
             options["beam"] = self.initial_beam

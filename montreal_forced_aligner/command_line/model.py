@@ -15,8 +15,8 @@ from montreal_forced_aligner.exceptions import (
     PretrainedModelNotFoundError,
     RemoteModelNotFoundError,
 )
-from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager
-from montreal_forced_aligner.utils import guess_model_type
+from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager, guess_model_type
+from montreal_forced_aligner.utils import configure_logger
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -68,6 +68,7 @@ def save_model(path: str, model_type: str, output_name: Optional[str]) -> None:
     model_type: str
         Type of model
     """
+    logger = configure_logger("save_model")
     model_name = os.path.splitext(os.path.basename(path))[0]
     model_class = MODEL_TYPES[model_type]
     if output_name:
@@ -75,6 +76,9 @@ def save_model(path: str, model_type: str, output_name: Optional[str]) -> None:
     else:
         out_path = model_class.get_pretrained_path(model_name, enforce_existence=False)
     shutil.copyfile(path, out_path)
+    logger.info(
+        f"Saved model to f{output_name}, you can now use {output_name} in place of paths in mfa commands."
+    )
 
 
 def validate_args(args: Namespace) -> None:

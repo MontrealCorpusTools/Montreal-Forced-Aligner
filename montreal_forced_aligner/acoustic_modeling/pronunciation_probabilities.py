@@ -89,7 +89,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
 
     @property
     def num_jobs(self) -> int:
-        """Training directory"""
+        """Number of jobs from the root worker"""
         return self.worker.num_jobs
 
     @property
@@ -112,7 +112,8 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         """Path to temporary file to store training data"""
         return os.path.join(self.working_directory, f"output_{self._data_source}.txt")
 
-    def train_g2p_lexicon(self):
+    def train_g2p_lexicon(self) -> None:
+        """Generate a G2P lexicon based on aligned transcripts"""
         arguments = self.worker.generate_pronunciations_arguments()
         working_dir = super(PronunciationProbabilityTrainer, self).working_directory
         texts = {}
@@ -230,6 +231,14 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             self.worker.use_g2p = True
 
     def export_model(self, output_model_path: str) -> None:
+        """
+        Export an acoustic model to the specified path
+
+        Parameters
+        ----------
+        output_model_path : str
+            Path to save acoustic model
+        """
         AcousticModelTrainingMixin.export_model(self, output_model_path)
 
     def train_pronunciation_probabilities(self) -> None:

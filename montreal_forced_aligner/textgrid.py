@@ -5,6 +5,8 @@ Textgrid utilities
 """
 from __future__ import annotations
 
+import csv
+import json
 import os
 import re
 import typing
@@ -62,7 +64,7 @@ def output_textgrid_writing_errors(
     ----------
     output_directory: str
         Directory to save TextGrids files
-    export_errors: dict[str, :class:`~montreal_forced_aligner.exceptions.AlignmentExportError]
+    export_errors: dict[str, :class:`~montreal_forced_aligner.exceptions.AlignmentExportError`]
         Dictionary of errors encountered
     """
     error_log = os.path.join(output_directory, "output_errors.txt")
@@ -81,6 +83,21 @@ def output_textgrid_writing_errors(
 def parse_aligned_textgrid(
     path: str, root_speaker: typing.Optional[str] = None
 ) -> Dict[str, List[CtmInterval]]:
+    """
+    Load a TextGrid as a dictionary of speaker's phone tiers
+
+    Parameters
+    ----------
+    path: str
+        TextGrid file to parse
+    root_speaker: str, optional
+        Optional speaker if the TextGrid has no speaker information
+
+    Returns
+    -------
+    dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+        Parsed phone tier
+    """
     tg = tgio.openTextgrid(path, includeEmptyIntervals=False, reportingMode="silence")
     data = {}
     num_tiers = len(tg.tierNameList)
@@ -134,55 +151,80 @@ def export_textgrid(
         Duration of the file
     frame_shift: int
         Frame shift of features, in ms
+    output_format: str, optional
+        Output format, one of: "long_textgrid" (default), "short_textgrid", "json", or "csv"
     """
     if frame_shift > 1:
         frame_shift = round(frame_shift / 1000, 4)
-    # Create initial textgrid
-    tg = tgio.Textgrid()
-    tg.minTimestamp = 0
-    tg.maxTimestamp = duration
-    include_utterance_text = False
-    if len(speaker_data) > 1:
-        for speaker in speaker_data:
-            if "utterances" in speaker_data[speaker]:
-                include_utterance_text = True
-                tg.addTier(tgio.IntervalTier(f"{speaker} - utterances", [], minT=0, maxT=duration))
-
-            tg.addTier(tgio.IntervalTier(f"{speaker} - words", [], minT=0, maxT=duration))
-            tg.addTier(tgio.IntervalTier(f"{speaker} - phones", [], minT=0, maxT=duration))
-    else:
-        if "utterances" in list(speaker_data.values())[0]:
-            include_utterance_text = True
-            tg.addTier(tgio.IntervalTier("utterances", [], minT=0, maxT=duration))
-        tg.addTier(tgio.IntervalTier("words", [], minT=0, maxT=duration))
-        tg.addTier(tgio.IntervalTier("phones", [], minT=0, maxT=duration))
     has_data = False
-    for speaker, data in speaker_data.items():
-        if len(data["phones"]):
-            has_data = True
-        if len(speaker_data) > 1:
-            word_tier_name = f"{speaker} - words"
-            phone_tier_name = f"{speaker} - phones"
-            utterance_tier_name = f"{speaker} - utterances"
-        else:
-            word_tier_name = "words"
-            phone_tier_name = "phones"
-            utterance_tier_name = "utterances"
-        for w in data["words"]:
-            if duration - w.end < (frame_shift * 2):  # Fix rounding issues
-                w.end = duration
-            tg.tierDict[word_tier_name].entryList.append(w.to_tg_interval())
-        for p in data["phones"]:
-            if duration - p.end < (frame_shift * 2):  # Fix rounding issues
-                p.end = duration
-            tg.tierDict[phone_tier_name].entryList.append(p.to_tg_interval())
-        if include_utterance_text:
-            for u in data["utterances"]:
-                tg.tierDict[utterance_tier_name].entryList.append(u.to_tg_interval())
-    if has_data:
-        for tier in tg.tierDict.values():
-            if len(tier.entryList) > 0 and tier.entryList[-1][1] > tg.maxTimestamp:
-                tier.entryList[-1] = Interval(
-                    tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
-                )
-        tg.save(output_path, includeBlankSpaces=True, format=output_format, reportingMode="error")
+    if output_format == "csv":
+        csv_data = []
+        for speaker, data in speaker_data.items():
+            for annotation_type, intervals in data.items():
+                if len(intervals):
+                    has_data = True
+                for a in intervals:
+                    if duration - a.end < (frame_shift * 2):  # Fix rounding issues
+                        a.end = duration
+                    csv_data.append(
+                        {
+                            "Begin": a.begin,
+                            "End": a.end,
+                            "Label": a.label,
+                            "Type": annotation_type,
+                            "Speaker": speaker,
+                        }
+                    )
+        if has_data:
+            with open(output_path, "w", encoding="utf8", newline=None) as f:
+                writer = csv.DictWriter(f, fieldnames=["Begin", "End", "Label", "Type", "Speaker"])
+                writer.writeheader()
+                for line in csv_data:
+                    writer.writerow(line)
+    elif output_format == "json":
+        json_data = {"start": 0, "end": duration, "tiers": {}}
+        for speaker, data in speaker_data.items():
+            for annotation_type, intervals in data.items():
+                if len(speaker_data) > 1:
+                    tier_name = f"{speaker} - {annotation_type}"
+                else:
+                    tier_name = annotation_type
+                if tier_name not in json_data["tiers"]:
+                    json_data["tiers"][tier_name] = {"type": "interval", "entries": []}
+                if len(intervals):
+                    has_data = True
+                for a in intervals:
+                    if duration - a.end < (frame_shift * 2):  # Fix rounding issues
+                        a.end = duration
+                    json_data["tiers"][tier_name]["entries"].append([a.begin, a.end, a.label])
+        if has_data:
+            with open(output_path, "w", encoding="utf8") as f:
+                json.dump(json_data, f)
+    else:
+        # Create initial textgrid
+        tg = tgio.Textgrid()
+        tg.minTimestamp = 0
+        tg.maxTimestamp = duration
+        for speaker, data in speaker_data.items():
+            for annotation_type, intervals in data.items():
+                if len(intervals):
+                    has_data = True
+                if len(speaker_data) > 1:
+                    tier_name = f"{speaker} - {annotation_type}"
+                else:
+                    tier_name = annotation_type
+                if tier_name not in tg.tierNameList:
+                    tg.addTier(tgio.IntervalTier(tier_name, [], minT=0, maxT=duration))
+                for a in intervals:
+                    if duration - a.end < (frame_shift * 2):  # Fix rounding issues
+                        a.end = duration
+                    tg.tierDict[tier_name].entryList.append(a.to_tg_interval())
+        if has_data:
+            for tier in tg.tierDict.values():
+                if len(tier.entryList) > 0 and tier.entryList[-1][1] > tg.maxTimestamp:
+                    tier.entryList[-1] = Interval(
+                        tier.entryList[-1].start, tg.maxTimestamp, tier.entryList[-1].label
+                    )
+            tg.save(
+                output_path, includeBlankSpaces=True, format=output_format, reportingMode="error"
+            )

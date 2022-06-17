@@ -27,12 +27,10 @@ from montreal_forced_aligner.exceptions import (
     MultiprocessingError,
     ThirdpartyError,
 )
-from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = [
     "thirdparty_binary",
     "log_kaldi_errors",
-    "guess_model_type",
     "get_mfa_version",
     "parse_logs",
     "CustomFormatter",
@@ -57,6 +55,19 @@ canary_kaldi_bins = [
 
 
 def inspect_database(path: str) -> DatasetType:
+    """
+    Inspect the database file to generate its DatasetType
+
+    Parameters
+    ----------
+    path: str
+        Path to the sqlite database
+
+    Returns
+    -------
+    DatasetType
+        Dataset type of the database
+    """
     if not os.path.exists(path):
         return DatasetType.NONE
     engine = sqlalchemy.create_engine(f"sqlite:///file:{path}?mode=ro&nolock=1&uri=true")
@@ -79,6 +90,19 @@ def inspect_database(path: str) -> DatasetType:
 
 
 def get_class_for_dataset_type(dataset_type: DatasetType):
+    """
+    Generate the corresponding MFA class for a given DatasetType
+
+    Parameters
+    ----------
+    dataset_type: DatasetType
+        Dataset type for the class
+
+    Returns
+    -------
+    Union[None, AcousticCorpus, TextCorpus, AcousticCorpusWithPronunciations, DictionaryTextCorpus,MultispeakerDictionary]
+        Class to use for the current database file
+    """
     from montreal_forced_aligner.corpus.acoustic_corpus import (
         AcousticCorpus,
         AcousticCorpusWithPronunciations,
@@ -186,28 +210,45 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def guess_model_type(path: str) -> List[str]:
+def configure_logger(
+    identifier: str, log_file: Optional[str] = None, quiet: bool = False, verbose: bool = False
+) -> logging.Logger:
     """
-    Guess a model type given a path
+    Configure logging for the given identifier
 
     Parameters
     ----------
-    path: str
-        Model archive to guess
+    identifier: str
+        Logger identifier
+    log_file: str
+        Path to file to write all messages to
+    quiet: bool
+        Flag for whether logger should write to stdout
+    verbose: bool
+        Flag for writing debug level information to stdout
 
     Returns
     -------
-    list[str]
-        Possible model types that use that extension
+    logging.Logger
+        Configured logger instance
     """
-    ext = os.path.splitext(path)[1]
-    if not ext:
-        return []
-    possible = []
-    for m, mc in MODEL_TYPES.items():
-        if ext in mc.extensions:
-            possible.append(m)
-    return possible
+    logger = logging.getLogger(identifier)
+    logger.setLevel(logging.DEBUG)
+    if log_file is not None:
+        file_handler = logging.FileHandler(log_file, encoding="utf8")
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    if not quiet:
+        handler = logging.StreamHandler(sys.stdout)
+        if verbose:
+            handler.setLevel(logging.DEBUG)
+        else:
+            handler.setLevel(logging.INFO)
+        handler.setFormatter(CustomFormatter())
+        logger.addHandler(handler)
+    return logger
 
 
 class CustomFormatter(logging.Formatter):
