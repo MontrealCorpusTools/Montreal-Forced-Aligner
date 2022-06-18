@@ -266,30 +266,6 @@ class Dictionary(MfaSqlBase):
         """Temporary directory for the dictionary"""
         return os.path.join(self.temporary_directory, self.identifier)
 
-    def write(
-        self,
-        silence_disambiguation_symbol=None,
-        debug=False,
-    ) -> None:
-        """
-        Write the files necessary for Kaldi
-
-        Parameters
-        ----------
-        silence_disambiguation_symbol: str, optional
-            Symbol to use as silence disambiguation
-        debug: bool, optional
-            Flag for whether to keep temporary files, defaults to False
-        """
-        os.makedirs(self.temp_directory, exist_ok=True)
-        if debug:
-            self.export_lexicon(os.path.join(self.temp_directory, "lexicon.txt"))
-        self._write_word_file()
-        self._write_probabilistic_fst_text(silence_disambiguation_symbol)
-        self._write_fst_binary(write_disambiguation=silence_disambiguation_symbol is not None)
-        if not debug:
-            self.cleanup()
-
     @property
     def silence_probability_info(self) -> typing.Dict[str, float]:
         """Dictionary of silence information"""

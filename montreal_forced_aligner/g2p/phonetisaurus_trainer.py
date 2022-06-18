@@ -107,6 +107,7 @@ class AlignmentInitWorker(mp.Process):
         stopped: Stopped,
         finished_adding: Stopped,
         symbol_dict: dict,
+        reverse_symbol_dict: dict,
         next_symbol: mp.Value,
         lock: mp.Lock,
         args: AlignmentInitArguments,
@@ -117,6 +118,7 @@ class AlignmentInitWorker(mp.Process):
         self.stopped = stopped
         self.symbol_cache = {}
         self.symbol_dict = symbol_dict
+        self.reverse_symbol_dict = reverse_symbol_dict
         self.next_symbol: mp.Value = next_symbol
         self.lock = lock
         self.finished = Stopped()
@@ -148,7 +150,9 @@ class AlignmentInitWorker(mp.Process):
         if symbol not in self.symbol_cache:
             with self.lock:
                 if symbol not in self.symbol_dict:
-                    self.symbol_dict[symbol] = self.next_symbol.value
+                    id = self.next_symbol.value
+                    self.symbol_dict[symbol] = id
+                    self.reverse_symbol_dict[id] = symbol
                     self.next_symbol.value += 1
                 self.symbol_cache[symbol] = self.symbol_dict[symbol]
         return self.symbol_cache[symbol]
@@ -477,11 +481,13 @@ class PhonetisaurusTrainerMixin:
         self.log_info("Creating alignment FSTs...")
         with mp.Manager() as manager:
             mp_symbol_dict = manager.dict()
+            mp_reverse_symbol_dict = manager.dict()
             lock = mp.Lock()
             next_symbol = mp.Value("i", self.symbol_table.num_symbols())
             for i in range(self.symbol_table.num_symbols()):
                 sym = self.symbol_table.find(i)
                 mp_symbol_dict[sym] = i
+                mp_symbol_dict[i] = sym
             job_queue = mp.Queue()
             return_queue = mp.Queue()
             stopped = Stopped()
@@ -506,6 +512,7 @@ class PhonetisaurusTrainerMixin:
                         stopped,
                         finished_adding,
                         mp_symbol_dict,
+                        mp_reverse_symbol_dict,
                         next_symbol,
                         lock,
                         args,
@@ -521,6 +528,7 @@ class PhonetisaurusTrainerMixin:
                     self.g2p_num_training_pronunciations += 1
             finished_adding.stop()
             error_list = []
+            reverse_look_up = {}
             with tqdm.tqdm(
                 total=self.g2p_num_training_pronunciations, disable=getattr(self, "quiet", False)
             ) as pbar:
@@ -543,7 +551,11 @@ class PhonetisaurusTrainerMixin:
                         for arc in fst.arcs(state_id):
                             if arc.ilabel not in self.prev_alignment_model:
                                 self.prev_alignment_model[arc.ilabel] = arc.weight
-                                sym = mp_symbol_dict[arc.ilabel]
+                                if arc.ilabel not in reverse_look_up:
+                                    reverse_look_up[arc.ilabel] = mp_reverse_symbol_dict[
+                                        arc.ilabel
+                                    ]
+                                sym = reverse_look_up[arc.ilabel]
                                 d = sym.find("}")
                                 c = sym.find("|")
                                 left_side_count = 1
@@ -570,9 +582,9 @@ class PhonetisaurusTrainerMixin:
                     pbar.update(1)
             for p in procs:
                 p.join()
-            for k in sorted(mp_symbol_dict.keys(), key=lambda x: mp_symbol_dict[x]):
-                if self.symbol_table.find(k) == pynini.NO_SYMBOL:
-                    self.symbol_table.add_symbol(k)
+            for sym, key in mp_symbol_dict.items():
+                if self.symbol_table.find(sym) == pynini.NO_SYMBOL:
+                    self.symbol_table.add_symbol(sym, key=key)
         if error_list:
             for v in error_list:
                 raise v

@@ -77,7 +77,7 @@ def save_model(path: str, model_type: str, output_name: Optional[str]) -> None:
         out_path = model_class.get_pretrained_path(model_name, enforce_existence=False)
     shutil.copyfile(path, out_path)
     logger.info(
-        f"Saved model to f{output_name}, you can now use {output_name} in place of paths in mfa commands."
+        f"Saved model to {output_name}, you can now use {output_name} in place of paths in mfa commands."
     )
 
 

@@ -5,6 +5,12 @@
 2.0 Changelog
 *************
 
+2.0.1
+=====
+
+- Fix typo in save model message :github_issue:`470`
+- Fix issue with offset alignments when silence words are explicitly in the input transcripts :github_issue:`471`
+
 2.0.0
 =====
 
