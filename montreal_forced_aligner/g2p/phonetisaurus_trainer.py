@@ -1023,22 +1023,26 @@ class PhonetisaurusTrainerMixin:
             os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
         ) as logf:
             ngrammerge_proc = subprocess.Popen(
-                [thirdparty_binary("ngrammerge"), *count_paths],
+                [
+                    thirdparty_binary("ngrammerge"),
+                    f'--ofile={self.ngram_path.replace(".fst", ".cnts")}',
+                    *count_paths,
+                ],
                 stderr=logf,
-                stdout=subprocess.PIPE,
+                # stdout=subprocess.PIPE,
                 env=os.environ,
             )
+            ngrammerge_proc.communicate()
             ngrammake_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngrammake"),
                     f"--method={self.smoothing_method}",
+                    self.ngram_path.replace(".fst", ".cnts"),
                 ],
-                stdin=ngrammerge_proc.stdout,
                 stderr=logf,
                 stdout=subprocess.PIPE,
                 env=os.environ,
             )
-            ngrammake_proc.communicate()
 
             ngramshrink_proc = subprocess.Popen(
                 [
