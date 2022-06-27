@@ -433,8 +433,12 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             line = line.strip()
                             if not line:
                                 continue
-                            line = line.split()
-                            word = line.pop(0)
+                            if "\t" in line:
+                                word, line = line.split("\t", maxsplit=1)
+                                line = line.split()
+                            else:
+                                line = line.split()
+                                word = line.pop(0)
                             if len(line) == 0:
                                 raise DictionaryError(
                                     f'Error parsing line {i} of {dictionary_model.path}: "{line}" did not have a pronunciation'

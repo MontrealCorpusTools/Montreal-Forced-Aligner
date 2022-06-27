@@ -839,42 +839,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
             session.commit()
 
-            # Extra check to make sure the randomness didn't end up with 1 or 2 utterances
-            # for a particular job/dictionary combo
-            subset_agg = (
-                session.query(
-                    Speaker.job_id, Speaker.dictionary_id, sqlalchemy.func.count(Utterance.id)
-                )
-                .join(Utterance.speaker)
-                .filter(Utterance.in_subset == True)  # noqa
-                .group_by(Speaker.job_id, Speaker.dictionary_id)
-            )
-            for j_id, d_id, utterance_count in subset_agg:
-                if utterance_count < 20:
-                    larger_subset_query = (
-                        session.query(Utterance.id)
-                        .join(Utterance.speaker)
-                        .filter(Speaker.dictionary_id == d_id)
-                        .filter(Speaker.job_id == j_id)
-                        .filter(Utterance.ignored == False)  # noqa
-                    )
-                    sq = larger_subset_query.subquery()
-                    subset_utts = (
-                        sqlalchemy.select(sq.c.id)
-                        .order_by(sqlalchemy.func.random())
-                        .limit(20)
-                        .scalar_subquery()
-                    )
-                    query = (
-                        sqlalchemy.update(Utterance)
-                        .execution_options(synchronize_session="fetch")
-                        .values(in_subset=True)
-                        .where(Utterance.id.in_(subset_utts))
-                    )
-                    session.execute(query)
-
-            subset_count = session.query(Utterance).filter_by(in_subset=True).count()
-            self.log_debug(f"Total subset utterances is {subset_count}")
             self.log_debug(f"Setting subset flags took {time.time()-begin} seconds")
             log_dir = os.path.join(subset_directory, "log")
             os.makedirs(log_dir, exist_ok=True)
@@ -925,6 +889,18 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         directory = os.path.join(self.corpus_output_directory, f"subset_{subset}")
         if not os.path.exists(directory):
             self.create_subset(subset)
+        for j in self.jobs:
+            j.has_data = False
+        with self.session() as session:
+            query = (
+                session.query(Speaker.job_id, sqlalchemy.func.count(Utterance.id))
+                .join(Utterance.speaker)
+                .filter(Utterance.in_subset == True)  # noqa
+                .group_by(Speaker.job_id)
+            )
+            for job_id, utterance_count in query:
+                if utterance_count > 0:
+                    self.jobs[job_id].has_data = True
         return directory
 
     def calculate_word_counts(self) -> None:

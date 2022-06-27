@@ -30,6 +30,16 @@ Glossary
    MFCCs
         :abbr:`Mel-frequency cepstrum coefficients (MFCCs)` are the industry standard for acoustic features.  The process involves windowing the acoustic waveform, scaling the frequencies into the Mel space (an auditory representation that gives more weight to lower frequencies over higher frequencies), and then performs a :abbr:`discrete cosine transform (DCT)` on the values in each filter bank to get orthogonal coefficients.  There was a trend around 2015-2018 to use acoustic features that were more raw (i.e., not transformed to the Mel space, or the waveform directly), but in general most recent state of the art systems still use MFCC features.
 
+   WFST
+   FST
+      A :abbr:`Finite State Transducer (FST)` is a graph formalism that can transform a sequence of arbitrary input symbols into arbitrary output symbols.  A :abbr:`Weighted Finite State Transducer (WFST)` is an FST that has costs associated with its various paths, so a single best output string can be selected.  Training graphs are WFSTs of the lexicon WFST composed with linear acceptors of the transcription text.  For transcription, lexicons are composed with language models as well.  MFA's :term:`G2P models` are WFSTs trained using a pair ngram algorithm or the many to many Phonetisaurus algortithm.
+
+   lexicon FST
+      A :term:`WFST` constructed from a pronunciation dictionary that can be composed with :term:`grammar FST` and HMM-GMM acoustic model to align and transcribe speech.
+
+   grammar FST
+      A :term:`WFST` compiled from a language model that represents how likely a word is given the previous words (ngram model), or a linear acceptor from a known utterance transcription where there is only one path through the words in the transcript for use in alignment.
+
    Pronunciation probabilities
         Pronunciation probabilities in dictionaries allow for certain spoken forms to be more likely, rather than just assigning equal weight to all pronunciation variants.
 

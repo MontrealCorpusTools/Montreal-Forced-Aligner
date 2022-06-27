@@ -356,6 +356,12 @@ class Word(MfaSqlBase):
     dictionary: Dictionary = relationship("Dictionary", back_populates="words")
     pronunciations = relationship("Pronunciation", back_populates="word")
 
+    job = relationship(
+        "Word2Job",
+        back_populates="word",
+        uselist=False,
+    )
+
     __table_args__ = (
         sqlalchemy.Index("dictionary_word_type_index", "dictionary_id", "word_type"),
         sqlalchemy.Index("word_dictionary_index", "word", "dictionary_id"),
@@ -1212,3 +1218,109 @@ class ReferencePhoneInterval(MfaSqlBase):
             CTM interval object
         """
         return CtmInterval(self.begin, self.end, self.label, self.utterance_id)
+
+
+class Job(MfaSqlBase):
+
+    __tablename__ = "job"
+
+    id = Column(Integer, primary_key=True)
+
+    symbols = relationship(
+        "M2M2Job",
+        back_populates="job",
+    )
+
+    words = relationship(
+        "Word2Job",
+        back_populates="job",
+    )
+
+
+class M2MSymbol(MfaSqlBase):
+    """
+
+    Database class for storing information many to many G2P training information
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    symbol: str
+        Symbol
+    total_order: int
+        Summed order of graphemes and phones
+    max_order: int
+        Maximum order between graphemes and phones
+    grapheme_order: int
+        Grapheme order
+    phone_order: int
+        Phone order
+    weight: float
+        Weight of arcs
+    """
+
+    __tablename__ = "m2m_symbol"
+
+    id = Column(Integer, primary_key=True)
+    symbol = Column(String, nullable=False, index=True, unique=True)
+    total_order = Column(Integer, nullable=False)
+    max_order = Column(Integer, nullable=False)
+    grapheme_order = Column(Integer, nullable=False)
+    phone_order = Column(Integer, nullable=False)
+    weight = Column(Float, nullable=False)
+
+    jobs = relationship(
+        "M2M2Job",
+        back_populates="m2m_symbol",
+    )
+
+
+class M2M2Job(MfaSqlBase):
+    """
+    Mapping class between :class:`~montreal_forced_aligner.db.M2MSymbol`
+    and :class:`~montreal_forced_aligner.db.Job`
+
+    Parameters
+    ----------
+    m2m_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.M2MSymbol`
+    job_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Job`
+    m2m_symbol: :class:`~montreal_forced_aligner.db.M2MSymbol`
+        M2MSymbol object
+    job: :class:`~montreal_forced_aligner.db.Job`
+        Job object
+    """
+
+    __tablename__ = "m2m_job"
+    m2m_id = Column(ForeignKey("m2m_symbol.id"), primary_key=True)
+    job_id = Column(ForeignKey("job.id"), primary_key=True)
+    m2m_symbol: M2MSymbol = relationship("M2MSymbol", back_populates="jobs")
+    job: Job = relationship("Job", back_populates="symbols")
+
+
+class Word2Job(MfaSqlBase):
+    """
+    Mapping class between :class:`~montreal_forced_aligner.db.Word`
+    and :class:`~montreal_forced_aligner.db.Job`
+
+    Parameters
+    ----------
+    word_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.M2MSymbol`
+    job_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Job`
+    word: :class:`~montreal_forced_aligner.db.Word`
+        Word object
+    job: :class:`~montreal_forced_aligner.db.Job`
+        Job object
+    """
+
+    __tablename__ = "word_job"
+
+    word_id = Column(ForeignKey("word.id"), primary_key=True)
+    job_id = Column(ForeignKey("job.id"), primary_key=True)
+    training = Column(Boolean, index=True)
+    word: Word = relationship("Word", back_populates="job")
+    job: Job = relationship("Job", back_populates="words")

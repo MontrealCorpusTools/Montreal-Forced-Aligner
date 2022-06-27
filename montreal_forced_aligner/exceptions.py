@@ -751,6 +751,19 @@ class PyniniGenerationError(G2PError):
             )
 
 
+class PhonetisaurusSymbolError(G2PError):
+    """
+    Exception class for errors generating pronunciations with Pynini
+    """
+
+    def __init__(self, symbol, variable):
+        super().__init__("")
+        self.message_lines = [
+            f'The symbol "{symbol}" is reserved for "{variable}", but is found in the graphemes or phonemes of your dictionary.',
+            f'Please re-run and specify another symbol that is not used in your dictionary with the "--{variable}" flag.',
+        ]
+
+
 class LMError(MFAError):
     """
     Exception class for errors in language models
