@@ -380,51 +380,7 @@ class Job:
                     break
             else:
                 return
-        no_data = []
-
-        def _write_current() -> None:
-            """Write the current data to disk"""
-            if not utt2spk:
-                if _current_dict_id is not None:
-                    no_data.append(_current_dict_id)
-                return
-            dict_pattern = f"{self.name}"
-            if _current_dict_id is not None:
-                dict_pattern = f"{_current_dict_id}.{self.name}"
-            scp_path = os.path.join(split_directory, f"spk2utt.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for speaker in sorted(spk2utt.keys()):
-                    utts = " ".join(sorted(spk2utt[speaker]))
-                    f.write(f"{speaker} {utts}\n")
-            scp_path = os.path.join(split_directory, f"cmvn.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for speaker in sorted(cmvns.keys()):
-                    f.write(f"{speaker} {cmvns[speaker]}\n")
-
-            scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for utt in sorted(utt2spk.keys()):
-                    f.write(f"{utt} {utt2spk[utt]}\n")
-            scp_path = os.path.join(split_directory, f"feats.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for utt in sorted(feats.keys()):
-                    f.write(f"{utt} {feats[utt]}\n")
-            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.int.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for utt in sorted(text_ints.keys()):
-                    f.write(f"{utt} {text_ints[utt]}\n")
-            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
-                for utt in sorted(texts.keys()):
-                    f.write(f"{utt} {texts[utt]}\n")
-
-        spk2utt = {}
-        feats = {}
-        cmvns = {}
-        utt2spk = {}
-        text_ints = {}
-        texts = {}
-        _current_dict_id = None
+        data = {}
         utterances = (
             session.query(
                 Utterance.id,
@@ -433,6 +389,7 @@ class Job:
                 Utterance.normalized_text,
                 Utterance.normalized_text_int,
                 Speaker.cmvn,
+                Speaker.dictionary_id,
             )
             .join(Utterance.speaker)
             .filter(Speaker.job_id == self.name)
@@ -442,64 +399,69 @@ class Job:
         if subset:
             utterances = utterances.filter(Utterance.in_subset == True)  # noqa
         if utterances.count() == 0:
-            self.has_data = False
             return
-        if not self.dictionary_ids:
-            for u_id, s_id, features, normalized_text, normalized_text_int, cmvn in utterances:
-                utterance = str(u_id)
-                speaker = str(s_id)
-                utterance = f"{speaker}-{utterance}"
-                if speaker not in spk2utt:
-                    spk2utt[speaker] = []
-                spk2utt[speaker].append(utterance)
-                utt2spk[utterance] = speaker
-                feats[utterance] = features
-                cmvns[speaker] = cmvn
-                text_ints[utterance] = normalized_text_int
-                texts[utterance] = normalized_text
-            _write_current()
-            return
-        for _current_dict_id in self.dictionary_ids:
-            spk2utt = {}
-            feats = {}
-            cmvns = {}
-            utt2spk = {}
-            text_ints = {}
-            utterances = (
-                session.query(
-                    Utterance.kaldi_id,
-                    Utterance.speaker_id,
-                    Utterance.features,
-                    Utterance.normalized_text,
-                    Utterance.normalized_text_int,
-                    Speaker.cmvn,
-                )
-                .join(Utterance.speaker)
-                .filter(Speaker.job_id == self.name)
-                .filter(Speaker.dictionary_id == _current_dict_id)
-                .filter(Utterance.ignored == False)  # noqa
-                .order_by(Utterance.kaldi_id)
-            )
-            if subset:
-                utterances = utterances.filter(Utterance.in_subset == True)  # noqa
-            for (
-                utterance,
-                s_id,
-                features,
-                normalized_text,
-                normalized_text_int,
-                cmvn,
-            ) in utterances:
-                speaker = str(s_id)
-                if speaker not in spk2utt:
-                    spk2utt[speaker] = []
-                spk2utt[speaker].append(utterance)
-                utt2spk[utterance] = speaker
-                feats[utterance] = features
-                cmvns[speaker] = cmvn
-                text_ints[utterance] = normalized_text_int
-                texts[utterance] = normalized_text
-            _write_current()
-        for d in no_data:
-            ind = self.dictionary_ids.index(d)
-            self.dictionary_ids.pop(ind)
+        for (
+            u_id,
+            s_id,
+            features,
+            normalized_text,
+            normalized_text_int,
+            cmvn,
+            dictionary_id,
+        ) in utterances:
+            if dictionary_id not in data:
+                data[dictionary_id] = {
+                    "spk2utt": {},
+                    "feats": {},
+                    "cmvns": {},
+                    "utt2spk": {},
+                    "text_ints": {},
+                    "texts": {},
+                }
+            utterance = str(u_id)
+            speaker = str(s_id)
+            utterance = f"{speaker}-{utterance}"
+            if speaker not in data[dictionary_id]["spk2utt"]:
+                data[dictionary_id]["spk2utt"][speaker] = []
+            data[dictionary_id]["spk2utt"][speaker].append(utterance)
+            data[dictionary_id]["utt2spk"][utterance] = speaker
+            data[dictionary_id]["feats"][utterance] = features
+            data[dictionary_id]["cmvns"][speaker] = cmvn
+            data[dictionary_id]["text_ints"][utterance] = normalized_text_int
+            data[dictionary_id]["texts"][utterance] = normalized_text
+
+        for dict_id, d in data.items():
+            dict_pattern = f"{self.name}"
+            if dict_id is not None:
+                dict_pattern = f"{dict_id}.{self.name}"
+
+            scp_path = os.path.join(split_directory, f"spk2utt.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for speaker in sorted(d["spk2utt"].keys()):
+                    utts = " ".join(sorted(d["spk2utt"][speaker]))
+                    f.write(f"{speaker} {utts}\n")
+
+            scp_path = os.path.join(split_directory, f"cmvn.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for speaker in sorted(d["cmvns"].keys()):
+                    f.write(f"{speaker} {d['cmvns'][speaker]}\n")
+
+            scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(d["utt2spk"].keys()):
+                    f.write(f"{utt} {d['utt2spk'][utt]}\n")
+
+            scp_path = os.path.join(split_directory, f"feats.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(d["feats"].keys()):
+                    f.write(f"{utt} {d['feats'][utt]}\n")
+
+            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.int.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(d["text_ints"].keys()):
+                    f.write(f"{utt} {d['text_ints'][utt]}\n")
+
+            scp_path = os.path.join(split_directory, f"text.{dict_pattern}.scp")
+            with open(scp_path, "w", encoding="utf8") as f:
+                for utt in sorted(d["texts"].keys()):
+                    f.write(f"{utt} {d['texts'][utt]}\n")

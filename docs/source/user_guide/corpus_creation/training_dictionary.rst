@@ -1,6 +1,7 @@
 
 .. _`Chen et al (2015)`: https://www.danielpovey.com/files/2015_interspeech_silprob.pdf
 .. _`English US MFA dictionary`: https://mfa-models.readthedocs.io/en/latest/dictionary/English/English%20%28US%29%20MFA%20dictionary%20v2_0_0a.html#English%20(US)%20MFA%20dictionary%20v2_0_0a
+.. _`Japanese MFA dictionary`: https://mfa-models.readthedocs.io/en/latest/dictionary/Japanese/Japanese%20MFA%20dictionary%20v2_0_0.html#Japanese%20MFA%20dictionary%20v2_0_0
 
 .. _training_dictionary:
 
@@ -13,7 +14,16 @@ The implementation used here follow Kaldi's :kaldi_steps:`get_prons`, :kaldi_uti
 
 .. seealso::
 
-   For a more in depth description of the algorithm, see the `Chen et al (2015)`_.
+   Refer to the :ref:`lexicon FST concept section <lexicon_fst>` for an introduction and overview of how MFA compiles pronunciation dictionaries to a :term:`WFST`. The algorithm and calculations below are based on `Chen et al (2015)`_.
+
+Consider the following :term:`WFST` with two pronunciations of "because" from the trained `English US MFA dictionary`_.
+
+
+    .. figure:: ../../_static/because.svg
+        :align: center
+        :alt: :term:`FST` for two pronunciations of "the" in the English US dictionary
+
+In the above figure, there are are two final states, with 0 corresponding to a word preceded by ``non-silence`` and 1 corresponding to a word preceded by ``silence``.  The costs associated with each transition are negative log-probabilities, so that less likely paths cost more.  The state 0 refers to the beginning of speech, so the paths to the silence and non silence state are equal in this case. The cost for ending on silence is lower at -0.77 than ending on non-silence with a cost of 1.66, meaning that most utterances in the training data had trailing silence at the end of the recordings.
 
 .. _train_pronunciation_probability:
 
@@ -26,7 +36,7 @@ Pronunciation probabilities are estimated based on the counts of a specific pron
 
    p(w.p_{i} | w) = \frac{c(w.p_{i} | w)}{max_{1\le i \le N_{w}}c(w.p_{i} | w)}
 
-The reason for using max normalization is to not penalize words with many pronunciations. Even though the probabilities no longer sum to 1, the log of the probabilities is used as summed costs in the lexicon FST, so summing to 1 within a word is not problematic.
+The reason for using max normalization is to not penalize words with many pronunciations. Even though the probabilities no longer sum to 1, the log of the probabilities is used as summed costs in the :term:`lexicon FST`, so summing to 1 within a word is not problematic.
 
 If a word is not seen in the training data, pronunciation probabilities are not estimated for its pronunciations.
 
@@ -35,18 +45,15 @@ If a word is not seen in the training data, pronunciation probabilities are not 
 Silence probability and correction factors
 ------------------------------------------
 
-Words different in their likelihood to appear before or after silence. In English, a word like "the" is more likely to appear after silence than a word like "us". An pronoun in the accusative case like "us" is not grammatical as the start of a sentence or phrase, whereas "the" starts sentences and phrases regularly.  That is not to say that a speaker would not pause before saying "us" for paralinguistic effect or due to a disfluency or simple pause, it's just less likely than for "the".
+Words differ in their likelihood to appear before or after silence. In English, a word like "the" is more likely to appear after silence than a word like "us". An pronoun in the accusative case like "us" is not grammatical at the start of a sentence or phrase, whereas "the" starts sentences and phrases regularly.  That is not to say that a speaker would not pause before saying "us" for paralinguistic effect or due to a disfluency or simple pause, it's just less likely to occur after silence than "the".
 
-By the same token, silence following "the" is also less likely than for "us" due to syntax, but pauses are more likely to follow some pronunciations of "the" than others.  For instance, if a speaker produces a full vowel variant like :ipa_inline:`[ð i]`, a pause is more likely to follow than a reduced variant like :ipa_line:`[ð ə]`.  The reduced variant will be more likely overall, but it often occurs in running connected speech at normal speech rates. The full vowel variant is more likely to occur in less connected speech, such as when the speaker is planning upcoming speech or speaking more slowly.  Accounting for the likelihood of silence before and after a variant allows the model to output a variant that is less likely overall, but more likely given the context.
+By the same token, silence following "the" is also less likely than for "us" due to syntax, but pauses are more likely to follow some pronunciations of "the" than others.  For instance, if a speaker produces a full vowel variant like :ipa_inline:`[ð i]`, a pause is more likely to follow than a reduced variant like :ipa_inline:`[ð ə]`.  The reduced variant will be more likely overall, but it often occurs in running connected speech at normal speech rates. The full vowel variant is more likely to occur in less connected speech, such as when the speaker is planning upcoming speech or speaking more slowly.  Accounting for the likelihood of silence before and after a variant allows the model to output a variant that is less likely overall, but more likely given the context.
 
-Consider the following FST with two pronunciations of "because" from the `English US MFA dictionary`_.
+However, when we take into account more context, it is not just the single word that determines the likelihood of silence, but also the preceding/following words.  The difficulty in estimating the overall likelihood of silence is that the lexicon FST is predicated on each word being independent and composable with any preceding/following word. Thus, for each word, we estimate a probability of silence following (independent of the following words), and two correction factors for silence and non-silence before.  The two correction factors take into account the general likelihood of silence following each of the preceding words and gives two factors that represent "is silence or not silence more likely than we would expect given the previous word". These factors are only an approximation, however they do help in alignment.
 
+.. note::
 
-    .. figure:: ../../_static/because.svg
-        :align: center
-        :alt: FST for two pronunciations of "the" in the English US dictionary
-
-In the above, there are are two start states, with 0 corresponding to a word preceded by ``non-silence`` and 1 corresponding to a word preceded by ``silence``.
+   Probabilities of multi-word sequences are the domain of the :term:`grammar FST`, please refer :ref:`grammar FST concept section <grammar_fst>`.
 
 MFA uses three variables to capture the probabilities of silence before and after a pronunciation. The most straightforward is ``probability of silence following``, which is calculated as the count of instances where the word was followed by silence divided by the overall count of that pronunciation, with a smoothing factor. Reproducing equation 3 of `Chen et al (2015)`_:
 
@@ -54,7 +61,7 @@ MFA uses three variables to capture the probabilities of silence before and afte
 
    P(s_{r} | w.p) = \frac{C(w.p \: s) + \lambda_{2}P(s)}{C(w.p) + \lambda_{2}}
 
-Given that we're using a lexicon where words are completely independent, modelling the silence before the pronunciation is a little tricky.  The approach used in silprob is to estimate two correction factors for silence and non-silence before the pronunciation.  These correction factors capture that for a given pronunciation, it is more or less likely than average to have silence.  The factors are estimated as follows, reproducing equations 4-6 from `Chen et al (2015)`_:
+Given that we're using a lexicon where words are assumed to be completely independent, modelling the silence before the pronunciation is a little tricky.  The approach used in `Chen et al (2015)`_ is to estimate two correction factors for silence and non-silence before the pronunciation.  These correction factors capture that for a given pronunciation, it is more or less likely than average to have silence.  The factors are estimated as follows, reproducing equations 4-6 from `Chen et al (2015)`_:
 
 
 .. math::
@@ -67,12 +74,12 @@ Given that we're using a lexicon where words are completely independent, modelli
 
 The estimate count :math:`\tilde{C}` represents a "mean" count of silence or non-silence preceding a given pronunciation, taking into account the likelihood of silence from the preceding pronunciation.  The correction factors are weights on the FST transitions from silence and non-silence state.
 
-Consider the following FST with  three pronunciations of "lot" from the `English US MFA dictionary`_.
+Consider the following :term:`FST` with  three pronunciations of "lot" from the `English US MFA dictionary`_.
 
 
     .. figure:: ../../_static/lot.svg
         :align: center
-        :alt: FST for three pronunciations of "lot" in the English US dictionary
+        :alt: :term:`FST` for three pronunciations of "lot" in the English US dictionary
 
 
 
@@ -102,7 +109,7 @@ As an example, consider the following English and Japanese sentences:
 
       アカギツネ さん は 本 を 読んだ こと が たくさん あり ます けれども 読む べき 本 は まだまだ いっぱい 残って い ます
 
-A couple recordings of each language is below at different speaking rates
+For each of the above sentences (please pardon my Japanese), I recorded a normal speaking rate version and a fast speaking rate version.  The two speech rates induce variation in pronunciation, as well as different pause placement.  We'll then walk through the calculations that result in the final trained lexicon.
 
 .. tab-set::
 
@@ -162,7 +169,7 @@ A couple recordings of each language is below at different speaking rates
         :align: center
         :alt: Waveform, spectrogram, and aligned labels for the fast reading of the Japanese text
 
-The following pronunciation dictionaries:
+For alignment, we use the following pronunciation dictionaries, taking pronunciation variants from the `English US MFA dictionary`_ and the `Japanese MFA dictionary`_.
 
 .. tab-set::
 
@@ -249,7 +256,7 @@ The following pronunciation dictionaries:
 The basic steps to calculating pronunciation and silence probabilities is as follows:
 
 1. Generate word-pronunciation pairs (along with silence labels) from the alignment lattices
-2. Use these pairs as input to :ref:`calculating pronunciation probability <train_pronunciation_probability>` and :ref:`calculating silence probability <train_silence_probability>`.  See the results below for walk-throughs of results for various words.
+2. Use these pairs as input to :ref:`calculating pronunciation probability <train_pronunciation_probability>` and :ref:`calculating silence probability <train_silence_probability>`.  See the results table below for a walk-through of results for various words across the two reading passage styles.
 
 .. tab-set::
 
@@ -304,23 +311,29 @@ The basic steps to calculating pronunciation and silence probabilities is as fol
 
       **Pronunciation probabilities**
 
-      Using the alignments above for the two speech rates, the word "red" has 0.99 pronunciation probability as that's the only pronunciation variant.  The word "read" pronounced as :ipa_inline:`[ɹ ɛ d]` has 0.99 probability, as will the pronunciation as :ipa_inline:`[ɹ iː d]`, as they both appeared once in the sentence (and twice across the two speech rates), but note that it is not 0.5, as the probabilities are max-normalized. All other words will have one pronunciation with 0.99, if the have one realized pronunciation, unrealized pronunciations will have a smoothed probability close to 0, based on the number of pronunciations.
-
-      **Probabilities of having silence following**
-
-      The word "books" has a silence following probability of 0.34, as it only occurs before silence in the slower speech rate sentence. You might expect it to have a silence probability of 0.5, but recall from the equation of :math:`P(s_{r} | w.p)`, the smoothing factor is influenced by the overall rate of silence following words, which is quite low for the sentences with connected speech.
-
-      The pronunciation of "read" as :ipa_inline:`[ɹ iː d]` has a higher probability of following silence of 0.59, as both instances of that pronunciation are followed by silence at the end of the sentence.  The pronunciation of "read" as :ipa_inline:`[ɹ ɛ d]` will have a probability of following silence of 0.09, as the only instances are in the middle of speech in the first clause.  Likewise, both full and reduced forms of "but" (:ipa_inline:`[b ɐ t]` and :ipa_inline:`[b ɐ ʔ]`) have pronunciation probability of 0.99.
+      Using the alignments above for the two speech rates, the word "red" has 0.99 pronunciation probability as that's the only pronunciation variant.  The word "read" pronounced as :ipa_inline:`[ɹ ɛ d]` has 0.99 probability, as will the pronunciation as :ipa_inline:`[ɹ iː d]`, as they both appeared once in the sentence (and twice across the two speech rates), but note that it is not 0.5, as the probabilities are max-normalized.  Both full and reduced forms of "but" (:ipa_inline:`[b ɐ t]` and :ipa_inline:`[b ɐ ʔ]`) have pronunciation probability of 0.99, as they each occur once across the passages.
 
       .. note::
 
-         I'm not sure why the :ipa_inline:`[b ɐ ʔ]` variant is chosen over the :ipa_inline:`[b ə ɾ]`, but this could be an issue with the multi-dialectal model training having glottal stops more predicted for actual realizations of flap, or the English US MFA dictionary could benefit from more words ending in flap instead of just :ipa_inline:`[ʔ]`, :ipa_inline:`[t]`, and :ipa_inline:`[d]`, since only certain function/common words have final flapps.
+         I'm not sure why the :ipa_inline:`[b ɐ ʔ]` variant is chosen over the :ipa_inline:`[b ə ɾ]`, this will require future investigation to figure out a root cause.
 
-      **Probabilities of having silence before**
+      All other words will have one pronunciation with 0.99, if they have one realized pronunciation, unrealized pronunciations will have a smoothed probability close to 0, based on the number of pronunciations.
 
-      The both pronunciations present of word "the" (:ipa_inline:`[ð iː]` and :ipa_inline:`[ð ə]`) has a silence before correction factor (1.49) greater than the non-silence correction factor (0.67), as it only appears after silence in both speech rates.  With the non-silence correction factor below 1, the cost in the FST of transitioning out of the non-silence state will be much higher than transitioning out of the silence state. When the silence correction factor is greater than 1, the pronunciation is more likely following silence than you would expect given all the previous words, which will reduce the cost of transitioning out of the silence state.
+      .. note::
 
-      The fuller form of the word "but" (:ipa_inline:`[b ɐ t]`) has a silence before correction factor (1.28) greater than the non-silence correction factor (0.75), so the full form will have lower cost transitioning out of the silence state and than the non-silence state. On the other hand, the more reduced form :ipa_inline:`[b ɐ ʔ]` has the opposite patten, with a silence before correction factor (0.85) greater than the non-silence correction factor (1.13), so the reduced form will have a lower cost transitioning out of the non-silence state than the silence state.
+         "Unrealized pronunciations" refer to pronunciation variants that are not represented in training data, i.e., for the word "to", only the :ipa_inline:`[t ə]` was used, so :ipa_inline:`[tʰ ʉː]`, :ipa_inline:`[tʰ ʊ]`, and :ipa_inline:`[ɾ ə]` are unrealized.
+
+      **Probabilities of having silence following**
+
+      The word "books" has a probability of silence following at 0.34, as it only occurs before silence in the slower speech rate sentence. You might expect it to have a silence probability of 0.5, but recall from the equation of :math:`P(s_{r} | w.p)`, the smoothing factor is influenced by the overall rate of silence following words, which is quite low for the sentences with connected speech.
+
+      The pronunciation of "read" as :ipa_inline:`[ɹ iː d]` has a higher probability of silence following of 0.59, as both instances of that pronunciation are followed by silence at the end of the sentence.  The pronunciation of "read" as :ipa_inline:`[ɹ ɛ d]` will have a probability of following silence of 0.09, as the only instances are in the middle of speech in the first clause.
+
+      **Probabilities of having silence preceding**
+
+      Both pronunciations present of word "the" (:ipa_inline:`[ð iː]` and :ipa_inline:`[ð ə]`) have a silence preceding correction factor (1.49) greater than the non-silence correction factor (0.67), as it only appears after silence in both speech rates.  With the non-silence correction factor below 1, the cost in the FST of transitioning out of the non-silence state will be much higher than transitioning out of the silence state. When the silence correction factor is greater than 1, the pronunciation is more likely following silence than you would expect given all the previous words, which will reduce the cost of transitioning out of the silence state.
+
+      The fuller form of the word "but" (:ipa_inline:`[b ɐ t]`) has a silence preceding correction factor (1.28) greater than the non-silence correction factor (0.75), so the full form will have lower cost transitioning out of the silence state and than the non-silence state. On the other hand, the more reduced form :ipa_inline:`[b ɐ ʔ]` has the opposite patten, with a silence before correction factor (0.85) greater than the non-silence correction factor (1.13), so the reduced form will have a lower cost transitioning out of the non-silence state than the silence state.
 
 
    .. tab-item:: Japanese

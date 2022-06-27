@@ -324,8 +324,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         strings = []
         for j in self.jobs:
-            if not j.has_data:
-                continue
             lda_mat_path = None
             fmllrs = {}
             if self.working_directory is not None:

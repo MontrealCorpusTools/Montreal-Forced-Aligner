@@ -148,4 +148,5 @@ The functionality of :code:`mfa_generate_dictionary` has been expanded.
    :hidden:
 
    changelog_2.0.rst
+   changelog_2.0_pre_release.rst
    changelog_1.0.rst

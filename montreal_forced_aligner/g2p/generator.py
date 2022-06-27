@@ -216,9 +216,9 @@ class PhonetisaurusRewriter:
             for j in range(1, self.grapheme_order + 1):
                 if i + j <= len(graphemes):
                     substring = self.seq_sep.join(graphemes[i : i + j])
-                    state = self.input_token_type.find(substring)
-                    if state != pynini.NO_SYMBOL:
-                        fst.add_arc(start_state, pynini.Arc(state, state, one, i + j))
+                    ilabel = self.input_token_type.find(substring)
+                    if ilabel != pynini.NO_LABEL:
+                        fst.add_arc(start_state, pynini.Arc(ilabel, ilabel, one, i + j))
                     if i + j >= max_state:
                         max_state = i + j
         for _ in range(fst.num_states(), max_state + 1):
