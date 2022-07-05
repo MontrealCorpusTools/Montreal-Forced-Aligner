@@ -35,12 +35,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         super().__init__(**kwargs)
 
     @property
-    def ie_path(self):
+    def ie_path(self) -> str:
         """Ivector extractor ie path"""
         raise NotImplementedError
 
     @property
-    def dubm_path(self):
+    def dubm_path(self) -> str:
         """DUBM model path"""
         raise
 

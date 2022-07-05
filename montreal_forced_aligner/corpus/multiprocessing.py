@@ -313,7 +313,7 @@ class Job:
         return output
 
     @property
-    def dictionary_count(self):
+    def dictionary_count(self) -> int:
         """Number of dictionaries currently used"""
         return len(self.dictionary_ids)
 

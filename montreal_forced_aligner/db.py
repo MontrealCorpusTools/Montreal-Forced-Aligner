@@ -209,17 +209,17 @@ class Dictionary(MfaSqlBase):
         return os.path.join(str(self.root_temp_directory), "phones")
 
     @property
-    def phone_symbol_table_path(self):
+    def phone_symbol_table_path(self) -> str:
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_directory, "phones.txt")
 
     @property
-    def grapheme_symbol_table_path(self):
+    def grapheme_symbol_table_path(self) -> str:
         """Path to file containing grapheme symbols and their integer IDs"""
         return os.path.join(self.phones_directory, "graphemes.txt")
 
     @property
-    def phone_disambig_path(self):
+    def phone_disambig_path(self) -> str:
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_directory, "phone_disambig.txt")
 
@@ -973,21 +973,21 @@ class Utterance(MfaSqlBase):
         ),
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation of the utterance object"""
         return f"<Utterance in {self.file_name} by {self.speaker_name} from {self.begin} to {self.end}>"
 
     @property
-    def file_name(self):
+    def file_name(self) -> str:
         """Name of the utterance's file"""
         return self.file.name
 
     @property
-    def speaker_name(self):
+    def speaker_name(self) -> str:
         """Name of the utterance's speaker"""
         return self.speaker.name
 
-    def to_data(self):
+    def to_data(self) -> UtteranceData:
         """
         Construct an UtteranceData object that can be used in multiprocessing
 

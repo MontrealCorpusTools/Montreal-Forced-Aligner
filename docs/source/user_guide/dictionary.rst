@@ -49,10 +49,10 @@ bound clitic and the stem.  Thus given a dictionary like:
 ::
 
    c'est S E
-   c S E
-   c' S
+   c     S E
+   c'    S
    etait E T E
-   un A N
+   un    A N
 
 And two example orthographic transcriptions:
 
@@ -96,16 +96,19 @@ The default behavior of the aligner to is to clean up these internal splits and 
 Non-probabilistic format
 ========================
 
-Dictionaries should be specified in the following format:
+Dictionaries should be specified as a two column tab separated file:
 
 ::
 
-  WORDA PHONEA PHONEB
-  WORDA PHONEC
-  WORDB PHONEB PHONEC
+  WORDA  PHONEA PHONEB
+  WORDA  PHONEC
+  WORDB  PHONEB PHONEC
 
-where each line is a word with a transcription separated by white space.
-Each phone in the transcription should be separated by white space as well.
+Each line has a word and a transcription separated by a tab. Each phone in the transcription should be separated by non-tab white space as well.
+
+.. note::
+
+   Up to 2.0.5, words and their transcriptions could be separated by any white space, not just tab. However, given the complexities of parsing :ref:`probabilistic lexicons <probabilistic_dictionaries>` with transcription systems like X-SAMPA that use numbers as symbols, we have decided to standardize the column delimiter as tab.
 
 A dictionary for English that has good coverage is the lexicon derived
 from the LibriSpeech corpus (`LibriSpeech lexicon`_).
@@ -120,6 +123,8 @@ and one for Quebec French (`Prosodylab-aligner French dictionary`_), also see :x
    See the page on :ref:`g2p_dictionary_generating` for how to use G2P models to generate a dictionary
    from our pretrained models or how to generate pronunciation dictionaries from orthographies.
 
+.. _probabilistic_dictionaries:
+
 Dictionaries with pronunciation probability
 ===========================================
 
@@ -129,10 +134,11 @@ The format for this dictionary format is:
 
 ::
 
-  WORDA 1.0 PHONEA PHONEB
-  WORDA 0.3 PHONEC
-  WORDB 1.0 PHONEB PHONEC
+  WORDA  1.0   PHONEA PHONEB
+  WORDA  0.3   PHONEC
+  WORDB  1.0   PHONEB PHONEC
 
+The three columns should be separated by tabs, with the first column corresponding the orthographic form, the second to the pronunciation probability between 0.01 and 1.0, and the final column the space-delimited pronunciation.
 
 .. note::
 
@@ -149,11 +155,11 @@ The format for this dictionary format is:
 
 ::
 
-  the	0.16	0.08	2.17	1.13	d i
-  the	0.99	0.04	2.14	1.15	d ə
-  the	0.01	0.14	2.48	1.18	ð i
-  the	0.02	0.12	1.87	1.23	ð ə
-  the	0.11	0.15	2.99	1.15	ə
+  the    0.16	   0.08	   2.17	   1.13	   d i
+  the    0.99	   0.04	   2.14	   1.15	   d ə
+  the	   0.01	   0.14	   2.48	   1.18	   ð i
+  the	   0.02	   0.12	   1.87	   1.23	   ð ə
+  the	   0.11	   0.15	   2.99	   1.15	   ə
 
 The first float column is the probability of the pronunciation, the next float is the probability of silence following the pronunciation, and the final two floats are correction terms for preceding silence and non-silence. Given that each entry in a dictionary is independent and there is no way to encode information about the preceding context, the correction terms are calculated as how much more common was silence or non-silence compared to what we would expect factoring out the likelihood of silence from the previous word. More details are found in :kaldi_steps:`get_prons` and the `related paper <https://www.danielpovey.com/files/2015_interspeech_silprob.pdf>`_.
 
@@ -171,8 +177,8 @@ to align annotations like laughter, coughing, etc.
 
 ::
 
-  {LG} spn
-  {SL} sil
+  {LG}   spn
+  {SL}   sil
 
 
 .. _speaker_dictionaries:

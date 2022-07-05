@@ -12,6 +12,7 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 import re
+import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -161,7 +162,7 @@ class SegmentVadFunction(KaldiFunction):
         self.vad_path = args.vad_path
         self.segmentation_options = args.segmentation_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, float, float]]:
         """Run the function"""
 
         vad = load_scp(self.vad_path, data_type=int)
@@ -268,7 +269,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         ]
 
     @property
-    def segmentation_options(self):
+    def segmentation_options(self) -> MetaDict:
         """Options for segmentation"""
         return {
             "max_segment_length": self.max_segment_length,

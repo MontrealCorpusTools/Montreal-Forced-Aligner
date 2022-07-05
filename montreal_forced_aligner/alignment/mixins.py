@@ -91,13 +91,13 @@ class AlignMixin(DictionaryMixin):
         self.unaligned_files = set()
 
     @property
-    def tree_path(self):
+    def tree_path(self) -> str:
         """Path to tree file"""
         return os.path.join(self.working_directory, "tree")
 
     @property
     @abstractmethod
-    def data_directory(self):
+    def data_directory(self) -> str:
         """Corpus data directory"""
         ...
 
@@ -230,7 +230,7 @@ class AlignMixin(DictionaryMixin):
         }
 
     @property
-    def num_current_utterances(self):
+    def num_current_utterances(self) -> int:
         """Number of current utterances"""
         return getattr(self, "num_utterances", 0)
 
@@ -302,7 +302,7 @@ class AlignMixin(DictionaryMixin):
             self.log_warning(f"Compilation of training graphs failed for {error_sum} utterances.")
         self.log_debug(f"Compiling training graphs took {time.time() - begin}")
 
-    def align_utterances(self) -> None:
+    def align_utterances(self, training=False) -> None:
         """
         Multiprocessing function that aligns based on the current model.
 
@@ -322,10 +322,12 @@ class AlignMixin(DictionaryMixin):
         with tqdm.tqdm(
             total=self.num_current_utterances, disable=getattr(self, "quiet", False)
         ) as pbar, self.session() as session:
-            utterances = session.query(Utterance)
-            if hasattr(self, "subset"):
-                utterances = utterances.filter(Utterance.in_subset == True)  # noqa
-            utterances.update({"alignment_log_likelihood": None})
+            if not training:
+                utterances = session.query(Utterance)
+                if hasattr(self, "subset"):
+                    utterances = utterances.filter(Utterance.in_subset == True)  # noqa
+                utterances.update({"alignment_log_likelihood": None})
+                session.commit()
             update_mappings = []
             if self.use_mp:
                 error_dict = {}
@@ -352,15 +354,16 @@ class AlignMixin(DictionaryMixin):
                         else:
                             break
                         continue
-                    utterance, log_likelihood = result
-                    update_mappings.append(
-                        {"id": utterance, "alignment_log_likelihood": log_likelihood}
-                    )
+                    if not training:
+                        utterance, log_likelihood = result
+                        update_mappings.append(
+                            {"id": utterance, "alignment_log_likelihood": log_likelihood}
+                        )
                     pbar.update(1)
                 for p in procs:
                     p.join()
 
-                if len(update_mappings) == 0:
+                if not training and len(update_mappings) == 0:
                     raise NoAlignmentsError(
                         self.num_current_utterances, self.beam, self.retry_beam
                     )
@@ -373,28 +376,30 @@ class AlignMixin(DictionaryMixin):
                 for args in self.align_arguments():
                     function = AlignFunction(args)
                     for utterance, log_likelihood in function.run():
-                        update_mappings.append(
-                            {"id": utterance, "alignment_log_likelihood": log_likelihood}
-                        )
+                        if not training:
+                            update_mappings.append(
+                                {"id": utterance, "alignment_log_likelihood": log_likelihood}
+                            )
                         pbar.update(1)
-                if len(update_mappings) == 0:
+                if not training and len(update_mappings) == 0:
                     raise NoAlignmentsError(
                         self.num_current_utterances, self.beam, self.retry_beam
                     )
-            session.bulk_update_mappings(Utterance, update_mappings)
-            session.query(Utterance).filter(
-                Utterance.alignment_log_likelihood != None  # noqa
-            ).update(
-                {
-                    Utterance.alignment_log_likelihood: Utterance.alignment_log_likelihood
-                    / Utterance.num_frames
-                },
-                synchronize_session="fetch",
-            )
-            session.commit()
+            if not training:
+                session.bulk_update_mappings(Utterance, update_mappings)
+                session.query(Utterance).filter(
+                    Utterance.alignment_log_likelihood != None  # noqa
+                ).update(
+                    {
+                        Utterance.alignment_log_likelihood: Utterance.alignment_log_likelihood
+                        / Utterance.num_frames
+                    },
+                    synchronize_session="fetch",
+                )
+                session.commit()
             self.log_debug(f"Alignment round took {time.time() - begin}")
 
-    def compile_information(self):
+    def compile_information(self) -> None:
         """
         Compiles information about alignment, namely what the overall log-likelihood was
         and how many files were unaligned.

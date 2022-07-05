@@ -106,7 +106,7 @@ class TextFileType(enum.Enum):
     LAB = "lab"
     JSON = TextgridFormats.JSON
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Name of phone set"""
         return self.value
 
@@ -196,7 +196,7 @@ class PhoneSetType(enum.Enum):
     ARPA = "ARPA"
     PINYIN = "PINYIN"
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Name of phone set"""
         return self.name
 
@@ -237,7 +237,7 @@ class PhoneSetType(enum.Enum):
         return None
 
     @property
-    def voiceless_obstruents(self):
+    def voiceless_obstruents(self) -> typing.Set[str]:
         """Voiceless obstruents for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -271,7 +271,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def voiced_obstruents(self):
+    def voiced_obstruents(self) -> typing.Set[str]:
         """Voiced obstruents for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -302,14 +302,14 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def implosive_obstruents(self):
+    def implosive_obstruents(self) -> typing.Set[str]:
         """Implosive obstruents for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɓ", "ɗ", "ʄ", "ɠ", "ʛ", "ᶑ", "ɗ̪"}
         return set()
 
     @property
-    def stops(self):
+    def stops(self) -> typing.Set[str]:
         """Stops for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -346,7 +346,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def sibilants(self):
+    def sibilants(self) -> typing.Set[str]:
         """Sibilants for the phone set"""
         if self is PhoneSetType.IPA:
             return {"s", "s̪", "ʃ", "ʂ", "ɕ", "z", "z̪", "ʒ", "ʑ", "ʐ", "ɧ"}
@@ -355,7 +355,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def affricates(self):
+    def affricates(self) -> typing.Set[str]:
         """Affricates for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -384,7 +384,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def fricatives(self):
+    def fricatives(self) -> typing.Set[str]:
         """Fricatives for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -417,7 +417,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def laterals(self):
+    def laterals(self) -> typing.Set[str]:
         """Laterals for the phone set"""
         if self is PhoneSetType.IPA:
             return {"l", "ɫ", "ʟ", "ʎ", "l̪"}
@@ -426,7 +426,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def nasals(self):
+    def nasals(self) -> typing.Set[str]:
         """Nasals for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɲ", "ŋ", "m", "n", "ɳ", "ɴ", "ɱ", "ŋm", "n̪"}
@@ -435,7 +435,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def trills(self):
+    def trills(self) -> typing.Set[str]:
         """Trills for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʙ", "r", "ʀ", "r̝"}
@@ -444,7 +444,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def taps(self):
+    def taps(self) -> typing.Set[str]:
         """Taps for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɾ", "ɽ", "ⱱ"}
@@ -453,7 +453,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def lateral_taps(self):
+    def lateral_taps(self) -> typing.Set[str]:
         """Lateral taps for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɭ", "ɺ"}
@@ -462,7 +462,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def lateral_fricatives(self):
+    def lateral_fricatives(self) -> typing.Set[str]:
         """Lateral fricatives for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɬ", "ɮ"}
@@ -471,7 +471,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def approximants(self):
+    def approximants(self) -> typing.Set[str]:
         """Approximants for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɹ", "ɻ", "ʋ", "ʍ"} | self.glides
@@ -480,7 +480,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def glides(self):
+    def glides(self) -> typing.Set[str]:
         """Glides for the phone set"""
         if self is PhoneSetType.IPA:
             return {"j", "w", "w̃", "j̃", "ɥ", "ɰ", "ɥ̃", "ɰ̃", "j̰"}
@@ -489,7 +489,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def nasal_approximants(self):
+    def nasal_approximants(self) -> typing.Set[str]:
         """Nasal approximants for the phone set"""
         if self is PhoneSetType.IPA:
             return {"w̃", "j̃", "ɥ̃", "ɰ̃"}
@@ -498,7 +498,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def labials(self):
+    def labials(self) -> typing.Set[str]:
         """Labials for the phone set"""
         if self is PhoneSetType.IPA:
             return {"b", "p", "m", "ɸ", "β", "ɓ", "w", "ʍ"}
@@ -507,7 +507,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def labiodental(self):
+    def labiodental(self) -> typing.Set[str]:
         """Labiodentals for the phone set"""
         if self is PhoneSetType.IPA:
             return {"f", "v", "ʋ", "ⱱ", "ɱ", "pf"}
@@ -516,7 +516,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def dental(self):
+    def dental(self) -> typing.Set[str]:
         """Dentals for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ð", "θ", "t̪", "d̪", "s̪", "z̪", "t̪s̪", "d̪z̪", "n̪", "l̪", "ɗ̪"}
@@ -525,7 +525,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def alveolar(self):
+    def alveolar(self) -> typing.Set[str]:
         """Alveolars for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -551,7 +551,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def retroflex(self):
+    def retroflex(self) -> typing.Set[str]:
         """Retroflexes for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʈ", "ʂ", "ʐ", "ɖ", "ɽ", "ɻ", "ɭ", "ɳ", "ʈʂ", "ɖʐ", "ᶑ"}
@@ -560,7 +560,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def alveopalatal(self):
+    def alveopalatal(self) -> typing.Set[str]:
         """Alveopalatals for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʒ", "ʃ", "dʒ", "tʃ"}
@@ -569,7 +569,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def palatalized(self):
+    def palatalized(self) -> typing.Set[str]:
         """Palatalized phones for the phone set"""
         if self is PhoneSetType.IPA:
             palatals = set()
@@ -590,7 +590,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def labialized(self):
+    def labialized(self) -> typing.Set[str]:
         """Labialized phones for the phone set"""
         if self is PhoneSetType.IPA:
             palatals = set()
@@ -611,7 +611,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def palatal(self):
+    def palatal(self) -> typing.Set[str]:
         """Palatal phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ç", "c", "ɕ", "tɕ", "ɟ", "ɟʝ", "ʝ", "ɲ", "ɥ", "j", "ʎ", "ʑ", "dʑ"}
@@ -620,7 +620,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def velar(self):
+    def velar(self) -> typing.Set[str]:
         """Velar phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"k", "x", "ɡ", "ɠ", "ɣ", "ɰ", "ŋ"}
@@ -629,7 +629,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def uvular(self):
+    def uvular(self) -> typing.Set[str]:
         """Uvular phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"q", "ɢ", "ʛ", "χ", "ʀ", "ʁ", "ʟ", "ɴ"}
@@ -638,7 +638,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def pharyngeal(self):
+    def pharyngeal(self) -> typing.Set[str]:
         """Pharyngeal phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʕ", "ħ"}
@@ -647,7 +647,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def epiglottal(self):
+    def epiglottal(self) -> typing.Set[str]:
         """Epiglottal phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʡ", "ʢ", "ʜ"}
@@ -656,7 +656,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def glottal(self):
+    def glottal(self) -> typing.Set[str]:
         """Glottal phones for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ʔ", "ɦ", "h"}
@@ -665,7 +665,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def close_vowels(self):
+    def close_vowels(self) -> typing.Set[str]:
         """Close vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɪ", "ɨ", "ɪ̈", "ʉ", "ʊ", "i", "ĩ", "ɯ", "y", "u", "ʏ", "ũ"}
@@ -674,7 +674,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def close_mid_vowels(self):
+    def close_mid_vowels(self) -> typing.Set[str]:
         """Close-mid vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"e", "ẽ", "ej", "eɪ", "o", "õ", "ow", "oʊ", "ɤ", "ø", "ɵ", "ɘ", "ə", "ɚ", "ʏ̈"}
@@ -683,7 +683,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def open_mid_vowels(self):
+    def open_mid_vowels(self) -> typing.Set[str]:
         """Open-mid vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɛ", "ɜ", "ɞ", "œ", "ɔ", "ʌ", "ɐ", "æ", "ɛ̈", "ɔ̈", "ɝ"}
@@ -692,7 +692,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def open_vowels(self):
+    def open_vowels(self) -> typing.Set[str]:
         """Open vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"a", "ã", "ɶ", "ɒ", "ɑ"}
@@ -701,7 +701,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def front_vowels(self):
+    def front_vowels(self) -> typing.Set[str]:
         """Front vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -729,7 +729,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def central_vowels(self):
+    def central_vowels(self) -> typing.Set[str]:
         """Central vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɨ", "ʉ", "ɘ", "ɵ", "ə", "ɜ", "ɞ", "ɐ", "ɚ", "ã", "a", "ɝ"}
@@ -738,7 +738,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def back_vowels(self):
+    def back_vowels(self) -> typing.Set[str]:
         """Back vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {"ɯ", "u", "ũ", "ʊ", "ɔ̈", "ɤ", "o", "õ", "ow", "oʊ", "ʌ", "ɔ", "ɑ", "ɒ"}
@@ -747,7 +747,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def rounded_vowels(self):
+    def rounded_vowels(self) -> typing.Set[str]:
         """Rounded vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -776,7 +776,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def unrounded_vowels(self):
+    def unrounded_vowels(self) -> typing.Set[str]:
         """Unrounded vowels for the phone set"""
         if self is PhoneSetType.IPA:
             return {
@@ -838,7 +838,7 @@ class PhoneSetType(enum.Enum):
         return set()
 
     @property
-    def vowels(self):
+    def vowels(self) -> typing.Set[str]:
         """Vowels for the phone set type"""
         if self is PhoneSetType.PINYIN:
             return {"i", "u", "y", "e", "w", "a", "o", "e", "ü"}
@@ -1183,7 +1183,7 @@ class PronunciationProbabilityCounter:
     silence_before_counts: collections.Counter = dataclassy.factory(collections.Counter)
     non_silence_before_counts: collections.Counter = dataclassy.factory(collections.Counter)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize default dictionaries"""
         self.ngram_counts = collections.defaultdict(collections.Counter)
         self.word_pronunciation_counts = collections.defaultdict(collections.Counter)
@@ -1236,7 +1236,7 @@ class CtmInterval:
         """Sorting function for CtmIntervals"""
         return self.begin < other.begin
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
         Check on data validity
 

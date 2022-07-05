@@ -68,7 +68,7 @@ class MonoAlignEqualFunction(KaldiFunction):
         self.ali_ark_paths = args.ali_ark_paths
         self.acc_paths = args.acc_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -204,7 +204,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             options["beam"] = self.initial_beam
         return options
 
-    def mono_align_equal(self):
+    def mono_align_equal(self) -> None:
         """
         Multiprocessing function that creates equal alignments for base monophone training.
 
@@ -310,6 +310,8 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
 
     def _trainer_initialization(self) -> None:
         """Monophone training initialization"""
+        if self.initialized:
+            return
         self.iteration = 0
         tree_path = os.path.join(self.working_directory, "tree")
 

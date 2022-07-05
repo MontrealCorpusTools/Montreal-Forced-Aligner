@@ -14,7 +14,7 @@ from montreal_forced_aligner.data import PhoneSetType
 from montreal_forced_aligner.helper import make_re_character_set_safe
 
 if TYPE_CHECKING:
-    from montreal_forced_aligner.abc import MetaDict, ReversedMappingType
+    from montreal_forced_aligner.abc import MetaDict
 
 DEFAULT_PUNCTUATION = list(r'、。।，？!@<>→"”()“„–,.:;—¿?¡：）!\\&%#*~【】，…‥「」『』〝〟″⟨⟩♪・‹›«»～′$+=‘')
 
@@ -601,7 +601,7 @@ class DictionaryMixin:
         }
 
     @property
-    def silence_phones(self):
+    def silence_phones(self) -> Set[str]:
         """Silence phones"""
         if self.other_noise_phone is not None:
             return {self.optional_silence_phone, self.oov_phone, self.other_noise_phone}
@@ -612,12 +612,12 @@ class DictionaryMixin:
         }
 
     @property
-    def context_independent_csl(self):
+    def context_independent_csl(self) -> str:
         """Context independent colon-separated list"""
         return ":".join(str(self.phone_mapping[x]) for x in self.kaldi_silence_phones)
 
     @property
-    def specials_set(self):
+    def specials_set(self) -> Set[str]:
         """Special words, like the ``oov_word`` ``silence_word``, ``<s>``, and ``</s>``"""
         return {self.silence_word, "<s>", "</s>"}
 
@@ -649,7 +649,7 @@ class DictionaryMixin:
         return f"#{self.max_disambiguation_symbol + 1}"
 
     @property
-    def reversed_phone_mapping(self) -> ReversedMappingType:
+    def reversed_phone_mapping(self) -> Dict[int, str]:
         """
         A mapping of integer ids to phones
         """
@@ -742,7 +742,7 @@ class DictionaryMixin:
         return self._generate_positional_list(self.non_silence_phones)
 
     @property
-    def kaldi_non_silence_phones(self):
+    def kaldi_non_silence_phones(self) -> List[str]:
         """Non silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_non_silence_phones
@@ -769,7 +769,7 @@ class DictionaryMixin:
         return groups
 
     @property
-    def kaldi_silence_phones(self):
+    def kaldi_silence_phones(self) -> List[str]:
         """Silence phones in Kaldi format"""
         if self.position_dependent_phones:
             return self.positional_silence_phones
@@ -1138,22 +1138,22 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
                 rootintf.write(f"shared split {phone_int_string}\n")
 
     @property
-    def phone_symbol_table_path(self):
+    def phone_symbol_table_path(self) -> str:
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_dir, "phones.txt")
 
     @property
-    def grapheme_symbol_table_path(self):
+    def grapheme_symbol_table_path(self) -> str:
         """Path to file containing grapheme symbols and their integer IDs"""
         return os.path.join(self.phones_dir, "graphemes.txt")
 
     @property
-    def disambiguation_symbols_txt_path(self):
+    def disambiguation_symbols_txt_path(self) -> str:
         """Path to the file containing phone disambiguation symbols"""
         return os.path.join(self.phones_dir, "disambiguation_symbols.txt")
 
     @property
-    def disambiguation_symbols_int_path(self):
+    def disambiguation_symbols_int_path(self) -> str:
         """Path to the file containing integer IDs for phone disambiguation symbols"""
         if self._disambiguation_symbols_int_path is None:
             self._disambiguation_symbols_int_path = os.path.join(

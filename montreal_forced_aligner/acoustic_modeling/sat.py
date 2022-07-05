@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import time
+import typing
 from queue import Empty
 from typing import Dict, List
 
@@ -71,7 +72,7 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
         self.feature_strings = args.feature_strings
         self.si_feature_strings = args.si_feature_strings
 
-    def run(self):
+    def _run(self) -> typing.Generator[bool]:
         """Run the function"""
 
         with open(self.log_path, "w", encoding="utf8") as log_file:
@@ -201,8 +202,9 @@ class SatTrainer(TriphoneTrainer):
 
     def _trainer_initialization(self) -> None:
         """Speaker adapted training initialization"""
-        self.speaker_independent = False
-        if os.path.exists(os.path.join(self.working_directory, "1.mdl")):
+        if self.initialized:
+            self.speaker_independent = False
+            self.worker.speaker_independent = False
             return
         if os.path.exists(os.path.join(self.previous_aligner.working_directory, "lda.mat")):
             shutil.copyfile(
@@ -280,11 +282,11 @@ class SatTrainer(TriphoneTrainer):
         if self.iteration in self.realignment_iterations:
             self.align_iteration()
         if self.iteration in self.fmllr_iterations:
+
             self.calc_fmllr()
 
         self.acc_stats()
 
-        parse_logs(self.working_log_directory)
         if self.iteration <= self.final_gaussian_iteration:
             self.increment_gaussians()
         self.iteration += 1

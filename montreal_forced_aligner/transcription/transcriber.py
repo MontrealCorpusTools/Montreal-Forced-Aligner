@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
+import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -206,7 +207,7 @@ class TranscriberMixin:
                     ]
                 )
 
-    def compute_wer(self):
+    def compute_wer(self) -> typing.Tuple[float, float, float]:
         """
         Evaluates the transcripts if there are reference transcripts
 
@@ -717,7 +718,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         return "transcriber"
 
     @property
-    def evaluation_directory(self):
+    def evaluation_directory(self) -> str:
         """Evaluation directory path for the current language model weight and word insertion penalty"""
         eval_string = f"eval_{self.language_model_weight}_{self.word_insertion_penalty}"
         path = os.path.join(self.working_directory, eval_string)
@@ -748,7 +749,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         return self.model_path
 
     @property
-    def hclg_options(self):
+    def hclg_options(self) -> MetaDict:
         """Options for constructing HCLG FSTs"""
         context_width, central_pos = self.get_tree_info()
         return {
@@ -786,7 +787,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 central_pos = int(text[1])
         return context_width, central_pos
 
-    def create_hclgs(self):
+    def create_hclgs(self) -> None:
         """
         Create HCLG.fst files for every dictionary being used by a :class:`~montreal_forced_aligner.transcription.transcriber.Transcriber`
         """

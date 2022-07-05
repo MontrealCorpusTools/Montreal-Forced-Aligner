@@ -5,6 +5,18 @@
 2.0 Changelog
 *************
 
+2.0.5
+=====
+
+- Standardize :ref:`dictionary_format` to require tab delimitation between orthography, pronunciations, and any probabilities in the dictionary :github_issue:`478`
+- Fixed a bug in pronunciation probability estimation when silence words are explicitly transcribed :github_issue:`476`
+- Fixed an optimization bug introduced when fixing sparse job/subset combos
+
+2.0.4
+=====
+
+- Bug fix for phonetisaurus training error in 2.0.2
+
 2.0.2
 =====
 
@@ -12,6 +24,8 @@
 - Fixed a bug in parsing dictionaries that included whitespace as part of the word
 - Fixed a bug in Phonetisaurus generation where insertions and deletions were not being properly generated
 - Changed the default alignment separator for Phonetisaurus to ``;`` instead of ``}`` (shouldn't conflict with most phone sets) and added extra validation to ensure special symbols are not present in the dictionary
+- Fixed a bug where a trained phonetisaurus model was not properly using its grapheme order
+- Fixed a bug when saving a phonetisaurus model after evaluating it
 
 2.0.1
 =====

@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import typing
 from typing import TYPE_CHECKING, Dict, List, TextIO
 
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
@@ -18,7 +19,6 @@ from montreal_forced_aligner.utils import thirdparty_binary
 if TYPE_CHECKING:
     from dataclasses import dataclass
 
-    from ..abc import MappingType
 else:
     from dataclassy import dataclass
 
@@ -56,7 +56,7 @@ class CreateHclgArguments(MfaArguments):
     disambig_L_path: str
     disambig_int_path: str
     hclg_options: MetaDict
-    words_mapping: MappingType
+    words_mapping: Dict[str, int]
 
     @property
     def hclg_path(self) -> str:
@@ -427,7 +427,7 @@ def compose_g(arpa_path: str, words_path: str, g_path: str, log_file: TextIO) ->
 def compose_g_carpa(
     in_carpa_path: str,
     temp_carpa_path: str,
-    words_mapping: MappingType,
+    words_mapping: Dict[str, int],
     carpa_path: str,
     log_file: TextIO,
 ):
@@ -554,7 +554,7 @@ class CreateHclgFunction(KaldiFunction):
         self.hclg_options = args.hclg_options
         self.words_mapping = args.words_mapping
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[bool, str]]:
         """Run the function"""
         hclg_path = self.path_template.format(file_name="HCLG")
         small_g_path = self.path_template.format(file_name="G.small")
@@ -683,7 +683,7 @@ class DecodeFunction(KaldiFunction):
         self.decode_options = args.decode_options
         self.model_path = args.model_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -729,7 +729,9 @@ class DecodeFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield m.group("utterance"), m.group("loglike"), m.group("num_frames")
+                        yield m.group("utterance"), float(m.group("loglike")), int(
+                            m.group("num_frames")
+                        )
             self.check_call(decode_proc)
 
 
@@ -771,7 +773,7 @@ class ScoreFunction(KaldiFunction):
         self.tra_paths = args.tra_paths
         self.ali_paths = args.ali_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[str, float, float, float, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -867,7 +869,7 @@ class LmRescoreFunction(KaldiFunction):
         self.new_g_paths = args.new_g_paths
         self.lm_rescore_options = args.lm_rescore_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -947,7 +949,7 @@ class CarpaLmRescoreFunction(KaldiFunction):
         self.old_g_paths = args.old_g_paths
         self.new_g_paths = args.new_g_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "a", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -1040,7 +1042,7 @@ class InitialFmllrFunction(KaldiFunction):
         self.lat_paths = args.lat_paths
         self.spk2utt_paths = args.spk2utt_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -1144,7 +1146,7 @@ class LatGenFmllrFunction(KaldiFunction):
         self.decode_options = args.decode_options
         self.model_path = args.model_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -1175,7 +1177,9 @@ class LatGenFmllrFunction(KaldiFunction):
                     log_file.write(line)
                     m = self.progress_pattern.match(line.strip())
                     if m:
-                        yield m.group("utterance"), m.group("loglike"), m.group("num_frames")
+                        yield m.group("utterance"), float(m.group("loglike")), int(
+                            m.group("num_frames")
+                        )
             self.check_call(lat_gen_proc)
 
 
@@ -1221,7 +1225,7 @@ class FinalFmllrFunction(KaldiFunction):
         self.tmp_lat_paths = args.tmp_lat_paths
         self.spk2utt_paths = args.spk2utt_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[int]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -1345,7 +1349,7 @@ class FmllrRescoreFunction(KaldiFunction):
         self.tmp_lat_paths = args.tmp_lat_paths
         self.final_lat_paths = args.final_lat_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:

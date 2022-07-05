@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import typing
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
@@ -136,7 +137,7 @@ class MfccFunction(KaldiFunction):
         self.mfcc_options = args.mfcc_options
         self.pitch_options = args.pitch_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[int]:
         """Run the function"""
         processed = 0
         with open(self.log_path, "w") as log_file:
@@ -278,7 +279,7 @@ class ComputeVadFunction(KaldiFunction):
         self.vad_scp_path = args.vad_scp_path
         self.vad_options = args.vad_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
         with open(self.log_path, "w") as log_file:
             feats_scp_path = self.feats_scp_path
@@ -350,7 +351,7 @@ class CalcFmllrFunction(KaldiFunction):
         self.trans_paths = args.trans_paths
         self.fmllr_options = args.fmllr_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[str]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -752,7 +753,7 @@ class IvectorConfigMixin(FeatureConfigMixin):
         self.max_count = max_count
 
     @abstractmethod
-    def extract_ivectors(self):
+    def extract_ivectors(self) -> None:
         """Abstract method for extracting ivectors"""
         ...
 
@@ -844,7 +845,7 @@ class ExtractIvectorsFunction(KaldiFunction):
         self.model_path = args.model_path
         self.dubm_path = args.dubm_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[str]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
 

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import traceback
+import typing
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -66,7 +67,7 @@ class KaldiFunction(metaclass=abc.ABCMeta):
         self.job_name = self.args.job_name
         self.log_path = self.args.log_path
 
-    def run(self):
+    def run(self) -> typing.Generator:
         """Run the function, calls :meth:`~KaldiFunction._run` with error handling"""
         try:
             yield from self._run()
@@ -75,7 +76,7 @@ class KaldiFunction(metaclass=abc.ABCMeta):
             error_text = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
             raise MultiprocessingError(self.job_name, error_text)
 
-    def _run(self):
+    def _run(self) -> None:
         """Internal logic for running the worker"""
         pass
 
@@ -579,7 +580,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         ...
 
     @property
-    def worker_config_path(self):
+    def worker_config_path(self) -> str:
         """Path to worker's configuration in the working directory"""
         return os.path.join(self.output_directory, f"{self.workflow_identifier}.yaml")
 
@@ -612,7 +613,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         except (NameError, ValueError):  # already cleaned up
             pass
 
-    def save_worker_config(self):
+    def save_worker_config(self) -> None:
         """Export worker configuration to its working directory"""
         with open(self.worker_config_path, "w") as f:
             yaml.dump(self.configuration, f)
@@ -704,11 +705,11 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
         return os.path.join(self.output_directory, self.workflow_identifier)
 
     @property
-    def log_file(self):
+    def log_file(self) -> str:
         """Path to the worker's log file"""
         return os.path.join(self.output_directory, f"{self.workflow_identifier}.log")
 
-    def setup_logger(self):
+    def setup_logger(self) -> None:
         """
         Construct a logger for a command line run
         """

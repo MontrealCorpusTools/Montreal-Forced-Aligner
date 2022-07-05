@@ -727,7 +727,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     "details or run `mfa validate` on the corpus."
                 )
 
-    def _write_feats(self):
+    def _write_feats(self) -> None:
         """Write feats scp file for Kaldi"""
         feats_path = os.path.join(self.corpus_output_directory, "feats.scp")
         with self.session() as session, open(feats_path, "w", encoding="utf8") as f:

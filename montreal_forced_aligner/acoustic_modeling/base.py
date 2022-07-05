@@ -114,7 +114,7 @@ class AcousticModelTrainingMixin(
         self.final_gaussian_iteration = 0  # Gets set later
 
     @property
-    def db_path(self):
+    def db_path(self) -> str:
         """Root worker's path to database file"""
         return self.worker.db_path
 
@@ -251,23 +251,9 @@ class AcousticModelTrainingMixin(
 
     def initialize_training(self) -> None:
         """Initialize training"""
-        self.compute_calculated_properties()
-        self.current_gaussians = self.initial_gaussians
         begin = time.time()
         dirty_path = os.path.join(self.working_directory, "dirty")
         done_path = os.path.join(self.working_directory, "done")
-        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
-            shutil.rmtree(self.working_directory)
-        os.makedirs(self.working_log_directory, exist_ok=True)
-        if os.path.exists(done_path) or any(
-            x.endswith(".mdl") for x in os.listdir(self.working_directory)
-        ):
-            self.log_info(
-                f"{self.identifier} training already initialized, skipping initialization."
-            )
-            if os.path.exists(done_path):
-                self.training_complete = True
-            return
         self.log_info(f"Initializing training for {self.identifier}...")
         if self.subset and self.subset >= self.worker.num_utterances:
             self.log_warning(
@@ -278,7 +264,6 @@ class AcousticModelTrainingMixin(
             self.worker.current_subset = 0
         try:
             self._trainer_initialization()
-            parse_logs(self.working_log_directory)
         except Exception as e:
             with open(dirty_path, "w"):
                 pass
@@ -290,6 +275,18 @@ class AcousticModelTrainingMixin(
             raise
         self.iteration = 1
         self.worker.current_trainer = self
+        self.compute_calculated_properties()
+        self.current_gaussians = self.initial_gaussians
+        if self.initialized:
+            self.log_info(
+                f"{self.identifier} training already initialized, skipping initialization."
+            )
+            if os.path.exists(done_path):
+                self.training_complete = True
+            return
+        if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
+            shutil.rmtree(self.working_directory)
+        os.makedirs(self.working_log_directory, exist_ok=True)
         self.log_info("Initialization complete!")
         self.log_debug(f"Initialization for {self.identifier} took {time.time() - begin} seconds")
 
@@ -331,14 +328,14 @@ class AcousticModelTrainingMixin(
         return self.model_path
 
     @property
-    def next_model_path(self):
+    def next_model_path(self) -> str:
         """Next iteration's acoustic model path"""
         if self.training_complete:
             return os.path.join(self.working_directory, "final.mdl")
         return os.path.join(self.working_directory, f"{self.iteration + 1}.mdl")
 
     @property
-    def next_occs_path(self):
+    def next_occs_path(self) -> str:
         """Next iteration's occs file path"""
         if self.training_complete:
             return os.path.join(self.working_directory, "final.occs")
@@ -349,11 +346,11 @@ class AcousticModelTrainingMixin(
         """Compute any calculated properties such as alignment iterations"""
         ...
 
-    def increment_gaussians(self):
+    def increment_gaussians(self) -> None:
         """Increment the current number of gaussians"""
         self.current_gaussians += self.gaussian_increment
 
-    def acc_stats(self):
+    def acc_stats(self) -> None:
         """
         Multiprocessing function that accumulates stats for GMM training.
 
@@ -485,7 +482,7 @@ class AcousticModelTrainingMixin(
     def align_iteration(self) -> None:
         """Run alignment for a training iteration"""
         begin = time.time()
-        self.align_utterances()
+        self.align_utterances(training=True)
         self.log_debug(
             f"Generating alignments for iteration {self.iteration} took {time.time()-begin} seconds"
         )
@@ -496,10 +493,20 @@ class AcousticModelTrainingMixin(
             f"Analyzing iteration {self.iteration} alignments took {time.time()-begin} seconds"
         )
 
+    @property
+    def initialized(self) -> bool:
+        return (
+            os.path.exists(os.path.join(self.working_directory, "1.mdl"))
+            or os.path.exists(os.path.join(self.working_directory, "final.mdl"))
+            or os.path.exists(os.path.join(self.working_directory, "done"))
+        )
+
     def train_iteration(self) -> None:
         """Perform an iteration of training"""
         if os.path.exists(self.next_model_path):
             self.iteration += 1
+            if self.iteration <= self.final_gaussian_iteration:
+                self.increment_gaussians()
             return
         if self.iteration in self.realignment_iterations:
             self.align_iteration()
@@ -521,6 +528,7 @@ class AcousticModelTrainingMixin(
         """
         done_path = os.path.join(self.working_directory, "done")
         dirty_path = os.path.join(self.working_directory, "dirty")
+        os.makedirs(self.working_log_directory, exist_ok=True)
         try:
             self.initialize_training()
             if self.training_complete:

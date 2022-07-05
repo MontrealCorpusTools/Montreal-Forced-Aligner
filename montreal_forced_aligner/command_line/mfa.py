@@ -58,18 +58,18 @@ class ExitHooks(object):
         self.exit_code = None
         self.exception = None
 
-    def hook(self):
+    def hook(self) -> None:
         """Hook for capturing information about exit code and exceptions"""
         self._orig_exit = sys.exit
         sys.exit = self.exit
         sys.excepthook = self.exc_handler
 
-    def exit(self, code=0):
+    def exit(self, code=0) -> None:
         """Actual exit for the program"""
         self.exit_code = code
         self._orig_exit(code)
 
-    def exc_handler(self, exc_type, exc, *args):
+    def exc_handler(self, exc_type, exc, *args) -> None:
         """Handle and save exceptions"""
         self.exception = exc
         self.exit_code = 1
