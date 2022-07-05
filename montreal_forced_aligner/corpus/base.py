@@ -225,7 +225,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         """Directory used to store information split by job"""
         return os.path.join(self.corpus_output_directory, f"split{self.num_jobs}")
 
-    def _write_spk2utt(self):
+    def _write_spk2utt(self) -> None:
         """Write spk2utt scp file for Kaldi"""
         data = {}
         utt2spk_data = {}
@@ -892,15 +892,15 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         for j in self.jobs:
             j.has_data = False
         with self.session() as session:
-            query = (
-                session.query(Speaker.job_id, sqlalchemy.func.count(Utterance.id))
-                .join(Utterance.speaker)
-                .filter(Utterance.in_subset == True)  # noqa
-                .group_by(Speaker.job_id)
-            )
-            for job_id, utterance_count in query:
-                if utterance_count > 0:
-                    self.jobs[job_id].has_data = True
+            for j in self.jobs:
+                q = (
+                    session.query(Utterance)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.in_subset == True)  # noqa
+                    .filter(Speaker.job_id == j.name)
+                )
+                if session.query(q.exists()).scalar():
+                    j.has_data = True
         return directory
 
     def calculate_word_counts(self) -> None:

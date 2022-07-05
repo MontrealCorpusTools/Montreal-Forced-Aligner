@@ -5,12 +5,12 @@ import os
 import subprocess
 import typing
 
-from montreal_forced_aligner.abc import MetaDict
+from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.corpus.classes import UtteranceData
 from montreal_forced_aligner.data import CtmInterval, MfaArguments
 from montreal_forced_aligner.helper import make_safe
 from montreal_forced_aligner.textgrid import process_ctm_line
-from montreal_forced_aligner.utils import KaldiFunction, thirdparty_binary
+from montreal_forced_aligner.utils import thirdparty_binary
 
 
 class OnlineAlignmentArguments(MfaArguments):
@@ -68,7 +68,9 @@ class OnlineAlignmentFunction(KaldiFunction):
         self.optional_silence_phone = args.optional_silence_phone
         self.silence_words = args.silence_words
 
-    def cleanup_intervals(self, utterance_name: int, intervals: typing.List[CtmInterval]):
+    def cleanup_intervals(
+        self, utterance_name: int, intervals: typing.List[CtmInterval]
+    ) -> typing.Tuple[typing.List[CtmInterval], typing.List[CtmInterval]]:
         """
         Clean up phone intervals to remove silence
 
@@ -115,7 +117,7 @@ class OnlineAlignmentFunction(KaldiFunction):
             actual_phone_intervals.append(interval)
         return actual_word_intervals, actual_phone_intervals
 
-    def run(self):
+    def _run(self) -> typing.Tuple[typing.List[CtmInterval], typing.List[CtmInterval], float]:
         """Run the function"""
         wav_path = os.path.join(self.working_directory, "wav.scp")
         likelihood_path = os.path.join(self.working_directory, "likelihoods.scp")
@@ -363,4 +365,5 @@ class OnlineAlignmentFunction(KaldiFunction):
                     log_likelihood = float(f.read().split()[-1])
                 except ValueError:
                     pass
-        return *self.cleanup_intervals(0, intervals), log_likelihood
+        actual_word_intervals, actual_phone_intervals = self.cleanup_intervals(0, intervals)
+        return actual_word_intervals, actual_phone_intervals, log_likelihood

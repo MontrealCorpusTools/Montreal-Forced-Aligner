@@ -47,7 +47,7 @@ class G2PMixin(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def words_to_g2p(self):
+    def words_to_g2p(self) -> List[str]:
         """Words to produce pronunciations"""
         ...
 
@@ -70,7 +70,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
         super().__init__(**kwargs)
 
     @property
-    def workflow_identifier(self):
+    def workflow_identifier(self) -> str:
         """G2P workflow identifier"""
         return "g2p"
 

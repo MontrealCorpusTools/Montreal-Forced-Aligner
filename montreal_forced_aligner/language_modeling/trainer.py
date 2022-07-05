@@ -190,22 +190,22 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         self.small_perplexity = None
 
     @property
-    def sym_path(self):
+    def sym_path(self) -> str:
         """Internal path to symbols file"""
         return os.path.join(self.working_directory, "lm.sym")
 
     @property
-    def far_path(self):
+    def far_path(self) -> str:
         """Internal path to FAR file"""
         return os.path.join(self.working_directory, "lm.far")
 
     @property
-    def cnts_path(self):
+    def cnts_path(self) -> str:
         """Internal path to counts file"""
         return os.path.join(self.working_directory, "lm.cnts")
 
     @property
-    def training_path(self):
+    def training_path(self) -> str:
         """Internal path to training data"""
         return os.path.join(self.working_directory, "training.txt")
 
@@ -393,7 +393,7 @@ class LmDictionaryCorpusTrainerMixin(MultispeakerDictionaryMixin, LmCorpusTraine
     """
 
     @property
-    def sym_path(self):
+    def sym_path(self) -> str:
         """Internal path to symbols file"""
         with self.session() as session:
             default_dictionary = session.query(Dictionary).get(self._default_dictionary_id)

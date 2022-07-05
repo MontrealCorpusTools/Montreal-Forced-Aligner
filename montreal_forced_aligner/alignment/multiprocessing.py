@@ -171,7 +171,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
         self.fst_ark_paths = args.fst_ark_paths
         self.working_dir = os.path.dirname(list(self.fst_ark_paths.values())[0])
 
-    def _run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
 
@@ -389,7 +389,7 @@ class AccStatsFunction(KaldiFunction):
         self.ali_paths = args.ali_paths
         self.acc_paths = args.acc_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -453,7 +453,7 @@ class AlignFunction(KaldiFunction):
         self.ali_paths = args.ali_paths
         self.align_options = args.align_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -531,6 +531,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
         self.reversed_phone_mapping = {}
         self.word_boundary_int_paths = {}
         self.reversed_word_mapping = {}
+        self.silence_words = set()
 
     def _process_pronunciations(
         self, word_pronunciations: typing.List[typing.Tuple[str, str]]
@@ -548,16 +549,16 @@ class GeneratePronunciationsFunction(KaldiFunction):
         for i, w_p in enumerate(word_pronunciations):
             if i != 0:
                 word = word_pronunciations[i - 1][0]
-                if word == self.silence_word:
+                if word in self.silence_words:
                     counter.silence_before_counts[w_p] += 1
                 else:
                     counter.non_silence_before_counts[w_p] += 1
-            silence_check = w_p[0] == self.silence_word
+            silence_check = w_p[0] in self.silence_words
             if not silence_check:
                 counter.word_pronunciation_counts[w_p[0]][w_p[1]] += 1
                 if i != len(word_pronunciations) - 1:
                     word = word_pronunciations[i + 1][0]
-                    if word == self.silence_word:
+                    if word in self.silence_words:
                         counter.silence_following_counts[w_p] += 1
                         if i != len(word_pronunciations) - 2:
                             next_w_p = word_pronunciations[i + 2]
@@ -568,39 +569,35 @@ class GeneratePronunciationsFunction(KaldiFunction):
                         counter.ngram_counts[w_p, next_w_p]["non_silence"] += 1
         return counter
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int, str]]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
-        with Session(db_engine) as session:
-            ds = session.query(Dictionary).options(
-                selectinload(Dictionary.words),
-                load_only(
-                    Dictionary.position_dependent_phones,
-                    Dictionary.clitic_marker,
-                    Dictionary.silence_word,
-                    Dictionary.oov_word,
-                    Dictionary.id,
-                    Dictionary.optional_silence_phone,
-                    Dictionary.root_temp_directory,
-                ),
-            )
-            for d in ds:
-                if d.id not in self.text_int_paths:
-                    continue
+        with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+            phones = session.query(Phone.phone, Phone.mapping_id)
+            for phone, mapping_id in phones:
+                self.reversed_phone_mapping[mapping_id] = phone
+            for dict_id in self.text_int_paths.keys():
+                d = session.query(Dictionary).get(dict_id)
                 self.position_dependent_phones = d.position_dependent_phones
                 self.clitic_marker = d.clitic_marker
-                self.silence_word = d.silence_word
+                self.silence_words.add(d.silence_word)
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
                 self.word_boundary_int_paths[d.id] = d.word_boundary_int_path
                 self.reversed_word_mapping[d.id] = {}
-                for w in d.words:
-                    self.reversed_word_mapping[d.id][w.mapping_id] = w.word
-            phones = session.query(Phone.phone, Phone.mapping_id)
-            for phone, mapping_id in phones:
-                self.reversed_phone_mapping[mapping_id] = phone
-        with open(self.log_path, "w", encoding="utf8") as log_file:
-            for dict_id in self.text_int_paths.keys():
+
+                silence_words = (
+                    session.query(Word.word)
+                    .filter(Word.dictionary_id == dict_id)
+                    .filter(Word.word_type == WordType.silence)
+                )
+                self.silence_words.update(x for x, in silence_words)
+
+                words = session.query(Word.mapping_id, Word.word).filter(
+                    Word.dictionary_id == dict_id
+                )
+                for w_id, w in words:
+                    self.reversed_word_mapping[d.id][w_id] = w
                 current_utterance = None
                 word_pronunciations = []
                 text_int_path = self.text_int_paths[dict_id]
@@ -877,7 +874,7 @@ class AlignmentExtractionFunction(KaldiFunction):
             actual_phone_intervals.append(interval)
         return actual_word_intervals, actual_phone_intervals
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, List[CtmInterval], List[CtmInterval]]]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with Session(db_engine) as session:

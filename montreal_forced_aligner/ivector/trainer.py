@@ -7,6 +7,7 @@ import queue
 import shutil
 import subprocess
 import time
+import typing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
@@ -156,7 +157,7 @@ class GmmGselectFunction(KaldiFunction):
         self.dubm_model = args.dubm_model
         self.gselect_path = args.gselect_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[None]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
@@ -217,7 +218,7 @@ class GaussToPostFunction(KaldiFunction):
         self.dubm_model = args.dubm_model
         self.post_path = args.post_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[None]:
         """Run the function"""
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
@@ -292,7 +293,7 @@ class AccGlobalStatsFunction(KaldiFunction):
         self.gselect_path = args.gselect_path
         self.acc_path = args.acc_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[None]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
@@ -319,6 +320,7 @@ class AccGlobalStatsFunction(KaldiFunction):
                 env=os.environ,
             )
             gmm_global_acc_proc.communicate()
+        yield None
 
 
 class AccIvectorStatsFunction(KaldiFunction):
@@ -350,7 +352,7 @@ class AccIvectorStatsFunction(KaldiFunction):
         self.post_path = args.post_path
         self.acc_init_path = args.acc_init_path
 
-    def run(self):
+    def _run(self) -> typing.Generator[None]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             subsample_feats_proc = subprocess.Popen(
@@ -447,7 +449,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         return "dubm"
 
     @property
-    def dubm_options(self):
+    def dubm_options(self) -> MetaDict:
         """Options for DUBM training"""
         return {"subsample": self.subsample, "num_gselect": self.num_gselect}
 
@@ -657,7 +659,8 @@ class DubmTrainer(IvectorModelTrainingMixin):
             self.log_debug("Not using multiprocessing...")
             for args in arguments:
                 function = AccGlobalStatsFunction(args)
-                function.run()
+                for _ in function.run():
+                    pass
 
         self.log_debug(f"Accumulating stats took {time.time() - begin}")
 
@@ -1053,7 +1056,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             )
             extractor_est_proc.communicate()
 
-    def train_iteration(self):
+    def train_iteration(self) -> None:
         """
         Run an iteration of training
         """
@@ -1065,7 +1068,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         self.iteration += 1
 
-    def finalize_training(self):
+    def finalize_training(self) -> None:
         """
         Finalize ivector extractor training
         """

@@ -433,26 +433,26 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             line = line.strip()
                             if not line:
                                 continue
-                            if "\t" in line:
-                                word, line = line.split("\t", maxsplit=1)
-                                line = line.split()
-                            else:
-                                line = line.split()
-                                word = line.pop(0)
-                            if len(line) == 0:
+                            if "\t" not in line:
+                                raise DictionaryError(
+                                    f"Error parsing line {i} of {dictionary_model.path}: Did not find any tabs, "
+                                    f"please ensure that your dictionary has tabs between words and their pronunciations."
+                                )
+                            line = line.split("\t")
+                            if len(line) <= 1:
                                 raise DictionaryError(
                                     f'Error parsing line {i} of {dictionary_model.path}: "{line}" did not have a pronunciation'
                                 )
+                            word = line.pop(0)
+                            pron = tuple(line.pop(-1).split())
                             if self.ignore_case:
                                 word = word.lower()
                             if " " in word:
+                                if hasattr(self, "log_debug"):
+                                    self.log_debug(f'Skipping "{word}" for containing whitespace.')
                                 continue
                             if self.clitic_cleanup_regex is not None:
                                 word = self.clitic_cleanup_regex.sub(self.clitic_marker, word)
-                            if not line:
-                                raise DictionaryError(
-                                    f"Line {i} of {dictionary_model.path} does not have a pronunciation."
-                                )
                             if word in self.specials_set:
                                 continue
                             characters = list(word)
@@ -460,7 +460,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                 graphemes.update(characters)
                             prob = None
                             try:
-                                if len(line) <= 1:
+                                if len(line) < 1:
                                     raise ValueError
                                 prob = float(line[0])
                                 if prob > 1 or prob < 0.01:
@@ -472,7 +472,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                             silence_before_correct = None
                             non_silence_before_correct = None
                             try:
-                                if len(line) <= 3:
+                                if len(line) < 3:
                                     raise ValueError
                                 silence_after_prob = float(line[0])
                                 if (
@@ -489,10 +489,8 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                                     or non_silence_before_correct == 0
                                 ):
                                     non_silence_before_correct = None
-                                line = line[3:]
                             except ValueError:
                                 pass
-                            pron = tuple(line)
                             if pretrained:
                                 difference = (
                                     set(pron) - self.non_silence_phones - self.silence_phones
@@ -967,7 +965,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     f.write(f"{data['word']}\t{phones}\n")
 
     @property
-    def phone_disambig_path(self):
+    def phone_disambig_path(self) -> str:
         """Path to file containing phone symbols and their integer IDs"""
         return os.path.join(self.phones_dir, "phone_disambig.txt")
 

@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
@@ -90,7 +91,7 @@ class LdaAccStatsFunction(KaldiFunction):
         self.acc_paths = args.acc_paths
         self.lda_options = args.lda_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -173,7 +174,7 @@ class CalcLdaMlltFunction(KaldiFunction):
         self.macc_paths = args.macc_paths
         self.lda_options = args.lda_options
 
-    def run(self):
+    def _run(self) -> typing.Generator[int]:
         """Run the function"""
         # Estimating MLLT
         with open(self.log_path, "w", encoding="utf8") as log_file:
@@ -447,6 +448,8 @@ class LdaTrainer(TriphoneTrainer):
         """Initialize LDA training"""
         self.uses_splices = True
         self.worker.uses_splices = True
+        if self.initialized:
+            return
         self.lda_acc_stats()
         self.tree_stats()
         self._setup_tree(initial_mix_up=False)

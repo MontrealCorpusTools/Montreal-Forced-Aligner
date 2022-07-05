@@ -368,7 +368,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             session.commit()
         self.log_debug(f"Calculating pronunciation probabilities took {time.time() - begin}")
 
-    def _collect_alignments(self):
+    def _collect_alignments(self) -> None:
         """
         Process alignment archives to extract word or phone alignments
 

@@ -1,7 +1,7 @@
-worda phonea phoneb
-wordb phonea phonec
-wordc phonec
-{LG} laugh
-{SL} sil
-<SIL> sil
-{VN} vocnoise
+worda	phonea phoneb
+wordb	phonea phonec
+wordc	phonec
+{LG}	laugh
+{SL}	sil
+<SIL>	sil
+{VN}	vocnoise

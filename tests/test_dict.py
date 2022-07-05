@@ -174,10 +174,9 @@ def test_english_mfa(english_us_mfa_dictionary, generated_dir):
     assert "dental" in dictionary.extra_questions_mapping
     dental = {"f", "v", "θ", "ð"}
     assert all(x in dictionary.extra_questions_mapping["dental"] for x in dental)
-    # assert set(d.extra_questions_mapping["central"]) == {'ʉ', 'ə', 'ɐ', 'ɝ', 'ɚ', 'ɝː'}
-    # assert set(d.extra_questions_mapping["close"]) == {'ɪ', 'ʉ', 'ʊ', 'i'}
 
 
+@pytest.mark.skip("No support for mixed formats")
 def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "pinyin")
     shutil.rmtree(output_directory, ignore_errors=True)
@@ -271,6 +270,7 @@ def test_multispeaker_config(multispeaker_dictionary_config_path, generated_dir)
     dictionary.write_lexicon_information()
 
 
+@pytest.mark.skip("No support for mixed formats")
 def test_mixed_dictionary(mixed_dict_path, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "mixed")
     shutil.rmtree(output_directory, ignore_errors=True)
@@ -279,6 +279,7 @@ def test_mixed_dictionary(mixed_dict_path, generated_dir):
         position_dependent_phones=False,
         temporary_directory=output_directory,
     )
+
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     with dictionary.session() as session:

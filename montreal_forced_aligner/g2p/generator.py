@@ -388,6 +388,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 output_token_type,
                 num_pronunciations=self.num_pronunciations,
                 threshold=self.g2p_threshold,
+                grapheme_order=self.g2p_model.meta["grapheme_order"],
             )
         else:
             output_token_type = "utf8"

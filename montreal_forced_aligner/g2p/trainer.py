@@ -418,30 +418,30 @@ class PyniniTrainerMixin:
             sort_proc.communicate()
 
     @property
-    def fst_path(self):
+    def fst_path(self) -> str:
         """Internal temporary FST file"""
         if self._fst_path is not None:
             return self._fst_path
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.fst")
 
     @property
-    def far_path(self):
+    def far_path(self) -> str:
         """Internal temporary FAR file"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.far")
 
     @property
-    def encoder_path(self):
+    def encoder_path(self) -> str:
         """Internal temporary encoder file"""
         return os.path.join(self.working_directory, f"{self.data_source_identifier}.enc")
 
     @property
-    def sym_path(self):
+    def sym_path(self) -> str:
         """Internal temporary symbol file"""
         if self._sym_path is not None:
             return self._sym_path
         return os.path.join(self.working_directory, "phones.txt")
 
-    def align_g2p(self):
+    def align_g2p(self) -> None:
         """Runs the entire alignment regimen."""
         self._lexicon_covering()
         self._alignments()

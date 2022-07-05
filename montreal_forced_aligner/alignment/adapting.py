@@ -213,14 +213,14 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         return os.path.join(self.working_directory, "log")
 
     @property
-    def model_path(self):
+    def model_path(self) -> str:
         """Current acoustic model path"""
         if not self.adaptation_done:
             return os.path.join(self.working_directory, "unadapted.mdl")
         return os.path.join(self.working_directory, "final.mdl")
 
     @property
-    def alignment_model_path(self):
+    def alignment_model_path(self) -> str:
         """Current acoustic model path"""
         if not self.adaptation_done:
             path = os.path.join(self.working_directory, "unadapted.alimdl")
@@ -230,7 +230,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         return super().alignment_model_path
 
     @property
-    def next_model_path(self):
+    def next_model_path(self) -> str:
         """Mapped acoustic model path"""
         return os.path.join(self.working_directory, "final.mdl")
 

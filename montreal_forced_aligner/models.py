@@ -1011,7 +1011,7 @@ class DictionaryModel(MfaModel):
         """Not implemented method"""
         raise NotImplementedError
 
-    def pretty_print(self):
+    def pretty_print(self) -> None:
         """
         Pretty print the dictionary's metadata using TerminalPrinter
         """
@@ -1201,7 +1201,7 @@ class ModelManager:
         self.refresh_local()
 
     @property
-    def cache_path(self):
+    def cache_path(self) -> str:
         """Path to json file with cached etags and download links"""
         from montreal_forced_aligner.config import get_temporary_directory
 

@@ -5,6 +5,7 @@ import multiprocessing as mp
 import os
 import re
 import subprocess
+import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List
 
@@ -88,7 +89,7 @@ class ConvertAlignmentsFunction(KaldiFunction):
         self.ali_paths = args.ali_paths
         self.new_ali_paths = args.new_ali_paths
 
-    def run(self):
+    def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
             for dict_id in self.dictionaries:
@@ -343,6 +344,8 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
 
     def _trainer_initialization(self) -> None:
         """Triphone training initialization"""
+        if self.initialized:
+            return
         self.tree_stats()
         self._setup_tree()
 

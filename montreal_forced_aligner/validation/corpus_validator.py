@@ -134,7 +134,7 @@ class TestUtterancesFunction(KaldiFunction):
         self.word_symbols_paths = {}
         self.lexicon_disambig_fst_paths = {}
 
-    def run(self) -> typing.Generator[typing.Tuple[int, str]]:
+    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
         with Session(db_engine) as session:
@@ -328,7 +328,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
         self.method = args.method
         self.target_num_ngrams = args.target_num_ngrams
 
-    def run(self):
+    def _run(self) -> typing.Generator[bool]:
         """Run the function"""
         with open(self.log_path, "w", encoding="utf8") as log_file:
 
@@ -540,7 +540,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         """Working log directory"""
         return os.path.join(self.working_directory, "log")
 
-    def setup(self):
+    def setup(self) -> None:
         """
         Set up the corpus and validator
 
@@ -1224,7 +1224,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
-    def setup(self):
+    def setup(self) -> None:
         """
         Set up the corpus and validator
 
@@ -1288,7 +1288,7 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
                 e.update_log_file(logger)
             raise
 
-    def validate(self):
+    def validate(self) -> None:
         """
         Performs validation of the corpus
         """
@@ -1327,7 +1327,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         """Identifier for validation"""
         return "validate_pretrained"
 
-    def setup(self):
+    def setup(self) -> None:
         """
         Set up the corpus and validator
 

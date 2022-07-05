@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import multiprocessing as mp
 import os
 import queue
@@ -1411,14 +1412,14 @@ class PhonetisaurusTrainer(
             "sequence_separator": self.sequence_separator,
             "evaluation": {},
             "training": {
-                "num_words": len(self.g2p_training_dictionary),
+                "num_words": self.g2p_num_training_words,
                 "num_graphemes": len(self.g2p_training_graphemes),
                 "num_phones": len(self.non_silence_phones),
             },
         }
 
         if self.evaluation_mode:
-            m["evaluation"]["num_words"] = len(self.g2p_validation_dictionary)
+            m["evaluation"]["num_words"] = self.g2p_num_validation_words
             m["evaluation"]["word_error_rate"] = self.wer
             m["evaluation"]["phone_error_rate"] = self.ler
         return m
@@ -1430,9 +1431,19 @@ class PhonetisaurusTrainer(
         temp_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
         self.export_model(temp_model_path)
         temp_dir = os.path.join(self.working_directory, "validation")
+        with self.session() as session:
+            validation_set = collections.defaultdict(set)
+            query = (
+                session.query(Word.word, Pronunciation.pronunciation)
+                .join(Pronunciation.word)
+                .join(Word.job)
+                .filter(Word2Job.training == False)  # noqa
+            )
+            for w, pron in query:
+                validation_set[w].add(pron)
         gen = PyniniValidator(
             g2p_model_path=temp_model_path,
-            word_list=list(self.g2p_validation_dictionary.keys()),
+            word_list=list(validation_set.keys()),
             temporary_directory=temp_dir,
             num_jobs=self.num_jobs,
             num_pronunciations=self.num_pronunciations,
@@ -1446,9 +1457,9 @@ class PhonetisaurusTrainer(
                     if not p:
                         continue
                     f.write(f"{orthography}\t{p}\n")
-        self.compute_validation_errors(output)
+        gen.compute_validation_errors(validation_set, output)
 
-    def compute_initial_ngrams(self):
+    def compute_initial_ngrams(self) -> None:
         word_path = os.path.join(self.working_directory, "words.txt")
         word_ngram_path = os.path.join(self.working_directory, "grapheme_ngram.fst")
         word_symbols_path = os.path.join(self.working_directory, "grapheme_ngram.syms")
@@ -1646,7 +1657,7 @@ class PhonetisaurusTrainer(
                     .where(Word2Job.word_id.in_(validation_words))
                 )
                 session.execute(query)
-                session.flush()
+                session.commit()
                 query = (
                     session.query(Word.word, Pronunciation.pronunciation)
                     .join(Pronunciation.word)
