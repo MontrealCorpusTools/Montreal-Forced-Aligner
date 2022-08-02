@@ -1636,6 +1636,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 else:
 
                     tg = textgrid.Textgrid()
+                    tg.minTimestamp = 0
                     tg.maxTimestamp = duration
                     for speaker in file.speakers:
                         speaker = speaker.speaker.name
