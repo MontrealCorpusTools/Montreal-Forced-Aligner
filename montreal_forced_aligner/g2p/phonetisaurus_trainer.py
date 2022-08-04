@@ -9,8 +9,11 @@ import time
 
 import dataclassy
 import numpy
+import pynini
+import pywrapfst
 import sqlalchemy
 import tqdm
+from pynini.lib import rewrite
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from montreal_forced_aligner.abc import MetaDict, TopLevelMfaWorker
@@ -20,23 +23,9 @@ from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictiona
 from montreal_forced_aligner.exceptions import PhonetisaurusSymbolError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.g2p.trainer import G2PTrainer
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Stopped, thirdparty_binary
-
-try:
-    import pynini
-    import pywrapfst
-    from pynini.lib import rewrite
-
-    G2P_DISABLED = False
-
-except ImportError:
-    pynini = None
-    pywrapfst = None
-    rewrite = None
-
-    G2P_DISABLED = True
-
 
 __all__ = ["PhonetisaurusTrainerMixin", "PhonetisaurusTrainer"]
 
@@ -148,167 +137,181 @@ class AlignmentInitWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        symbol_table = pynini.SymbolTable()
-        symbol_table.add_symbol(self.eps)
-        engine = sqlalchemy.create_engine(
-            f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
-        )
-        Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
-        valid_phone_ngrams = set()
-        base_dir = os.path.dirname(self.far_path)
-        with open(os.path.join(base_dir, "phone_ngram.ngrams"), "r", encoding="utf8") as f:
-            for line in f:
-                line = line.strip()
-                valid_phone_ngrams.add(line)
-        valid_grapheme_ngrams = set()
-        with open(os.path.join(base_dir, "grapheme_ngram.ngrams"), "r", encoding="utf8") as f:
-            for line in f:
-                line = line.strip()
-                valid_grapheme_ngrams.add(line)
-        count = 0
-        data = {}
-        with open(self.log_path, "w", encoding="utf8") as log_file, Session() as session:
-            far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
-            query = (
-                session.query(Pronunciation.pronunciation, Word.word)
-                .join(Pronunciation.word)
-                .join(Word.job)
-                .filter(Word2Job.training == True)  # noqa
-                .filter(Word2Job.job_id == self.job_name)
+        try:
+            symbol_table = pynini.SymbolTable()
+            symbol_table.add_symbol(self.eps)
+            engine = sqlalchemy.create_engine(
+                f"sqlite:///file:{self.db_path}?mode=ro&nolock=1&uri=true"
             )
-            for current_index, (phones, graphemes) in enumerate(query):
-                graphemes = list(graphemes)
-                phones = phones.split()
-                if self.stopped.stop_check():
-                    continue
-                try:
-                    key = f"{current_index:08x}"
-                    fst = pynini.Fst(arc_type="log")
-                    final_state = ((len(graphemes) + 1) * (len(phones) + 1)) - 1
+            Session = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False))
+            valid_phone_ngrams = set()
+            base_dir = os.path.dirname(self.far_path)
+            with mfa_open(os.path.join(base_dir, "phone_ngram.ngrams"), "r") as f:
+                for line in f:
+                    line = line.strip()
+                    valid_phone_ngrams.add(line)
+            valid_grapheme_ngrams = set()
+            with mfa_open(os.path.join(base_dir, "grapheme_ngram.ngrams"), "r") as f:
+                for line in f:
+                    line = line.strip()
+                    valid_grapheme_ngrams.add(line)
+            count = 0
+            data = {}
+            with mfa_open(self.log_path, "w") as log_file, Session() as session:
+                far_writer = pywrapfst.FarWriter.create(self.far_path, arc_type="log")
+                query = (
+                    session.query(Pronunciation.pronunciation, Word.word)
+                    .join(Pronunciation.word)
+                    .join(Word.job)
+                    .filter(Word2Job.training == True)  # noqa
+                    .filter(Word2Job.job_id == self.job_name)
+                )
+                for current_index, (phones, graphemes) in enumerate(query):
+                    graphemes = list(graphemes)
+                    phones = phones.split()
+                    if self.stopped.stop_check():
+                        continue
+                    try:
+                        key = f"{current_index:08x}"
+                        fst = pynini.Fst(arc_type="log")
+                        final_state = ((len(graphemes) + 1) * (len(phones) + 1)) - 1
 
-                    for _ in range(final_state + 1):
-                        fst.add_state()
-                    for i in range(len(graphemes) + 1):
-                        for j in range(len(phones) + 1):
-                            istate = i * (len(phones) + 1) + j
-                            if self.deletions:
-                                for phone_range in range(1, self.phone_order + 1):
-                                    if j + phone_range <= len(phones):
-                                        subseq_phones = phones[j : j + phone_range]
-                                        phone_string = self.seq_sep.join(subseq_phones)
-                                        if (
-                                            phone_range > 1
-                                            and phone_string not in valid_phone_ngrams
-                                        ):
-                                            continue
-                                        symbol = self.s1s2_sep.join([self.skip, phone_string])
-                                        ilabel = symbol_table.find(symbol)
-                                        if ilabel == pynini.NO_LABEL:
-                                            ilabel = symbol_table.add_symbol(symbol)
-                                        ostate = i * (len(phones) + 1) + (j + phone_range)
-                                        fst.add_arc(
-                                            istate,
-                                            pywrapfst.Arc(
-                                                ilabel, ilabel, pynini.Weight("log", 99.0), ostate
-                                            ),
-                                        )
-                            if self.insertions:
-                                for grapheme_range in range(1, self.grapheme_order + 1):
-                                    if i + grapheme_range <= len(graphemes):
-                                        subseq_graphemes = graphemes[i : i + grapheme_range]
-                                        grapheme_string = self.seq_sep.join(subseq_graphemes)
-                                        if (
-                                            grapheme_range > 1
-                                            and grapheme_string not in valid_grapheme_ngrams
-                                        ):
-                                            continue
-                                        symbol = self.s1s2_sep.join([grapheme_string, self.skip])
-                                        ilabel = symbol_table.find(symbol)
-                                        if ilabel == pynini.NO_LABEL:
-                                            ilabel = symbol_table.add_symbol(symbol)
-                                        ostate = (i + grapheme_range) * (len(phones) + 1) + j
-                                        fst.add_arc(
-                                            istate,
-                                            pywrapfst.Arc(
-                                                ilabel, ilabel, pynini.Weight("log", 99.0), ostate
-                                            ),
-                                        )
-
-                            for grapheme_range in range(1, self.grapheme_order + 1):
-                                for phone_range in range(1, self.phone_order + 1):
-                                    if i + grapheme_range <= len(
-                                        graphemes
-                                    ) and j + phone_range <= len(phones):
-                                        if (
-                                            self.restrict
-                                            and grapheme_range > 1
-                                            and phone_range > 1
-                                        ):
-                                            continue
-                                        subseq_phones = phones[j : j + phone_range]
-                                        phone_string = self.seq_sep.join(subseq_phones)
-                                        if (
-                                            phone_range > 1
-                                            and phone_string not in valid_phone_ngrams
-                                        ):
-                                            continue
-                                        subseq_graphemes = graphemes[i : i + grapheme_range]
-                                        grapheme_string = self.seq_sep.join(subseq_graphemes)
-                                        if (
-                                            grapheme_range > 1
-                                            and grapheme_string not in valid_grapheme_ngrams
-                                        ):
-                                            continue
-                                        symbol = self.s1s2_sep.join(
-                                            [grapheme_string, phone_string]
-                                        )
-                                        ilabel = symbol_table.find(symbol)
-                                        if ilabel == pynini.NO_LABEL:
-                                            ilabel = symbol_table.add_symbol(symbol)
-                                        ostate = (i + grapheme_range) * (len(phones) + 1) + (
-                                            j + phone_range
-                                        )
-                                        fst.add_arc(
-                                            istate,
-                                            pywrapfst.Arc(
-                                                ilabel,
-                                                ilabel,
-                                                pynini.Weight(
-                                                    "log", float(grapheme_range * phone_range)
+                        for _ in range(final_state + 1):
+                            fst.add_state()
+                        for i in range(len(graphemes) + 1):
+                            for j in range(len(phones) + 1):
+                                istate = i * (len(phones) + 1) + j
+                                if self.deletions:
+                                    for phone_range in range(1, self.phone_order + 1):
+                                        if j + phone_range <= len(phones):
+                                            subseq_phones = phones[j : j + phone_range]
+                                            phone_string = self.seq_sep.join(subseq_phones)
+                                            if (
+                                                phone_range > 1
+                                                and phone_string not in valid_phone_ngrams
+                                            ):
+                                                continue
+                                            symbol = self.s1s2_sep.join([self.skip, phone_string])
+                                            ilabel = symbol_table.find(symbol)
+                                            if ilabel == pynini.NO_LABEL:
+                                                ilabel = symbol_table.add_symbol(symbol)
+                                            ostate = i * (len(phones) + 1) + (j + phone_range)
+                                            fst.add_arc(
+                                                istate,
+                                                pywrapfst.Arc(
+                                                    ilabel,
+                                                    ilabel,
+                                                    pynini.Weight("log", 99.0),
+                                                    ostate,
                                                 ),
-                                                ostate,
-                                            ),
-                                        )
-                    fst.set_start(0)
-                    fst.set_final(final_state, pywrapfst.Weight.one(fst.weight_type()))
-                    fst = pynini.connect(fst)
-                    for state in fst.states():
-                        for arc in fst.arcs(state):
-                            sym = symbol_table.find(arc.ilabel)
-                            if sym not in data:
-                                data[sym] = arc.weight
-                            else:
-                                data[sym] = pynini.plus(data[sym], arc.weight)
-                    if count >= self.batch_size:
-                        data = {k: float(v) for k, v in data.items()}
-                        self.return_queue.put((self.job_name, data, count))
-                        data = {}
-                        count = 0
-                    log_file.flush()
-                    far_writer[key] = fst
-                    del fst
-                    count += 1
-                except Exception as e:  # noqa
-                    print(e)
-                    self.stopped.stop()
-                    self.return_queue.put(e)
-        if data:
-            data = {k: float(v) for k, v in data.items()}
-            self.return_queue.put((self.job_name, data, count))
-        self.finished.stop()
-        del far_writer
-        symbol_table.write_text(self.far_path.replace(".far", ".syms"))
-        return
+                                            )
+                                if self.insertions:
+                                    for grapheme_range in range(1, self.grapheme_order + 1):
+                                        if i + grapheme_range <= len(graphemes):
+                                            subseq_graphemes = graphemes[i : i + grapheme_range]
+                                            grapheme_string = self.seq_sep.join(subseq_graphemes)
+                                            if (
+                                                grapheme_range > 1
+                                                and grapheme_string not in valid_grapheme_ngrams
+                                            ):
+                                                continue
+                                            symbol = self.s1s2_sep.join(
+                                                [grapheme_string, self.skip]
+                                            )
+                                            ilabel = symbol_table.find(symbol)
+                                            if ilabel == pynini.NO_LABEL:
+                                                ilabel = symbol_table.add_symbol(symbol)
+                                            ostate = (i + grapheme_range) * (len(phones) + 1) + j
+                                            fst.add_arc(
+                                                istate,
+                                                pywrapfst.Arc(
+                                                    ilabel,
+                                                    ilabel,
+                                                    pynini.Weight("log", 99.0),
+                                                    ostate,
+                                                ),
+                                            )
+
+                                for grapheme_range in range(1, self.grapheme_order + 1):
+                                    for phone_range in range(1, self.phone_order + 1):
+                                        if i + grapheme_range <= len(
+                                            graphemes
+                                        ) and j + phone_range <= len(phones):
+                                            if (
+                                                self.restrict
+                                                and grapheme_range > 1
+                                                and phone_range > 1
+                                            ):
+                                                continue
+                                            subseq_phones = phones[j : j + phone_range]
+                                            phone_string = self.seq_sep.join(subseq_phones)
+                                            if (
+                                                phone_range > 1
+                                                and phone_string not in valid_phone_ngrams
+                                            ):
+                                                continue
+                                            subseq_graphemes = graphemes[i : i + grapheme_range]
+                                            grapheme_string = self.seq_sep.join(subseq_graphemes)
+                                            if (
+                                                grapheme_range > 1
+                                                and grapheme_string not in valid_grapheme_ngrams
+                                            ):
+                                                continue
+                                            symbol = self.s1s2_sep.join(
+                                                [grapheme_string, phone_string]
+                                            )
+                                            ilabel = symbol_table.find(symbol)
+                                            if ilabel == pynini.NO_LABEL:
+                                                ilabel = symbol_table.add_symbol(symbol)
+                                            ostate = (i + grapheme_range) * (len(phones) + 1) + (
+                                                j + phone_range
+                                            )
+                                            fst.add_arc(
+                                                istate,
+                                                pywrapfst.Arc(
+                                                    ilabel,
+                                                    ilabel,
+                                                    pynini.Weight(
+                                                        "log", float(grapheme_range * phone_range)
+                                                    ),
+                                                    ostate,
+                                                ),
+                                            )
+                        fst.set_start(0)
+                        fst.set_final(final_state, pywrapfst.Weight.one(fst.weight_type()))
+                        fst = pynini.connect(fst)
+                        for state in fst.states():
+                            for arc in fst.arcs(state):
+                                sym = symbol_table.find(arc.ilabel)
+                                if sym not in data:
+                                    data[sym] = arc.weight
+                                else:
+                                    data[sym] = pynini.plus(data[sym], arc.weight)
+                        if count >= self.batch_size:
+                            data = {k: float(v) for k, v in data.items()}
+                            self.return_queue.put((self.job_name, data, count))
+                            data = {}
+                            count = 0
+                        log_file.flush()
+                        far_writer[key] = fst
+                        del fst
+                        count += 1
+                    except Exception as e:  # noqa
+                        print(e)
+                        self.stopped.stop()
+                        self.return_queue.put(e)
+            if data:
+                data = {k: float(v) for k, v in data.items()}
+                self.return_queue.put((self.job_name, data, count))
+            symbol_table.write_text(self.far_path.replace(".far", ".syms"))
+            return
+        except Exception as e:
+            print(e)
+            self.stopped.stop()
+            self.return_queue.put(e)
+        finally:
+            self.finished.stop()
+            del far_writer
 
 
 class ExpectationWorker(mp.Process):
@@ -519,12 +522,12 @@ class AlignmentExporter(mp.Process):
     def run(self) -> None:
         """Run the function"""
         symbol_table = pynini.SymbolTable.read_text(self.far_path.replace(".far", ".syms"))
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             far_reader = pywrapfst.FarReader.open(self.far_path)
             one_best_path = self.far_path + ".strings"
             no_alignment_count = 0
             total = 0
-            with open(one_best_path, "w", encoding="utf8") as f:
+            with mfa_open(one_best_path, "w") as f:
                 while not far_reader.done():
                     fst = far_reader.get_fst()
                     total += 1
@@ -602,7 +605,7 @@ class NgramCountWorker(mp.Process):
 
     def run(self) -> None:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             one_best_path = self.far_path + ".strings"
             ngram_count_path = self.far_path.replace(".far", ".cnts")
             farcompile_proc = subprocess.Popen(
@@ -1020,9 +1023,7 @@ class PhonetisaurusTrainerMixin:
         self.log_info("Done counting ngrams!")
 
         self.log_info("Training ngram model...")
-        with open(
-            os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
-        ) as logf:
+        with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
             ngrammerge_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngrammerge"),
@@ -1318,7 +1319,7 @@ class PhonetisaurusTrainerMixin:
         )
         for j in range(self.num_jobs):
             text_path = os.path.join(self.working_directory, f"{j}.far.strings")
-            with open(text_path, "r", encoding="utf8") as f:
+            with mfa_open(text_path, "r") as f:
                 for line in f:
                     symbols_proc.stdin.write(line)
                     symbols_proc.stdin.flush()
@@ -1449,7 +1450,7 @@ class PhonetisaurusTrainer(
             num_pronunciations=self.num_pronunciations,
         )
         output = gen.generate_pronunciations()
-        with open(os.path.join(temp_dir, "validation_output.txt"), "w", encoding="utf8") as f:
+        with mfa_open(os.path.join(temp_dir, "validation_output.txt"), "w") as f:
             for (orthography, pronunciations) in output.items():
                 if not pronunciations:
                     continue
@@ -1534,7 +1535,7 @@ class PhonetisaurusTrainer(
             ngrams.add(ngram)
 
         print_proc.wait()
-        with open(word_ngram_path.replace(".fst", ".ngrams"), "w", encoding="utf8") as f:
+        with mfa_open(word_ngram_path.replace(".fst", ".ngrams"), "w") as f:
             for ngram in sorted(ngrams):
                 f.write(f"{ngram}\n")
 
@@ -1609,7 +1610,7 @@ class PhonetisaurusTrainer(
             ngrams.add(ngram)
 
         print_proc.wait()
-        with open(phone_ngram_path.replace(".fst", ".ngrams"), "w", encoding="utf8") as f:
+        with mfa_open(phone_ngram_path.replace(".fst", ".ngrams"), "w") as f:
             for ngram in sorted(ngrams):
                 f.write(f"{ngram}\n")
 
@@ -1683,10 +1684,10 @@ class PhonetisaurusTrainer(
                 .join(Word.job)
                 .filter(Word2Job.training == True)  # noqa
             )
-            with open(
-                os.path.join(self.working_directory, "words.txt"), "w", encoding="utf8"
-            ) as word_f, open(
-                os.path.join(self.working_directory, "pronunciations.txt"), "w", encoding="utf8"
+            with mfa_open(
+                os.path.join(self.working_directory, "words.txt"), "w"
+            ) as word_f, mfa_open(
+                os.path.join(self.working_directory, "pronunciations.txt"), "w"
             ) as phone_f:
                 for pronunciation, word in query:
                     word = list(word)

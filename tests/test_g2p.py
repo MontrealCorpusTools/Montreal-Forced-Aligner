@@ -1,14 +1,13 @@
 import os
 
-import pytest
-
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
 from montreal_forced_aligner.g2p.generator import (
     PyniniCorpusGenerator,
     PyniniWordListGenerator,
     clean_up_word,
 )
-from montreal_forced_aligner.g2p.trainer import G2P_DISABLED, PyniniTrainer
+from montreal_forced_aligner.g2p.trainer import PyniniTrainer
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import get_mfa_version
 
@@ -29,8 +28,6 @@ def test_check_bracketed(basic_dict_path):
 
 
 def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):
-    if G2P_DISABLED:
-        pytest.skip("No Pynini found")
     trainer = PyniniTrainer(
         dictionary_path=basic_dict_path,
         temporary_directory=temp_dir,
@@ -51,8 +48,6 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir):
 
 
 def test_generator(basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir):
-    if G2P_DISABLED:
-        pytest.skip("No Pynini found")
     output_directory = os.path.join(temp_dir, "g2p_tests")
     gen = PyniniCorpusGenerator(
         g2p_model_path=basic_g2p_model_path,
@@ -70,13 +65,11 @@ def test_generator(basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, tem
 
 
 def test_generator_pretrained(english_g2p_model, temp_dir):
-    if G2P_DISABLED:
-        pytest.skip("No Pynini found")
     words = ["petted", "petted-patted", "pedal"]
     output_directory = os.path.join(temp_dir, "g2p_tests")
     word_list_path = os.path.join(output_directory, "word_list.txt")
     os.makedirs(output_directory, exist_ok=True)
-    with open(word_list_path, "w", encoding="utf8") as f:
+    with mfa_open(word_list_path, "w") as f:
         for w in words:
             f.write(w + "\n")
     gen = PyniniWordListGenerator(

@@ -4,6 +4,7 @@ from typing import Dict, List
 
 from montreal_forced_aligner.abc import MfaWorker
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
+from montreal_forced_aligner.helper import mfa_open
 
 
 class G2PMixin(metaclass=ABCMeta):
@@ -95,7 +96,7 @@ class G2PTopLevelMixin(MfaWorker, DictionaryMixin, G2PMixin):
             Path to save
         """
         results = self.generate_pronunciations()
-        with open(output_file_path, "w", encoding="utf8") as f:
+        with mfa_open(output_file_path, "w") as f:
             for (orthography, pronunciations) in results.items():
                 if not pronunciations:
                     continue

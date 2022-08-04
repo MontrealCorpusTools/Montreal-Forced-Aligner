@@ -68,7 +68,7 @@ def validate_args(args: Namespace) -> None:
     args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
 
 
-def run_train_g2p(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_train_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running G2P model training
 
@@ -76,8 +76,8 @@ def run_train_g2p(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    train_g2p(args, unknown)
+    train_g2p(args, unknown_args)

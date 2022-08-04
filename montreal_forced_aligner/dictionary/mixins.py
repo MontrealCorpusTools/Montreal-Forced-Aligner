@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
 from montreal_forced_aligner.data import PhoneSetType
-from montreal_forced_aligner.helper import make_re_character_set_safe
+from montreal_forced_aligner.helper import make_re_character_set_safe, mfa_open
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
@@ -941,9 +941,7 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         boundary_path = os.path.join(
             self.dictionary_output_directory, "phones", "word_boundary.txt"
         )
-        with open(boundary_path, "w", encoding="utf8") as f, open(
-            self.word_boundary_int_path, "w", encoding="utf8"
-        ) as intf:
+        with mfa_open(boundary_path, "w") as f, mfa_open(self.word_boundary_int_path, "w") as intf:
             if self.position_dependent_phones:
                 for p in sorted(self.phone_mapping.keys(), key=lambda x: self.phone_mapping[x]):
                     if p == "<eps>" or p.startswith("#"):
@@ -1081,7 +1079,7 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
             non_silence_topo_string = "\n".join(non_silence_lines)
             topo_sections.append(non_silence_topo_string)
 
-        with open(self.topo_path, "w") as f:
+        with mfa_open(self.topo_path, "w") as f:
             f.write("<Topology>\n")
             for section in topo_sections:
                 f.write(section + "\n\n")
@@ -1098,11 +1096,9 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         sets_int_file = os.path.join(self.dictionary_output_directory, "phones", "sets.int")
         roots_int_file = os.path.join(self.dictionary_output_directory, "phones", "roots.int")
 
-        with open(sets_file, "w", encoding="utf8") as setf, open(
-            roots_file, "w", encoding="utf8"
-        ) as rootf, open(sets_int_file, "w", encoding="utf8") as setintf, open(
-            roots_int_file, "w", encoding="utf8"
-        ) as rootintf:
+        with mfa_open(sets_file, "w") as setf, mfa_open(roots_file, "w") as rootf, mfa_open(
+            sets_int_file, "w"
+        ) as setintf, mfa_open(roots_int_file, "w") as rootintf:
 
             # process silence phones
             if self.shared_silence_phones:
@@ -1179,12 +1175,10 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         """
         disambig = self.disambiguation_symbols_txt_path
         disambig_int = self.disambiguation_symbols_int_path
-        with open(disambig, "w", encoding="utf8") as outf, open(
-            disambig_int, "w", encoding="utf8"
-        ) as intf:
+        with mfa_open(disambig, "w") as outf, mfa_open(disambig_int, "w") as intf:
             for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
                 outf.write(f"{d}\n")
                 intf.write(f"{self.phone_mapping[d]}\n")
         phone_disambig_path = os.path.join(self.phones_dir, "phone_disambig.txt")
-        with open(phone_disambig_path, "w") as f:
+        with mfa_open(phone_disambig_path, "w") as f:
             f.write(str(self.phone_mapping["#0"]))

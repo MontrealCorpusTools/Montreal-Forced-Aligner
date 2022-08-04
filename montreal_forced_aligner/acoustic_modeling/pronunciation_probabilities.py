@@ -14,6 +14,7 @@ from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTraining
 from montreal_forced_aligner.alignment.multiprocessing import GeneratePronunciationsFunction
 from montreal_forced_aligner.db import Dictionary, Pronunciation, Utterance, Word
 from montreal_forced_aligner.g2p.trainer import PyniniTrainerMixin
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
 
 __all__ = ["PronunciationProbabilityTrainer"]
@@ -36,6 +37,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         previous_trainer: typing.Optional[AcousticModelTrainingMixin] = None,
         silence_probabilities: bool = True,
         train_g2p: bool = False,
+        use_phonetisaurus: bool = False,
         num_iterations: int = 10,
         model_size: int = 100000,
         **kwargs,
@@ -43,6 +45,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         self.previous_trainer = previous_trainer
         self.silence_probabilities = silence_probabilities
         self.train_g2p = train_g2p
+        self.use_phonetisaurus = use_phonetisaurus
         super(PronunciationProbabilityTrainer, self).__init__(
             num_iterations=num_iterations, model_size=model_size, **kwargs
         )
@@ -131,6 +134,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     os.path.join(working_dir, f"input_{self.worker.dictionary_base_names[x]}.txt"),
                     "w",
                     encoding="utf8",
+                    newline="",
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
@@ -141,6 +145,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     ),
                     "w",
                     encoding="utf8",
+                    newline="",
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
@@ -178,6 +183,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                         pbar.update(1)
                         if utt_id not in texts or not texts[utt_id]:
                             continue
+
                         print(phones, file=output_files[dict_id])
                         print(f"<s> {texts[utt_id]} </s>", file=input_files[dict_id])
 
@@ -189,8 +195,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 else:
                     self.log_debug("Not using multiprocessing...")
                     for args in arguments:
+                        args.for_g2p = True
                         function = GeneratePronunciationsFunction(args)
                         for dict_id, utt_id, phones in function.run():
+                            utt_id = int(utt_id.split("-")[-1])
+                            if utt_id not in texts or not texts[utt_id]:
+                                continue
                             print(phones, file=output_files[dict_id])
                             print(f"<s> {texts[utt_id]} </s>", file=input_files[dict_id])
                             pbar.update(1)
@@ -287,7 +297,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     )
                     cache = {(x.word.word, x.pronunciation): x for x in pronunciations}
                     new_dictionary_path = os.path.join(working_dir, f"{d.id}.dict")
-                    with open(new_dictionary_path, "r", encoding="utf8") as f:
+                    with mfa_open(new_dictionary_path, "r") as f:
                         for line in f:
                             line = line.strip()
                             line = line.split()
@@ -308,7 +318,7 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                             p.non_silence_before_correction = non_silence_before_correct
 
                     silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
-                    with open(silence_info_path, "r", encoding="utf8") as f:
+                    with mfa_open(silence_info_path, "r") as f:
                         data = json.load(f)
                     if self.silence_probabilities:
                         d.silence_probability = data["silence_probability"]
@@ -348,10 +358,10 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                         silence_probabilities=self.silence_probabilities,
                     )
                     silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
-                    with open(silence_info_path, "w", encoding="utf8") as f:
+                    with mfa_open(silence_info_path, "w") as f:
                         json.dump(d.silence_probability_info, f)
         self.training_complete = True
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
 
     def train_iteration(self) -> None:

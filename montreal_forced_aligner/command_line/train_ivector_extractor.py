@@ -75,7 +75,7 @@ def validate_args(args: Namespace) -> None:
         )
 
 
-def run_train_ivector_extractor(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_train_ivector_extractor(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running ivector extraction training
 
@@ -83,8 +83,8 @@ def run_train_ivector_extractor(args: Namespace, unknown: Optional[List[str]] = 
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    train_ivector(args, unknown)
+    train_ivector(args, unknown_args)

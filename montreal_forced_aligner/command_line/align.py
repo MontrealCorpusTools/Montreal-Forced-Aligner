@@ -9,6 +9,7 @@ import yaml
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
+from montreal_forced_aligner.helper import mfa_open
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -46,7 +47,7 @@ def align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> N
         if getattr(args, "reference_directory", ""):
             mapping = None
             if getattr(args, "custom_mapping_path", ""):
-                with open(args.custom_mapping_path, "r", encoding="utf8") as f:
+                with mfa_open(args.custom_mapping_path, "r") as f:
                     mapping = yaml.safe_load(f)
             aligner.load_reference_alignments(args.reference_directory)
             aligner.evaluate_alignments(mapping, output_directory=args.output_directory)
@@ -99,7 +100,7 @@ def run_align_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) 
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

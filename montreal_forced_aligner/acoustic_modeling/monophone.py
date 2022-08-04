@@ -15,6 +15,7 @@ from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
 
 if typing.TYPE_CHECKING:
@@ -70,7 +71,7 @@ class MonoAlignEqualFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 fst_path = self.fst_ark_paths[dict_id]
                 ali_path = self.ali_ark_paths[dict_id]
@@ -277,7 +278,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                         pbar.update(num_utterances + errors)
 
         log_path = os.path.join(self.working_log_directory, "update.0.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for x in arguments:
                 acc_files.extend(sorted(x.acc_paths.values()))
@@ -321,7 +322,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         shared_phones_path = os.path.join(self.worker.phones_dir, "sets.int")
         init_log_path = os.path.join(self.working_log_directory, "init.log")
         temp_feats_path = os.path.join(self.working_directory, "temp_feats")
-        with open(init_log_path, "w") as log_file:
+        with mfa_open(init_log_path, "w") as log_file:
             subprocess.call(
                 [
                     thirdparty_binary("subset-feats"),

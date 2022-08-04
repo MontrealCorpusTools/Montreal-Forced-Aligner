@@ -15,6 +15,12 @@ Pronunciation dictionary format
 
 .. _text_normalization:
 
+.. warning::
+
+   As of 2.0.5, dictionaries have a firmer format of requiring tab-delimited columns (words, pronunciations, etc), and space-delimited pronunciations to avoid confusions in automatically interpreting dictionary format for phonesets that include numbers like X-SAMPA.
+
+   If your dictionary uses spaces as the delimiter between orthography and pronunciations, you can re-encode it with tabs in a text editor that has regex search and replace support. The regex pattern :code:`^(\S+)\s+` replaced with :code:`\1\t` or :code:`$1\t`, depending on the text editor in question, will replace the first whitespace in every line with a tab.
+
 Text normalization and dictionary lookup
 ========================================
 

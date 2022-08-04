@@ -6,6 +6,8 @@ import shutil
 import pytest
 import yaml
 
+from montreal_forced_aligner.helper import mfa_open
+
 
 @pytest.fixture(scope="session")
 def test_dir():
@@ -119,9 +121,7 @@ def english_us_mfa_dictionary_subset(english_us_mfa_dictionary, generated_dir):
     path = os.path.join(generated_dir, "subset_english_us.dict")
     if not os.path.exists(path):
         model = DictionaryModel(english_us_mfa_dictionary)
-        with open(model.path, "r", encoding="utf8") as inf, open(
-            path, "w", encoding="utf8"
-        ) as outf:
+        with mfa_open(model.path, "r") as inf, mfa_open(path, "w") as outf:
             for i, line in enumerate(inf):
                 outf.write(line)
                 if i >= 100:
@@ -634,7 +634,7 @@ def acoustic_dict_path(dict_dir):
 def speaker_dictionary_path(basic_dict_path, acoustic_dict_path, generated_dir):
     data = {"default": acoustic_dict_path, "sickmichael": basic_dict_path}
     speaker_dict_path = os.path.join(generated_dir, "basic_acoustic_dicts.yaml")
-    with open(speaker_dict_path, "w") as f:
+    with mfa_open(speaker_dict_path, "w") as f:
         yaml.safe_dump(data, f)
     return speaker_dict_path
 
@@ -697,6 +697,11 @@ def eval_mapping_path(config_directory):
 @pytest.fixture(scope="session")
 def basic_train_config_path(config_directory):
     return os.path.join(config_directory, "basic_train_config.yaml")
+
+
+@pytest.fixture(scope="session")
+def train_g2p_acoustic_config_path(config_directory):
+    return os.path.join(config_directory, "train_g2p_acoustic.yaml")
 
 
 @pytest.fixture(scope="session")
@@ -782,7 +787,7 @@ def sat_train_config_path(config_directory):
 @pytest.fixture(scope="session")
 def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_dictionary):
     path = os.path.join(generated_dir, "multispeaker_dictionary.yaml")
-    with open(path, "w", encoding="utf8") as f:
+    with mfa_open(path, "w") as f:
         yaml.safe_dump({"default": english_dictionary, "michael": basic_dict_path}, f)
     return path
 
@@ -790,7 +795,7 @@ def multispeaker_dictionary_config_path(generated_dir, basic_dict_path, english_
 @pytest.fixture(scope="session")
 def mfa_speaker_dict_path(generated_dir, english_uk_mfa_dictionary, english_us_mfa_dictionary):
     path = os.path.join(generated_dir, "multispeaker_mfa_dictionary.yaml")
-    with open(path, "w", encoding="utf8") as f:
+    with mfa_open(path, "w") as f:
         yaml.safe_dump(
             {"default": english_us_mfa_dictionary, "speaker": english_uk_mfa_dictionary}, f
         )

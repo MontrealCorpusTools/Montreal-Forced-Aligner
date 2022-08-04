@@ -8,12 +8,12 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import sys
 import typing
 from typing import TYPE_CHECKING, Dict, List, TextIO
 
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
@@ -455,9 +455,7 @@ def compose_g_carpa(
     bos_symbol = words_mapping["<s>"]
     eos_symbol = words_mapping["</s>"]
     unk_symbol = words_mapping["<unk>"]
-    with open(in_carpa_path, "r", encoding="utf8") as f, open(
-        temp_carpa_path, "w", encoding="utf8"
-    ) as outf:
+    with mfa_open(in_carpa_path, "r") as f, mfa_open(temp_carpa_path, "w") as outf:
         current_order = -1
         num_oov_lines = 0
         for line in f:
@@ -563,7 +561,7 @@ class CreateHclgFunction(KaldiFunction):
         hclga_path = self.path_template.format(file_name="HCLGa")
         if os.path.exists(hclg_path):
             return
-        with open(self.log_path, "w") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             context_width = self.hclg_options["context_width"]
             central_pos = self.hclg_options["central_pos"]
 
@@ -685,7 +683,7 @@ class DecodeFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 lat_path = self.lat_paths[dict_id]
@@ -775,7 +773,7 @@ class ScoreFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[str, float, float, float, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 language_model_weight = self.score_options["language_model_weight"]
                 word_insertion_penalty = self.score_options["word_insertion_penalty"]
@@ -871,7 +869,7 @@ class LmRescoreFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 lat_path = self.lat_paths[dict_id]
                 rescored_lat_path = self.rescored_lat_paths[dict_id]
@@ -879,10 +877,7 @@ class LmRescoreFunction(KaldiFunction):
                 new_g_path = self.new_g_paths[dict_id]
                 if " " in new_g_path:
                     new_g_path = f'"{new_g_path}"'
-                if sys.platform == "win32":
-                    project_type_arg = "--project_output=true"
-                else:
-                    project_type_arg = "--project_type=output"
+                project_type_arg = "--project_type=output"
                 if os.path.exists(rescored_lat_path):
                     continue
 
@@ -951,12 +946,9 @@ class CarpaLmRescoreFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "a", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "a") as log_file:
             for dict_id in self.dictionaries:
-                if sys.platform == "win32":
-                    project_type_arg = "--project_output=true"
-                else:
-                    project_type_arg = "--project_type=output"
+                project_type_arg = "--project_type=output"
                 lat_path = self.lat_paths[dict_id]
                 rescored_lat_path = self.rescored_lat_paths[dict_id]
                 old_g_path = self.old_g_paths[dict_id]
@@ -1044,7 +1036,7 @@ class InitialFmllrFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 lat_path = self.lat_paths[dict_id]
                 feature_string = self.feature_strings[dict_id]
@@ -1148,7 +1140,7 @@ class LatGenFmllrFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 words_path = self.word_symbol_paths[dict_id]
@@ -1227,7 +1219,7 @@ class FinalFmllrFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 trans_path = self.trans_paths[dict_id]
@@ -1351,7 +1343,7 @@ class FmllrRescoreFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 tmp_lat_path = self.tmp_lat_paths[dict_id]

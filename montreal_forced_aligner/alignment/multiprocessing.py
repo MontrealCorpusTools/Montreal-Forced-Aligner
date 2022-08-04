@@ -35,7 +35,7 @@ from montreal_forced_aligner.db import (
     Word,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError
-from montreal_forced_aligner.helper import split_phone_position
+from montreal_forced_aligner.helper import mfa_open, split_phone_position
 from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
 from montreal_forced_aligner.utils import Counter, KaldiFunction, Stopped, thirdparty_binary
 
@@ -175,7 +175,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
 
-        with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             dictionaries = (
                 session.query(Dictionary)
                 .join(Dictionary.speakers)
@@ -224,7 +224,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                         .filter(Speaker.dictionary_id == d.id)
                         .order_by(Utterance.kaldi_id)
                     )
-                    with open(fst_ark_path, "wb") as fst_output_file:
+                    with mfa_open(fst_ark_path, "wb") as fst_output_file:
                         for utt_id, full_text in utterances:
                             full_text = f"<s> {full_text} </s>"
                             lattice = rewrite.rewrite_lattice(full_text, fst, token_type)
@@ -391,7 +391,7 @@ class AccStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 processed_count = 0
                 acc_proc = subprocess.Popen(
@@ -455,7 +455,7 @@ class AlignFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
                 fst_path = self.fst_ark_paths[dict_id]
@@ -572,7 +572,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
     def _run(self) -> typing.Generator[typing.Tuple[int, int, str]]:
         """Run the function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
-        with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             phones = session.query(Phone.phone, Phone.mapping_id)
             for phone, mapping_id in phones:
                 self.reversed_phone_mapping[mapping_id] = phone
@@ -715,9 +715,7 @@ def compile_information_func(
     align_log_path = arguments.align_log_path
     if not os.path.exists(align_log_path):
         align_log_path = align_log_path.replace(".log", ".fmllr.log")
-    with open(arguments.log_path, "w", encoding="utf8"), open(
-        align_log_path, "r", encoding="utf8"
-    ) as f:
+    with mfa_open(arguments.log_path, "w"), mfa_open(align_log_path, "r") as f:
         for line in f:
             decode_error_match = re.match(decode_error_pattern, line)
             if decode_error_match:
@@ -918,7 +916,7 @@ class AlignmentExtractionFunction(KaldiFunction):
                 ds = session.query(Phone.phone, Phone.mapping_id).all()
                 for phone, mapping_id in ds:
                     self.reversed_phone_mapping[mapping_id] = phone
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.ali_paths.keys():
                 cur_utt = None
                 intervals = []
@@ -1123,7 +1121,7 @@ class ExportTextGridProcessWorker(mp.Process):
     def run(self) -> None:
         """Run the exporter function"""
         db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
-        with open(self.log_path, "w", encoding="utf8") as log_file, Session(db_engine) as session:
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
 
             while True:
                 try:

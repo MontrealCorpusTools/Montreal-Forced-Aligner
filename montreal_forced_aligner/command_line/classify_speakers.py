@@ -77,7 +77,7 @@ def validate_args(args: Namespace) -> None:  # pragma: no cover
 
 
 def run_classify_speakers(
-    args: Namespace, unknown: Optional[List[str]] = None
+    args: Namespace, unknown_args: Optional[List[str]] = None
 ) -> None:  # pragma: no cover
     """
     Wrapper function for running speaker classification
@@ -86,7 +86,7 @@ def run_classify_speakers(
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

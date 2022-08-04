@@ -8,6 +8,7 @@ import yaml
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
 from montreal_forced_aligner.exceptions import ArgumentError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.transcription import Transcriber
 
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ def transcribe_corpus(args: Namespace, unknown_args: Optional[List[str]] = None)
         if getattr(args, "reference_directory", ""):
             mapping = None
             if getattr(args, "custom_mapping_path", ""):
-                with open(args.custom_mapping_path, "r", encoding="utf8") as f:
+                with mfa_open(args.custom_mapping_path, "r") as f:
                     mapping = yaml.safe_load(f)
             transcriber.load_reference_alignments(args.reference_directory)
             transcriber.evaluate_alignments(mapping, output_directory=args.output_directory)
@@ -94,7 +95,7 @@ def validate_args(args: Namespace) -> None:
         raise ArgumentError("Corpus directory and output directory cannot be the same folder.")
 
 
-def run_transcribe_corpus(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_transcribe_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running corpus transcription
 
@@ -102,8 +103,8 @@ def run_transcribe_corpus(args: Namespace, unknown: Optional[List[str]] = None) 
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    transcribe_corpus(args, unknown)
+    transcribe_corpus(args, unknown_args)

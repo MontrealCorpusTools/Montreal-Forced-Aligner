@@ -9,12 +9,18 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, List, Optional
 
-from .abc import FileExporterMixin, TopLevelMfaWorker
-from .corpus.ivector_corpus import IvectorCorpusMixin
-from .exceptions import KaldiProcessingError
-from .helper import load_configuration, load_scp
-from .models import IvectorExtractorModel
-from .utils import log_kaldi_errors
+from praatio import textgrid
+from sqlalchemy.orm import joinedload, selectinload
+
+from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
+from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
+from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
+from montreal_forced_aligner.data import TextFileType
+from montreal_forced_aligner.db import File, SoundFile, SpeakerOrdering, TextFile
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import load_configuration, load_scp, mfa_open
+from montreal_forced_aligner.models import IvectorExtractorModel
+from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -34,14 +40,18 @@ class SpeakerClassifier(
     ----------
     ivector_extractor_path : str
         Path to ivector extractor model
-    num_speakers: int, optional
+    expected_num_speakers: int, optional
         Number of speakers in the corpus, if known
     cluster: bool, optional
         Flag for whether speakers should be clustered instead of classified
     """
 
     def __init__(
-        self, ivector_extractor_path: str, num_speakers: int = 0, cluster: bool = True, **kwargs
+        self,
+        ivector_extractor_path: str,
+        expected_num_speakers: int = 0,
+        cluster: bool = True,
+        **kwargs,
     ):
         self.ivector_extractor = IvectorExtractorModel(ivector_extractor_path)
         kwargs.update(self.ivector_extractor.parameters)
@@ -49,7 +59,7 @@ class SpeakerClassifier(
         self.classifier = None
         self.speaker_labels = {}
         self.ivectors = {}
-        self.num_speakers = num_speakers
+        self.expected_num_speakers = expected_num_speakers
         self.cluster = cluster
 
     @classmethod
@@ -148,11 +158,10 @@ class SpeakerClassifier(
         """
         self.ivectors = {}
         for ivectors_args in self.extract_ivectors_arguments():
-            for ivectors_path in ivectors_args.ivector_paths.values():
-                ivec = load_scp(ivectors_path)
-                for utt, ivector in ivec.items():
-                    ivector = [float(x) for x in ivector]
-                    self.ivectors[utt] = ivector
+            ivec = load_scp(ivectors_args.ivectors_path)
+            for utt, ivector in ivec.items():
+                ivector = [float(x) for x in ivector]
+                self.ivectors[utt] = ivector
 
     def cluster_utterances(self) -> None:
         """
@@ -178,5 +187,41 @@ class SpeakerClassifier(
             output_directory = os.path.join(self.working_directory, "transcriptions")
         os.makedirs(output_directory, exist_ok=True)
 
-        for file in self.files:
-            file.save(output_directory)
+        with self.session() as session:
+            files = session.query(File).options(
+                selectinload(File.utterances),
+                selectinload(File.speakers).selectinload(SpeakerOrdering.speaker),
+                joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
+                joinedload(File.text_file, innerjoin=True).load_only(TextFile.file_type),
+            )
+            for file in files:
+                utterance_count = len(file.utterances)
+                duration = file.sound_file.duration
+
+                if utterance_count == 0:
+                    self.log_debug(f"Could not find any utterances for {file.name}")
+                output_path = construct_output_path(
+                    file.name,
+                    file.relative_path,
+                    self.output_directory,
+                    output_format=file.text_file.file_type,
+                )
+                data = file.construct_transcription_tiers()
+                if file.text_file.file_type == TextFileType.LAB:
+                    for intervals in data.values():
+                        with mfa_open(output_path, "w") as f:
+                            f.write(intervals[0].label)
+                else:
+
+                    tg = textgrid.Textgrid()
+                    tg.minTimestamp = 0
+                    tg.maxTimestamp = duration
+                    for speaker in file.speakers:
+                        speaker = speaker.speaker.name
+                        intervals = data[speaker]
+                        tier = textgrid.IntervalTier(
+                            speaker, [x.to_tg_interval() for x in intervals], minT=0, maxT=duration
+                        )
+
+                        tg.addTier(tier)
+                    tg.save(output_path, includeBlankSpaces=True, format=file.text_file.file_type)

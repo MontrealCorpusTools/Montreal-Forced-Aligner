@@ -17,6 +17,7 @@ from praatio.data_classes.interval_tier import Interval
 
 from montreal_forced_aligner.data import CtmInterval, TextFileType
 from montreal_forced_aligner.exceptions import AlignmentExportError, TextGridParseError
+from montreal_forced_aligner.helper import mfa_open
 
 __all__ = [
     "process_ctm_line",
@@ -72,11 +73,11 @@ def output_textgrid_writing_errors(
         os.remove(error_log)
     for result in export_errors.values():
         if not os.path.exists(error_log):
-            with open(error_log, "w", encoding="utf8") as f:
+            with mfa_open(error_log, "w") as f:
                 f.write(
                     "The following exceptions were encountered during the output of the alignments to TextGrids:\n\n"
                 )
-        with open(error_log, "a", encoding="utf8") as f:
+        with mfa_open(error_log, "a") as f:
             f.write(f"{str(result)}\n\n")
 
 
@@ -176,7 +177,7 @@ def export_textgrid(
                         }
                     )
         if has_data:
-            with open(output_path, "w", encoding="utf8", newline=None) as f:
+            with mfa_open(output_path, "w", newline=None) as f:
                 writer = csv.DictWriter(f, fieldnames=["Begin", "End", "Label", "Type", "Speaker"])
                 writer.writeheader()
                 for line in csv_data:
@@ -198,7 +199,7 @@ def export_textgrid(
                         a.end = duration
                     json_data["tiers"][tier_name]["entries"].append([a.begin, a.end, a.label])
         if has_data:
-            with open(output_path, "w", encoding="utf8") as f:
+            with mfa_open(output_path, "w") as f:
                 json.dump(json_data, f)
     else:
         # Create initial textgrid

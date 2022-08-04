@@ -1,7 +1,4 @@
 import os
-import sys
-
-import pytest
 
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
@@ -49,11 +46,8 @@ def test_transcribe_arpa(
     temp_dir,
     transcribe_config_path,
 ):
-    if sys.platform == "win32":
-        pytest.skip("No LM generation on Windows")
     temp_dir = os.path.join(temp_dir, "arpa_test_temp")
     output_path = os.path.join(generated_dir, "transcribe_test_arpa")
-    print(transcription_language_model_arpa)
     command = [
         "transcribe",
         basic_corpus_dir,

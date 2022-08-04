@@ -15,6 +15,7 @@ import tqdm
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
     Stopped,
@@ -93,7 +94,7 @@ class LdaAccStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 ali_path = self.ali_paths[dict_id]
                 feature_string = self.feature_strings[dict_id]
@@ -177,7 +178,7 @@ class CalcLdaMlltFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         # Estimating MLLT
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 ali_path = self.ali_paths[dict_id]
                 feature_string = self.feature_strings[dict_id]
@@ -427,7 +428,7 @@ class LdaTrainer(TriphoneTrainer):
         acc_list = []
         for x in arguments:
             acc_list.extend(x.acc_paths.values())
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             est_lda_proc = subprocess.Popen(
                 [
                     thirdparty_binary("est-lda"),
@@ -527,7 +528,7 @@ class LdaTrainer(TriphoneTrainer):
         previous_mat_path = os.path.join(self.working_directory, "lda.mat")
         new_mat_path = os.path.join(self.working_directory, "lda_new.mat")
         composed_path = os.path.join(self.working_directory, "lda_composed.mat")
-        with open(log_path, "a", encoding="utf8") as log_file:
+        with mfa_open(log_path, "a") as log_file:
             macc_list = []
             for x in arguments:
                 macc_list.extend(x.macc_paths.values())

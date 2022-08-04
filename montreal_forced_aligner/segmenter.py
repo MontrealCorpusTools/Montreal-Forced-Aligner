@@ -1,10 +1,6 @@
 """
-Segmenting files
-================
-
-.. autosummary::
-
-   :toctree: generated/
+Segmenter
+=========
 
 """
 from __future__ import annotations
@@ -25,7 +21,7 @@ from montreal_forced_aligner.corpus.features import VadConfigMixin
 from montreal_forced_aligner.data import MfaArguments, TextFileType
 from montreal_forced_aligner.db import File, SpeakerOrdering, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration, load_scp
+from montreal_forced_aligner.helper import load_configuration, load_scp, mfa_open
 from montreal_forced_aligner.utils import (
     KaldiFunction,
     KaldiProcessWorker,
@@ -440,7 +436,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
                 log_kaldi_errors(e.error_logs, logger)
                 e.update_log_file(logger)
             raise
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
 
     def export_files(self, output_directory: str, output_format: Optional[str] = None) -> None:

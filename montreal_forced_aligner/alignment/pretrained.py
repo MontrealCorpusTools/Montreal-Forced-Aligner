@@ -21,7 +21,7 @@ from montreal_forced_aligner.db import (
     WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignerError, KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration, parse_old_features
+from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.online.alignment import (
     OnlineAlignmentArguments,
@@ -144,7 +144,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                     os.makedirs(dictionary.temp_directory, exist_ok=True)
                     shutil.copyfile(fst_path, os.path.join(dictionary.temp_directory, "L.fst"))
             phone_objs = []
-            with open(self.phone_symbol_table_path, "r", encoding="utf8") as f:
+            with mfa_open(self.phone_symbol_table_path, "r") as f:
                 for line in f:
                     line = line.strip()
                     phone, mapping_id = line.split()
@@ -163,7 +163,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                         }
                     )
             grapheme_objs = []
-            with open(self.grapheme_symbol_table_path, "r", encoding="utf8") as f:
+            with mfa_open(self.grapheme_symbol_table_path, "r") as f:
                 for line in f:
                     line = line.strip()
                     grapheme, mapping_id = line.split()
@@ -284,30 +284,30 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
         if not sox_string:
             sox_string = utterance.file.sound_file.sound_file_path
         text_int_path = os.path.join(self.working_directory, "text.int")
-        with open(text_int_path, "w", encoding="utf8") as f:
+        with mfa_open(text_int_path, "w") as f:
             f.write(f"{utterance.kaldi_id} {utterance.normalized_text_int}\n")
         if utterance.features:
             feats_path = os.path.join(self.working_directory, "feats.scp")
-            with open(feats_path, "w", encoding="utf8") as f:
+            with mfa_open(feats_path, "w") as f:
                 f.write(f"{utterance.kaldi_id} {utterance.features}\n")
         else:
             wav_path = os.path.join(self.working_directory, "wav.scp")
             segment_path = os.path.join(self.working_directory, "segments.scp")
-            with open(wav_path, "w", encoding="utf8") as f:
+            with mfa_open(wav_path, "w") as f:
                 f.write(f"{utterance.file_id} {sox_string}\n")
-            with open(segment_path, "w", encoding="utf8") as f:
+            with mfa_open(segment_path, "w") as f:
                 f.write(
                     f"{utterance.kaldi_id} {utterance.file_id} {utterance.begin} {utterance.end} {utterance.channel}\n"
                 )
         if utterance.speaker.cmvn:
             cmvn_path = os.path.join(self.working_directory, "cmvn.scp")
-            with open(cmvn_path, "w", encoding="utf8") as f:
+            with mfa_open(cmvn_path, "w") as f:
                 f.write(f"{utterance.speaker.id} {utterance.speaker.cmvn}\n")
         spk2utt_path = os.path.join(self.working_directory, "spk2utt.scp")
         utt2spk_path = os.path.join(self.working_directory, "utt2spk.scp")
-        with open(spk2utt_path, "w") as f:
+        with mfa_open(spk2utt_path, "w") as f:
             f.write(f"{utterance.speaker.id} {utterance.kaldi_id}\n")
-        with open(utt2spk_path, "w") as f:
+        with mfa_open(utt2spk_path, "w") as f:
             f.write(f"{utterance.kaldi_id} {utterance.speaker.id}\n")
 
         args = OnlineAlignmentArguments(
@@ -374,7 +374,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
 
                 self.compile_information()
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 import logging
@@ -383,7 +383,7 @@ class PretrainedAligner(CorpusAligner, TopLevelMfaWorker):
                 log_kaldi_errors(e.error_logs, logger)
                 e.update_log_file(logger)
             raise
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
 
 

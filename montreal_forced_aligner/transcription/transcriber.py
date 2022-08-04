@@ -12,7 +12,6 @@ import multiprocessing as mp
 import os
 import shutil
 import subprocess
-import sys
 import time
 import typing
 from queue import Empty
@@ -35,8 +34,13 @@ from montreal_forced_aligner.db import (
     SpeakerOrdering,
     Utterance,
 )
-from montreal_forced_aligner.exceptions import KaldiProcessingError, PlatformError
-from montreal_forced_aligner.helper import load_configuration, parse_old_features, score_wer
+from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import (
+    load_configuration,
+    mfa_open,
+    parse_old_features,
+    score_wer,
+)
 from montreal_forced_aligner.models import AcousticModel, LanguageModel
 from montreal_forced_aligner.transcription.multiprocessing import (
     CarpaLmRescoreArguments,
@@ -141,7 +145,7 @@ class TranscriberMixin:
             Directory to save evaluation
         """
         output_path = os.path.join(output_directory, "transcription_evaluation.csv")
-        with open(output_path, "w", newline="", encoding="utf8") as f, self.session() as session:
+        with mfa_open(output_path, "w") as f, self.session() as session:
             writer = csv.writer(f)
             writer.writerow(
                 [
@@ -881,14 +885,10 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 "Creating small and medium language models from scratch, this may take some time. "
                 "Running `mfa train_lm` on the ARPA file will remove this warning."
             )
-            if sys.platform == "win32":
-                raise PlatformError("ngram")
             self.log_info("Parsing large ngram model...")
             mod_path = os.path.join(self.model_directory, "base_lm.mod")
             new_carpa_path = os.path.join(self.model_directory, "base_lm.arpa")
-            with open(big_arpa_path, "r", encoding="utf8") as inf, open(
-                new_carpa_path, "w", encoding="utf8"
-            ) as outf:
+            with mfa_open(big_arpa_path, "r") as inf, mfa_open(new_carpa_path, "w") as outf:
                 for line in inf:
                     outf.write(line.lower())
             big_arpa_path = new_carpa_path
@@ -931,7 +931,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
             self.create_hclgs()
         except Exception as e:
             dirty_path = os.path.join(self.model_directory, "dirty")
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 import logging
@@ -954,8 +954,8 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         """
         with tqdm.tqdm(
             total=self.num_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar, open(
-            os.path.join(self.evaluation_directory, "score_costs.csv"), "w", encoding="utf8"
+        ) as pbar, mfa_open(
+            os.path.join(self.evaluation_directory, "score_costs.csv"), "w"
         ) as log_file:
             log_file.write("utterance,graph_cost,acoustic_cost,total_cost,num_frames\n")
             if self.use_mp:
@@ -1133,7 +1133,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         self.log_info("Regenerating lattices with fMLLR transforms...")
         with tqdm.tqdm(
             total=self.num_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar, open(
+        ) as pbar, mfa_open(
             os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
             "w",
             encoding="utf8",
@@ -1336,8 +1336,8 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
         self.log_info("Generating lattices...")
         with tqdm.tqdm(
             total=self.num_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar, open(
-            os.path.join(self.working_log_directory, "decode_log_like.csv"), "w", encoding="utf8"
+        ) as pbar, mfa_open(
+            os.path.join(self.working_log_directory, "decode_log_like.csv"), "w"
         ) as log_file:
             log_file.write("utterance,log_likelihood,num_frames\n")
             if self.use_mp:
@@ -1534,7 +1534,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 self.log_info("Transcription already done, skipping!")
             self.score_transcriptions()
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 import logging
@@ -1571,7 +1571,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
             for score_args in self.score_arguments():
                 for dict_id, tra_path in score_args.tra_paths.items():
                     lookup = self.reversed_word_mapping(dict_id)
-                    with open(tra_path, "r", encoding="utf8") as f:
+                    with mfa_open(tra_path, "r") as f:
                         for line in f:
                             t = line.strip().split(" ")
                             utt = int(t[0].split("-")[-1])
@@ -1631,7 +1631,7 @@ class Transcriber(TranscriberMixin, CorpusAligner, TopLevelMfaWorker):
                 data = file.construct_transcription_tiers()
                 if output_format == "lab":
                     for intervals in data.values():
-                        with open(output_path, "w", encoding="utf8") as f:
+                        with mfa_open(output_path, "w") as f:
                             f.write(intervals[0].label)
                 else:
 

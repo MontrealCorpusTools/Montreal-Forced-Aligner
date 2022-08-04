@@ -11,6 +11,7 @@ from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixi
 from montreal_forced_aligner.db import Dictionary, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import LanguageModel
 
 if TYPE_CHECKING:
@@ -241,7 +242,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
 
         small_mod_path = self.mod_path.replace(".mod", "_small.mod")
         med_mod_path = self.mod_path.replace(".mod", "_med.mod")
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             perplexity_proc = subprocess.Popen(
                 [
                     "ngramperplexity",
@@ -336,8 +337,10 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         unk_words = {k for k, v in self.word_counts.items() if v <= min_count} | self.specials_set
 
         with self.session() as session:
-            utterances = session.query(Utterance.normalized_text)
-            for (normalized_text,) in utterances:
+            utterances = session.query(Utterance.normalized_text, Utterance.text)
+            for (normalized_text, text) in utterances:
+                if not normalized_text:
+                    normalized_text = text
                 text = normalized_text.split()
                 yield " ".join(x if x not in unk_words else self.oov_word for x in text)
 
@@ -421,13 +424,13 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
     def setup(self) -> None:
         """Set up language model training"""
         os.makedirs(self.working_log_directory, exist_ok=True)
-        with open(self.arpa_path, "r", encoding="utf8") as inf, open(
-            self.large_arpa_path, "w", encoding="utf8"
+        with mfa_open(self.arpa_path, "r") as inf, mfa_open(
+            self.large_arpa_path, "w", newline=""
         ) as outf:
             for line in inf:
                 if not self.keep_case:
                     line = line.lower()
-                outf.write(line)
+                outf.write(line.rstrip() + "\n")
         self.initialized = True
 
     @property
@@ -454,9 +457,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         """Convert the arpa model to MFA format"""
         self.log_info("Parsing large ngram model...")
 
-        with open(
-            os.path.join(self.working_log_directory, "read.log"), "w", encoding="utf8"
-        ) as log_file:
+        with mfa_open(os.path.join(self.working_log_directory, "read.log"), "w") as log_file:
             subprocess.check_call(
                 ["ngramread", "--ARPA", self.large_arpa_path, self.mod_path], stderr=log_file
             )
@@ -488,7 +489,7 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
         self._load_corpus()
         self.write_lexicon_information()
 
-        with open(self.training_path, "w", encoding="utf8") as f:
+        with mfa_open(self.training_path, "w") as f:
             for text in self.normalized_text_iter(self.count_threshold):
                 f.write(f"{text}\n")
 
@@ -514,7 +515,7 @@ class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
         os.makedirs(self.working_log_directory, exist_ok=True)
         self._load_corpus()
 
-        with open(self.training_path, "w", encoding="utf8") as f:
+        with mfa_open(self.training_path, "w") as f:
             for text in self.normalized_text_iter(self.count_threshold):
                 f.write(f"{text}\n")
 

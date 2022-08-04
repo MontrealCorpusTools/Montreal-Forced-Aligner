@@ -100,7 +100,7 @@ def validate_args(args: Namespace) -> None:
         raise (ArgumentError(f"Could not find the model file {args.model_path}."))
 
 
-def run_train_lm(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_train_lm(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running language model training
 
@@ -108,8 +108,8 @@ def run_train_lm(args: Namespace, unknown: Optional[List[str]] = None) -> None:
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    train_lm(args, unknown)
+    train_lm(args, unknown_args)

@@ -8,7 +8,7 @@ import typing
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
 from montreal_forced_aligner.corpus.classes import UtteranceData
 from montreal_forced_aligner.data import CtmInterval, MfaArguments
-from montreal_forced_aligner.helper import make_safe
+from montreal_forced_aligner.helper import make_safe, mfa_open
 from montreal_forced_aligner.textgrid import process_ctm_line
 from montreal_forced_aligner.utils import thirdparty_binary
 
@@ -135,7 +135,7 @@ class OnlineAlignmentFunction(KaldiFunction):
             mdl_string = self.model_path
         if not os.path.exists(lda_mat_path):
             lda_mat_path = None
-        with open(self.log_path, "w") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             proc = subprocess.Popen(
                 [
                     thirdparty_binary("compile-train-graphs"),
@@ -360,7 +360,7 @@ class OnlineAlignmentFunction(KaldiFunction):
                 except ValueError:
                     pass
             nbest_proc.wait()
-            with open(likelihood_path, "r", encoding="utf8") as f:
+            with mfa_open(likelihood_path, "r") as f:
                 try:
                     log_likelihood = float(f.read().split()[-1])
                 except ValueError:

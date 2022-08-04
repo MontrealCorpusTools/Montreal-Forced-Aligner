@@ -1,7 +1,5 @@
 import os
-import sys
 
-import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
@@ -423,8 +421,6 @@ def test_acoustic_g2p_model(
     temp_dir,
     basic_align_config_path,
 ):
-    if sys.platform == "win32":
-        pytest.skip("G2P not enabled")
     model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
     dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")
     output_directory = os.path.join(generated_dir, "acoustic_g2p_output")

@@ -13,6 +13,7 @@ import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
     KaldiFunction,
     KaldiProcessWorker,
@@ -91,7 +92,7 @@ class ConvertAlignmentsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 ali_path = self.ali_paths[dict_id]
                 new_ali_path = self.new_ali_paths[dict_id]
@@ -136,7 +137,7 @@ def tree_stats_func(
     arguments: TreeStatsArguments
         Arguments for the function
     """
-    with open(arguments.log_path, "w", encoding="utf8") as log_file:
+    with mfa_open(arguments.log_path, "w") as log_file:
         for dict_id in arguments.dictionaries:
             feature_string = arguments.feature_strings[dict_id]
             ali_path = arguments.ali_paths[dict_id]
@@ -385,7 +386,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         for x in jobs:
             tree_accs.extend(x.treeacc_paths.values())
         log_path = os.path.join(self.working_log_directory, "sum_tree_acc.log")
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(
                 [
                     thirdparty_binary("sum-tree-stats"),
@@ -416,7 +417,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         topo_path = self.worker.topo_path
         questions_path = os.path.join(self.working_directory, "questions.int")
         questions_qst_path = os.path.join(self.working_directory, "questions.qst")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(
                 [
                     thirdparty_binary("cluster-phones"),
@@ -427,12 +428,12 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 stderr=log_file,
             )
 
-        with open(extra_question_int_path, "r") as inf, open(questions_path, "a") as outf:
+        with mfa_open(extra_question_int_path, "r") as inf, mfa_open(questions_path, "a") as outf:
             for line in inf:
                 outf.write(line)
 
         log_path = os.path.join(self.working_log_directory, "compile_questions.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(
                 [
                     thirdparty_binary("compile-questions"),
@@ -444,7 +445,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             )
 
         log_path = os.path.join(self.working_log_directory, "build_tree.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(
                 [
                     thirdparty_binary("build-tree"),
@@ -483,7 +484,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 topo_path,
                 mdl_path,
             ]
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(command, stderr=log_file)
         if initial_mix_up:
             if init_from_previous:
@@ -504,7 +505,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                     mdl_path,
                 ]
             log_path = os.path.join(self.working_log_directory, "mixup.log")
-            with open(log_path, "w") as log_file:
+            with mfa_open(log_path, "w") as log_file:
                 subprocess.call(command, stderr=log_file)
         os.remove(treeacc_path)
         os.rename(occs_path, self.next_occs_path)

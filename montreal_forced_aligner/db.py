@@ -20,6 +20,7 @@ from montreal_forced_aligner.data import (
     TextFileType,
     WordType,
 )
+from montreal_forced_aligner.helper import mfa_open
 
 if typing.TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import UtteranceData
@@ -626,10 +627,10 @@ class File(MfaSqlBase):
                 return
             for u in self.utterances:
                 if save_transcription:
-                    with open(output_path, "w", encoding="utf8") as f:
+                    with mfa_open(output_path, "w") as f:
                         f.write(u.transcription_text if u.transcription_text else "")
                 elif u.text:
-                    with open(output_path, "w", encoding="utf8") as f:
+                    with mfa_open(output_path, "w") as f:
                         f.write(u.text)
             return
         elif output_format == TextFileType.TEXTGRID.value:

@@ -8,7 +8,6 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 import subprocess
-import sys
 import time
 import typing
 from decimal import Decimal
@@ -38,6 +37,7 @@ from montreal_forced_aligner.helper import (
     comma_join,
     load_configuration,
     load_scp,
+    mfa_open,
 )
 from montreal_forced_aligner.transcription.transcriber import TranscriberMixin
 from montreal_forced_aligner.utils import (
@@ -158,7 +158,7 @@ class TestUtterancesFunction(KaldiFunction):
                 self.reversed_word_mapping[dict_id] = {}
                 for w in d.words:
                     self.reversed_word_mapping[dict_id][w.id] = w.word
-        with open(self.log_path, "w") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.feature_strings.keys():
                 feature_string = self.feature_strings[dict_id]
                 text_int_path = self.text_int_paths[dict_id]
@@ -246,7 +246,7 @@ class TestUtterancesFunction(KaldiFunction):
                         stderr=log_file,
                         env=os.environ,
                     )
-                    with open(mod_path, "wb") as f:
+                    with mfa_open(mod_path, "wb") as f:
                         make_proc = subprocess.Popen(
                             [thirdparty_binary("ngrammake"), f"--method={self.method}"],
                             stdin=count_proc.stdout,
@@ -330,7 +330,7 @@ class TrainSpeakerLmFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
 
             for dict_id, speakers in self.speaker_mapping.items():
                 word_symbols_path = self.word_symbols_paths[dict_id]
@@ -451,7 +451,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                     utt2fst_scp_path = os.path.join(
                         self.split_directory, f"utt2lm.{dict_id}.{j.name}.scp"
                     )
-                    with open(utt2fst_scp_path, "w", encoding="utf8") as f:
+                    with mfa_open(utt2fst_scp_path, "w") as f:
                         for u_id, s_id in utterances:
                             speaker_lm = os.path.join(self.working_directory, f"{s_id}.mod")
                             f.write(f"{u_id} {speaker_lm}\n")
@@ -636,7 +636,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         utterance_oov_path = os.path.join(output_dir, "utterance_oovs.txt")
 
         total_instances = 0
-        with open(utterance_oov_path, "w", encoding="utf8") as f, self.session() as session:
+        with mfa_open(utterance_oov_path, "w") as f, self.session() as session:
             utterances = (
                 session.query(
                     File.name,
@@ -692,7 +692,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         wav_read_errors = self.sound_file_errors
         if wav_read_errors:
             path = os.path.join(output_dir, "sound_file_errors.csv")
-            with open(path, "w") as f:
+            with mfa_open(path, "w") as f:
                 for p in wav_read_errors:
                     f.write(f"{p}\n")
 
@@ -725,7 +725,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
             )
             if utterances.count():
                 path = os.path.join(output_dir, "missing_features.csv")
-                with open(path, "w") as f:
+                with mfa_open(path, "w") as f:
                     for file_name, relative_path, begin, end in utterances:
 
                         f.write(f"{relative_path + '/' + file_name},{begin},{end}\n")
@@ -749,7 +749,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         output_dir = self.output_directory
         if self.no_transcription_files:
             path = os.path.join(output_dir, "missing_transcriptions.csv")
-            with open(path, "w") as f:
+            with mfa_open(path, "w") as f:
                 for file_path in self.no_transcription_files:
                     f.write(f"{file_path}\n")
             self.printer.print_info_lines(
@@ -771,7 +771,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         output_dir = self.output_directory
         if self.transcriptions_without_wavs:
             path = os.path.join(output_dir, "transcriptions_missing_sound_files.csv")
-            with open(path, "w") as f:
+            with mfa_open(path, "w") as f:
                 for file_path in self.transcriptions_without_wavs:
                     f.write(f"{file_path}\n")
             self.printer.print_info_lines(
@@ -793,7 +793,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         output_dir = self.output_directory
         if self.textgrid_read_errors:
             path = os.path.join(output_dir, "textgrid_read_errors.txt")
-            with open(path, "w") as f:
+            with mfa_open(path, "w") as f:
                 for e in self.textgrid_read_errors:
                     f.write(
                         f"The TextGrid file {e.file_name} gave the following error on load:\n\n{e}\n\n\n"
@@ -822,7 +822,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         output_dir = self.output_directory
         if self.decode_error_files:
             path = os.path.join(output_dir, "utf8_read_errors.csv")
-            with open(path, "w") as f:
+            with mfa_open(path, "w") as f:
                 for file_path in self.decode_error_files:
                     f.write(f"{file_path}\n")
             self.printer.print_info_lines(
@@ -913,7 +913,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 unaligned_count = unaligned_utts.count()
                 if unaligned_count:
                     path = os.path.join(self.output_directory, "unalignable_files.csv")
-                    with open(path, "w") as f:
+                    with mfa_open(path, "w") as f:
                         f.write("file,begin,end,duration,text length\n")
                         for u in unaligned_utts:
                             utt_length_words = u.text.count(" ") + 1
@@ -943,9 +943,8 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         """
         Construct utterance FSTs
         """
-        if sys.platform != "win32":
-            self.log_info("Initializing for testing transcriptions...")
-            self.output_utt_fsts()
+        self.log_info("Initializing for testing transcriptions...")
+        self.output_utt_fsts()
 
     @property
     def score_options(self) -> MetaDict:
@@ -971,9 +970,7 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
                 selectinload(Speaker.utterances).load_only(Utterance.normalized_text)
             )
             for s in speakers:
-                with open(
-                    os.path.join(self.working_directory, f"{s.id}.txt"), "w", encoding="utf8"
-                ) as f:
+                with mfa_open(os.path.join(self.working_directory, f"{s.id}.txt"), "w") as f:
                     for u in s.utterances:
                         text = [
                             x if self.word_counts[x] >= self.min_word_count else self.oov_word
@@ -1031,9 +1028,6 @@ class ValidationMixin(CorpusAligner, TranscriberMixin):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        if sys.platform == "win32":
-            self.log_info("Cannot test transcriptions on Windows, please use Linux or Mac.")
-            return
         self.log_info("Checking utterance transcriptions...")
 
         try:
@@ -1401,7 +1395,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                 self.align_utterances()
 
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 import logging
@@ -1410,7 +1404,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                 log_kaldi_errors(e.error_logs, logger)
                 e.update_log_file(logger)
             raise
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
 
     def validate(self) -> None:

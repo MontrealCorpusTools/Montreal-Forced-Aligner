@@ -13,6 +13,7 @@ import dataclassy
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import thirdparty_binary
 
 if TYPE_CHECKING:
@@ -140,7 +141,7 @@ class MfccFunction(KaldiFunction):
     def _run(self) -> typing.Generator[int]:
         """Run the function"""
         processed = 0
-        with open(self.log_path, "w") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             use_pitch = self.pitch_options.pop("use-pitch")
             mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
             raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")
@@ -281,7 +282,7 @@ class ComputeVadFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        with open(self.log_path, "w") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             feats_scp_path = self.feats_scp_path
             vad_scp_path = self.vad_scp_path
             vad_proc = subprocess.Popen(
@@ -353,7 +354,7 @@ class CalcFmllrFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[str]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 while True:
                     feature_string = self.feature_strings[dict_id]
@@ -465,7 +466,7 @@ class CalcFmllrFunction(KaldiFunction):
                         self.check_call(est_proc)
                         break
                     except KaldiProcessingError:  # Try to recover from Memory exception
-                        with open(self.log_path, "r") as f:
+                        with mfa_open(self.log_path, "r") as f:
                             for line in f:
                                 if self.memory_error_pattern.match(line):
                                     os.remove(trans_path)
@@ -847,7 +848,7 @@ class ExtractIvectorsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[str]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
 
             gmm_global_get_post_proc = subprocess.Popen(
                 [

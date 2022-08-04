@@ -10,7 +10,7 @@ from montreal_forced_aligner.abc import ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.alignment.base import CorpusAligner
 from montreal_forced_aligner.db import Dictionary
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration, parse_old_features
+from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
 from montreal_forced_aligner.utils import log_kaldi_errors
 
@@ -89,7 +89,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             self.add_config(k, v)
 
     @classmethod
-    def default_training_configurations(cls, train_g2p=False) -> List[Tuple[str, Dict[str, Any]]]:
+    def default_training_configurations(cls) -> List[Tuple[str, Dict[str, Any]]]:
         """Default MFA training configuration"""
         training_params = []
         training_params.append(("monophone", {"subset": 10000, "boost_silence": 1.25}))
@@ -113,16 +113,14 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         training_params.append(
             ("sat", {"subset": 50000, "num_leaves": 4200, "max_gaussians": 40000})
         )
-        training_params.append(
-            ("pronunciation_probabilities", {"subset": 50000, "train_g2p": train_g2p})
-        )
+        training_params.append(("pronunciation_probabilities", {"subset": 50000}))
         training_params.append(
             ("sat", {"subset": 150000, "num_leaves": 5000, "max_gaussians": 100000})
         )
         training_params.append(
             (
                 "pronunciation_probabilities",
-                {"subset": 150000, "optional": True, "train_g2p": train_g2p},
+                {"subset": 150000, "optional": True},
             )
         )
         training_params.append(
@@ -187,9 +185,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
             if training_params:
                 use_default = False
         if use_default:  # default training configuration
-            training_params = TrainableAligner.default_training_configurations(
-                train_g2p=getattr(args, "train_g2p", False)
-            )
+            training_params = TrainableAligner.default_training_configurations()
         if training_params:
             if training_params[0][0] != "monophone":
                 raise ConfigError("The first round of training must be monophone.")
@@ -392,6 +388,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                 trainer.train_pronunciation_probabilities()
             else:
                 trainer.train()
+
             previous = trainer
             self.final_identifier = trainer.identifier
         self.log_info(f"Completed training in {time.time()-begin} seconds!")
@@ -483,7 +480,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
                 )
             self.compile_information()
-            with open(done_path, "w"):
+            with mfa_open(done_path, "w"):
                 pass
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
@@ -517,7 +514,7 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
     @property
     def working_directory(self) -> Optional[str]:
         """Working directory"""
-        if self.current_trainer is not None:
+        if self.current_trainer is not None and not self.current_trainer.training_complete:
             return self.current_trainer.working_directory
         if self.current_aligner is None:
             return None
