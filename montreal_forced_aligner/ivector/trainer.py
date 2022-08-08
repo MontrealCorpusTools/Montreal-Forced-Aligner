@@ -16,7 +16,7 @@ from montreal_forced_aligner.corpus.features import IvectorConfigMixin
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
-from montreal_forced_aligner.helper import load_configuration
+from montreal_forced_aligner.helper import load_configuration, mfa_open
 from montreal_forced_aligner.models import IvectorExtractorModel
 from montreal_forced_aligner.utils import (
     KaldiFunction,
@@ -159,7 +159,7 @@ class GmmGselectFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
@@ -223,7 +223,7 @@ class GaussToPostFunction(KaldiFunction):
         modified_posterior_scale = (
             self.ivector_options["posterior_scale"] * self.ivector_options["subsample"]
         )
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
@@ -295,7 +295,7 @@ class AccGlobalStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
@@ -354,7 +354,7 @@ class AccIvectorStatsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[None]:
         """Run the function"""
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             subsample_feats_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subsample-feats"),
@@ -585,7 +585,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         log_path = os.path.join(log_directory, "gmm_init.log")
         feature_string = self.construct_base_feature_string(all_feats=True)
         self.iteration = 1
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             gmm_init_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-init-from-feats"),
@@ -671,7 +671,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         else:
             opt = f"--remove-low-count-gaussians={self.remove_low_count_gaussians}"
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for j in arguments:
                 acc_files.append(j.acc_path)
@@ -813,7 +813,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         diag_ubm_path = os.path.join(self.working_directory, "final.dubm")
 
         full_ubm_path = os.path.join(self.working_directory, "final.ubm")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subprocess.call(
                 [thirdparty_binary("gmm-global-to-fgmm"), diag_ubm_path, full_ubm_path],
                 stderr=log_file,
@@ -1023,7 +1023,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
 
         log_path = os.path.join(self.working_log_directory, f"sum_acc.{self.iteration}.log")
         acc_path = os.path.join(self.working_directory, f"acc.{self.iteration}")
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             accinits = []
             for j in arguments:
                 accinits.append(j.acc_init_path)
@@ -1041,7 +1041,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
             os.remove(p)
         # Est extractor
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             extractor_est_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ivector-extractor-est"),

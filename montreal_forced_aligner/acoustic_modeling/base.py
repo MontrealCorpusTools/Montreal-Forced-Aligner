@@ -23,6 +23,7 @@ from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunc
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.db import Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
@@ -265,7 +266,7 @@ class AcousticModelTrainingMixin(
         try:
             self._trainer_initialization()
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
 
@@ -413,7 +414,7 @@ class AcousticModelTrainingMixin(
                         pbar.update(num_utterances + errors)
 
         log_path = os.path.join(self.working_log_directory, f"update.{self.iteration}.log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for a in arguments:
                 acc_files.extend(a.acc_paths.values())
@@ -455,7 +456,7 @@ class AcousticModelTrainingMixin(
         average_logdet_sum = 0
         average_logdet_frames = 0
         for a in arguments:
-            with open(a.log_path, "r", encoding="utf8") as f:
+            with mfa_open(a.log_path, "r") as f:
                 for line in f:
                     m = avg_like_pattern.search(line)
                     if m:
@@ -542,7 +543,7 @@ class AcousticModelTrainingMixin(
                 self.train_iteration()
             self.finalize_training()
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
 
@@ -550,7 +551,7 @@ class AcousticModelTrainingMixin(
                 log_kaldi_errors(e.error_logs, logger)
                 e.update_log_file(logger)
             raise
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
         self.log_info("Training complete!")
         self.log_debug(f"Training took {time.time() - begin} seconds")

@@ -1,7 +1,5 @@
 import os
-import sys
 
-import pytest
 from praatio import textgrid as tgio
 
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
@@ -84,6 +82,44 @@ def test_align_basic(
         os.path.join(output_directory, "sickmichael", "cold_corpus.TextGrid"),
         os.path.join(output_directory, "sickmichael", "cold corpus3.TextGrid"),
         os.path.join(output_directory, "sickmichael", "cold_corpus3.TextGrid"),
+    ]
+
+    for path in output_paths:
+        assert os.path.exists(path)
+
+
+def test_align_duplicated(
+    duplicated_name_corpus_dir,
+    generated_dir,
+    english_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    english_acoustic_model,
+):
+    output_directory = os.path.join(generated_dir, "duplicated_align_output")
+    command = [
+        "align",
+        duplicated_name_corpus_dir,
+        english_dictionary,
+        english_acoustic_model,
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    assert os.path.exists(output_directory)
+
+    output_paths = [
+        os.path.join(output_directory, "michael", "recording_0.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "recording_0.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "recording_1.TextGrid"),
     ]
 
     for path in output_paths:
@@ -423,8 +459,6 @@ def test_acoustic_g2p_model(
     temp_dir,
     basic_align_config_path,
 ):
-    if sys.platform == "win32":
-        pytest.skip("G2P not enabled")
     model_path = os.path.join(acoustic_model_dir, "acoustic_g2p_output_model.zip")
     dict_path = os.path.join(dict_dir, "acoustic_g2p_dictionary.yaml")
     output_directory = os.path.join(generated_dir, "acoustic_g2p_output")

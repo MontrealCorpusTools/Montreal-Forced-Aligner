@@ -24,7 +24,7 @@ from montreal_forced_aligner.exceptions import (
     PretrainedModelNotFoundError,
     PronunciationAcousticMismatchError,
 )
-from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter
+from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter, mfa_open
 from montreal_forced_aligner.utils import configure_logger
 
 if TYPE_CHECKING:
@@ -112,7 +112,7 @@ class Archive(MfaModel):
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
         else:
-            self.dirname = os.path.join(root_directory, self.name)
+            self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
             if os.path.exists(self.dirname):
                 shutil.rmtree(self.dirname, ignore_errors=True)
 
@@ -240,7 +240,7 @@ class Archive(MfaModel):
             if not os.path.exists(meta_path):
                 meta_path = os.path.join(self.dirname, "meta.yaml")
                 format = "yaml"
-            with open(meta_path, "r", encoding="utf8") as f:
+            with mfa_open(meta_path, "r") as f:
                 if format == "yaml":
                     self._meta = yaml.safe_load(f)
                 else:
@@ -257,7 +257,7 @@ class Archive(MfaModel):
         trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             The trainer to construct the metadata from
         """
-        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+        with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
             json.dump(trainer.meta, f)
 
     @classmethod
@@ -362,7 +362,7 @@ class AcousticModel(Archive):
         trainer: :class:`~montreal_forced_aligner.abc.ModelExporterMixin`
             Trainer to supply metadata information about the acoustic model
         """
-        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+        with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
             json.dump(trainer.meta, f)
 
     @property
@@ -422,7 +422,7 @@ class AcousticModel(Archive):
                     "features": default_features,
                 }
             else:
-                with open(meta_path, "r", encoding="utf8") as f:
+                with mfa_open(meta_path, "r") as f:
                     if format == "yaml":
                         self._meta = yaml.safe_load(f)
                     else:
@@ -681,7 +681,7 @@ class G2PModel(Archive):
             Trainer for the G2P model
         """
 
-        with open(os.path.join(self.dirname, "meta.json"), "w", encoding="utf8") as f:
+        with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
             json.dump(g2p_trainer.meta, f, cls=EnhancedJSONEncoder)
 
     @property
@@ -696,7 +696,7 @@ class G2PModel(Archive):
             if not os.path.exists(meta_path):
                 self._meta = {"version": "0.9.0", "architecture": "phonetisaurus"}
             else:
-                with open(meta_path, "r", encoding="utf8") as f:
+                with mfa_open(meta_path, "r") as f:
                     if format == "json":
                         self._meta = json.load(f)
                     else:
@@ -823,7 +823,7 @@ class LanguageModel(Archive):
             self.root_directory = root_directory
             self._meta = {}
             self.name, _ = os.path.splitext(os.path.basename(source))
-            self.dirname = os.path.join(root_directory, self.name)
+            self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
             if not os.path.exists(self.dirname):
                 os.makedirs(self.dirname, exist_ok=True)
             copy(source, self.large_arpa_path)
@@ -838,7 +838,7 @@ class LanguageModel(Archive):
         for path in [self.small_arpa_path, self.medium_arpa_path, self.large_arpa_path]:
             if os.path.exists(path):
                 return path
-        raise LanguageModelNotFoundError()
+        raise LanguageModelNotFoundError(self.small_arpa_path)
 
     @property
     def carpa_path(self) -> str:
@@ -848,7 +848,7 @@ class LanguageModel(Archive):
         for path in [self.large_arpa_path, self.medium_arpa_path, self.small_arpa_path]:
             if os.path.exists(path):
                 return path
-        raise LanguageModelNotFoundError()
+        raise LanguageModelNotFoundError(self.large_arpa_path)
 
     @property
     def small_arpa_path(self) -> str:
@@ -923,7 +923,7 @@ class DictionaryModel(MfaModel):
                 get_temporary_directory(), "extracted_models", self.model_type
             )
         self.path = path
-        self.dirname = os.path.join(root_directory, self.name)
+        self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         self.oov_probabilities = True
@@ -947,7 +947,7 @@ class DictionaryModel(MfaModel):
         }
 
         count = 0
-        with open(self.path, "r", encoding="utf8") as f:
+        with mfa_open(self.path, "r") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -1115,7 +1115,7 @@ class DictionaryModel(MfaModel):
         """
         mapping = {}
         if self.is_multiple:
-            with open(self.path, "r", encoding="utf8") as f:
+            with mfa_open(self.path, "r") as f:
                 data = yaml.safe_load(f)
                 for speaker, path in data.items():
                     if path not in mapping:
@@ -1218,7 +1218,7 @@ class ModelManager:
     def refresh_local(self) -> None:
         """Refresh cached information with the latest list of local model"""
         if os.path.exists(self.cache_path):
-            with open(self.cache_path, "r", encoding="utf8") as f:
+            with mfa_open(self.cache_path, "r") as f:
                 self._cache_info = json.load(f)
                 if "list_etags" in self._cache_info:
                     self._cache_info["list_etags"] = {
@@ -1291,7 +1291,7 @@ class ModelManager:
                     d["id"],
                 ]
             page += 1
-        with open(self.cache_path, "w", encoding="utf8") as f:
+        with mfa_open(self.cache_path, "w") as f:
             json.dump(self._cache_info, f)
 
     def has_local_model(self, model_type: str, model_name: str) -> bool:
@@ -1404,7 +1404,7 @@ class ModelManager:
         if r.status_code >= 400:
             raise ModelsConnectionError(r.status_code, r.json(), r.headers)
         self._cache_info[release.download_link] = r.headers["etag"]
-        with open(local_path, "wb") as f:
+        with mfa_open(local_path, "wb") as f:
             f.write(r.content)
         self.refresh_local()
         self.logger.info(

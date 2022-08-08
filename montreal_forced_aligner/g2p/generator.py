@@ -10,29 +10,19 @@ import statistics
 import time
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
+import pynini
 import tqdm
+from pynini import Fst, TokenType
+from pynini.lib import rewrite
+from pywrapfst import SymbolTable
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
 from montreal_forced_aligner.exceptions import PyniniGenerationError
 from montreal_forced_aligner.g2p.mixins import G2PTopLevelMixin
-from montreal_forced_aligner.helper import comma_join, score_g2p
+from montreal_forced_aligner.helper import comma_join, mfa_open, score_g2p
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Stopped
-
-try:
-    import pynini
-    from pynini import Fst, SymbolTable, TokenType
-    from pynini.lib import rewrite
-
-    G2P_DISABLED = False
-except ImportError:
-    pynini = None
-    TokenType = str
-    Fst = None
-    SymbolTable = None
-    rewrite = None
-    G2P_DISABLED = True
 
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
@@ -631,7 +621,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 )
                 total_edits += edits
                 total_length += length
-        with open(self.evaluation_csv_path, "w", encoding="utf8", newline="") as f:
+        with mfa_open(self.evaluation_csv_path, "w") as f:
             writer = csv.DictWriter(
                 f,
                 fieldnames=[
@@ -707,7 +697,7 @@ class PyniniWordListGenerator(PyniniValidator):
         """Set up the G2P generator"""
         if self.initialized:
             return
-        with open(self.word_list_path, "r", encoding="utf8") as f:
+        with mfa_open(self.word_list_path, "r") as f:
             for line in f:
                 self.word_list.extend(line.strip().split())
         if not self.include_bracketed:
@@ -815,7 +805,7 @@ class OrthographicWordListGenerator(OrthographyGenerator, TopLevelMfaWorker):
         """Set up the pronunciation generator"""
         if self.initialized:
             return
-        with open(self.word_list_path, "r", encoding="utf8") as f:
+        with mfa_open(self.word_list_path, "r") as f:
             for line in f:
                 self.word_list.extend(line.strip().split())
         if not self.include_bracketed:

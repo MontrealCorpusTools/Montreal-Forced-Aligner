@@ -1,10 +1,7 @@
 import os
 
-import pytest
-
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
-from montreal_forced_aligner.g2p.trainer import G2P_DISABLED
 
 
 def test_train_acoustic_with_g2p(
@@ -12,10 +9,9 @@ def test_train_acoustic_with_g2p(
     english_us_mfa_dictionary,
     generated_dir,
     temp_dir,
+    train_g2p_acoustic_config_path,
     acoustic_g2p_model_path,
 ):
-    if G2P_DISABLED:
-        pytest.skip("G2P disabled")
     if os.path.exists(acoustic_g2p_model_path):
         os.remove(acoustic_g2p_model_path)
     command = [
@@ -25,15 +21,12 @@ def test_train_acoustic_with_g2p(
         os.path.join(generated_dir, "basic_output"),
         "-t",
         temp_dir,
-        "--train_g2p",
         "-q",
         "--clean",
         "--quiet",
         "--debug",
-        "--beam",
-        "20",
-        "--retry_beam",
-        "80",
+        "--config_path",
+        train_g2p_acoustic_config_path,
         "-o",
         acoustic_g2p_model_path,
     ]

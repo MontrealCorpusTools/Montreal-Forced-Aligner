@@ -10,6 +10,7 @@ import soundfile
 
 from montreal_forced_aligner.data import FileExtensions, SoundFileInformation
 from montreal_forced_aligner.exceptions import SoundFileError
+from montreal_forced_aligner.helper import mfa_open
 
 SoundFileInfoDict = typing.Dict[str, typing.Union[int, float, str]]
 
@@ -43,7 +44,7 @@ def load_text(path: str) -> str:
     str
         Orthographic text of the file
     """
-    with open(path, "r", encoding="utf8") as f:
+    with mfa_open(path, "r") as f:
         text = f.read().strip()
     return text
 

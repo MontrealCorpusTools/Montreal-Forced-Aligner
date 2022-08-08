@@ -23,6 +23,7 @@ from montreal_forced_aligner.alignment.multiprocessing import (
 from montreal_forced_aligner.db import File, Speaker, Utterance
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import NoAlignmentsError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, run_non_mp
 
 if TYPE_CHECKING:
@@ -441,7 +442,7 @@ class AlignMixin(DictionaryMixin):
 
         if hasattr(self, "db_engine"):
             csv_path = os.path.join(self.working_directory, "alignment_log_likelihood.csv")
-            with open(csv_path, "w", newline="", encoding="utf8") as f, self.session() as session:
+            with mfa_open(csv_path, "w") as f, self.session() as session:
                 writer = csv.writer(f)
                 writer.writerow(["file", "begin", "end", "speaker", "loglikelihood"])
                 utterances = (

@@ -15,6 +15,7 @@ from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
 from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
@@ -150,7 +151,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                         pbar.update(num_utterances + errors)
         log_path = os.path.join(self.working_log_directory, "map_model_est.log")
         occs_path = os.path.join(self.working_directory, "final.occs")
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             acc_files = []
             for j in arguments:
                 acc_files.extend(j.acc_paths.values())
@@ -309,7 +310,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 )
             self.adaptation_done = True
         except Exception as e:
-            with open(dirty_path, "w"):
+            with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
                 import logging
@@ -318,7 +319,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                 log_kaldi_errors(e.error_logs, logger)
                 e.update_log_file(logger)
             raise
-        with open(done_path, "w"):
+        with mfa_open(done_path, "w"):
             pass
 
     @property

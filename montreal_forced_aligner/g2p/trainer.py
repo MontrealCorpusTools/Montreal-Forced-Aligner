@@ -11,9 +11,12 @@ import re
 import shutil
 import subprocess
 import time
-from typing import Any, List, NamedTuple, Optional, Set
+from typing import Any, List, NamedTuple, Set
 
+import pynini
+import pywrapfst
 import tqdm
+from pynini import Fst
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.data import WordType
@@ -21,31 +24,9 @@ from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlignmentError
 from montreal_forced_aligner.g2p.generator import PyniniValidator
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import G2PModel
 from montreal_forced_aligner.utils import Stopped, thirdparty_binary
-
-try:
-    import pynini
-    import pywrapfst
-    from pynini import Fst, TokenType
-    from pynini.lib import rewrite
-    from pywrapfst import convert
-
-    G2P_DISABLED = False
-
-except ImportError:
-    pynini = None
-    pywrapfst = None
-    TokenType = Optional[str]
-    rewrite = None
-    Fst = None
-
-    def convert(x):
-        """stub function"""
-        pass
-
-    G2P_DISABLED = True
-
 
 Labels = List[Any]
 
@@ -110,7 +91,7 @@ class RandomStartWorker(mp.Process):
 
     def run(self) -> None:
         """Run the random start worker"""
-        with open(self.log_file, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_file, "w") as log_file:
             while True:
                 try:
                     args = self.job_q.get(timeout=1)
@@ -161,13 +142,13 @@ class RandomStartWorker(mp.Process):
                                 assert match, line
                                 likelihood = float(match.group(1))
                                 self.return_queue.put(1)
-                            with open(likelihood_path, "w") as f:
+                            with mfa_open(likelihood_path, "w") as f:
                                 f.write(str(likelihood))
                         log_file.write(
                             f"{args.seed} training took {time.time() - random_end} seconds\n"
                         )
                     else:
-                        with open(likelihood_path, "r") as f:
+                        with mfa_open(likelihood_path, "r") as f:
                             likelihood = f.read().strip()
                     self.return_queue.put((afst_path, likelihood))
                 except Exception:
@@ -363,9 +344,7 @@ class PyniniTrainerMixin:
         if os.path.exists(self.fst_path):
             self.log_info("Model building already done, skipping!")
             return
-        with open(
-            os.path.join(self.working_log_directory, "model.log"), "w", encoding="utf8"
-        ) as logf:
+        with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
             ngramcount_proc = subprocess.Popen(
                 [
                     thirdparty_binary("ngramcount"),
@@ -457,8 +436,8 @@ class PyniniTrainerMixin:
     ) -> None:
         """Builds covering grammar and lexicon FARs."""
         # Sets of labels for the covering grammar.
-        with open(
-            os.path.join(self.working_log_directory, "covering_grammar.log"), "w", encoding="utf8"
+        with mfa_open(
+            os.path.join(self.working_log_directory, "covering_grammar.log"), "w"
         ) as log_file:
             com = [
                 thirdparty_binary("farcompilestrings"),
@@ -742,7 +721,7 @@ class PyniniTrainer(
                     k: v for k, v in word_dict.items() if k in validation_words
                 }
                 if self.debug:
-                    with open(
+                    with mfa_open(
                         os.path.join(self.working_directory, "validation_set.txt"),
                         "w",
                         encoding="utf8",
@@ -750,9 +729,7 @@ class PyniniTrainer(
                         for word in self.g2p_validation_dictionary:
                             f.write(word + "\n")
 
-            with open(self.input_path, "w", encoding="utf8") as inf, open(
-                self.output_path, "w", encoding="utf8"
-            ) as outf:
+            with mfa_open(self.input_path, "w") as inf, mfa_open(self.output_path, "w") as outf:
                 for word, pronunciations in self.g2p_training_dictionary.items():
                     if re.match(r"\W", word) is not None:
                         continue

@@ -18,10 +18,6 @@ All platforms
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 
-.. warning::
-
-   Windows native install is not fully supported in 2.0.  G2P functionality will be unavailable due to Pynini supporting only Linux and MacOS. To use G2P functionality on Windows, please set up the :xref:`wsl` and use the Bash console to continue the instructions.
-
 Upgrading from non-conda version
 ================================
 
@@ -45,7 +41,7 @@ If the Conda installation above does not work or the binaries don't work on your
 
 .. note::
 
-   You can also clone the conda forge feedstocks for `OpenFst <https://github.com/conda-forge/openfst-feedstock>`_, `SoX <https://github.com/conda-forge/sox-feedstock>`_, `Kaldi <https://github.com/conda-forge/kaldi-feedstock>`_, and `MFA <https://github.com/conda-forge/montreal-forced-aligner-feedstock>`_ and run them with `conda build <https://docs.conda.io/projects/conda-build/en/latest/>`_ to build for your specific system.
+   You can also clone the conda-forge feedstocks for `OpenFst <https://github.com/conda-forge/openfst-feedstock>`_, `SoX <https://github.com/conda-forge/sox-feedstock>`_, `Kaldi <https://github.com/conda-forge/kaldi-feedstock>`_, and `MFA <https://github.com/conda-forge/montreal-forced-aligner-feedstock>`_ and run them with `conda build <https://docs.conda.io/projects/conda-build/en/latest/>`_ to build for your specific system.
 
 Installing via pip
 ------------------
@@ -76,8 +72,7 @@ MFA uses a temporary directory for commands that can be specified in running com
 Supported functionality
 =======================
 
-Currently in the 2.0 beta, supported functionality is fragmented across platforms.  Native support for features
-is as follows.  Note that Windows can use Windows Subsystem for Linux to use the Linux version as necessary.
+As of version 2.0.6, all features are available on all platforms.  Prior to this version, G2P and language model training was unavailable on native Windows, but could be used with Windows Subsystem for Linux (WSL).
 
 .. list-table::
    :header-rows: 1
@@ -105,7 +100,7 @@ is as follows.  Note that Windows can use Windows Subsystem for Linux to use the
           <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
-          <span class='rst-table-cell not-supported'>No</span>
+          <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
           <span class='rst-table-cell supported'>Yes</span>
@@ -116,7 +111,7 @@ is as follows.  Note that Windows can use Windows Subsystem for Linux to use the
           <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
-          <span class='rst-table-cell not-supported'>No</span>
+          <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
           <span class='rst-table-cell supported'>Yes</span>
@@ -138,7 +133,7 @@ is as follows.  Note that Windows can use Windows Subsystem for Linux to use the
           <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
-          <span class='rst-table-cell not-supported'>No</span>
+          <span class='rst-table-cell supported'>Yes</span>
      - .. raw:: html
 
           <span class='rst-table-cell supported'>Yes</span>

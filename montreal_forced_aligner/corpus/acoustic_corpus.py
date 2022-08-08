@@ -49,7 +49,7 @@ from montreal_forced_aligner.exceptions import (
     TextGridParseError,
     TextParseError,
 )
-from montreal_forced_aligner.helper import load_scp
+from montreal_forced_aligner.helper import load_scp, mfa_open
 from montreal_forced_aligner.textgrid import parse_aligned_textgrid
 from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped, thirdparty_binary
 
@@ -514,8 +514,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 for p in procs:
                     p.join()
                 if error_dict:
-                    for v in error_dict.values():
-                        print(v)
+                    for e in error_dict.values():
+                        print(e)
                     self.dirty = True
                     sys.exit(1)
             else:
@@ -527,7 +527,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             update_mapping = []
             session.query(Utterance).update({"ignored": True})
             for j in arguments:
-                with open(j.feats_scp_path, "r", encoding="utf8") as f:
+                with mfa_open(j.feats_scp_path, "r") as f:
                     for line in f:
                         line = line.strip()
                         if line == "":
@@ -555,7 +555,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         cmvn_ark = os.path.join(self.corpus_output_directory, "cmvn.ark")
         cmvn_scp = os.path.join(self.corpus_output_directory, "cmvn.scp")
         log_path = os.path.join(self.features_log_directory, "cmvn.log")
-        with open(log_path, "w") as logf:
+        with mfa_open(log_path, "w") as logf:
             subprocess.call(
                 [
                     thirdparty_binary("compute-cmvn-stats"),
@@ -730,7 +730,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     def _write_feats(self) -> None:
         """Write feats scp file for Kaldi"""
         feats_path = os.path.join(self.corpus_output_directory, "feats.scp")
-        with self.session() as session, open(feats_path, "w", encoding="utf8") as f:
+        with self.session() as session, mfa_open(feats_path, "w") as f:
             utterances = (
                 session.query(Utterance.kaldi_id, Utterance.features)
                 .filter_by(ignored=False)
@@ -749,7 +749,9 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Dimension of feature vectors
         """
         feature_string = self.construct_base_feature_string()
-        with open(os.path.join(self.features_log_directory, "feat-to-dim.log"), "w") as log_file:
+        with mfa_open(
+            os.path.join(self.features_log_directory, "feat-to-dim.log"), "w"
+        ) as log_file:
             subset_proc = subprocess.Popen(
                 [
                     thirdparty_binary("subset-feats"),
@@ -833,7 +835,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             else:
                                 break
                             continue
-                        if time.time() - last_poll > 15:
+                        if time.time() - last_poll > 5:
                             pbar.total = file_counts.value()
                             last_poll = time.time()
                         pbar.update(1)

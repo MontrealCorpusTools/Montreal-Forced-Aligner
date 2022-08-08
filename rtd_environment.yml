@@ -14,6 +14,7 @@ dependencies:
   - dataclassy
   - sqlalchemy>=1.4
   - pip
+  - pynini
   - biopython
   - sphinx
   - numpydoc

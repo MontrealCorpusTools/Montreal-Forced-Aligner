@@ -32,7 +32,7 @@ import yaml
 from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.exceptions import KaldiProcessingError, MultiprocessingError
-from montreal_forced_aligner.helper import comma_join, load_configuration
+from montreal_forced_aligner.helper import comma_join, load_configuration, mfa_open
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -615,7 +615,7 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
 
     def save_worker_config(self) -> None:
         """Export worker configuration to its working directory"""
-        with open(self.worker_config_path, "w") as f:
+        with mfa_open(self.worker_config_path, "w") as f:
             yaml.dump(self.configuration, f)
 
     def _validate_previous_configuration(self, conf: MetaDict) -> bool:

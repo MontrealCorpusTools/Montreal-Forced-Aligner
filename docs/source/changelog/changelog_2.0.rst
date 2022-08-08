@@ -5,6 +5,16 @@
 2.0 Changelog
 *************
 
+2.0.6
+=====
+
+- Added G2P and language model training support to Windows
+- Fixed a bug where exporting trained models to the current working directory would not work :github_issue:`494`
+- Fixed a crash in exporting transcriptions to TextGrids
+- Added support for parsing out longer quoted strings :github_issue:`492`
+- Fix error message for files with no file extensions :github_issue:`495`
+- Fix PhoneSetType error for some models trained on earlier versions :github_issue:`496` and :github_issue:`484`
+
 2.0.5
 =====
 

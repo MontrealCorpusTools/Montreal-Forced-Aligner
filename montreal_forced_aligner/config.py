@@ -9,6 +9,7 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from montreal_forced_aligner.exceptions import RootDirectoryError
+from montreal_forced_aligner.helper import mfa_open
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -89,7 +90,7 @@ def load_command_history() -> List[Dict[str, Any]]:
     path = generate_command_history_path()
     history = []
     if os.path.exists(path):
-        with open(path, "r", encoding="utf8") as f:
+        with mfa_open(path, "r") as f:
             history = yaml.safe_load(f)
     for h in history:
         h["command"] = re.sub(r"^\S+.py ", "mfa ", h["command"])
@@ -114,7 +115,7 @@ def update_command_history(command_data: Dict[str, Any]) -> None:
     path = generate_command_history_path()
     history.append(command_data)
     history = history[-50:]
-    with open(path, "w", encoding="utf8") as f:
+    with mfa_open(path, "w") as f:
         yaml.safe_dump(history, f)
 
 
@@ -143,7 +144,7 @@ def update_global_config(args: Namespace) -> None:
         "temporary_directory": get_temporary_directory(),
     }
     if os.path.exists(global_configuration_file):
-        with open(global_configuration_file, "r", encoding="utf8") as f:
+        with mfa_open(global_configuration_file, "r") as f:
             data = yaml.safe_load(f)
             default_config.update(data)
     if args.always_clean:
@@ -186,7 +187,7 @@ def update_global_config(args: Namespace) -> None:
         default_config["blas_num_threads"] = args.blas_num_threads
     if args.temporary_directory:
         default_config["temporary_directory"] = args.temporary_directory
-    with open(global_configuration_file, "w", encoding="utf8") as f:
+    with mfa_open(global_configuration_file, "w") as f:
         yaml.dump(default_config, f)
 
 
@@ -216,7 +217,7 @@ def load_global_config() -> Dict[str, Any]:
         "temporary_directory": get_temporary_directory(),
     }
     if os.path.exists(global_configuration_file):
-        with open(global_configuration_file, "r", encoding="utf8") as f:
+        with mfa_open(global_configuration_file, "r") as f:
             data = yaml.safe_load(f)
             default_config.update(data)
     if "temp_directory" in default_config:

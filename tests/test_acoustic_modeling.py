@@ -151,7 +151,6 @@ def test_basic_sat(basic_dict_path, basic_corpus_dir, generated_dir, sat_train_c
         disable_mp=False
     )
     a.train()
-    assert len(a.training_configs[a.final_identifier].realignment_iterations) > 0
     assert len(a.training_configs[a.final_identifier].fmllr_iterations) > 1
     a.export_model(output_model_path)
 

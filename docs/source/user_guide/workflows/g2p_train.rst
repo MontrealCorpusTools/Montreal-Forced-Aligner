@@ -17,9 +17,9 @@ The G2P model output will be a .zip file like the acoustic model generated from 
 
 See :ref:`g2p_model_training_example` for an example of how to train a G2P model with a premade toy example.
 
-.. warning::
+.. note::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
+   As of version 2.0.6, users on Windows can run this command natively without requiring :xref:`wsl`, see :ref:`installation` for more details.
 
 .. _g2p_phonetisaurus_training:
 

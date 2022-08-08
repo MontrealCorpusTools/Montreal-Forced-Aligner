@@ -5,14 +5,15 @@ import os
 
 import yaml
 
-from ..exceptions import (
+from montreal_forced_aligner.exceptions import (
     FileArgumentNotFoundError,
     ModelExtensionError,
     ModelTypeNotSupportedError,
     NoDefaultSpeakerDictionaryError,
     PretrainedModelNotFoundError,
 )
-from ..models import MODEL_TYPES
+from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.models import MODEL_TYPES
 
 __all__ = ["validate_model_arg"]
 
@@ -57,7 +58,7 @@ def validate_model_arg(name: str, model_type: str) -> str:
         if not os.path.exists(name):
             raise FileArgumentNotFoundError(name)
         if model_type == "dictionary" and os.path.splitext(name)[1].lower() == ".yaml":
-            with open(name, "r", encoding="utf8") as f:
+            with mfa_open(name, "r") as f:
                 data = yaml.safe_load(f)
                 found_default = False
                 for speaker, path in data.items():
@@ -67,8 +68,9 @@ def validate_model_arg(name: str, model_type: str) -> str:
                 if not found_default:
                     raise NoDefaultSpeakerDictionaryError()
     else:
-        if os.path.splitext(name)[1]:
-            raise ModelExtensionError(name, model_type, model_class.extensions)
+        if os.path.exists(name):
+            if os.path.splitext(name)[1]:
+                raise ModelExtensionError(name, model_type, model_class.extensions)
         else:
             raise PretrainedModelNotFoundError(name, model_type, available_models)
     return name

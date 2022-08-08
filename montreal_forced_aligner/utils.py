@@ -27,6 +27,7 @@ from montreal_forced_aligner.exceptions import (
     MultiprocessingError,
     ThirdpartyError,
 )
+from montreal_forced_aligner.helper import mfa_open
 
 __all__ = [
     "thirdparty_binary",
@@ -181,7 +182,7 @@ def thirdparty_binary(binary_name: str) -> str:
     """
     bin_path = shutil.which(binary_name)
     if bin_path is None:
-        if binary_name in ["fstcompile", "fstarcsort", "fstconvert"] and sys.platform != "win32":
+        if binary_name in ["fstcompile", "fstarcsort", "fstconvert"]:
             raise ThirdpartyError(binary_name, open_fst=True)
         else:
             raise ThirdpartyError(binary_name)
@@ -205,7 +206,7 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
     for path in error_logs:
         logger.debug("")
         logger.debug(path)
-        with open(path, "r", encoding="utf8") as f:
+        with mfa_open(path, "r") as f:
             for line in f:
                 logger.debug("\t" + line.strip())
 
@@ -235,7 +236,7 @@ def configure_logger(
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
     if log_file is not None:
-        file_handler = logging.FileHandler(log_file, encoding="utf8")
+        file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
@@ -325,7 +326,7 @@ def parse_logs(log_directory: str) -> None:
     error_logs = []
     for name in os.listdir(log_directory):
         log_path = os.path.join(log_directory, name)
-        with open(log_path, "r", encoding="utf8") as f:
+        with mfa_open(log_path, "r") as f:
             for line in f:
                 line = line.strip()
                 if "error while loading shared libraries: libopenblas.so.0" in line:
@@ -368,6 +369,49 @@ class Counter(object):
         """Get the current value of the counter"""
         with self.lock:
             return self.val.value
+
+
+class ProgressCallback(object):
+    def __init__(self, callback=None, total_callback=None):
+        self._total = 0
+        self.callback = callback
+        self.total_callback = total_callback
+        self._progress = 0
+        self.callback_interval = 1
+        self.lock = mp.Lock()
+
+    @property
+    def total(self) -> int:
+        with self.lock:
+            return self._total
+
+    @property
+    def progress(self) -> int:
+        with self.lock:
+            return self._progress
+
+    @property
+    def progress_percent(self) -> float:
+        with self.lock:
+            if not self._total:
+                return 0.0
+            return self._progress / self._total
+
+    def update_total(self, total: int) -> None:
+        with self.lock:
+            self._total = total
+            if self.total_callback is not None:
+                self.total_callback(self._total)
+
+    def set_progress(self, total_progress: int) -> None:
+        with self.lock:
+            self._progress = total_progress
+
+    def increment_progress(self, increment: int) -> None:
+        with self.lock:
+            self._progress += increment
+            if self.callback is not None:
+                self.callback(self._progress)
 
 
 class Stopped(object):

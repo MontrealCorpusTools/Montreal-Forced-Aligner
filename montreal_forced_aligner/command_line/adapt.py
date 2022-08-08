@@ -117,7 +117,7 @@ def run_adapt_model(args: Namespace, unknown_args: Optional[List[str]] = None) -
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

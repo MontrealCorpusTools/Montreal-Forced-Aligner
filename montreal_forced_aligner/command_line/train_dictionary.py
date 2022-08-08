@@ -77,7 +77,7 @@ def validate_args(args: Namespace) -> None:
     args.acoustic_model_path = validate_model_arg(args.acoustic_model_path, "acoustic")
 
 
-def run_train_dictionary(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_train_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running pronunciation probability training
 
@@ -85,8 +85,8 @@ def run_train_dictionary(args: Namespace, unknown: Optional[List[str]] = None) -
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    train_dictionary(args, unknown)
+    train_dictionary(args, unknown_args)

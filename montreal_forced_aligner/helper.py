@@ -10,6 +10,7 @@ import itertools
 import json
 import re
 import typing
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 
 import ansiwrap
@@ -41,6 +42,24 @@ __all__ = [
 ]
 
 
+@contextmanager
+def mfa_open(path, mode="r", encoding="utf8", newline=""):
+    if "r" in mode:
+        if "b" in mode:
+            file = open(path, mode)
+        else:
+            file = open(path, mode, encoding=encoding)
+    else:
+        if "b" in mode:
+            file = open(path, mode)
+        else:
+            file = open(path, mode, encoding=encoding, newline=newline)
+    try:
+        yield file
+    finally:
+        file.close()
+
+
 def load_configuration(config_path: str) -> Dict[str, Any]:
     """
     Load a configuration file
@@ -56,7 +75,7 @@ def load_configuration(config_path: str) -> Dict[str, Any]:
         Configuration dictionary
     """
     data = {}
-    with open(config_path, "r", encoding="utf8") as f:
+    with mfa_open(config_path, "r") as f:
         if config_path.endswith(".yaml"):
             data = yaml.load(f, Loader=yaml.SafeLoader)
         elif config_path.endswith(".json"):
@@ -597,7 +616,7 @@ def output_mapping(mapping: Dict[str, Any], path: str, skip_safe: bool = False) 
     """
     if not mapping:
         return
-    with open(path, "w", encoding="utf8") as f:
+    with mfa_open(path, "w") as f:
         for k in sorted(mapping.keys()):
             v = mapping[k]
             if isinstance(v, (list, set, tuple)):
@@ -637,7 +656,7 @@ def load_scp(path: str, data_type: Optional[Type] = str) -> Dict[str, Any]:
 
     """
     scp = {}
-    with open(path, "r", encoding="utf8") as f:
+    with mfa_open(path, "r") as f:
         for line in f:
             line = line.strip()
             if line == "":
@@ -861,8 +880,6 @@ def align_phones(
         List of CTM intervals to compare to reference
     silence_phone: str
         Silence phone (these are ignored in the final calculation)
-    oov_phone: str
-        OOV phone (ignored in the final calculation)
     custom_mapping: dict[str, str], optional
         Mapping of phones to treat as matches even if they have different symbols
 

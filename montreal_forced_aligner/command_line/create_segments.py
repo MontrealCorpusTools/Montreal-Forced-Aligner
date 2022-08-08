@@ -69,7 +69,7 @@ def validate_args(args: Namespace) -> None:
         raise ArgumentError("Corpus directory and output directory cannot be the same folder.")
 
 
-def run_create_segments(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_create_segments(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running sound file segmentation
 
@@ -77,8 +77,8 @@ def run_create_segments(args: Namespace, unknown: Optional[List[str]] = None) ->
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    create_segments(args, unknown)
+    create_segments(args, unknown_args)

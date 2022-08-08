@@ -20,6 +20,7 @@ __all__ = [
     "MfaArguments",
     "CtmInterval",
     "TextFileType",
+    "TextgridFormats",
     "SoundFileType",
     "WordType",
     "PhoneType",

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from typing import TYPE_CHECKING, List, Optional
 
 from montreal_forced_aligner.command_line.utils import validate_model_arg
@@ -129,17 +128,13 @@ def validate_dictionary_args(args: Namespace) -> None:
     :class:`~montreal_forced_aligner.exceptions.ArgumentError`
         If there is a problem with any arguments
     """
-    if sys.platform == "win32":
-        raise ArgumentError(
-            "Cannot validate dictionaries on native Windows, please use Windows Subsystem for Linux."
-        )
 
     args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
     if args.g2p_model_path:
         args.g2p_model_path = validate_model_arg(args.g2p_model_path, "g2p")
 
 
-def run_validate_corpus(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_validate_corpus(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running corpus validation
 
@@ -147,14 +142,14 @@ def run_validate_corpus(args: Namespace, unknown: Optional[List[str]] = None) ->
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)
-    validate_corpus(args, unknown)
+    validate_corpus(args, unknown_args)
 
 
-def run_validate_dictionary(args: Namespace, unknown: Optional[List[str]] = None) -> None:
+def run_validate_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
     """
     Wrapper function for running dictionary validation
 
@@ -162,8 +157,8 @@ def run_validate_dictionary(args: Namespace, unknown: Optional[List[str]] = None
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_dictionary_args(args)
-    validate_dictionary(args, unknown)
+    validate_dictionary(args, unknown_args)

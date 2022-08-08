@@ -43,7 +43,7 @@ from montreal_forced_aligner.db import (
     WordType,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError
-from montreal_forced_aligner.helper import align_phones
+from montreal_forced_aligner.helper import align_phones, mfa_open
 from montreal_forced_aligner.textgrid import export_textgrid, output_textgrid_writing_errors
 from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped
 
@@ -242,7 +242,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         initial_silence_prob_sum = 0
         final_silence_correction_sum = 0
         final_non_silence_correction_sum = 0
-        with open(
+        with mfa_open(
             os.path.join(self.working_log_directory, "pronunciation_probability_calculation.log"),
             "w",
             encoding="utf8",
@@ -696,7 +696,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         phone_length_sum = 0
         if self.alignment_evaluation_done:
             self.log_info("Exporting saved evaluation...")
-            with self.session() as session, open(csv_path, "w", encoding="utf8", newline="") as f:
+            with self.session() as session, mfa_open(csv_path, "w") as f:
                 writer = csv.DictWriter(f, fieldnames=csv_header)
                 writer.writeheader()
                 bn = DictBundle(
@@ -775,9 +775,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     indices.append(u)
                     to_comp.append((reference_phone_labels, phone_labels))
 
-                with mp.Pool(self.num_jobs) as pool, open(
-                    csv_path, "w", encoding="utf8", newline=""
-                ) as f:
+                with mp.Pool(self.num_jobs) as pool, mfa_open(csv_path, "w") as f:
                     writer = csv.DictWriter(f, fieldnames=csv_header)
                     writer.writeheader()
                     gen = pool.starmap(score_func, to_comp)

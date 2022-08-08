@@ -105,7 +105,7 @@ def run_train_acoustic_model(args: Namespace, unknown_args: Optional[List[str]] 
     ----------
     args: :class:`~argparse.Namespace`
         Parsed command line arguments
-    unknown: list[str]
+    unknown_args: list[str]
         Parsed command line arguments to be passed to the configuration objects
     """
     validate_args(args)

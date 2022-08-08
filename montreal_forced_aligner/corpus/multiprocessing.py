@@ -18,6 +18,7 @@ from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.db import File, SoundFile, Speaker, SpeakerOrdering, Utterance
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerSanitizationFunction
 from montreal_forced_aligner.exceptions import SoundFileError, TextGridParseError, TextParseError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import Counter, Stopped
 
 __all__ = ["AcousticDirectoryParser", "CorpusProcessWorker", "Job"]
@@ -330,7 +331,7 @@ class Job:
         segments_scp_path = self.construct_path(split_directory, "segments", "scp")
         if os.path.exists(segments_scp_path):
             return
-        with open(wav_scp_path, "w", encoding="utf8") as wav_file:
+        with mfa_open(wav_scp_path, "w") as wav_file:
             files = (
                 session.query(File.id, SoundFile.sox_string, SoundFile.sound_file_path)
                 .join(File.speakers)
@@ -345,7 +346,7 @@ class Job:
                     sox_string = sound_file_path
                 wav_file.write(f"{f_id} {sox_string}\n")
 
-        with open(segments_scp_path, "w", encoding="utf8") as segments_file:
+        with mfa_open(segments_scp_path, "w") as segments_file:
             utterances = (
                 session.query(
                     Utterance.kaldi_id,
@@ -436,32 +437,32 @@ class Job:
                 dict_pattern = f"{dict_id}.{self.name}"
 
             scp_path = os.path.join(split_directory, f"spk2utt.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for speaker in sorted(d["spk2utt"].keys()):
                     utts = " ".join(sorted(d["spk2utt"][speaker]))
                     f.write(f"{speaker} {utts}\n")
 
             scp_path = os.path.join(split_directory, f"cmvn.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for speaker in sorted(d["cmvns"].keys()):
                     f.write(f"{speaker} {d['cmvns'][speaker]}\n")
 
             scp_path = os.path.join(split_directory, f"utt2spk.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for utt in sorted(d["utt2spk"].keys()):
                     f.write(f"{utt} {d['utt2spk'][utt]}\n")
 
             scp_path = os.path.join(split_directory, f"feats.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for utt in sorted(d["feats"].keys()):
                     f.write(f"{utt} {d['feats'][utt]}\n")
 
             scp_path = os.path.join(split_directory, f"text.{dict_pattern}.int.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for utt in sorted(d["text_ints"].keys()):
                     f.write(f"{utt} {d['text_ints'][utt]}\n")
 
             scp_path = os.path.join(split_directory, f"text.{dict_pattern}.scp")
-            with open(scp_path, "w", encoding="utf8") as f:
+            with mfa_open(scp_path, "w") as f:
                 for utt in sorted(d["texts"].keys()):
                     f.write(f"{utt} {d['texts'][utt]}\n")

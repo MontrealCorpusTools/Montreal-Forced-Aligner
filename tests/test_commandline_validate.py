@@ -1,21 +1,15 @@
 import os
-import sys
-
-import pytest
 
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.validate import (
     run_validate_corpus,
     run_validate_dictionary,
 )
-from montreal_forced_aligner.exceptions import ArgumentError
 
 
 def test_validate_corpus(
     multilingual_ipa_tg_corpus_dir, english_mfa_acoustic_model, english_us_mfa_dictionary, temp_dir
 ):
-    if sys.platform == "win32":
-        pytest.skip("Transcription testing uses ngram")
     command = [
         "validate",
         multilingual_ipa_tg_corpus_dir,
@@ -54,6 +48,29 @@ def test_validate_training_corpus(
     run_validate_corpus(args)
 
 
+def test_validate_xsampa(
+    xsampa_corpus_dir,
+    xsampa_dict_path,
+    temp_dir,
+    xsampa_train_config_path,
+):
+
+    command = [
+        "validate",
+        xsampa_corpus_dir,
+        xsampa_dict_path,
+        "-t",
+        os.path.join(temp_dir, "validation_xsampa"),
+        "-q",
+        "--clean",
+        "--ignore_acoustics",
+        "--config_path",
+        xsampa_train_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_validate_corpus(args)
+
+
 def test_validate_dictionary(
     english_us_mfa_g2p_model,
     english_us_mfa_dictionary_subset,
@@ -71,11 +88,7 @@ def test_validate_dictionary(
         "1",
     ]
     args, unknown = parser.parse_known_args(command)
-    if sys.platform == "win32":
-        with pytest.raises(ArgumentError):
-            run_validate_dictionary(args)
-    else:
-        run_validate_dictionary(args)
+    run_validate_dictionary(args)
 
 
 def test_validate_dictionary_train(
@@ -90,8 +103,4 @@ def test_validate_dictionary_train(
         os.path.join(temp_dir, "dictionary_validation"),
     ]
     args, unknown = parser.parse_known_args(command)
-    if sys.platform == "win32":
-        with pytest.raises(ArgumentError):
-            run_validate_dictionary(args)
-    else:
-        run_validate_dictionary(args)
+    run_validate_dictionary(args)

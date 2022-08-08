@@ -8,7 +8,6 @@ import math
 import os
 import re
 import subprocess
-import sys
 import typing
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
@@ -37,7 +36,7 @@ from montreal_forced_aligner.exceptions import (
     DictionaryFileError,
     KaldiProcessingError,
 )
-from montreal_forced_aligner.helper import split_phone_position
+from montreal_forced_aligner.helper import mfa_open, split_phone_position
 from montreal_forced_aligner.models import DictionaryModel, PhoneSetType
 from montreal_forced_aligner.utils import thirdparty_binary
 
@@ -159,6 +158,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.laughter_regex = None
         self.compound_regex = None
         self.clitic_cleanup_regex = None
+        self.clitic_quote_regex = None
         self.clitic_marker = None
         self.use_g2p = False
 
@@ -236,6 +236,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         sanitize_function = SanitizeFunction(
             self.clitic_marker,
             self.clitic_cleanup_regex,
+            self.clitic_quote_regex,
             self.punctuation_regex,
             self.word_break_regex,
             self.bracket_regex,
@@ -428,7 +429,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
                     specials_found = set()
                     if not os.path.exists(dictionary_model.path):
                         raise DictionaryFileError(dictionary_model.path)
-                    with open(dictionary_model.path, "r", encoding="utf8") as inf:
+                    with mfa_open(dictionary_model.path, "r") as inf:
                         for i, line in enumerate(inf):
                             line = line.strip()
                             if not line:
@@ -784,7 +785,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             final_non_silence_cost = str(-math.log(self.final_non_silence_correction))
         base_silence_following_cost = -math.log(self.silence_probability)
         base_non_silence_following_cost = -math.log(1 - self.silence_probability)
-        with open(path, "w", encoding="utf8") as outf:
+        with mfa_open(path, "w") as outf:
             outf.write(
                 f"{start_state}\t{non_silence_state}\t{silence_disambiguation_symbol}\t{self.silence_word}\t{initial_non_silence_cost}\n"
             )  # initial no silence
@@ -922,7 +923,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
             Flag for whether to include per pronunciation silence probabilities, only valid
             when ``probability`` is set to True
         """
-        with open(path, "w", encoding="utf8") as f, self.session() as session:
+        with mfa_open(path, "w") as f, self.session() as session:
             columns = [Word.word, Pronunciation.pronunciation]
             if write_disambiguation:
                 columns.append(Pronunciation.disambiguation)
@@ -999,7 +1000,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         text_ext = ".text_fst"
         binary_ext = ".fst"
         word_disambig_path = os.path.join(dictionary.temp_directory, "word_disambig.txt")
-        with open(word_disambig_path, "w") as f:
+        with mfa_open(word_disambig_path, "w") as f:
             try:
                 f.write(str(self.word_mapping(dictionary.id)["#0"]))
             except KeyError:
@@ -1017,51 +1018,63 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         words_file_path = os.path.join(dictionary.temp_directory, "words.txt")
 
         log_path = os.path.join(dictionary.temp_directory, os.path.basename(binary_path) + ".log")
-        with open(log_path, "w") as log_file:
+        with mfa_open(log_path, "w") as log_file:
             log_file.write(f"Phone isymbols: {self.phone_symbol_table_path}\n")
             log_file.write(f"Word osymbols: {words_file_path}\n")
+            com = [
+                thirdparty_binary("fstcompile"),
+                f"--isymbols={self.phone_symbol_table_path}",
+                f"--osymbols={words_file_path}",
+                "--keep_isymbols=false",
+                "--keep_osymbols=false",
+                "--keep_state_numbering=true",
+                text_path,
+            ]
+            log_file.write(f"{' '.join(com)}\n")
+            log_file.flush()
             compile_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("fstcompile"),
-                    f"--isymbols={self.phone_symbol_table_path}",
-                    f"--osymbols={words_file_path}",
-                    "--keep_isymbols=false",
-                    "--keep_osymbols=false",
-                    "--keep_state_numbering=true",
-                    text_path,
-                ],
+                com,
                 stderr=log_file,
                 stdout=subprocess.PIPE,
             )
             if write_disambiguation:
+                com = [
+                    thirdparty_binary("fstaddselfloops"),
+                    self.phone_disambig_path,
+                    word_disambig_path,
+                ]
+                log_file.write(f"{' '.join(com)}\n")
+                log_file.flush()
                 selfloop_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("fstaddselfloops"),
-                        self.phone_disambig_path,
-                        word_disambig_path,
-                    ],
+                    com,
                     stdin=compile_proc.stdout,
                     stdout=subprocess.PIPE,
                     stderr=log_file,
                 )
+                com = [
+                    thirdparty_binary("fstarcsort"),
+                    "--sort_type=olabel",
+                    "-",
+                    binary_path,
+                ]
+                log_file.write(f"{' '.join(com)}\n")
+                log_file.flush()
                 arc_sort_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("fstarcsort"),
-                        "--sort_type=olabel",
-                        "-",
-                        binary_path,
-                    ],
+                    com,
                     stdin=selfloop_proc.stdout,
                     stderr=log_file,
                 )
             else:
+                com = [
+                    thirdparty_binary("fstarcsort"),
+                    "--sort_type=olabel",
+                    "-",
+                    binary_path,
+                ]
+                log_file.write(f"{' '.join(com)}\n")
+                log_file.flush()
                 arc_sort_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("fstarcsort"),
-                        "--sort_type=olabel",
-                        "-",
-                        binary_path,
-                    ],
+                    com,
                     stdin=compile_proc.stdout,
                     stderr=log_file,
                 )
@@ -1136,7 +1149,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         Write the phone mapping to the temporary directory
         """
-        with open(self.phone_symbol_table_path, "w", encoding="utf8") as f:
+        with mfa_open(self.phone_symbol_table_path, "w") as f:
             for p, i in self.phone_mapping.items():
                 f.write(f"{p} {i}\n")
 
@@ -1144,7 +1157,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         Write the phone mapping to the temporary directory
         """
-        with open(self.grapheme_symbol_table_path, "w", encoding="utf8") as f:
+        with mfa_open(self.grapheme_symbol_table_path, "w") as f:
             for p, i in self.grapheme_mapping.items():
                 f.write(f"{p} {i}\n")
 
@@ -1154,9 +1167,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         phone_extra = os.path.join(self.phones_dir, "extra_questions.txt")
         phone_extra_int = os.path.join(self.phones_dir, "extra_questions.int")
-        with open(phone_extra, "w", encoding="utf8") as outf, open(
-            phone_extra_int, "w", encoding="utf8"
-        ) as intf:
+        with mfa_open(phone_extra, "w") as outf, mfa_open(phone_extra_int, "w") as intf:
             for v in self.extra_questions_mapping.values():
                 if not v:
                     continue
@@ -1179,11 +1190,11 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         with self.session() as session:
             for dict_id, base_name in self.dictionary_base_names.items():
-                with open(
+                with mfa_open(
                     os.path.join(directory, f"oovs_found_{base_name}.txt"),
                     "w",
                     encoding="utf8",
-                ) as f, open(
+                ) as f, mfa_open(
                     os.path.join(directory, f"oov_counts_{base_name}.txt"),
                     "w",
                     encoding="utf8",
@@ -1268,11 +1279,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         """
         Write the word mapping to the temporary directory
         """
-        if sys.platform == "win32":
-            newline = ""
-        else:
-            newline = None
-        with open(dictionary.words_symbol_path, "w", encoding="utf8", newline=newline) as f:
+        with mfa_open(dictionary.words_symbol_path, "w") as f:
             for w, i in self.word_mapping(dictionary.id).items():
                 f.write(f"{w} {i}\n")
 

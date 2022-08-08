@@ -775,10 +775,15 @@ class LMError(MFAError):
 class LanguageModelNotFoundError(LMError):
     """
     Exception class for a language model not being found
+
+    Parameters
+    ----------
+    path: str
+        Path to missing language model
     """
 
-    def __init__(self):
-        super().__init__("Could not find a suitable language model.")
+    def __init__(self, path: str):
+        super().__init__(f"Could not find a suitable language model: {path}")
 
 
 class MultiprocessingError(MFAError):

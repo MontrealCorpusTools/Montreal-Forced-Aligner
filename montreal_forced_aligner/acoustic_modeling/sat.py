@@ -16,6 +16,7 @@ import tqdm
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
+from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
     KaldiFunction,
     KaldiProcessWorker,
@@ -75,7 +76,7 @@ class AccStatsTwoFeatsFunction(KaldiFunction):
     def _run(self) -> typing.Generator[bool]:
         """Run the function"""
 
-        with open(self.log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 ali_path = self.ali_paths[dict_id]
                 acc_path = self.acc_paths[dict_id]
@@ -362,7 +363,7 @@ class SatTrainer(TriphoneTrainer):
                         pbar.update(1)
 
         log_path = os.path.join(self.working_log_directory, "align_model_est.log")
-        with open(log_path, "w", encoding="utf8") as log_file:
+        with mfa_open(log_path, "w") as log_file:
 
             acc_files = []
             for x in arguments:

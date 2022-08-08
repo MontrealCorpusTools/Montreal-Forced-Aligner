@@ -1,15 +1,10 @@
 import os
-import sys
-
-import pytest
 
 from montreal_forced_aligner.command_line.mfa import parser
 from montreal_forced_aligner.command_line.train_lm import run_train_lm
 
 
 def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config_path):
-    if sys.platform == "win32":
-        pytest.skip("LM training not supported on Windows.")
     temp_dir = os.path.join(temp_dir, "train_lm")
     command = [
         "train_lm",
@@ -28,8 +23,6 @@ def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_conf
 
 
 def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
-    if sys.platform == "win32":
-        pytest.skip("LM training not supported on Windows.")
     temp_dir = os.path.join(temp_dir, "train_lm_text")
     text_dir = basic_split_dir[1]
     command = [
@@ -51,8 +44,6 @@ def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_
 def test_train_lm_dictionary(
     basic_split_dir, basic_dict_path, temp_dir, generated_dir, basic_train_lm_config_path
 ):
-    if sys.platform == "win32":
-        pytest.skip("LM training not supported on Windows.")
     temp_dir = os.path.join(temp_dir, "train_lm_dictionary")
     text_dir = basic_split_dir[1]
     command = [
@@ -76,8 +67,6 @@ def test_train_lm_dictionary(
 def test_train_lm_arpa(
     transcription_language_model_arpa, temp_dir, generated_dir, basic_train_lm_config_path
 ):
-    if sys.platform == "win32":
-        pytest.skip("LM training not supported on Windows.")
     temp_dir = os.path.join(temp_dir, "train_lm_arpa")
     command = [
         "train_lm",
@@ -96,8 +85,6 @@ def test_train_lm_arpa(
 
 
 def test_train_lm_text_no_mp(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
-    if sys.platform == "win32":
-        pytest.skip("LM training not supported on Windows.")
     text_dir = basic_split_dir[1]
     command = [
         "train_lm",
