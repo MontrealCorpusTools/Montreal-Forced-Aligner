@@ -112,7 +112,7 @@ class Archive(MfaModel):
         if os.path.isdir(source):
             self.dirname = os.path.abspath(source)
         else:
-            self.dirname = os.path.join(root_directory, self.name)
+            self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
             if os.path.exists(self.dirname):
                 shutil.rmtree(self.dirname, ignore_errors=True)
 
@@ -823,7 +823,7 @@ class LanguageModel(Archive):
             self.root_directory = root_directory
             self._meta = {}
             self.name, _ = os.path.splitext(os.path.basename(source))
-            self.dirname = os.path.join(root_directory, self.name)
+            self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
             if not os.path.exists(self.dirname):
                 os.makedirs(self.dirname, exist_ok=True)
             copy(source, self.large_arpa_path)
@@ -838,7 +838,7 @@ class LanguageModel(Archive):
         for path in [self.small_arpa_path, self.medium_arpa_path, self.large_arpa_path]:
             if os.path.exists(path):
                 return path
-        raise LanguageModelNotFoundError()
+        raise LanguageModelNotFoundError(self.small_arpa_path)
 
     @property
     def carpa_path(self) -> str:
@@ -848,7 +848,7 @@ class LanguageModel(Archive):
         for path in [self.large_arpa_path, self.medium_arpa_path, self.small_arpa_path]:
             if os.path.exists(path):
                 return path
-        raise LanguageModelNotFoundError()
+        raise LanguageModelNotFoundError(self.large_arpa_path)
 
     @property
     def small_arpa_path(self) -> str:
@@ -923,7 +923,7 @@ class DictionaryModel(MfaModel):
                 get_temporary_directory(), "extracted_models", self.model_type
             )
         self.path = path
-        self.dirname = os.path.join(root_directory, self.name)
+        self.dirname = os.path.join(root_directory, f"{self.name}_{self.model_type}")
         self.pronunciation_probabilities = True
         self.silence_probabilities = True
         self.oov_probabilities = True

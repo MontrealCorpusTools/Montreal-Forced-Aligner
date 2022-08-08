@@ -249,6 +249,25 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
 
 
 @pytest.fixture(scope="session")
+def duplicated_name_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "basic")
+    os.makedirs(path, exist_ok=True)
+    names = [("michael", ["acoustic_corpus"]), ("sickmichael", ["cold_corpus", "cold_corpus3"])]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for i, name in enumerate(files):
+            new_name = f"recording_{i}"
+            shutil.copyfile(
+                os.path.join(wav_dir, name + ".wav"), os.path.join(s_dir, new_name + ".wav")
+            )
+            shutil.copyfile(
+                os.path.join(lab_dir, name + ".lab"), os.path.join(s_dir, new_name + ".lab")
+            )
+    return path
+
+
+@pytest.fixture(scope="session")
 def basic_reference_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "basic_reference")
     os.makedirs(path, exist_ok=True)
@@ -762,6 +781,11 @@ def pron_train_config_path(config_directory):
 @pytest.fixture(scope="session")
 def mono_train_config_path(config_directory):
     return os.path.join(config_directory, "mono_train.yaml")
+
+
+@pytest.fixture(scope="session")
+def xsampa_train_config_path(config_directory):
+    return os.path.join(config_directory, "xsampa_train.yaml")
 
 
 @pytest.fixture(scope="session")

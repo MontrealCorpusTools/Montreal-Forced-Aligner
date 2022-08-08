@@ -835,7 +835,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             else:
                                 break
                             continue
-                        if time.time() - last_poll > 15:
+                        if time.time() - last_poll > 5:
                             pbar.total = file_counts.value()
                             last_poll = time.time()
                         pbar.update(1)

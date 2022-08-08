@@ -153,6 +153,8 @@ def test_english_clitics(english_dictionary, generated_dir):
     s, spl = dictionary.sanitize_function.get_functions_for_speaker("default")
     assert spl.split_clitics("l'orme's") == ["l'", "orme", "'s"]
 
+    assert list(s("Hello 'smart guy'.")) == ["hello", "smart", "guy"]
+
 
 def test_english_mfa(english_us_mfa_dictionary, generated_dir):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "english_mfa")

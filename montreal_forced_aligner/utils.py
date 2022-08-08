@@ -371,6 +371,49 @@ class Counter(object):
             return self.val.value
 
 
+class ProgressCallback(object):
+    def __init__(self, callback=None, total_callback=None):
+        self._total = 0
+        self.callback = callback
+        self.total_callback = total_callback
+        self._progress = 0
+        self.callback_interval = 1
+        self.lock = mp.Lock()
+
+    @property
+    def total(self) -> int:
+        with self.lock:
+            return self._total
+
+    @property
+    def progress(self) -> int:
+        with self.lock:
+            return self._progress
+
+    @property
+    def progress_percent(self) -> float:
+        with self.lock:
+            if not self._total:
+                return 0.0
+            return self._progress / self._total
+
+    def update_total(self, total: int) -> None:
+        with self.lock:
+            self._total = total
+            if self.total_callback is not None:
+                self.total_callback(self._total)
+
+    def set_progress(self, total_progress: int) -> None:
+        with self.lock:
+            self._progress = total_progress
+
+    def increment_progress(self, increment: int) -> None:
+        with self.lock:
+            self._progress += increment
+            if self.callback is not None:
+                self.callback(self._progress)
+
+
 class Stopped(object):
     """
     Multiprocessing class for detecting whether processes should stop processing and exit ASAP

@@ -1,0 +1,17 @@
+beam: 10
+retry_beam: 400
+use_mp: false
+ignore_case: false
+punctuation: .-'][
+
+features:
+  type: "mfcc"
+  use_energy: true
+  frame_shift: 10
+  use_pitch: false
+
+training:
+  - monophone:
+      num_iterations: 10
+      max_gaussians: 500
+      subset: 1000

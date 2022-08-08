@@ -158,6 +158,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         self.laughter_regex = None
         self.compound_regex = None
         self.clitic_cleanup_regex = None
+        self.clitic_quote_regex = None
         self.clitic_marker = None
         self.use_g2p = False
 
@@ -235,6 +236,7 @@ class MultispeakerDictionaryMixin(TemporaryDictionaryMixin, metaclass=abc.ABCMet
         sanitize_function = SanitizeFunction(
             self.clitic_marker,
             self.clitic_cleanup_regex,
+            self.clitic_quote_regex,
             self.punctuation_regex,
             self.word_break_regex,
             self.bracket_regex,

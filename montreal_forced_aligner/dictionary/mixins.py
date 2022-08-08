@@ -57,6 +57,7 @@ class SanitizeFunction:
         self,
         clitic_marker: str,
         clitic_cleanup_regex: Optional[re.Pattern],
+        clitic_quote_regex: Optional[re.Pattern],
         punctuation_regex: Optional[re.Pattern],
         word_break_regex: Optional[re.Pattern],
         bracket_regex: Optional[re.Pattern],
@@ -65,6 +66,7 @@ class SanitizeFunction:
     ):
         self.clitic_marker = clitic_marker
         self.clitic_cleanup_regex = clitic_cleanup_regex
+        self.clitic_quote_regex = clitic_quote_regex
         self.punctuation_regex = punctuation_regex
         self.word_break_regex = word_break_regex
         self.bracket_regex = bracket_regex
@@ -98,7 +100,9 @@ class SanitizeFunction:
         if self.clitic_cleanup_regex:
             text = self.clitic_cleanup_regex.sub(self.clitic_marker, text)
 
-        clitic_check = self.clitic_marker and self.clitic_marker in text
+        if self.clitic_quote_regex is not None and self.clitic_marker in text:
+            text = self.clitic_quote_regex.sub(r"\g<word>", text)
+
         words = self.word_break_regex.split(text)
 
         for w in words:
@@ -106,8 +110,6 @@ class SanitizeFunction:
                 continue
             if self.punctuation_regex is not None and self.punctuation_regex.match(w):
                 continue
-            if clitic_check and w[0] == self.clitic_marker == w[-1]:
-                w = w[1:-1]
             if w:
                 yield w
 
@@ -463,6 +465,8 @@ class DictionaryMixin:
         if clitic_set is None:
             clitic_set = set()
         self.clitic_set = clitic_set
+        if phone_set_type is None:
+            phone_set_type = "UNKNOWN"
         if not isinstance(phone_set_type, PhoneSetType):
             phone_set_type = PhoneSetType[phone_set_type]
         self.phone_set_type = phone_set_type
@@ -875,9 +879,16 @@ class DictionaryMixin:
 
         word_break_character_set = make_re_character_set_safe(non_word_character_set, [r"\s"])
         self.word_break_regex = re.compile(rf"{word_break_character_set}+")
+        punctuation_set = make_re_character_set_safe(all_punctuation)
         if all_punctuation:
-            punctuation_set = make_re_character_set_safe(all_punctuation)
             self.punctuation_regex = re.compile(rf"^{punctuation_set}+$")
+        if len(self.clitic_markers) >= 1:
+            non_clitic_punctuation = all_punctuation - set(self.clitic_markers)
+            non_clitic_punctuation_set = make_re_character_set_safe(non_clitic_punctuation)
+            non_punctuation_set = "[^" + punctuation_set[1:]
+            self.clitic_quote_regex = re.compile(
+                rf"((?<=\W)|(?<=^)){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*(?P<word>{non_punctuation_set}+){non_clitic_punctuation_set}*{self.clitic_marker}{non_clitic_punctuation_set}*((?=\W)|(?=$))"
+            )
 
     def construct_sanitize_function(self) -> SanitizeFunction:
         """
@@ -891,6 +902,7 @@ class DictionaryMixin:
         f = SanitizeFunction(
             self.clitic_marker,
             self.clitic_cleanup_regex,
+            self.clitic_quote_regex,
             self.punctuation_regex,
             self.word_break_regex,
             self.bracket_regex,

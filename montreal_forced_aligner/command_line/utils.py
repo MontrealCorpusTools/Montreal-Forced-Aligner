@@ -68,8 +68,9 @@ def validate_model_arg(name: str, model_type: str) -> str:
                 if not found_default:
                     raise NoDefaultSpeakerDictionaryError()
     else:
-        if os.path.splitext(name)[1]:
-            raise ModelExtensionError(name, model_type, model_class.extensions)
+        if os.path.exists(name):
+            if os.path.splitext(name)[1]:
+                raise ModelExtensionError(name, model_type, model_class.extensions)
         else:
             raise PretrainedModelNotFoundError(name, model_type, available_models)
     return name

@@ -88,6 +88,44 @@ def test_align_basic(
         assert os.path.exists(path)
 
 
+def test_align_duplicated(
+    duplicated_name_corpus_dir,
+    generated_dir,
+    english_dictionary,
+    temp_dir,
+    basic_align_config_path,
+    english_acoustic_model,
+):
+    output_directory = os.path.join(generated_dir, "duplicated_align_output")
+    command = [
+        "align",
+        duplicated_name_corpus_dir,
+        english_dictionary,
+        english_acoustic_model,
+        output_directory,
+        "-t",
+        temp_dir,
+        "--config_path",
+        basic_align_config_path,
+        "-q",
+        "--clean",
+        "--debug",
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_align_corpus(args, unknown)
+
+    assert os.path.exists(output_directory)
+
+    output_paths = [
+        os.path.join(output_directory, "michael", "recording_0.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "recording_0.TextGrid"),
+        os.path.join(output_directory, "sickmichael", "recording_1.TextGrid"),
+    ]
+
+    for path in output_paths:
+        assert os.path.exists(path)
+
+
 def test_align_multilingual(
     multilingual_ipa_corpus_dir,
     english_uk_mfa_dictionary,

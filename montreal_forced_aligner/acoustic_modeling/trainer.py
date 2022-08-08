@@ -311,7 +311,8 @@ class TrainableAligner(CorpusAligner, TopLevelMfaWorker, ModelExporterMixin):
         """
         if "pronunciation_probabilities" in self.training_configs:
             export_directory = os.path.dirname(output_model_path)
-            os.makedirs(export_directory, exist_ok=True)
+            if export_directory:
+                os.makedirs(export_directory, exist_ok=True)
             silence_probs = self.training_configs[
                 "pronunciation_probabilities"
             ].silence_probabilities

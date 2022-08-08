@@ -609,6 +609,10 @@ class File(MfaSqlBase):
                 output_format = TextFileType.TEXTGRID.value
         output_path = self.construct_output_path(output_directory, output_format=output_format)
         if overwrite:
+            if self.text_file is None:
+                self.text_file = TextFile(
+                    file_id=self.id, text_file_path=output_path, file_type=output_format
+                )
             if output_path != self.text_file.text_file_path and os.path.exists(
                 self.text_file.text_file_path
             ):
@@ -755,7 +759,9 @@ class File(MfaSqlBase):
         else:
             relative = output_directory
         output_path = os.path.join(relative, self.name + extension)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         return output_path
 
 

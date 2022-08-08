@@ -26,9 +26,9 @@ grapheme-to-phoneme mapping.
 
 See :ref:`dict_generating_example` for an example of how to use G2P functionality with a premade example.
 
-.. warning::
+.. note::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
+   As of version 2.0.6, users on Windows can run this command natively without requiring :xref:`wsl`, see :ref:`installation` for more details.
 
 Command reference
 -----------------

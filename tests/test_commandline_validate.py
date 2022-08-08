@@ -48,6 +48,29 @@ def test_validate_training_corpus(
     run_validate_corpus(args)
 
 
+def test_validate_xsampa(
+    xsampa_corpus_dir,
+    xsampa_dict_path,
+    temp_dir,
+    xsampa_train_config_path,
+):
+
+    command = [
+        "validate",
+        xsampa_corpus_dir,
+        xsampa_dict_path,
+        "-t",
+        os.path.join(temp_dir, "validation_xsampa"),
+        "-q",
+        "--clean",
+        "--ignore_acoustics",
+        "--config_path",
+        xsampa_train_config_path,
+    ]
+    args, unknown = parser.parse_known_args(command)
+    run_validate_corpus(args)
+
+
 def test_validate_dictionary(
     english_us_mfa_g2p_model,
     english_us_mfa_dictionary_subset,

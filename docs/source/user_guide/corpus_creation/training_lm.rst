@@ -6,9 +6,9 @@ Train a new language model  ``(mfa train_lm)``
 MFA has a utility function for training ARPA-format ngram :term:`language models`, as well as merging with a pre-existing model.
 
 
-.. warning::
+.. note::
 
-   Please note that this functionality is not available on Windows natively, however, you can install it using :xref:`wsl`, see :ref:`installation` for more details.
+   As of version 2.0.6, users on Windows can run this command natively without requiring :xref:`wsl`, see :ref:`installation` for more details.
 
 Command reference
 -----------------
