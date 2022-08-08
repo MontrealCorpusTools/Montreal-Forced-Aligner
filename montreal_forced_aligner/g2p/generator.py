@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pynini
 import tqdm
-from pynini import Fst, SymbolTable, TokenType
+from pynini import Fst, TokenType
 from pynini.lib import rewrite
+from pywrapfst import SymbolTable
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker
 from montreal_forced_aligner.corpus.text_corpus import TextCorpusMixin
