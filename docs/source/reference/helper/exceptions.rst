@@ -32,3 +32,4 @@
        ModelTypeNotSupportedError
        PronunciationAcousticMismatchError
        PronunciationOrthographyMismatchError
+       RootDirectoryError

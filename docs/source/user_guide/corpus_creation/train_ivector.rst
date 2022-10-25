@@ -12,9 +12,9 @@ The Montreal Forced Aligner can train :term:`ivector extractors` using an acoust
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: train_ivector
+.. click:: montreal_forced_aligner.command_line.train_ivector_extractor:train_ivector_cli
+   :prog: mfa train_ivector
+   :nested: full
 
 Configuration reference
 -----------------------

@@ -31,9 +31,9 @@ Transcriptions can be compared to a gold-standard references by transcribing a c
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: transcribe
+.. click:: montreal_forced_aligner.command_line.transcribe:transcribe_corpus_cli
+   :prog: mfa transcribe
+   :nested: full
 
 Configuration reference
 -----------------------

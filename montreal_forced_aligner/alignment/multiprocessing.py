@@ -5,9 +5,12 @@ Alignment multiprocessing functions
 """
 from __future__ import annotations
 
+import collections
+import json
 import multiprocessing as mp
 import os
 import re
+import statistics
 import subprocess
 import sys
 import traceback
@@ -15,29 +18,50 @@ import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Dict, List, Union
 
+import numpy as np
+import pynini
+import pywrapfst
 import sqlalchemy.engine
 from sqlalchemy.orm import Session, joinedload, load_only, selectinload
 
+from montreal_forced_aligner.corpus.features import (
+    compute_feature_process,
+    compute_transform_process,
+)
 from montreal_forced_aligner.data import (
     CtmInterval,
     MfaArguments,
     PronunciationProbabilityCounter,
     TextgridFormats,
+    WordCtmInterval,
     WordType,
+    WorkflowType,
 )
 from montreal_forced_aligner.db import (
+    CorpusWorkflow,
+    DictBundle,
     Dictionary,
     File,
     Phone,
+    PhoneInterval,
     Pronunciation,
+    SoundFile,
     Speaker,
     Utterance,
     Word,
+    WordInterval,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError
 from montreal_forced_aligner.helper import mfa_open, split_phone_position
-from montreal_forced_aligner.textgrid import export_textgrid, process_ctm_line
-from montreal_forced_aligner.utils import Counter, KaldiFunction, Stopped, thirdparty_binary
+from montreal_forced_aligner.textgrid import export_textgrid
+from montreal_forced_aligner.utils import (
+    Counter,
+    KaldiFunction,
+    Stopped,
+    parse_ctm_output,
+    read_feats,
+    thirdparty_binary,
+)
 
 if TYPE_CHECKING:
     from dataclasses import dataclass
@@ -67,7 +91,26 @@ __all__ = [
 
 @dataclass
 class GeneratePronunciationsArguments(MfaArguments):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsFunction`"""
+    """
+    Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    text_int_paths: dict[int, str]
+        Per dictionary text SCP paths
+    ali_paths: dict[int, str]
+        Per dictionary alignment paths
+    model_path: str
+        Acoustic model path
+    for_g2p: bool
+        Flag for training a G2P model with acoustic information
+    """
 
     text_int_paths: Dict[int, str]
     ali_paths: Dict[int, str]
@@ -77,35 +120,121 @@ class GeneratePronunciationsArguments(MfaArguments):
 
 @dataclass
 class AlignmentExtractionArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignmentExtractionFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignmentExtractionFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    model_path: str
+        Acoustic model path
+    frame_shift: float
+        Frame shift in seconds
+    ali_paths: dict[int, str]
+        Per dictionary alignment paths
+    text_int_paths: dict[int, str]
+        Per dictionary text SCP paths
+    phone_symbol_path: str
+        Path to phone symbols table
+    score_options: dict[str, Any]
+        Options for Kaldi functions
+    """
 
     model_path: str
     frame_shift: float
-    cleanup_textgrids: bool
     ali_paths: Dict[int, str]
     text_int_paths: Dict[int, str]
+    phone_symbol_path: str
+    score_options: MetaDict
 
 
 @dataclass
 class ExportTextGridArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
 
-    frame_shift: int
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    export_frame_shift: float
+        Frame shift in seconds
+    cleanup_textgrids: bool
+        Flag to cleanup silences and recombine words
+    clitic_marker: str
+        Marker indicating clitics
+    output_directory: str
+        Directory for exporting
+    output_format: str
+        Format to export
+    include_original_text: bool
+        Flag for including original unnormalized text as a tier
+    workflow_id: int
+        Integer id of workflow to export
+    """
+
+    export_frame_shift: float
+    cleanup_textgrids: bool
+    clitic_marker: str
     output_directory: str
     output_format: str
     include_original_text: bool
+    workflow_id: int
 
 
 @dataclass
 class CompileInformationArguments(MfaArguments):
-    """Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`"""
+    """
+    Arguments for :func:`~montreal_forced_aligner.alignment.multiprocessing.compile_information_func`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    align_log_path: str
+        Path to log file for parsing
+    """
 
     align_log_path: str
 
 
 @dataclass
 class CompileTrainGraphsArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.CompileTrainGraphsFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    tree_path: str
+        Path to tree file
+    model_path: str
+        Path to model file
+    text_int_paths: dict[int, str]
+        Mapping of dictionaries to text scp files
+    fst_ark_paths: dict[int, str]
+        Mapping of dictionaries to fst ark files
+    """
 
     dictionaries: List[int]
     tree_path: str
@@ -116,7 +245,30 @@ class CompileTrainGraphsArguments(MfaArguments):
 
 @dataclass
 class AlignArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    fst_ark_paths: dict[int, str]
+        Mapping of dictionaries to fst ark files
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    model_path: str
+        Path to model file
+    ali_paths: dict[int, str]
+        Per dictionary alignment paths
+    align_options: dict[str, Any]
+        Alignment options
+    """
 
     dictionaries: List[int]
     fst_ark_paths: Dict[int, str]
@@ -127,9 +279,113 @@ class AlignArguments(MfaArguments):
 
 
 @dataclass
+class FineTuneArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    working_directory: str
+        Current working directory
+    tree_path: str
+        Path to tree file
+    model_path: str
+        Path to model file
+    frame_shift: int
+        Frame shift in ms
+    cmvn_paths: dict[int, str]
+        Mapping of dictionaries to CMVN scp paths
+    fmllr_paths: dict[int, str]
+        Mapping of dictionaries to fMLLR ark paths
+    lda_mat_path: str, optional
+        Path to LDA matrix file
+    mfcc_options: dict[str, Any]
+        MFCC computation options
+    pitch_options: dict[str, Any]
+        Pitch computation options
+    align_options: dict[str, Any]
+        Alignment options
+    workflow_id: int
+        Integer ID for workflow to fine tune
+    position_dependent_phones: bool
+        Flag for whether to use position dependent phones
+    grouped_phones: dict[str, list[str]]
+        Grouped lists of phones
+    """
+
+    working_directory: str
+    phone_symbol_table_path: str
+    disambiguation_symbols_int_path: str
+    tree_path: str
+    model_path: str
+    frame_shift: int
+    cmvn_paths: Dict[int, str]
+    fmllr_paths: Dict[int, str]
+    lda_mat_path: typing.Optional[str]
+    mfcc_options: MetaDict
+    pitch_options: MetaDict
+    lda_options: MetaDict
+    align_options: MetaDict
+    workflow_id: int
+    position_dependent_phones: bool
+    grouped_phones: Dict[str, List[str]]
+
+
+@dataclass
+class PhoneConfidenceArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    model_path: str
+        Path to model file
+    phone_pdf_counts_path: str
+        Path to output PDF counts
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    """
+
+    model_path: str
+    phone_pdf_counts_path: str
+    feature_strings: Dict[int, str]
+
+
+@dataclass
 class AccStatsArguments(MfaArguments):
     """
     Arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    ali_paths: dict[int, str]
+        Per dictionary alignment paths
+    acc_paths: dict[int, str]
+        Per dictionary accumulated stats paths
+    model_path: str
+        Path to model file
     """
 
     dictionaries: List[int]
@@ -173,13 +429,14 @@ class CompileTrainGraphsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        db_engine = sqlalchemy.create_engine(self.db_string)
 
         with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             dictionaries = (
                 session.query(Dictionary)
                 .join(Dictionary.speakers)
-                .filter(Speaker.job_id == self.job_name)
+                .join(Speaker.utterances)
+                .filter(Utterance.job_id == self.job_name)
                 .distinct()
             )
 
@@ -220,7 +477,7 @@ class CompileTrainGraphsFunction(KaldiFunction):
                         .join(Utterance.speaker)
                         .filter(Utterance.ignored == False)  # noqa
                         .filter(Utterance.normalized_character_text != "")
-                        .filter(Speaker.job_id == self.job_name)
+                        .filter(Utterance.job_id == self.job_name)
                         .filter(Speaker.dictionary_id == d.id)
                         .order_by(Utterance.kaldi_id)
                     )
@@ -503,6 +760,522 @@ class AlignFunction(KaldiFunction):
                 self.check_call(align_proc)
 
 
+class FineTuneFunction(KaldiFunction):
+    """
+    Multiprocessing function for fine tuning alignment.
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: FineTuneArguments):
+        super().__init__(args)
+        self.frame_shift = args.frame_shift
+        self.scaling_factor = 10
+
+        self.frame_shift_seconds = round(self.frame_shift / 1000, 3)
+        self.new_frame_shift = int(self.frame_shift / self.scaling_factor)
+        self.new_frame_shift_seconds = round(self.new_frame_shift / 1000, 4)
+        self.feature_padding_factor = 4
+        self.padding = round(self.frame_shift_seconds, 3)
+        self.working_directory = args.working_directory
+        self.tree_path = args.tree_path
+        self.model_path = args.model_path
+        self.cmvn_paths = args.cmvn_paths
+        self.fmllr_paths = args.fmllr_paths
+        self.lda_mat_path = args.lda_mat_path
+        self.mfcc_options = args.mfcc_options
+        self.mfcc_options["frame-shift"] = self.new_frame_shift
+        self.mfcc_options["snip-edges"] = False
+        self.pitch_options = args.pitch_options
+        self.pitch_options["frame-shift"] = self.new_frame_shift
+        self.pitch_options["snip-edges"] = False
+        self.lda_options = args.lda_options
+        self.align_options = args.align_options
+        self.workflow_id = args.workflow_id
+        self.phone_symbol_table_path = args.phone_symbol_table_path
+        self.position_dependent_phones = args.position_dependent_phones
+        self.disambiguation_symbols_int_path = args.disambiguation_symbols_int_path
+        self.grouped_phones = args.grouped_phones
+        self.segment_begins = {}
+        self.segment_ends = {}
+        self.original_intervals = {}
+        self.utterance_initial_intervals = {}
+
+    def setup_files(self, session, dictionary_id, phone_mapping):
+        wav_path = os.path.join(
+            self.working_directory, f"fine_tune_wav.{dictionary_id}.{self.job_name}.scp"
+        )
+        segment_path = os.path.join(
+            self.working_directory, f"fine_tune_segments.{dictionary_id}.{self.job_name}.scp"
+        )
+        feature_segment_path = os.path.join(
+            self.working_directory,
+            f"fine_tune_feature_segments.{dictionary_id}.{self.job_name}.scp",
+        )
+        utt2spk_path = os.path.join(
+            self.working_directory, f"fine_tune_utt2spk.{dictionary_id}.{self.job_name}.scp"
+        )
+        text_path = os.path.join(
+            self.working_directory, f"fine_tune_text.{dictionary_id}.{self.job_name}.scp"
+        )
+
+        columns = [
+            PhoneInterval.utterance_id,
+            Phone.kaldi_label,
+            PhoneInterval.id,
+            PhoneInterval.begin,
+            PhoneInterval.end,
+            SoundFile.sox_string,
+            SoundFile.sound_file_path,
+            SoundFile.sample_rate,
+            Utterance.channel,
+            Utterance.speaker_id,
+            Utterance.file_id,
+        ]
+        utterance_ends = {
+            k: v
+            for k, v in session.query(Utterance.id, Utterance.end).filter(
+                Utterance.job_id == self.job_name
+            )
+        }
+        bn = DictBundle("interval_data", *columns)
+
+        interval_query = (
+            session.query(bn)
+            .join(PhoneInterval.phone)
+            .join(PhoneInterval.utterance)
+            .join(Utterance.file)
+            .join(File.sound_file)
+            .filter(Utterance.job_id == self.job_name)
+            .filter(PhoneInterval.workflow_id == self.workflow_id)
+            .order_by(PhoneInterval.utterance_id, PhoneInterval.begin)
+        )
+        wav_data = {}
+        utt2spk_data = {}
+        segment_data = {}
+        text_data = {}
+        prev_label = None
+        current_id = None
+        for row in interval_query:
+            data = row.interval_data
+            if current_id is None:
+                current_id = data["utterance_id"]
+            label = data["kaldi_label"]
+            if current_id != data["utterance_id"] or prev_label is None:
+                self.utterance_initial_intervals[data["utterance_id"]] = {
+                    "id": data["id"],
+                    "begin": data["begin"],
+                    "end": data["end"],
+                }
+                prev_label = label
+                current_id = data["utterance_id"]
+                continue
+            boundary_id = f"{data['utterance_id']}-{data['id']}"
+            utt2spk_data[boundary_id] = data["speaker_id"]
+            sox_string = data["sox_string"]
+            if not sox_string:
+                sox_string = f'sox "{data["sound_file_path"]}" -t wav -b 16 -r 16000 - |'
+            wav_data[str(data["file_id"])] = sox_string
+            interval_begin = data["begin"]
+            self.original_intervals[data["id"]] = {
+                "begin": data["begin"],
+                "end": data["end"],
+                "utterance_id": data["utterance_id"],
+            }
+            segment_begin = round(interval_begin - self.padding, 4)
+            feature_segment_begin = round(
+                interval_begin - (self.padding * self.feature_padding_factor), 4
+            )
+            if segment_begin < 0:
+                segment_begin = 0
+            if feature_segment_begin < 0:
+                feature_segment_begin = 0
+            begin_offset = round(segment_begin - feature_segment_begin, 4)
+            segment_end = round(interval_begin + self.padding, 4)
+            feature_segment_end = round(
+                interval_begin + (self.padding * self.feature_padding_factor), 4
+            )
+            if segment_end > utterance_ends[data["utterance_id"]]:
+                segment_end = utterance_ends[data["utterance_id"]]
+            if feature_segment_end > utterance_ends[data["utterance_id"]]:
+                feature_segment_end = utterance_ends[data["utterance_id"]]
+            end_offset = round(segment_end - feature_segment_begin, 4)
+            self.segment_begins[data["id"]] = segment_begin
+            self.segment_ends[data["id"]] = data["end"]
+            segment_data[boundary_id] = (
+                map(
+                    str,
+                    [
+                        data["file_id"],
+                        f"{feature_segment_begin:.4f}",
+                        f"{feature_segment_end:.4f}",
+                        data["channel"],
+                    ],
+                ),
+                map(str, [boundary_id, f"{begin_offset:.4f}", f"{end_offset:.4f}"]),
+            )
+
+            text_data[
+                boundary_id
+            ] = f"{self.phone_to_group_mapping[prev_label]} {self.phone_to_group_mapping[label]}"
+            prev_label = label
+
+        with mfa_open(utt2spk_path, "w") as f:
+            for k, v in sorted(utt2spk_data.items()):
+                f.write(f"{k} {v}\n")
+        with mfa_open(wav_path, "w") as f:
+            for k, v in sorted(wav_data.items()):
+                f.write(f"{k} {v}\n")
+        with mfa_open(segment_path, "w") as f, mfa_open(feature_segment_path, "w") as feature_f:
+            for k, v in sorted(segment_data.items()):
+                f.write(f"{k} {' '.join(v[0])}\n")
+                feature_f.write(f"{k} {' '.join(v[1])}\n")
+        with mfa_open(text_path, "w") as f:
+            for k, v in sorted(text_data.items()):
+                f.write(f"{k} {v}\n")
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, float]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+
+            reversed_phone_mapping = {}
+            phone_mapping = {}
+            phone_query = session.query(Phone.mapping_id, Phone.id, Phone.kaldi_label)
+            for m_id, p_id, phone in phone_query:
+                reversed_phone_mapping[m_id] = p_id
+                phone_mapping[phone] = m_id
+
+            lexicon_path = os.path.join(self.working_directory, "phone.fst")
+            group_mapping_path = os.path.join(self.working_directory, "groups.txt")
+            fst = pynini.Fst()
+            initial_state = fst.add_state()
+            fst.set_start(initial_state)
+            fst.set_final(initial_state, 0)
+            processed = set()
+            if self.position_dependent_phones:
+                self.grouped_phones["silence"] = ["sil", "sil_B", "sil_I", "sil_E", "sil_S"]
+                self.grouped_phones["unknown"] = ["spn", "spn_B", "spn_I", "spn_E", "spn_S"]
+            else:
+                self.grouped_phones["silence"] = ["sil"]
+                self.grouped_phones["unknown"] = ["spn"]
+            group_set = ["<eps>"] + sorted(k for k in self.grouped_phones.keys())
+            group_mapping = {k: i for i, k in enumerate(group_set)}
+            self.phone_to_group_mapping = {}
+            for k, group in self.grouped_phones.items():
+                for p in group:
+                    self.phone_to_group_mapping[p] = group_mapping[k]
+                    fst.add_arc(
+                        initial_state,
+                        pywrapfst.Arc(phone_mapping[p], group_mapping[k], 0, initial_state),
+                    )
+                processed.update(group)
+            with mfa_open(group_mapping_path, "w") as f:
+                for i, k in group_mapping.items():
+                    f.write(f"{k} {i}\n")
+            for phone, i in phone_mapping.items():
+                if phone in processed:
+                    continue
+                fst.add_arc(initial_state, pywrapfst.Arc(i, i, 0, initial_state))
+            fst.arcsort("olabel")
+            fst.write(lexicon_path)
+            min_length = round(self.frame_shift_seconds / 3, 4)
+
+            for d_id, cmvn_path in self.cmvn_paths.items():
+                wav_path = os.path.join(
+                    self.working_directory, f"fine_tune_wav.{d_id}.{self.job_name}.scp"
+                )
+                segment_path = os.path.join(
+                    self.working_directory, f"fine_tune_segments.{d_id}.{self.job_name}.scp"
+                )
+
+                utt2spk_path = os.path.join(
+                    self.working_directory, f"fine_tune_utt2spk.{d_id}.{self.job_name}.scp"
+                )
+                text_path = os.path.join(
+                    self.working_directory, f"fine_tune_text.{d_id}.{self.job_name}.scp"
+                )
+                fst_ark_path = os.path.join(
+                    self.working_directory, f"fine_tune_fsts.{d_id}.{self.job_name}.ark"
+                )
+                feature_segment_path = os.path.join(
+                    self.working_directory,
+                    f"fine_tune_feature_segments.{d_id}.{self.job_name}.scp",
+                )
+
+                fmllr_path = self.fmllr_paths[d_id]
+                self.setup_files(session, d_id, phone_mapping)
+
+                proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("compile-train-graphs"),
+                        f"--read-disambig-syms={self.disambiguation_symbols_int_path}",
+                        self.tree_path,
+                        self.model_path,
+                        lexicon_path,
+                        f"ark:{text_path}",
+                        f"ark:{fst_ark_path}",
+                    ],
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                proc.communicate()
+
+                paste_proc, comp_proc = compute_feature_process(
+                    log_file,
+                    wav_path,
+                    segment_path,
+                    self.mfcc_options,
+                    self.pitch_options,
+                    min_length=min_length,
+                    no_logging=True,
+                )
+                feature_proc = paste_proc if paste_proc is not None else comp_proc
+                extract_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("extract-feature-segments"),
+                        f"--min-segment-length={min_length}",
+                        f"--frame-shift={self.new_frame_shift}",
+                        f'--snip-edges={self.mfcc_options["snip-edges"]}',
+                        "ark:-",
+                        feature_segment_path,
+                        "ark:-",
+                    ],
+                    stdin=feature_proc.stdout,
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                trans_proc = compute_transform_process(
+                    log_file,
+                    extract_proc,
+                    utt2spk_path,
+                    cmvn_path,
+                    self.lda_mat_path,
+                    fmllr_path,
+                    self.lda_options,
+                )
+                align_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-align-compiled"),
+                        f"--transition-scale={self.align_options['transition_scale']}",
+                        f"--acoustic-scale={self.align_options['acoustic_scale']}",
+                        f"--self-loop-scale={self.align_options['self_loop_scale']}",
+                        f"--beam={self.align_options['beam']}",
+                        f"--retry-beam={self.align_options['retry_beam']}",
+                        "--careful=false",
+                        self.model_path,
+                        f"ark,s,cs:{fst_ark_path}",
+                        "ark,s,cs:-",
+                        "ark:-",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    stdin=trans_proc.stdout,
+                    env=os.environ,
+                )
+
+                ctm_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ali-to-phones"),
+                        "--ctm-output",
+                        f"--frame-shift={self.new_frame_shift_seconds}",
+                        self.model_path,
+                        "ark,s,cs:-",
+                        "-",
+                    ],
+                    stderr=log_file,
+                    stdin=align_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
+                )
+                interval_mapping = []
+                current_utterance = None
+                for boundary_id, ctm_intervals in parse_ctm_output(
+                    ctm_proc, reversed_phone_mapping, raw_id=True
+                ):
+                    utterance_id, interval_id = boundary_id.split("-")
+                    interval_id = int(interval_id)
+                    utterance_id = int(utterance_id)
+
+                    if current_utterance is None:
+                        current_utterance = utterance_id
+                    if current_utterance != utterance_id:
+                        interval_mapping = sorted(interval_mapping, key=lambda x: x["id"])
+                        interval_mapping.insert(
+                            0, self.utterance_initial_intervals[current_utterance]
+                        )
+
+                        deletions = []
+                        while True:
+                            for i in range(len(interval_mapping) - 1):
+                                if interval_mapping[i]["end"] != interval_mapping[i + 1]["begin"]:
+                                    interval_mapping[i]["end"] = interval_mapping[i + 1]["begin"]
+                            new_deletions = [
+                                x["id"] for x in interval_mapping if x["begin"] >= x["end"]
+                            ]
+                            interval_mapping = [
+                                x for x in interval_mapping if x["id"] not in new_deletions
+                            ]
+                            deletions.extend(new_deletions)
+                            if not new_deletions and all(
+                                interval_mapping[i]["end"] == interval_mapping[i + 1]["begin"]
+                                for i in range(len(interval_mapping) - 1)
+                            ):
+                                break
+                        yield interval_mapping, deletions
+                        interval_mapping = []
+                        current_utterance = utterance_id
+                    interval_mapping.append(
+                        {
+                            "id": interval_id,
+                            "begin": round(
+                                ctm_intervals[1].begin + self.segment_begins[interval_id], 4
+                            ),
+                            "end": self.original_intervals[interval_id]["end"],
+                            "label": ctm_intervals[1].label,
+                        }
+                    )
+                if interval_mapping:
+                    deletions = []
+                    while True:
+                        for i in range(len(interval_mapping) - 1):
+                            if interval_mapping[i]["end"] != interval_mapping[i + 1]["begin"]:
+                                interval_mapping[i]["end"] = interval_mapping[i + 1]["begin"]
+                        new_deletions = [
+                            x["id"] for x in interval_mapping if x["begin"] >= x["end"]
+                        ]
+                        interval_mapping = [
+                            x for x in interval_mapping if x["id"] not in new_deletions
+                        ]
+                        deletions.extend(new_deletions)
+                        if not new_deletions and all(
+                            interval_mapping[i]["end"] == interval_mapping[i + 1]["begin"]
+                            for i in range(len(interval_mapping) - 1)
+                        ):
+                            break
+                    yield interval_mapping, deletions
+                self.check_call(ctm_proc)
+
+
+class PhoneConfidenceFunction(KaldiFunction):
+    """
+    Multiprocessing function to calculate phone confidence metrics
+
+    See Also
+    --------
+    :kaldi_src:`gmm-compute-likes`
+        Relevant Kaldi binary
+    :kaldi_src:`transform-feats`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneConfidenceArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: PhoneConfidenceArguments):
+        super().__init__(args)
+        self.model_path = args.model_path
+        self.phone_pdf_counts_path = args.phone_pdf_counts_path
+        self.feature_strings = args.feature_strings
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session:
+            utterances = (
+                session.query(Utterance)
+                .filter(Utterance.job_id == self.job_name)
+                .options(
+                    selectinload(Utterance.phone_intervals).joinedload(
+                        PhoneInterval.phone, innerjoin=True
+                    )
+                )
+            )
+            utterances = {u.id: (u.begin, u.phone_intervals) for u in utterances}
+            phone_mapping = {p.phone: p.id for p in session.query(Phone)}
+
+        with mfa_open(self.phone_pdf_counts_path, "r") as f:
+            data = json.load(f)
+        phone_pdf_mapping = collections.defaultdict(collections.Counter)
+        for phone, pdf_counts in data.items():
+            phone = split_phone_position(phone)[0]
+            for pdf, count in pdf_counts.items():
+                phone_pdf_mapping[phone][int(pdf)] += count
+        phones = {p: i for i, p in enumerate(sorted(phone_pdf_mapping.keys()))}
+        reversed_phones = {k: v for v, k in phones.items()}
+
+        for phone, pdf_counts in phone_pdf_mapping.items():
+            phone_total = sum(pdf_counts.values())
+            for pdf, count in pdf_counts.items():
+                phone_pdf_mapping[phone][int(pdf)] = count / phone_total
+
+        with mfa_open(self.log_path, "w") as log_file:
+            for dict_id in self.feature_strings.keys():
+                feature_string = self.feature_strings[dict_id]
+                output_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-compute-likes"),
+                        self.model_path,
+                        feature_string,
+                        "ark,t:-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                interval_mappings = []
+                new_interval_mappings = []
+                for utterance_id, likelihoods in read_feats(output_proc):
+                    phone_likes = np.zeros((likelihoods.shape[0], len(phones)))
+                    for i, p in reversed_phones.items():
+                        like = likelihoods[:, [x for x in phone_pdf_mapping[p].keys()]]
+                        weight = np.array([x for x in phone_pdf_mapping[p].values()])
+                        phone_likes[:, i] = np.dot(like, weight)
+                    top_phone_inds = np.argmax(phone_likes, axis=1)
+                    utt_begin, intervals = utterances[utterance_id]
+                    for pi in intervals:
+                        if pi.phone.phone == "sil":
+                            continue
+                        frame_begin = int(((pi.begin - utt_begin) * 1000) / 10)
+                        frame_end = int(((pi.end - utt_begin) * 1000) / 10)
+                        if frame_begin == frame_end:
+                            frame_end += 1
+                        alternate_labels = collections.Counter()
+                        scores = []
+
+                        for i in range(frame_begin, frame_end):
+                            top_phone_ind = top_phone_inds[i]
+                            alternate_label = reversed_phones[top_phone_ind]
+                            alternate_label = split_phone_position(alternate_label)[0]
+                            alternate_labels[alternate_label] += 1
+                            if alternate_label == pi.phone.phone:
+                                scores.append(0)
+                            else:
+                                actual_score = phone_likes[i, phones[pi.phone.phone]]
+                                scores.append(phone_likes[i, top_phone_ind] - actual_score)
+                        average_score = statistics.mean(scores)
+                        alternate_label = max(alternate_labels, key=lambda x: alternate_labels[x])
+                        interval_mappings.append({"id": pi.id, "phone_goodness": average_score})
+                        new_interval_mappings.append(
+                            {
+                                "begin": pi.begin,
+                                "end": pi.end,
+                                "utterance_id": pi.utterance_id,
+                                "phone_id": phone_mapping[alternate_label],
+                            }
+                        )
+                    yield interval_mappings
+                    interval_mappings = []
+                self.check_call(output_proc)
+
+
 class GeneratePronunciationsFunction(KaldiFunction):
     """
     Multiprocessing function for generating pronunciations
@@ -529,7 +1302,7 @@ class GeneratePronunciationsFunction(KaldiFunction):
         self.model_path = args.model_path
         self.for_g2p = args.for_g2p
         self.reversed_phone_mapping = {}
-        self.word_boundary_int_paths = {}
+        self.phone_mapping = {}
         self.reversed_word_mapping = {}
         self.silence_words = set()
 
@@ -571,19 +1344,20 @@ class GeneratePronunciationsFunction(KaldiFunction):
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, str]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        align_lexicon_paths = {}
         with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
             phones = session.query(Phone.phone, Phone.mapping_id)
             for phone, mapping_id in phones:
                 self.reversed_phone_mapping[mapping_id] = phone
+                self.phone_mapping[phone] = mapping_id
             for dict_id in self.text_int_paths.keys():
                 d = session.query(Dictionary).get(dict_id)
-                self.position_dependent_phones = d.position_dependent_phones
                 self.clitic_marker = d.clitic_marker
                 self.silence_words.add(d.silence_word)
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
-                self.word_boundary_int_paths[d.id] = d.word_boundary_int_path
+                align_lexicon_paths[dict_id] = d.align_lexicon_path
                 self.reversed_word_mapping[d.id] = {}
 
                 silence_words = (
@@ -598,84 +1372,61 @@ class GeneratePronunciationsFunction(KaldiFunction):
                 )
                 for w_id, w in words:
                     self.reversed_word_mapping[d.id][w_id] = w
-                current_utterance = None
-                word_pronunciations = []
                 text_int_path = self.text_int_paths[dict_id]
-                word_boundary_path = self.word_boundary_int_paths[dict_id]
                 ali_path = self.ali_paths[dict_id]
                 if not os.path.exists(ali_path):
                     continue
-                lin_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("linear-to-nbest"),
-                        f"ark:{ali_path}",
-                        f"ark:{text_int_path}",
-                        "",
-                        "",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                align_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-align-words"),
-                        word_boundary_path,
-                        self.model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=lin_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
 
+                phones_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ali-to-phones"),
+                        self.model_path,
+                        f"ark:{ali_path}",
+                        "ark,t:-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
+                )
                 prons_proc = subprocess.Popen(
-                    [thirdparty_binary("nbest-to-prons"), self.model_path, "ark:-", "-"],
-                    stdin=align_proc.stdout,
+                    [
+                        thirdparty_binary("phones-to-prons"),
+                        align_lexicon_paths[dict_id],
+                        str(self.phone_mapping["#1"]),
+                        str(self.phone_mapping["#2"]),
+                        "ark:-",
+                        f"ark:{text_int_path}",
+                        "ark,t:-",
+                    ],
+                    stdin=phones_proc.stdout,
                     stderr=log_file,
                     encoding="utf8",
                     stdout=subprocess.PIPE,
                     env=os.environ,
                 )
                 for line in prons_proc.stdout:
-                    line = line.strip().split()
-                    utt = line[0]
-                    if utt != current_utterance and current_utterance is not None:
-                        log_file.write(f"{current_utterance}\t{word_pronunciations}\n")
-                        if self.for_g2p:
-                            phones = ""
-                            for x in word_pronunciations:
-                                phones += x[1] + " "
-                            yield dict_id, current_utterance, phones.strip()
-                        else:
-                            yield dict_id, self._process_pronunciations(word_pronunciations)
-                        word_pronunciations = []
-                    current_utterance = utt
-                    pron = [int(x) for x in line[4:]]
-                    word = self.reversed_word_mapping[dict_id][int(line[3])]
+                    utt, prons_line = line.strip().split(maxsplit=1)
+                    prons = prons_line.split(";")
+                    word_pronunciations = []
+                    for pron in prons:
+                        pron = pron.strip()
+                        if not pron:
+                            continue
+                        pron = pron.split()
+                        word = pron.pop(0)
+                        word = self.reversed_word_mapping[dict_id][int(word)]
+                        pron = [self.reversed_phone_mapping[int(x)] for x in pron]
+                        word_pronunciations.append((word, " ".join(pron)))
                     if self.for_g2p:
-                        pron = " ".join(self.reversed_phone_mapping[x] for x in pron)
-                    else:
-                        if self.position_dependent_phones:
-                            pron = " ".join(
-                                split_phone_position(self.reversed_phone_mapping[x])[0]
-                                for x in pron
-                            )
-                        else:
-                            pron = " ".join(self.reversed_phone_mapping[x] for x in pron)
-                    word_pronunciations.append((word, pron))
-                if word_pronunciations:
-                    if self.for_g2p:
-                        phones = ""
+                        phones = []
                         for x in word_pronunciations:
-                            phones += x[1] + " "
-                        yield dict_id, current_utterance, phones.strip()
+                            phones.append("#1")
+                            phones.extend(x[1].split())
+                            phones.append("#2")
+                        yield dict_id, utt, " ".join(phones)
                     else:
                         yield dict_id, self._process_pronunciations(word_pronunciations)
-
                 self.check_call(prons_proc)
 
 
@@ -772,15 +1523,19 @@ class AlignmentExtractionFunction(KaldiFunction):
         self.frame_shift = args.frame_shift
         self.ali_paths = args.ali_paths
         self.text_int_paths = args.text_int_paths
-        self.cleanup_textgrids = args.cleanup_textgrids
-        self.utterance_texts = {}
         self.utterance_begins = {}
-        self.word_boundary_int_paths = {}
         self.reversed_phone_mapping = {}
-        self.words = {}
+        self.reversed_word_mapping = {}
+        self.pronunciation_mapping = {}
+        self.phone_mapping = {}
         self.silence_words = set()
 
-    def cleanup_intervals(self, utterance_name: int, dict_id: int, intervals: List[CtmInterval]):
+    def cleanup_intervals(
+        self,
+        utterance_name,
+        intervals: List[CtmInterval],
+        word_pronunciations: List[typing.Tuple[str, List[str]]],
+    ):
         """
         Clean up phone intervals to remove silence
 
@@ -796,214 +1551,179 @@ class AlignmentExtractionFunction(KaldiFunction):
         """
         actual_phone_intervals = []
         actual_word_intervals = []
-        utterance_name = utterance_name
+        phone_word_mapping = []
         utterance_begin = self.utterance_begins[utterance_name]
         current_word_begin = None
-        words = self.utterance_texts[utterance_name]
         words_index = 0
         current_phones = []
         for interval in intervals:
             interval.begin += utterance_begin
             interval.end += utterance_begin
-            phone_label = self.reversed_phone_mapping[int(interval.label)]
-            if phone_label == self.optional_silence_phone:
-                if words_index < len(words) and words[words_index] in self.silence_words:
-                    interval.label = phone_label
-                    actual_phone_intervals.append(interval)
-                    actual_word_intervals.append(
-                        CtmInterval(
-                            interval.begin, interval.end, words[words_index], utterance_name
-                        )
+            if interval.label == self.optional_silence_phone:
+                interval.label = self.phone_to_phone_id[interval.label]
+                cur_word = word_pronunciations[words_index]
+                actual_phone_intervals.append(interval)
+                actual_word_intervals.append(
+                    WordCtmInterval(
+                        interval.begin,
+                        interval.end,
+                        word_pronunciations[words_index][0],
+                        self.pronunciation_mapping[(cur_word[0], " ".join(cur_word[1]))],
                     )
-                    current_word_begin = None
-                    current_phones = []
-                    words_index += 1
-                    continue
-                elif self.cleanup_textgrids:
-                    continue
-                else:
-                    interval.label = phone_label
-                    actual_phone_intervals.append(interval)
-                    continue
-            if self.position_dependent_phones and "_" in phone_label:
-                phone, position = split_phone_position(phone_label)
-                if position in {"B", "S"}:
-                    current_word_begin = interval.begin
-                if position in {"E", "S"}:
-                    if (
-                        self.cleanup_textgrids
-                        and actual_word_intervals
-                        and self.clitic_marker
-                        and (
-                            actual_word_intervals[-1].label.endswith(self.clitic_marker)
-                            or words[words_index].endswith(self.clitic_marker)
-                        )
-                    ):
-                        actual_word_intervals[-1].end = interval.end
-                        actual_word_intervals[-1].label += words[words_index]
-                    else:
-                        actual_word_intervals.append(
-                            CtmInterval(
-                                current_word_begin,
-                                interval.end,
-                                words[words_index],
-                                utterance_name,
-                            )
-                        )
-                    words_index += 1
-                    current_word_begin = None
-                interval.label = phone
-            else:
-                if current_word_begin is None:
-                    current_word_begin = interval.begin
-                current_phones.append(phone_label)
-                cur_word = words[words_index]
-                if cur_word not in self.words[dict_id]:
-                    cur_word = self.oov_word
-                if tuple(current_phones) in self.words[dict_id][cur_word]:
-                    actual_word_intervals.append(
-                        CtmInterval(
-                            current_word_begin, interval.end, words[words_index], utterance_name
-                        )
+                )
+                phone_word_mapping.append(len(actual_word_intervals) - 1)
+                current_word_begin = None
+                current_phones = []
+                words_index += 1
+                continue
+            if current_word_begin is None:
+                current_word_begin = interval.begin
+            current_phones.append(interval.label)
+            cur_word = word_pronunciations[words_index]
+            if current_phones == cur_word[1]:
+                actual_word_intervals.append(
+                    WordCtmInterval(
+                        current_word_begin,
+                        interval.end,
+                        cur_word[0],
+                        self.pronunciation_mapping[(cur_word[0], " ".join(cur_word[1]))],
                     )
-                    current_word_begin = None
-                    current_phones = []
-                    words_index += 1
+                )
+                for _ in range(len(current_phones)):
+                    phone_word_mapping.append(len(actual_word_intervals) - 1)
+                current_word_begin = None
+                current_phones = []
+                words_index += 1
+            interval.label = self.phone_to_phone_id[interval.label]
             actual_phone_intervals.append(interval)
-        return actual_word_intervals, actual_phone_intervals
+        return actual_word_intervals, actual_phone_intervals, phone_word_mapping
 
     def _run(self) -> typing.Generator[typing.Tuple[int, List[CtmInterval], List[CtmInterval]]]:
         """Run the function"""
-        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        align_lexicon_paths = {}
         with Session(db_engine) as session:
             for dict_id in self.ali_paths.keys():
                 d = session.query(Dictionary).get(dict_id)
 
-                self.position_dependent_phones = d.position_dependent_phones
                 self.clitic_marker = d.clitic_marker
                 self.silence_word = d.silence_word
                 self.oov_word = d.oov_word
                 self.optional_silence_phone = d.optional_silence_phone
-                self.word_boundary_int_paths[dict_id] = d.word_boundary_int_path
-
+                align_lexicon_paths[dict_id] = d.align_lexicon_path
                 silence_words = (
-                    session.query(Word.word)
+                    session.query(Word.id)
                     .filter(Word.dictionary_id == dict_id)
                     .filter(Word.word_type == WordType.silence)
                 )
                 self.silence_words.update(x for x, in silence_words)
 
-                words = (
-                    session.query(Word.word, Pronunciation.pronunciation)
-                    .join(Pronunciation.word)
-                    .filter(Word.dictionary_id == dict_id)
-                    .filter(Word.word_type != WordType.silence)
+                words = session.query(Word.mapping_id, Word.id).filter(
+                    Word.dictionary_id == dict_id
                 )
-                self.words[dict_id] = {}
-                for w, pron in words:
-                    if w not in self.words[dict_id]:
-                        self.words[dict_id][w] = set()
-                    self.words[dict_id][w].add(tuple(pron.split(" ")))
-                utts = (
-                    session.query(Utterance)
-                    .join(Utterance.speaker)
-                    .options(load_only(Utterance.id, Utterance.normalized_text, Utterance.begin))
-                    .filter(Speaker.job_id == self.job_name)
-                )
-                for utt in utts:
-                    self.utterance_texts[utt.id] = utt.normalized_text.split()
-                    self.utterance_begins[utt.id] = utt.begin
-                ds = session.query(Phone.phone, Phone.mapping_id).all()
-                for phone, mapping_id in ds:
-                    self.reversed_phone_mapping[mapping_id] = phone
+                self.reversed_word_mapping[dict_id] = {}
+                for m_id, w_id in words:
+                    self.reversed_word_mapping[dict_id][m_id] = w_id
+            utts = session.query(Utterance.id, Utterance.begin).filter(
+                Utterance.job_id == self.job_name
+            )
+            for u_id, begin in utts:
+                self.utterance_begins[u_id] = begin
+            self.phone_to_phone_id = {}
+            ds = session.query(Phone.phone, Phone.id, Phone.mapping_id).all()
+            for phone, p_id, mapping_id in ds:
+                self.reversed_phone_mapping[mapping_id] = phone
+                self.phone_to_phone_id[phone] = p_id
+                self.phone_mapping[phone] = mapping_id
+
+            pronunciations = (
+                session.query(Word.id, Pronunciation.pronunciation, Pronunciation.id)
+                .join(Pronunciation.word)
+                .filter(Word.dictionary_id.in_(self.ali_paths.keys()))
+            )
+            for w_id, pron, p_id in pronunciations:
+                self.pronunciation_mapping[(w_id, pron)] = p_id
         with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.ali_paths.keys():
-                cur_utt = None
-                intervals = []
                 ali_path = self.ali_paths[dict_id]
                 text_int_path = self.text_int_paths[dict_id]
-                word_boundary_int_path = self.word_boundary_int_paths[dict_id]
-                lin_proc = subprocess.Popen(
+
+                ctm_proc = subprocess.Popen(
                     [
-                        thirdparty_binary("linear-to-nbest"),
-                        f"ark:{ali_path}",
-                        f"ark:{text_int_path}",
-                        "",
-                        "",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                align_words_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-align-words"),
-                        word_boundary_int_path,
-                        self.model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=lin_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                phone_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-to-phone-lattice"),
-                        self.model_path,
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stdin=align_words_proc.stdout,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                nbest_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("nbest-to-ctm"),
-                        "--print-args=false",
+                        thirdparty_binary("ali-to-phones"),
+                        "--ctm-output",
                         f"--frame-shift={self.frame_shift}",
-                        "ark:-",
+                        self.model_path,
+                        f"ark:{ali_path}",
                         "-",
                     ],
-                    stdin=phone_proc.stdout,
                     stderr=log_file,
                     stdout=subprocess.PIPE,
                     env=os.environ,
                     encoding="utf8",
                 )
-                for line in nbest_proc.stdout:
-                    line = line.strip()
-                    if not line:
-                        continue
 
-                    try:
-                        interval = process_ctm_line(line)
-                    except ValueError:
-                        continue
-                    if cur_utt is None:
-                        cur_utt = interval.utterance
-                    if cur_utt != interval.utterance:
-                        word_intervals, phone_intervals = self.cleanup_intervals(
-                            cur_utt, dict_id, intervals
-                        )
-                        yield cur_utt, word_intervals, phone_intervals
-                        intervals = []
-                        cur_utt = interval.utterance
-                    intervals.append(interval)
-                self.check_call(nbest_proc)
-            if intervals:
-                word_intervals, phone_intervals = self.cleanup_intervals(
-                    cur_utt, dict_id, intervals
+                phones_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ali-to-phones"),
+                        self.model_path,
+                        f"ark:{ali_path}",
+                        "ark,t:-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
                 )
-                yield cur_utt, word_intervals, phone_intervals
+                prons_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("phones-to-prons"),
+                        align_lexicon_paths[dict_id],
+                        str(self.phone_mapping["#1"]),
+                        str(self.phone_mapping["#2"]),
+                        "ark:-",
+                        f"ark:{text_int_path}",
+                        "ark,t:-",
+                    ],
+                    stdin=phones_proc.stdout,
+                    stderr=log_file,
+                    encoding="utf8",
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+                for utterance, intervals in parse_ctm_output(
+                    ctm_proc, self.reversed_phone_mapping
+                ):
+                    while True:
+                        prons_line = prons_proc.stdout.readline().strip()
+                        if prons_line:
+                            break
+                    utt_id, prons_line = prons_line.split(maxsplit=1)
+                    prons = prons_line.split(";")
+                    word_pronunciations = []
+                    for pron in prons:
+                        pron = pron.strip()
+                        if not pron:
+                            continue
+                        pron = pron.split()
+                        word = pron.pop(0)
+                        word = self.reversed_word_mapping[dict_id][int(word)]
+                        pron = [self.reversed_phone_mapping[int(x)] for x in pron]
+                        word_pronunciations.append((word, pron))
+                    word_intervals, phone_intervals, phone_word_mapping = self.cleanup_intervals(
+                        utterance, intervals, word_pronunciations
+                    )
+                    yield utterance, word_intervals, phone_intervals, phone_word_mapping
+                self.check_call(ctm_proc)
 
 
 def construct_output_tiers(
-    session: Session, file: File
+    session: Session,
+    file_id: int,
+    workflow_id: int,
+    cleanup_textgrids: bool,
+    clitic_marker: str,
+    include_original_text: bool,
 ) -> Dict[str, Dict[str, List[CtmInterval]]]:
     """
     Construct aligned output tiers for a file
@@ -1020,17 +1740,65 @@ def construct_output_tiers(
     Dict[str, Dict[str,List[CtmInterval]]]
         Aligned tiers
     """
+    utterances = (
+        session.query(Utterance)
+        .options(
+            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
+        )
+        .filter(Utterance.file_id == file_id)
+    )
+    workflow = session.query(CorpusWorkflow).get(workflow_id)
     data = {}
-    for utt in file.utterances:
+    for utt in utterances:
+        word_intervals = (
+            session.query(WordInterval, Word)
+            .join(WordInterval.word)
+            .filter(WordInterval.utterance_id == utt.id)
+            .filter(WordInterval.workflow_id == workflow_id)
+            .options(
+                selectinload(WordInterval.phone_intervals).joinedload(
+                    PhoneInterval.phone, innerjoin=True
+                )
+            )
+            .order_by(WordInterval.begin)
+        )
+        if cleanup_textgrids:
+            word_intervals = word_intervals.filter(Word.word_type != WordType.silence)
         if utt.speaker.name not in data:
             data[utt.speaker.name] = {"words": [], "phones": []}
-        for wi in utt.word_intervals:
-            data[utt.speaker.name]["words"].append(CtmInterval(wi.begin, wi.end, wi.label, utt.id))
+            if include_original_text:
+                data[utt.speaker.name]["utterances"] = []
+        actual_words = utt.normalized_text.split()
+        if include_original_text:
+            data[utt.speaker.name]["utterances"].append(CtmInterval(utt.begin, utt.end, utt.text))
+        for i, (wi, w) in enumerate(word_intervals.all()):
+            if len(wi.phone_intervals) == 0:
+                continue
+            label = w.word
+            if cleanup_textgrids:
+                if w.word_type is WordType.oov and workflow.workflow is WorkflowType.alignment:
+                    label = actual_words[i]
+                if (
+                    data[utt.speaker.name]["words"]
+                    and clitic_marker
+                    and data[utt.speaker.name]["words"][-1].label.endswith(clitic_marker)
+                    or label.startswith(clitic_marker)
+                ):
+                    data[utt.speaker.name]["words"][-1].end = wi.end
+                    data[utt.speaker.name]["words"][-1].label += label
 
-        for pi in utt.phone_intervals:
-            data[utt.speaker.name]["phones"].append(
-                CtmInterval(pi.begin, pi.end, pi.label, utt.id)
-            )
+                    for pi in wi.phone_intervals:
+                        data[utt.speaker.name]["phones"].append(
+                            CtmInterval(pi.begin, pi.end, pi.phone.phone)
+                        )
+                    continue
+
+            data[utt.speaker.name]["words"].append(CtmInterval(wi.begin, wi.end, label))
+
+            for pi in wi.phone_intervals:
+                data[utt.speaker.name]["phones"].append(
+                    CtmInterval(pi.begin, pi.end, pi.phone.phone)
+                )
     return data
 
 
@@ -1058,6 +1826,7 @@ def construct_output_path(
     else:
         extension = ".TextGrid"
     if relative_path:
+        print(output_directory, relative_path)
         relative = os.path.join(output_directory, relative_path)
     else:
         relative = output_directory
@@ -1095,7 +1864,7 @@ class ExportTextGridProcessWorker(mp.Process):
 
     def __init__(
         self,
-        db_path: str,
+        db_string: str,
         for_write_queue: mp.Queue,
         return_queue: mp.Queue,
         stopped: Stopped,
@@ -1104,7 +1873,7 @@ class ExportTextGridProcessWorker(mp.Process):
         exported_file_count: Counter,
     ):
         mp.Process.__init__(self)
-        self.db_path = db_path
+        self.db_string = db_string
         self.for_write_queue = for_write_queue
         self.return_queue = return_queue
         self.stopped = stopped
@@ -1113,16 +1882,24 @@ class ExportTextGridProcessWorker(mp.Process):
 
         self.output_directory = arguments.output_directory
         self.output_format = arguments.output_format
-        self.frame_shift = arguments.frame_shift
+        self.export_frame_shift = arguments.export_frame_shift
         self.log_path = arguments.log_path
         self.include_original_text = arguments.include_original_text
+        self.workflow_id = arguments.workflow_id
+        self.cleanup_textgrids = arguments.cleanup_textgrids
+        self.clitic_marker = arguments.clitic_marker
         self.exported_file_count = exported_file_count
 
     def run(self) -> None:
         """Run the exporter function"""
-        db_engine = sqlalchemy.create_engine(f"sqlite:///{self.db_path}?mode=ro&nolock=1")
+        db_engine = sqlalchemy.create_engine(self.db_string)
         with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
-
+            log_file.write(f"Exporting TextGrids for Workflow ID: {self.workflow_id}\n")
+            log_file.write(f"Output directory: {self.output_directory}\n")
+            log_file.write(f"Output format: {self.output_format}\n")
+            log_file.write(f"Frame shift: {self.export_frame_shift}\n")
+            log_file.write(f"Include original text: {self.include_original_text}\n")
+            log_file.write(f"Clean up textgrids: {self.cleanup_textgrids}\n")
             while True:
                 try:
                     (
@@ -1148,37 +1925,16 @@ class ExportTextGridProcessWorker(mp.Process):
                         text_file_path,
                         self.output_format,
                     )
-                    utterances = (
-                        session.query(Utterance)
-                        .options(
-                            joinedload(Utterance.speaker, innerjoin=True).load_only(Speaker.name),
-                            selectinload(Utterance.phone_intervals),
-                            selectinload(Utterance.word_intervals),
-                        )
-                        .filter(Utterance.file_id == file_id)
+                    data = construct_output_tiers(
+                        session,
+                        file_id,
+                        self.workflow_id,
+                        self.cleanup_textgrids,
+                        self.clitic_marker,
+                        self.include_original_text,
                     )
-                    data = {}
-                    for utt in utterances:
-                        if utt.speaker.name not in data:
-                            data[utt.speaker.name] = {"words": [], "phones": []}
-                            if self.include_original_text:
-                                data[utt.speaker.name]["utterances"] = []
-
-                        if self.include_original_text:
-                            data[utt.speaker.name]["utterances"].append(
-                                CtmInterval(utt.begin, utt.end, utt.text, utt.id)
-                            )
-                        for wi in utt.word_intervals:
-                            data[utt.speaker.name]["words"].append(
-                                CtmInterval(wi.begin, wi.end, wi.label, utt.id)
-                            )
-
-                        for pi in utt.phone_intervals:
-                            data[utt.speaker.name]["phones"].append(
-                                CtmInterval(pi.begin, pi.end, pi.label, utt.id)
-                            )
                     export_textgrid(
-                        data, output_path, duration, self.frame_shift, self.output_format
+                        data, output_path, duration, self.export_frame_shift, self.output_format
                     )
                     self.return_queue.put(1)
                 except Exception:
@@ -1192,3 +1948,102 @@ class ExportTextGridProcessWorker(mp.Process):
                     self.stopped.stop()
                     raise
             log_file.write("Done!\n")
+
+
+class TranscriptionAlignmentExtractionFunction(KaldiFunction):
+    """
+    Multiprocessing function for scoring lattices
+
+    See Also
+    --------
+    :meth:`.AlignmentExtractionArguments._collect_alignments`
+        Main function that calls this function in parallel
+    :meth:`.CorpusAligner.AlignmentExtractionArguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`lattice-scale`
+        Relevant Kaldi binary
+    :kaldi_src:`lattice-add-penalty`
+        Relevant Kaldi binary
+    :kaldi_src:`lattice-best-path`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignmentExtractionArguments`
+        Arguments for the function
+    """
+
+    def __init__(self, args: AlignmentExtractionArguments):
+        super().__init__(args)
+        self.score_options = args.score_options
+        self.lat_paths = args.ali_paths
+        self.phone_symbol_path = args.phone_symbol_path
+
+        self.model_path = args.model_path
+        self.frame_shift = args.frame_shift
+        self.utterance_begins = {}
+
+    def _run(self) -> typing.Generator[typing.Tuple[str, float, float, float, int]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+            phones = session.query(Phone.id, Phone.mapping_id)
+            reversed_phone_mapping = {}
+            for p_id, m_id in phones:
+                reversed_phone_mapping[m_id] = p_id
+            utts = (
+                session.query(Utterance)
+                .join(Utterance.speaker)
+                .filter(Utterance.job_id == self.job_name)
+                .options(load_only(Utterance.id, Utterance.begin))
+            )
+            for utt in utts:
+                self.utterance_begins[utt.id] = utt.begin
+            for dict_id in self.lat_paths.keys():
+                language_model_weight = self.score_options["language_model_weight"]
+                lat_path = self.lat_paths[dict_id]
+
+                one_best_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("lattice-1best"),
+                        f"--acoustic-scale={language_model_weight/100}",
+                        f"ark:{lat_path}",
+                        "ark:-",
+                    ],
+                    stderr=log_file,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+
+                linear_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("nbest-to-linear"),
+                        "ark:-",
+                        "ark:-",
+                    ],
+                    stderr=log_file,
+                    stdin=one_best_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                )
+
+                ctm_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ali-to-phones"),
+                        "--ctm-output",
+                        self.model_path,
+                        "ark:-",
+                        "-",
+                    ],
+                    stderr=log_file,
+                    stdin=linear_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
+                )
+                for utterance, intervals in parse_ctm_output(ctm_proc, reversed_phone_mapping):
+                    for i in intervals:
+                        i.begin += self.utterance_begins[utterance]
+                        i.end += self.utterance_begins[utterance]
+                    yield utterance, [], intervals, []
+                self.check_call(ctm_proc)

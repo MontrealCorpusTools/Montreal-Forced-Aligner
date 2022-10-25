@@ -10,7 +10,8 @@ from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from montreal_forced_aligner.abc import DatabaseMixin
-from montreal_forced_aligner.data import PhoneSetType
+from montreal_forced_aligner.data import PhoneSetType, PhoneType
+from montreal_forced_aligner.db import Phone
 from montreal_forced_aligner.helper import make_re_character_set_safe, mfa_open
 
 if TYPE_CHECKING:
@@ -374,6 +375,8 @@ class DictionaryMixin:
         Set of disambiguation symbols
     max_disambiguation_symbol: int
         Maximum number of disambiguation symbols required, defaults to 0
+    oov_count_threshold: int
+        Words in the dictionary with counts less than or equal to the threshold will be treated as OOV items, defaults to 0
     preserve_suprasegmentals: int
         Flag for whether to keep phones separated by tone and stress
     base_phone_mapping: dict[str, str]
@@ -389,7 +392,7 @@ class DictionaryMixin:
         optional_silence_phone: str = "sil",
         oov_phone: str = "spn",
         other_noise_phone: Optional[str] = None,
-        position_dependent_phones: bool = True,
+        position_dependent_phones: bool = False,
         num_silence_states: int = 5,
         num_non_silence_states: int = 3,
         shared_silence_phones: bool = False,
@@ -408,9 +411,11 @@ class DictionaryMixin:
         disambiguation_symbols: Set[str] = None,
         clitic_set: Set[str] = None,
         max_disambiguation_symbol: int = 0,
+        oov_count_threshold: int = 0,
         phone_set_type: typing.Union[str, PhoneSetType] = "UNKNOWN",
         preserve_suprasegmentals: bool = False,
         base_phone_mapping: Dict[str, str] = None,
+        use_cutoff_model: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -459,6 +464,7 @@ class DictionaryMixin:
         self.excluded_phones = set()
         self.excluded_pronunciation_count = 0
         self.max_disambiguation_symbol = max_disambiguation_symbol
+        self.oov_count_threshold = oov_count_threshold
         if disambiguation_symbols is None:
             disambiguation_symbols = set()
         self.disambiguation_symbols = disambiguation_symbols
@@ -478,6 +484,8 @@ class DictionaryMixin:
         self.laughter_regex = None
         self.word_break_regex = None
         self.bracket_sanitize_regex = None
+        self.use_cutoff_model = use_cutoff_model
+        self._phone_groups = {}
         self.compile_regexes()
 
     @property
@@ -538,7 +546,7 @@ class DictionaryMixin:
                         mapping[k].extend([x + pos for pos in self.positions])
                 else:
                     mapping[k] = sorted(v)
-            elif self.phone_set_type == PhoneSetType.IPA:
+            elif self.phone_set_type is PhoneSetType.IPA:
                 filtered_v = set()
                 for x in self.non_silence_phones:
                     base_phone = self.get_base_phone(x)
@@ -753,24 +761,26 @@ class DictionaryMixin:
         return self._generate_non_positional_list(self.non_silence_phones)
 
     @property
+    def phone_groups(self) -> typing.Dict[str, typing.List[str]]:
+        if not self._phone_groups:
+            for p in sorted(self.non_silence_phones):
+                base_phone = self.get_base_phone(p)
+                if base_phone not in self._phone_groups:
+                    self._phone_groups[base_phone] = [base_phone]
+                if p not in self._phone_groups[base_phone]:
+                    self._phone_groups[base_phone].append(p)
+        return self._phone_groups
+
+    @property
     def kaldi_grouped_phones(self) -> Dict[str, List[str]]:
         """Non silence phones in Kaldi format"""
         groups = {}
-        for p in sorted(self.non_silence_phones):
-            base_phone = self.get_base_phone(p)
-            if base_phone not in groups:
-                if self.position_dependent_phones:
-                    groups[base_phone] = [base_phone + pos for pos in self.positions]
-                else:
-                    groups[base_phone] = [base_phone]
+        for k, v in self.phone_groups.items():
             if self.position_dependent_phones:
-                groups[base_phone].extend(
-                    [p + pos for pos in self.positions if p + pos not in groups[base_phone]]
-                )
+                groups[k] = [x + pos for pos in self.positions for x in v]
             else:
-                if p not in groups[base_phone]:
-                    groups[base_phone].append(p)
-        return groups
+                groups[k] = v
+        return {k: v for k, v in groups.items() if v}
 
     @property
     def kaldi_silence_phones(self) -> List[str]:
@@ -1137,7 +1147,7 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
 
             # process nonsilence phones
             for group in self.kaldi_grouped_phones.values():
-
+                group = sorted(group, key=lambda x: self.phone_mapping[x])
                 phone_string = " ".join(group)
                 phone_int_string = " ".join(str(self.phone_mapping[x]) for x in group)
                 setf.write(f"{phone_string}\n")
@@ -1187,10 +1197,15 @@ class TemporaryDictionaryMixin(DictionaryMixin, DatabaseMixin, metaclass=abc.ABC
         """
         disambig = self.disambiguation_symbols_txt_path
         disambig_int = self.disambiguation_symbols_int_path
-        with mfa_open(disambig, "w") as outf, mfa_open(disambig_int, "w") as intf:
-            for d in sorted(self.disambiguation_symbols, key=lambda x: self.phone_mapping[x]):
-                outf.write(f"{d}\n")
-                intf.write(f"{self.phone_mapping[d]}\n")
+        with self.session() as session, mfa_open(disambig, "w") as outf, mfa_open(
+            disambig_int, "w"
+        ) as intf:
+            disambiguation_symbols = session.query(Phone.mapping_id, Phone.kaldi_label).filter(
+                Phone.phone_type == PhoneType.disambiguation
+            )
+            for p_id, p in disambiguation_symbols:
+                outf.write(f"{p}\n")
+                intf.write(f"{p_id}\n")
         phone_disambig_path = os.path.join(self.phones_dir, "phone_disambig.txt")
         with mfa_open(phone_disambig_path, "w") as f:
             f.write(str(self.phone_mapping["#0"]))

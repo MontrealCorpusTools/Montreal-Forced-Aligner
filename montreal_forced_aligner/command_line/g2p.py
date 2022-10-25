@@ -2,109 +2,79 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
 
-from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.g2p.generator import (
-    OrthographicCorpusGenerator,
-    OrthographicWordListGenerator,
-    PyniniCorpusGenerator,
-    PyniniWordListGenerator,
+import click
+
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    common_options,
+    validate_g2p_model,
 )
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
+from montreal_forced_aligner.g2p.generator import PyniniCorpusGenerator, PyniniWordListGenerator
 
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-
-__all__ = ["generate_dictionary", "validate_args", "run_g2p"]
+__all__ = ["g2p_cli"]
 
 
-def generate_dictionary(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="g2p",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Generate pronunciations",
+)
+@click.argument("input_path", type=click.Path(exists=True, file_okay=True, dir_okay=True))
+@click.argument("g2p_model_path", type=click.UNPROCESSED, callback=validate_g2p_model)
+@click.argument("output_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--include_bracketed",
+    is_flag=True,
+    help="Included words enclosed by brackets, job_name.e. [...], (...), <...>.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def g2p_cli(context, **kwargs) -> None:
     """
-    Run the G2P command
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Generate a pronunciation dictionary using a G2P model.
     """
+    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
 
-    if args.g2p_model_path is None:
-        if os.path.isdir(args.input_path):
-            g2p = OrthographicCorpusGenerator(
-                corpus_directory=args.input_path,
-                temporary_directory=args.temporary_directory,
-                **OrthographicCorpusGenerator.parse_parameters(
-                    args.config_path, args, unknown_args
-                )
-            )
-        else:
-            g2p = OrthographicWordListGenerator(
-                word_list_path=args.input_path,
-                temporary_directory=args.temporary_directory,
-                **OrthographicWordListGenerator.parse_parameters(
-                    args.config_path, args, unknown_args
-                )
-            )
+    config_path = kwargs.get("config_path", None)
+    input_path = kwargs["input_path"]
+    g2p_model_path = kwargs["g2p_model_path"]
+    output_path = kwargs["output_path"]
 
+    if os.path.isdir(input_path):
+        g2p = PyniniCorpusGenerator(
+            corpus_directory=input_path,
+            g2p_model_path=g2p_model_path,
+            **PyniniCorpusGenerator.parse_parameters(config_path, context.params, context.args)
+        )
     else:
-        if os.path.isdir(args.input_path):
-            g2p = PyniniCorpusGenerator(
-                g2p_model_path=args.g2p_model_path,
-                corpus_directory=args.input_path,
-                temporary_directory=args.temporary_directory,
-                **PyniniCorpusGenerator.parse_parameters(args.config_path, args, unknown_args)
-            )
-        else:
-            g2p = PyniniWordListGenerator(
-                g2p_model_path=args.g2p_model_path,
-                word_list_path=args.input_path,
-                temporary_directory=args.temporary_directory,
-                **PyniniWordListGenerator.parse_parameters(args.config_path, args, unknown_args)
-            )
+        g2p = PyniniWordListGenerator(
+            word_list_path=input_path,
+            g2p_model_path=g2p_model_path,
+            **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args)
+        )
 
     try:
         g2p.setup()
-        g2p.export_pronunciations(args.output_path)
+        g2p.export_pronunciations(output_path)
     except Exception:
         g2p.dirty = True
         raise
     finally:
         g2p.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    if not args.g2p_model_path:
-        args.g2p_model_path = None
-    else:
-        args.g2p_model_path = validate_model_arg(args.g2p_model_path, "g2p")
-
-
-def run_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running G2P
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    generate_dictionary(args, unknown_args)

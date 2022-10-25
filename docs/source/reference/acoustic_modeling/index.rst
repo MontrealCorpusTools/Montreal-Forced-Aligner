@@ -8,7 +8,7 @@ Acoustic models
 
 .. note::
 
-   As part of the training procedure, alignments are generated, and so can be exported at the end (the same as training an acoustic model and then using it with the :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`. See :meth:`~montreal_forced_aligner.alignment.CorpusAligner.export_files` for the method and :func:`~montreal_forced_aligner.command_line.run_train_acoustic_model` for the command line function.
+   As part of the training procedure, alignments are generated, and so can be exported at the end (the same as training an acoustic model and then using it with the :class:`~montreal_forced_aligner.alignment.pretrained.PretrainedAligner`. See :meth:`~montreal_forced_aligner.alignment.CorpusAligner.export_files` for the method and :ref:`train_acoustic_model` for the command line function.
 
 .. currentmodule:: montreal_forced_aligner.models
 

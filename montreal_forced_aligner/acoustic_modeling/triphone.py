@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Dict, List
 import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
@@ -216,7 +217,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         return [
             TreeStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"acc_tree.{j.name}.log"),
                 j.dictionary_ids,
                 self.worker.context_independent_csl,
@@ -241,7 +242,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         return [
             ConvertAlignmentsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"convert_alignments.{j.name}.log"),
                 j.dictionary_ids,
                 self.model_path,
@@ -274,10 +275,8 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         self.log_info("Converting alignments...")
         arguments = self.convert_alignments_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -377,7 +376,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
 
         jobs = self.tree_stats_arguments()
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             run_mp(tree_stats_func, jobs, self.working_log_directory)
         else:
             run_non_mp(tree_stats_func, jobs, self.working_log_directory)
@@ -395,7 +394,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 + tree_accs,
                 stderr=log_file,
             )
-        if not self.debug:
+        if not GLOBAL_CONFIG.debug:
             for f in tree_accs:
                 os.remove(f)
 

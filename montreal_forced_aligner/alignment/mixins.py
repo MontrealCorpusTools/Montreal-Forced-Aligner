@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import datetime
 import logging
 import multiprocessing as mp
 import os
@@ -18,9 +19,20 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     CompileInformationArguments,
     CompileTrainGraphsArguments,
     CompileTrainGraphsFunction,
+    PhoneConfidenceArguments,
+    PhoneConfidenceFunction,
     compile_information_func,
 )
-from montreal_forced_aligner.db import File, Speaker, Utterance
+from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.data import WorkflowType
+from montreal_forced_aligner.db import (
+    CorpusWorkflow,
+    File,
+    PhoneInterval,
+    Speaker,
+    Utterance,
+    bulk_update,
+)
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.exceptions import NoAlignmentsError
 from montreal_forced_aligner.helper import mfa_open
@@ -58,17 +70,12 @@ class AlignMixin(DictionaryMixin):
 
     Attributes
     ----------
-    logger: logging.Logger
-        Eventual top-level worker logger
-    jobs: list[Job]
+    jobs: list[:class:`~montreal_forced_aligner.corpus.multiprocessing.Job`]
         Jobs to process
-    use_mp: bool
-        Flag for using multiprocessing
     """
 
     logger: logging.Logger
     jobs: List[Job]
-    use_mp: bool
 
     def __init__(
         self,
@@ -78,6 +85,9 @@ class AlignMixin(DictionaryMixin):
         boost_silence: float = 1.0,
         beam: int = 10,
         retry_beam: int = 40,
+        fine_tune: bool = False,
+        phone_confidence: bool = False,
+        use_phone_model: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -87,6 +97,9 @@ class AlignMixin(DictionaryMixin):
         self.boost_silence = boost_silence
         self.beam = beam
         self.retry_beam = retry_beam
+        self.fine_tune = fine_tune
+        self.phone_confidence = phone_confidence
+        self.use_phone_model = use_phone_model
         if self.retry_beam <= self.beam:
             self.retry_beam = self.beam * 4
         self.unaligned_files = set()
@@ -126,7 +139,7 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 CompileTrainGraphsArguments(
                     j.name,
-                    getattr(self, "db_path", ""),
+                    getattr(self, "read_only_db_string", ""),
                     os.path.join(self.working_log_directory, f"compile_train_graphs.{j.name}.log"),
                     j.dictionary_ids,
                     os.path.join(self.working_directory, "tree"),
@@ -163,7 +176,7 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 AlignArguments(
                     j.name,
-                    getattr(self, "db_path", ""),
+                    getattr(self, "read_only_db_string", ""),
                     log_path,
                     j.dictionary_ids,
                     j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
@@ -171,6 +184,33 @@ class AlignMixin(DictionaryMixin):
                     self.alignment_model_path,
                     j.construct_path_dictionary(self.working_directory, "ali", "ark"),
                     self.align_options,
+                )
+            )
+        return args
+
+    def phone_confidence_arguments(self) -> List[PhoneConfidenceArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneConfidenceFunction`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.PhoneConfidenceArguments`]
+            Arguments for processing
+        """
+        args = []
+        feat_strings = self.construct_feature_proc_strings()
+        for j in self.jobs:
+            if not j.has_data:
+                continue
+            log_path = os.path.join(self.working_log_directory, f"phone_confidence.{j.name}.log")
+            args.append(
+                PhoneConfidenceArguments(
+                    j.name,
+                    getattr(self, "read_only_db_string", ""),
+                    log_path,
+                    self.model_path,
+                    self.phone_pdf_counts_path,
+                    feat_strings[j.name],
                 )
             )
         return args
@@ -198,7 +238,7 @@ class AlignMixin(DictionaryMixin):
             args.append(
                 CompileInformationArguments(
                     j.name,
-                    getattr(self, "db_path", ""),
+                    getattr(self, "read_only_db_string", ""),
                     os.path.join(self.working_log_directory, f"compile_information.{j.name}.log"),
                     log_path,
                 )
@@ -256,10 +296,8 @@ class AlignMixin(DictionaryMixin):
         self.log_info("Compiling training graphs...")
         error_sum = 0
         arguments = self.compile_train_graphs_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -303,6 +341,62 @@ class AlignMixin(DictionaryMixin):
             self.log_warning(f"Compilation of training graphs failed for {error_sum} utterances.")
         self.log_debug(f"Compiling training graphs took {time.time() - begin}")
 
+    def get_phone_confidences(self):
+        if not os.path.exists(self.phone_pdf_counts_path):
+            self.log_warning("Cannot calculate phone confidences with the current model.")
+            return
+        self.log_info("Calculating phone confidences...")
+        begin = time.time()
+
+        with self.session() as session:
+            with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                arguments = self.phone_confidence_arguments()
+                interval_update_mappings = []
+                if GLOBAL_CONFIG.use_mp:
+                    error_dict = {}
+                    return_queue = mp.Queue()
+                    stopped = Stopped()
+                    procs = []
+                    for i, args in enumerate(arguments):
+                        function = PhoneConfidenceFunction(args)
+                        p = KaldiProcessWorker(i, return_queue, function, stopped)
+                        procs.append(p)
+                        p.start()
+                    while True:
+                        try:
+                            result = return_queue.get(timeout=1)
+                            if isinstance(result, Exception):
+                                error_dict[getattr(result, "job_name", 0)] = result
+                                continue
+                            if stopped.stop_check():
+                                continue
+                        except Empty:
+                            for proc in procs:
+                                if not proc.finished.stop_check():
+                                    break
+                            else:
+                                break
+                            continue
+                        interval_update_mappings.extend(result)
+                        pbar.update(1)
+                    for p in procs:
+                        p.join()
+
+                    if error_dict:
+                        for v in error_dict.values():
+                            raise v
+
+                else:
+                    self.log_debug("Not using multiprocessing...")
+                    for args in arguments:
+                        function = PhoneConfidenceFunction(args)
+                        for result in function.run():
+                            interval_update_mappings.extend(result)
+                            pbar.update(1)
+                bulk_update(session, PhoneInterval, interval_update_mappings)
+                session.commit()
+            self.log_debug(f"Calculating phone confidences took {time.time() - begin}")
+
     def align_utterances(self, training=False) -> None:
         """
         Multiprocessing function that aligns based on the current model.
@@ -321,7 +415,7 @@ class AlignMixin(DictionaryMixin):
         begin = time.time()
         self.log_info("Generating alignments...")
         with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
             if not training:
                 utterances = session.query(Utterance)
@@ -329,8 +423,10 @@ class AlignMixin(DictionaryMixin):
                     utterances = utterances.filter(Utterance.in_subset == True)  # noqa
                 utterances.update({"alignment_log_likelihood": None})
                 session.commit()
+            log_like_sum = 0
+            log_like_count = 0
             update_mappings = []
-            if self.use_mp:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -357,6 +453,8 @@ class AlignMixin(DictionaryMixin):
                         continue
                     if not training:
                         utterance, log_likelihood = result
+                        log_like_sum += log_likelihood
+                        log_like_count += 1
                         update_mappings.append(
                             {"id": utterance, "alignment_log_likelihood": log_likelihood}
                         )
@@ -378,6 +476,8 @@ class AlignMixin(DictionaryMixin):
                     function = AlignFunction(args)
                     for utterance, log_likelihood in function.run():
                         if not training:
+                            log_like_sum += log_likelihood
+                            log_like_count += 1
                             update_mappings.append(
                                 {"id": utterance, "alignment_log_likelihood": log_likelihood}
                             )
@@ -387,7 +487,7 @@ class AlignMixin(DictionaryMixin):
                         self.num_current_utterances, self.beam, self.retry_beam
                     )
             if not training:
-                session.bulk_update_mappings(Utterance, update_mappings)
+                bulk_update(session, Utterance, update_mappings)
                 session.query(Utterance).filter(
                     Utterance.alignment_log_likelihood != None  # noqa
                 ).update(
@@ -397,6 +497,16 @@ class AlignMixin(DictionaryMixin):
                     },
                     synchronize_session="fetch",
                 )
+                if not training:
+                    if not getattr(self, "uses_speaker_adaptation", False) or not getattr(
+                        self, "speaker_independent", False
+                    ):
+                        workflow = CorpusWorkflow(
+                            workflow=WorkflowType.alignment,
+                            time_stamp=datetime.datetime.now(),
+                            score=log_like_sum / log_like_count,
+                        )
+                        session.add(workflow)
                 session.commit()
             self.log_debug(f"Alignment round took {time.time() - begin}")
 
@@ -416,7 +526,7 @@ class AlignMixin(DictionaryMixin):
 
         jobs = self.compile_information_arguments()
 
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             alignment_info = run_mp(
                 compile_information_func, jobs, self.working_log_directory, True
             )
@@ -500,6 +610,11 @@ class AlignMixin(DictionaryMixin):
     def model_path(self) -> str:
         """Acoustic model file path"""
         return os.path.join(self.working_directory, "final.mdl")
+
+    @property
+    def phone_pdf_counts_path(self) -> str:
+        """Acoustic model file path"""
+        return os.path.join(self.working_directory, "phone_pdf.counts")
 
     @property
     def alignment_model_path(self) -> str:

@@ -8,10 +8,11 @@ import shutil
 import subprocess
 import time
 import typing
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from montreal_forced_aligner.abc import MetaDict, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.features import IvectorConfigMixin
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
 from montreal_forced_aligner.data import MfaArguments
@@ -26,9 +27,6 @@ from montreal_forced_aligner.utils import (
     parse_logs,
     thirdparty_binary,
 )
-
-if TYPE_CHECKING:
-    from argparse import Namespace
 
 __all__ = [
     "TrainableIvectorExtractor",
@@ -466,7 +464,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         return [
             GmmGselectArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"gmm_gselect.{j.name}.log"),
                 feat_strings[j.name][None],
                 self.dubm_options,
@@ -493,7 +491,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         return [
             AccGlobalStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(
                     self.working_log_directory,
                     f"acc_global_stats.{self.iteration}.{j.name}.log",
@@ -526,7 +524,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.log_info("Selecting gaussians...")
         arguments = self.gmm_gselect_arguments()
 
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
             stopped = Stopped()
@@ -589,7 +587,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             gmm_init_proc = subprocess.Popen(
                 [
                     thirdparty_binary("gmm-global-init-from-feats"),
-                    f"--num-threads={self.worker.num_jobs}",
+                    f"--num-threads={GLOBAL_CONFIG.num_jobs}",
                     f"--num-frames={self.num_frames}",
                     f"--num_gauss={self.num_gaussians}",
                     f"--num_gauss_init={num_gauss_init}",
@@ -624,7 +622,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
         self.log_info("Accumulating global stats...")
         arguments = self.acc_global_stats_arguments()
 
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
             stopped = Stopped()
@@ -696,7 +694,7 @@ class DubmTrainer(IvectorModelTrainingMixin):
             )
             gmm_global_est_proc.communicate()
             # Clean up
-            if not self.debug:
+            if not GLOBAL_CONFIG.debug:
                 for p in acc_files:
                     os.remove(p)
 
@@ -789,7 +787,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         arguments = [
             AccIvectorStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"ivector_acc.{j.name}.log"),
                 feat_strings[j.name][None],
                 self.ivector_options,
@@ -846,7 +844,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         return [
             GaussToPostArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"gauss_to_post.{j.name}.log"),
                 feat_strings[j.name][None],
                 self.ivector_options,
@@ -874,7 +872,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.log_info("Extracting posteriors...")
         arguments = self.gauss_to_post_arguments()
 
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
             stopped = Stopped()
@@ -981,7 +979,7 @@ class IvectorTrainer(IvectorModelTrainingMixin, IvectorConfigMixin):
         self.log_info("Accumulating ivector stats...")
         arguments = self.acc_ivector_stats_arguments()
 
-        if self.use_mp:
+        if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
             stopped = Stopped()
@@ -1105,7 +1103,7 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
             for k, v in kwargs.items()
             if not k.endswith("_directory")
             and not k.endswith("_path")
-            and k not in ["clean", "num_jobs", "speaker_characters"]
+            and k not in ["speaker_characters"]
         }
         self.final_identifier = None
         super().__init__(**kwargs)
@@ -1212,8 +1210,8 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
     def parse_parameters(
         cls,
         config_path: Optional[str] = None,
-        args: Optional[Namespace] = None,
-        unknown_args: Optional[List[str]] = None,
+        args: Optional[Dict[str, Any]] = None,
+        unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse configuration parameters from a config file and command line arguments
@@ -1222,10 +1220,10 @@ class TrainableIvectorExtractor(IvectorCorpusMixin, TopLevelMfaWorker, ModelExpo
         ----------
         config_path: str, optional
             Path to yaml configuration file
-        args: :class:`~argparse.Namespace`, optional
-            Arguments parsed by argparse
-        unknown_args: list[str], optional
-            List of unknown arguments from argparse
+        args: dict[str, Any]
+            Parsed arguments
+        unknown_args: list[str]
+            Optional list of arguments that were not parsed
 
         Returns
         -------

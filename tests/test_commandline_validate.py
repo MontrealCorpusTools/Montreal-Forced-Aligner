@@ -1,10 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.validate import (
-    run_validate_corpus,
-    run_validate_dictionary,
-)
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_validate_corpus(
@@ -14,16 +12,27 @@ def test_validate_corpus(
         "validate",
         multilingual_ipa_tg_corpus_dir,
         english_us_mfa_dictionary,
+        "--acoustic_model_path",
         english_mfa_acoustic_model,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "validate_cli"),
         "-q",
+        "--oov_count_threshold",
+        "0",
         "--clean",
-        "--disable_mp",
+        "--no_use_mp",
         "--test_transcriptions",
+        "--phone_confidence",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_validate_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_validate_training_corpus(
@@ -43,9 +52,18 @@ def test_validate_training_corpus(
         "--clean",
         "--config_path",
         mono_train_config_path,
+        "--test_transcriptions",
+        "--phone_confidence",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_validate_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_validate_xsampa(
@@ -67,8 +85,15 @@ def test_validate_xsampa(
         "--config_path",
         xsampa_train_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_validate_corpus(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_validate_dictionary(
@@ -87,8 +112,15 @@ def test_validate_dictionary(
         "-j",
         "1",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_validate_dictionary(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
 
 
 def test_validate_dictionary_train(
@@ -102,5 +134,12 @@ def test_validate_dictionary_train(
         "-t",
         os.path.join(temp_dir, "dictionary_validation"),
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_validate_dictionary(args)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value

@@ -23,10 +23,12 @@ and logs any of the following issues:
 - Any files that have deviations from their original transcription to decoded transcriptions using a simple language model when ``--test_transcriptions`` is supplied
   - Ngram language models for each speaker are generated and merged with models for each utterance for use in decoding utterances, which may help you find transcription or data inconsistency issues in the corpus
 
-.. warning::
+.. _phone_confidence:
 
-   As the functionality in ``--test_transcriptions`` relies on ngram language modelling, it is not available natively on Windows outside of the Windows Subsystem for Linux.
+Phone confidence
+================
 
+The phone confidence functionality of the validation utility is similar to :ref:`phone_models` in that both are trying to represent the "goodness" of the phone label for the given interval.  Where phone models use the acoustic model in combination with a phone language model, phone confidence simply calculates the likelihoods of each phone for each frame
 
 .. _running_the_validator:
 
@@ -37,7 +39,6 @@ Running the corpus validation utility
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
+.. click:: montreal_forced_aligner.command_line.mfa:mfa_cli
    :prog: mfa
-   :start_command: validate
-   :groups:
+   :commands: validate

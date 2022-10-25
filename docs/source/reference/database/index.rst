@@ -12,9 +12,12 @@ MFA uses a SQLite database to cache information during training/alignment runs. 
    :toctree: generated/
 
    Dictionary
+   Dialect
    Word
+   OovWord
    Pronunciation
    Phone
+   Grapheme
    File
    TextFile
    SoundFile
@@ -23,4 +26,10 @@ MFA uses a SQLite database to cache information during training/alignment runs. 
    Utterance
    WordInterval
    PhoneInterval
-   ReferencePhoneInterval
+   CorpusWorkflow
+   PhonologicalRule
+   RuleApplication
+   Job
+   M2MSymbol
+   M2M2Job
+   Word2Job

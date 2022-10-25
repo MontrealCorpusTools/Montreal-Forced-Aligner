@@ -6,7 +6,6 @@ Helper
 
 .. toctree::
 
-   command_line
    abc
    config
    data

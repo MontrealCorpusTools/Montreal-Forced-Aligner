@@ -12,10 +12,11 @@ from sqlalchemy.orm import joinedload
 
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.alignment.multiprocessing import GeneratePronunciationsFunction
-from montreal_forced_aligner.db import Dictionary, Pronunciation, Utterance, Word
+from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.db import Dictionary, PhonologicalRule, Pronunciation, Utterance, Word
 from montreal_forced_aligner.g2p.trainer import PyniniTrainerMixin
 from montreal_forced_aligner.helper import mfa_open
-from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, parse_dictionary_file
 
 __all__ = ["PronunciationProbabilityTrainer"]
 
@@ -91,11 +92,6 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         return self.previous_aligner.working_directory
 
     @property
-    def num_jobs(self) -> int:
-        """Number of jobs from the root worker"""
-        return self.worker.num_jobs
-
-    @property
     def phone_symbol_table_path(self) -> str:
         """Worker's phone symbol table"""
         return self.worker.phone_symbol_table_path
@@ -149,10 +145,8 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                 )
                 for x in self.worker.dictionary_lookup.values()
             }
-            with tqdm.tqdm(
-                total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-            ) as pbar:
-                if self.use_mp:
+            with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                if GLOBAL_CONFIG.use_mp:
                     error_dict = {}
                     return_queue = mp.Queue()
                     stopped = Stopped()
@@ -286,7 +280,9 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
             initial_silence_prob_sum = 0
             final_silence_correction_sum = 0
             final_non_silence_correction_sum = 0
+
             with self.worker.session() as session:
+
                 dictionaries = session.query(Dictionary).all()
                 for d in dictionaries:
                     pronunciations = (
@@ -297,25 +293,19 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                     )
                     cache = {(x.word.word, x.pronunciation): x for x in pronunciations}
                     new_dictionary_path = os.path.join(working_dir, f"{d.id}.dict")
-                    with mfa_open(new_dictionary_path, "r") as f:
-                        for line in f:
-                            line = line.strip()
-                            line = line.split()
-                            word = line.pop(0)
-                            prob = float(line.pop(0))
-                            silence_after_prob = None
-                            silence_before_correct = None
-                            non_silence_before_correct = None
-                            if self.silence_probabilities:
-                                silence_after_prob = float(line.pop(0))
-                                silence_before_correct = float(line.pop(0))
-                                non_silence_before_correct = float(line.pop(0))
-                            pron = " ".join(line)
-                            p = cache[(word, pron)]
-                            p.probability = prob
-                            p.silence_after_probability = silence_after_prob
-                            p.silence_before_correction = silence_before_correct
-                            p.non_silence_before_correction = non_silence_before_correct
+                    for (
+                        word,
+                        pron,
+                        prob,
+                        silence_after_prob,
+                        silence_before_correct,
+                        non_silence_before_correct,
+                    ) in parse_dictionary_file(new_dictionary_path):
+                        p = cache[(word, " ".join(pron))]
+                        p.probability = prob
+                        p.silence_after_probability = silence_after_prob
+                        p.silence_before_correction = silence_before_correct
+                        p.non_silence_before_correction = non_silence_before_correct
 
                     silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
                     with mfa_open(silence_info_path, "r") as f:
@@ -329,6 +319,12 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
                         initial_silence_prob_sum += d.initial_silence_probability
                         final_silence_correction_sum += d.final_silence_correction
                         final_non_silence_correction_sum += d.final_non_silence_correction
+                    rules_path = os.path.join(working_dir, "rules.yaml")
+                    if os.path.exists(rules_path):
+                        session.query(PhonologicalRule).delete()
+                        self.worker.rules_path = rules_path
+                        self.worker.apply_phonological_rules()
+
                 if self.silence_probabilities:
                     self.worker.silence_probability = silence_prob_sum / len(dictionaries)
                     self.worker.initial_silence_probability = initial_silence_prob_sum / len(
@@ -346,16 +342,16 @@ class PronunciationProbabilityTrainer(AcousticModelTrainingMixin, PyniniTrainerM
         if self.train_g2p:
             self.train_g2p_lexicon()
         else:
-            self.worker.compute_pronunciation_probabilities(self.silence_probabilities)
+            self.worker.compute_pronunciation_probabilities()
             self.worker.write_lexicon_information()
             with self.worker.session() as session:
                 for d in session.query(Dictionary):
                     dict_path = os.path.join(working_dir, f"{d.id}.dict")
+                    self.worker.export_trained_rules(working_dir)
                     self.worker.export_lexicon(
                         d.id,
                         dict_path,
                         probability=True,
-                        silence_probabilities=self.silence_probabilities,
                     )
                     silence_info_path = os.path.join(working_dir, f"{d.id}_silence_info.json")
                     with mfa_open(silence_info_path, "w") as f:

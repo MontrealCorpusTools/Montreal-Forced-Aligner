@@ -14,6 +14,7 @@ import tqdm
 from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
@@ -78,7 +79,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         return [
             AccStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"map_acc_stats.{j.name}.log"),
                 j.dictionary_ids,
                 feat_strings[j.name],
@@ -109,10 +110,8 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         if not os.path.exists(initial_mdl_path):
             return
         self.log_info("Accumulating statistics...")
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()

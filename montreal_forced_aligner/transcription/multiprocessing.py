@@ -11,8 +11,12 @@ import subprocess
 import typing
 from typing import TYPE_CHECKING, Dict, List, TextIO
 
+import sqlalchemy
+from sqlalchemy.orm import Session
+
 from montreal_forced_aligner.abc import KaldiFunction, MetaDict
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.data import MfaArguments, WordType
+from montreal_forced_aligner.db import Dictionary, Phone, Speaker, Utterance, Word
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import thirdparty_binary
 
@@ -33,7 +37,6 @@ __all__ = [
     "FinalFmllrFunction",
     "InitialFmllrFunction",
     "LatGenFmllrFunction",
-    "ScoreFunction",
     "CarpaLmRescoreFunction",
     "DecodeFunction",
     "LmRescoreFunction",
@@ -43,7 +46,42 @@ __all__ = [
 
 @dataclass
 class CreateHclgArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CreateHclgFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    working_directory: str
+        Current working directory
+    path_template: str
+        Path template for intermediate files
+    words_path: str
+        Path to words symbol table
+    carpa_path: str
+        Path to .carpa file
+    small_arpa_path: str
+        Path to small ARPA file
+    medium_arpa_path: str
+        Path to medium ARPA file
+    big_arpa_path: str
+        Path to big ARPA file
+    model_path: str
+        Acoustic model path
+    disambig_L_path: str
+        Path to disambiguated lexicon file
+    disambig_int_path: str
+        Path to disambiguation symbol integer file
+    hclg_options: dict[str, Any]
+        HCLG options
+    words_mapping: dict[str, int]
+        Words mapping
+    """
 
     working_directory: str
     path_template: str
@@ -66,7 +104,32 @@ class CreateHclgArguments(MfaArguments):
 
 @dataclass
 class DecodeArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    decode_options: dict[str, Any]
+        Decoding options
+    model_path: str
+        Path to model file
+    lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    word_symbol_paths: dict[int, str]
+        Per dictionary word symbol table paths
+    hclg_paths: dict[int, str]
+        Per dictionary HCLG.fst paths
+    """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
@@ -78,22 +141,69 @@ class DecodeArguments(MfaArguments):
 
 
 @dataclass
-class ScoreArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreFunction`"""
+class DecodePhoneArguments(MfaArguments):
+    """
+    Arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.DecodePhoneFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    decode_options: dict[str, Any]
+        Decoding options
+    model_path: str
+        Path to model file
+    lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    phone_symbol_path: str
+        Phone symbol table paths
+    hclg_path: str
+        HCLG.fst paths
+    """
 
     dictionaries: List[int]
-    score_options: MetaDict
+    feature_strings: Dict[int, str]
+    decode_options: MetaDict
+    model_path: str
     lat_paths: Dict[int, str]
-    rescored_lat_paths: Dict[int, str]
-    carpa_rescored_lat_paths: Dict[int, str]
-    words_paths: Dict[int, str]
-    tra_paths: Dict[int, str]
-    ali_paths: Dict[int, str]
+    phone_symbol_path: str
+    hclg_path: str
 
 
 @dataclass
 class LmRescoreArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LmRescoreFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    lm_rescore_options: dict[str, Any]
+        Rescoring options
+    lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    rescored_lat_paths: dict[int, str]
+        Per dictionary rescored lattice paths
+    old_g_paths: dict[int, str]
+        Mapping of dictionaries to small G.fst paths
+    new_g_paths: dict[int, str]
+        Mapping of dictionaries to medium G.fst paths
+    """
 
     dictionaries: List[int]
     lm_rescore_options: MetaDict
@@ -105,7 +215,28 @@ class LmRescoreArguments(MfaArguments):
 
 @dataclass
 class CarpaLmRescoreArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.CarpaLmRescoreFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    rescored_lat_paths: dict[int, str]
+        Per dictionary rescored lattice paths
+    old_g_paths: dict[int, str]
+        Mapping of dictionaries to medium G.fst paths
+    new_g_paths: dict[int, str]
+        Mapping of dictionaries to G.carpa paths
+    """
 
     dictionaries: List[int]
     lat_paths: Dict[int, str]
@@ -116,7 +247,32 @@ class CarpaLmRescoreArguments(MfaArguments):
 
 @dataclass
 class InitialFmllrArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    model_path: str
+        Path to model file
+    fmllr_options: dict[str, Any]
+        fMLLR options
+    pre_trans_paths: dict[int, str]
+        Per dictionary pre-fMLLR lattice paths
+    lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    spk2utt_paths: dict[int, str]
+        Per dictionary speaker to utterance mapping paths
+    """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
@@ -129,20 +285,68 @@ class InitialFmllrArguments(MfaArguments):
 
 @dataclass
 class LatGenFmllrArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    model_path: str
+        Path to model file
+    decode_options: dict[str, Any]
+        Decoding options
+    hclg_paths: dict[int, str]
+        Per dictionary HCLG.fst paths
+    tmp_lat_paths: dict[int, str]
+        Per dictionary temporary lattice paths
+    """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
     model_path: str
     decode_options: MetaDict
     word_symbol_paths: Dict[int, str]
-    hclg_paths: Dict[int, str]
+    hclg_paths: typing.Union[Dict[int, str], str]
     tmp_lat_paths: Dict[int, str]
 
 
 @dataclass
 class FinalFmllrArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    model_path: str
+        Path to model file
+    fmllr_options: dict[str, Any]
+        fMLLR options
+    trans_paths: dict[int, str]
+        Per dictionary transform paths
+    spk2utt_paths: dict[int, str]
+        Per dictionary speaker to utterance mapping paths
+    tmp_lat_paths: dict[int, str]
+        Per dictionary temporary lattice paths
+    """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
@@ -155,7 +359,30 @@ class FinalFmllrArguments(MfaArguments):
 
 @dataclass
 class FmllrRescoreArguments(MfaArguments):
-    """Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`"""
+    """
+    Arguments for :class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreFunction`
+
+    Parameters
+    ----------
+    job_name: int
+        Integer ID of the job
+    db_string: str
+        String for database connections
+    log_path: str
+        Path to save logging information during the run
+    dictionaries: list[int]
+        List of dictionary ids
+    feature_strings: dict[int, str]
+        Mapping of dictionaries to feature generation strings
+    model_path: str
+        Path to model file
+    fmllr_options: dict[str, Any]
+        fMLLR options
+    tmp_lat_paths: dict[int, str]
+        Per dictionary temporary lattice paths
+    final_lat_paths: dict[int, str]
+        Per dictionary lattice paths
+    """
 
     dictionaries: List[int]
     feature_strings: Dict[int, str]
@@ -230,8 +457,8 @@ def compose_lg(dictionary_path: str, small_g_path: str, lg_path: str, log_file: 
 
 
 def compose_clg(
-    in_disambig: str,
-    out_disambig: str,
+    in_disambig: typing.Optional[str],
+    out_disambig: typing.Optional[str],
     context_width: int,
     central_pos: int,
     ilabels_temp: str,
@@ -268,16 +495,18 @@ def compose_clg(
     log_file: TextIO
         Log file handler to output logging info to
     """
+    com = [
+        thirdparty_binary("fstcomposecontext"),
+        f"--context-size={context_width}",
+        f"--central-position={central_pos}",
+    ]
+    if in_disambig:
+        com.append(f"--read-disambig-syms={in_disambig}")
+    if out_disambig:
+        com.append(f"--write-disambig-syms={out_disambig}")
+    com.extend([ilabels_temp, lg_path])
     compose_proc = subprocess.Popen(
-        [
-            thirdparty_binary("fstcomposecontext"),
-            f"--context-size={context_width}",
-            f"--central-position={central_pos}",
-            f"--read-disambig-syms={in_disambig}",
-            f"--write-disambig-syms={out_disambig}",
-            ilabels_temp,
-            lg_path,
-        ],
+        com,
         stdout=subprocess.PIPE,
         stderr=log_file,
     )
@@ -654,9 +883,9 @@ class DecodeFunction(KaldiFunction):
 
     See Also
     --------
-    :meth:`.Transcriber.transcribe`
+    :meth:`.TranscriberMixin.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.decode_arguments`
+    :meth:`.TranscriberMixin.decode_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-latgen-faster`
         Relevant Kaldi binary
@@ -733,115 +962,15 @@ class DecodeFunction(KaldiFunction):
             self.check_call(decode_proc)
 
 
-class ScoreFunction(KaldiFunction):
-    """
-    Multiprocessing function for scoring lattices
-
-    See Also
-    --------
-    :meth:`~montreal_forced_aligner.transcription.Transcriber.score_transcriptions`
-        Main function that calls this function in parallel
-    :meth:`.Transcriber.score_arguments`
-        Job method for generating arguments for this function
-    :kaldi_src:`lattice-scale`
-        Relevant Kaldi binary
-    :kaldi_src:`lattice-add-penalty`
-        Relevant Kaldi binary
-    :kaldi_src:`lattice-best-path`
-        Relevant Kaldi binary
-
-    Parameters
-    ----------
-    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.ScoreArguments`
-        Arguments for the function
-    """
-
-    progress_pattern = re.compile(
-        r"^LOG .* For utterance (?P<utterance>.*), best cost (?P<graph_cost>[-\d.]+) \+ (?P<acoustic_cost>[-\d.]+) = (?P<total_cost>[-\d.]+) over (?P<num_frames>\d+) frames."
-    )
-
-    def __init__(self, args: ScoreArguments):
-        super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.score_options = args.score_options
-        self.lat_paths = args.lat_paths
-        self.rescored_lat_paths = args.rescored_lat_paths
-        self.carpa_rescored_lat_paths = args.carpa_rescored_lat_paths
-        self.words_paths = args.words_paths
-        self.tra_paths = args.tra_paths
-        self.ali_paths = args.ali_paths
-
-    def _run(self) -> typing.Generator[typing.Tuple[str, float, float, float, int]]:
-        """Run the function"""
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.dictionaries:
-                language_model_weight = self.score_options["language_model_weight"]
-                word_insertion_penalty = self.score_options["word_insertion_penalty"]
-                carpa_rescored_lat_path = self.carpa_rescored_lat_paths[dict_id]
-                rescored_lat_path = self.rescored_lat_paths[dict_id]
-                lat_path = self.lat_paths[dict_id]
-                words_path = self.words_paths[dict_id]
-                tra_path = self.tra_paths[dict_id]
-                ali_path = self.ali_paths[dict_id]
-                if os.path.exists(carpa_rescored_lat_path):
-                    lat_path = carpa_rescored_lat_path
-                elif os.path.exists(rescored_lat_path):
-                    lat_path = rescored_lat_path
-                scale_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-scale"),
-                        f"--inv-acoustic-scale={language_model_weight}",
-                        f"ark:{lat_path}",
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                penalty_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-add-penalty"),
-                        f"--word-ins-penalty={word_insertion_penalty}",
-                        "ark:-",
-                        "ark:-",
-                    ],
-                    stdin=scale_proc.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                best_path_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("lattice-best-path"),
-                        f"--word-symbol-table={words_path}",
-                        "ark:-",
-                        f"ark,t:{tra_path}",
-                        f"ark:{ali_path}",
-                    ],
-                    stdin=penalty_proc.stdout,
-                    stderr=subprocess.PIPE,
-                    env=os.environ,
-                    encoding="utf8",
-                )
-                for line in best_path_proc.stderr:
-                    log_file.write(line)
-                    m = self.progress_pattern.match(line.strip())
-                    if m:
-                        yield m.group("utterance"), float(m.group("graph_cost")), float(
-                            m.group("acoustic_cost")
-                        ), float(m.group("total_cost")), int(m.group("num_frames"))
-            self.check_call(best_path_proc)
-
-
 class LmRescoreFunction(KaldiFunction):
     """
     Multiprocessing function rescore lattices by replacing the small G.fst with the medium G.fst
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe`
+    :meth:`.TranscriberMixin.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.lm_rescore_arguments`
+    :meth:`.TranscriberMixin.lm_rescore_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-lmrescore-pruned`
         Relevant Kaldi binary
@@ -915,9 +1044,9 @@ class CarpaLmRescoreFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe`
+    :meth:`.TranscriberMixin.transcribe`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.carpa_lm_rescore_arguments`
+    :meth:`.TranscriberMixin.carpa_lm_rescore_arguments`
         Job method for generating arguments for this function
     :openfst_src:`fstproject`
         Relevant OpenFst binary
@@ -1001,9 +1130,9 @@ class InitialFmllrFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
+    :meth:`.TranscriberMixin.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.initial_fmllr_arguments`
+    :meth:`.TranscriberMixin.initial_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-to-post`
         Relevant Kaldi binary
@@ -1111,9 +1240,9 @@ class LatGenFmllrFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
+    :meth:`.TranscriberMixin.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.lat_gen_fmllr_arguments`
+    :meth:`.TranscriberMixin.lat_gen_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-latgen-faster`
         Relevant Kaldi binary
@@ -1143,8 +1272,12 @@ class LatGenFmllrFunction(KaldiFunction):
         with mfa_open(self.log_path, "w") as log_file:
             for dict_id in self.dictionaries:
                 feature_string = self.feature_strings[dict_id]
-                words_path = self.word_symbol_paths[dict_id]
-                hclg_path = self.hclg_paths[dict_id]
+                if isinstance(self.hclg_paths, dict):
+                    words_path = self.word_symbol_paths[dict_id]
+                    hclg_path = self.hclg_paths[dict_id]
+                else:
+                    words_path = self.word_symbol_paths
+                    hclg_path = self.hclg_paths
                 tmp_lat_path = self.tmp_lat_paths[dict_id]
                 lat_gen_proc = subprocess.Popen(
                     [
@@ -1167,6 +1300,7 @@ class LatGenFmllrFunction(KaldiFunction):
                 )
                 for line in lat_gen_proc.stderr:
                     log_file.write(line)
+                    log_file.flush()
                     m = self.progress_pattern.match(line.strip())
                     if m:
                         yield m.group("utterance"), float(m.group("loglike")), int(
@@ -1182,9 +1316,9 @@ class FinalFmllrFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
+    :meth:`.TranscriberMixin.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.final_fmllr_arguments`
+    :meth:`.TranscriberMixin.final_fmllr_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`lattice-determinize-pruned`
         Relevant Kaldi binary
@@ -1313,9 +1447,9 @@ class FmllrRescoreFunction(KaldiFunction):
 
     See Also
     --------
-    :func:`~montreal_forced_aligner.transcription.Transcriber.transcribe_fmllr`
+    :meth:`.TranscriberMixin.transcribe_fmllr`
         Main function that calls this function in parallel
-    :meth:`.Transcriber.fmllr_rescore_arguments`
+    :meth:`.TranscriberMixin.fmllr_rescore_arguments`
         Job method for generating arguments for this function
     :kaldi_src:`gmm-rescore-lattice`
         Relevant Kaldi binary
@@ -1379,3 +1513,308 @@ class FmllrRescoreFunction(KaldiFunction):
                     if m:
                         yield int(m.group("done")), int(m.group("errors"))
                 self.check_call(determinize_proc)
+
+
+@dataclass
+class PerSpeakerDecodeArguments(MfaArguments):
+    """Arguments for :class:`~montreal_forced_aligner.validation.corpus_validator.PerSpeakerDecodeFunction`"""
+
+    model_directory: str
+    feature_strings: Dict[str, str]
+    lat_paths: Dict[str, str]
+    model_path: str
+    disambiguation_symbols_int_path: str
+    decode_options: MetaDict
+    tree_path: str
+    order: int
+    method: str
+
+
+class PerSpeakerDecodeFunction(KaldiFunction):
+    """
+    Multiprocessing function to test utterance transcriptions with utterance and speaker ngram models
+
+    See Also
+    --------
+    :kaldi_src:`compile-train-graphs-fsts`
+        Relevant Kaldi binary
+    :kaldi_src:`gmm-latgen-faster`
+        Relevant Kaldi binary
+    :kaldi_src:`lattice-oracle`
+        Relevant Kaldi binary
+    :openfst_src:`farcompilestrings`
+        Relevant OpenFst binary
+    :ngram_src:`ngramcount`
+        Relevant OpenGrm-Ngram binary
+    :ngram_src:`ngrammake`
+        Relevant OpenGrm-Ngram binary
+    :ngram_src:`ngramshrink`
+        Relevant OpenGrm-Ngram binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.validation.corpus_validator.PerSpeakerDecodeArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
+    )
+
+    def __init__(self, args: PerSpeakerDecodeArguments):
+        super().__init__(args)
+        self.feature_strings = args.feature_strings
+        self.disambiguation_symbols_int_path = args.disambiguation_symbols_int_path
+        self.model_directory = args.model_directory
+        self.model_path = args.model_path
+        self.decode_options = args.decode_options
+        self.lat_paths = args.lat_paths
+        self.tree_path = args.tree_path
+        self.order = args.order
+        self.method = args.method
+        self.reversed_word_mapping = {}
+        self.word_symbols_paths = {}
+        self.lexicon_disambig_fst_paths = {}
+
+    def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+            dictionaries = (
+                (session.query(Dictionary))
+                .join(Dictionary.speakers)
+                .join(Speaker.utterances)
+                .filter(Utterance.job_id == self.job_name)
+                .distinct()
+            )
+            for d in dictionaries:
+
+                self.oov_word = d.oov_word
+                self.word_symbols_paths[d.id] = d.words_symbol_path
+                self.lexicon_disambig_fst_paths[d.id] = d.lexicon_disambig_fst_path
+                self.reversed_word_mapping[d.id] = {}
+            words = (
+                session.query(Word.word, Word.mapping_id, Word.dictionary_id)
+                .filter(sqlalchemy.or_(Word.word_type != WordType.speech, Word.count > 0))
+                .filter(Word.dictionary_id.in_(self.reversed_word_mapping.keys()))
+            )
+            for w, m_id, d_id in words:
+                self.reversed_word_mapping[d_id][m_id] = w
+            for dict_id in self.feature_strings.keys():
+                feature_string = self.feature_strings[dict_id]
+                disambig_int_path = self.disambiguation_symbols_int_path
+                disambig_L_fst_path = self.lexicon_disambig_fst_paths[dict_id]
+                lat_path = self.lat_paths[dict_id]
+                word_symbols_path = self.word_symbols_paths[dict_id]
+                utterance_query = (
+                    session.query(Utterance.kaldi_id, Speaker.id, Utterance.normalized_text_int)
+                    .join(Utterance.speaker)
+                    .filter(Utterance.job_id == self.job_name)
+                    .filter(Speaker.dictionary_id == dict_id)
+                    .order_by(Utterance.kaldi_id)
+                )
+                texts = {}
+                speakers = {}
+                for utt_id, s_id, text in utterance_query:
+                    texts[utt_id] = text
+                    speakers[utt_id] = s_id
+
+                compile_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("compile-train-graphs-fsts"),
+                        f"--transition-scale={self.decode_options['transition_scale']}",
+                        f"--self-loop-scale={self.decode_options['self_loop_scale']}",
+                        f"--read-disambig-syms={disambig_int_path}",
+                        "--batch_size=1",
+                        self.tree_path,
+                        self.model_path,
+                        disambig_L_fst_path,
+                        "ark:-",
+                        "ark:-",
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                latgen_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-latgen-faster"),
+                        f"--acoustic-scale={self.decode_options['acoustic_scale']}",
+                        f"--beam={self.decode_options['beam']}",
+                        f"--max-active={self.decode_options['max_active']}",
+                        f"--lattice-beam={self.decode_options['lattice_beam']}",
+                        f"--word-symbol-table={word_symbols_path}",
+                        "--allow-partial",
+                        self.model_path,
+                        "ark:-",
+                        feature_string,
+                        f"ark:{lat_path}",
+                    ],
+                    stderr=subprocess.PIPE,
+                    stdin=compile_proc.stdout,
+                    env=os.environ,
+                )
+                temp_dir = os.path.dirname(self.log_path)
+                for utt, text in texts.items():
+                    if not text:
+                        continue
+                    mod_path = os.path.join(temp_dir, f"{utt}.mod")
+                    far_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("farcompilestrings"),
+                            "--fst_type=compact",
+                            f"--unknown_symbol={self.oov_word}",
+                            f"--symbols={word_symbols_path}",
+                            "--generate_keys=1",
+                            "--keep_symbols",
+                        ],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                    count_proc = subprocess.Popen(
+                        [thirdparty_binary("ngramcount"), f"--order={self.order}"],
+                        stdin=far_proc.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                    with mfa_open(mod_path, "wb") as f:
+                        make_proc = subprocess.Popen(
+                            [thirdparty_binary("ngrammake"), f"--method={self.method}"],
+                            stdin=count_proc.stdout,
+                            stdout=f,
+                            stderr=log_file,
+                            env=os.environ,
+                        )
+                    far_proc.stdin.write(" ".join(text).encode("utf8"))
+                    far_proc.stdin.flush()
+                    far_proc.stdin.close()
+                    make_proc.communicate()
+                    merge_proc = subprocess.Popen(
+                        [
+                            thirdparty_binary("ngrammerge"),
+                            "--normalize",
+                            "--v=10",
+                            mod_path,
+                            os.path.join(self.model_directory, f"{speakers[utt]}.mod"),
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=log_file,
+                        env=os.environ,
+                    )
+                    print_proc = subprocess.Popen(
+                        [thirdparty_binary("fstprint"), "--numeric=true", "--v=10"],
+                        stderr=log_file,
+                        stdin=merge_proc.stdout,
+                        stdout=subprocess.PIPE,
+                        env=os.environ,
+                    )
+                    fst = print_proc.communicate()[0]
+                    compile_proc.stdin.write(f"{utt}\n".encode("utf8"))
+                    compile_proc.stdin.write(fst)
+                    compile_proc.stdin.write(b"\n")
+                    compile_proc.stdin.flush()
+
+                    while True:
+                        line = latgen_proc.stderr.readline().decode("utf8")
+                        m = self.progress_pattern.match(line.strip())
+                        if m:
+                            yield m.group("utterance"), float(m.group("loglike")), int(
+                                m.group("num_frames")
+                            )
+                            break
+                    os.remove(mod_path)
+
+                compile_proc.stdin.close()
+                self.check_call(latgen_proc)
+
+
+class DecodePhoneFunction(KaldiFunction):
+    """
+    Multiprocessing function for performing decoding
+
+    See Also
+    --------
+    :meth:`.TranscriberMixin.transcribe`
+        Main function that calls this function in parallel
+    :meth:`.TranscriberMixin.decode_arguments`
+        Job method for generating arguments for this function
+    :kaldi_src:`gmm-latgen-faster`
+        Relevant Kaldi binary
+
+    Parameters
+    ----------
+    args: :class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`
+        Arguments for the function
+    """
+
+    progress_pattern = re.compile(
+        r"^LOG.*Log-like per frame for utterance (?P<utterance>.*) is (?P<loglike>[-\d.]+) over (?P<num_frames>\d+) frames."
+    )
+
+    def __init__(self, args: DecodePhoneArguments):
+        super().__init__(args)
+        self.dictionaries = args.dictionaries
+        self.feature_strings = args.feature_strings
+        self.lat_paths = args.lat_paths
+        self.phone_symbol_path = args.phone_symbol_path
+        self.hclg_path = args.hclg_path
+        self.decode_options = args.decode_options
+        self.model_path = args.model_path
+
+    def _run(self) -> typing.Generator[typing.Tuple[str, float, int]]:
+        """Run the function"""
+        db_engine = sqlalchemy.create_engine(self.db_string)
+        with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
+            phones = session.query(Phone.mapping_id, Phone.phone)
+            reversed_phone_mapping = {}
+            for p_id, phone in phones:
+                reversed_phone_mapping[p_id] = phone
+            for dict_id in self.dictionaries:
+                feature_string = self.feature_strings[dict_id]
+                lat_path = self.lat_paths[dict_id]
+                if os.path.exists(lat_path):
+                    continue
+                if (
+                    self.decode_options["uses_speaker_adaptation"]
+                    and self.decode_options["first_beam"] is not None
+                ):
+                    beam = self.decode_options["first_beam"]
+                else:
+                    beam = self.decode_options["beam"]
+                if (
+                    self.decode_options["uses_speaker_adaptation"]
+                    and self.decode_options["first_max_active"] is not None
+                ):
+                    max_active = self.decode_options["first_max_active"]
+                else:
+                    max_active = self.decode_options["max_active"]
+                decode_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("gmm-latgen-faster"),
+                        f"--max-active={max_active}",
+                        f"--beam={beam}",
+                        f"--lattice-beam={self.decode_options['lattice_beam']}",
+                        "--allow-partial=true",
+                        f"--word-symbol-table={self.phone_symbol_path}",
+                        f"--acoustic-scale={self.decode_options['acoustic_scale']}",
+                        self.model_path,
+                        self.hclg_path,
+                        feature_string,
+                        f"ark:{lat_path}",
+                    ],
+                    stderr=subprocess.PIPE,
+                    env=os.environ,
+                    encoding="utf8",
+                )
+                for line in decode_proc.stderr:
+                    log_file.write(line)
+                    m = self.progress_pattern.match(line.strip())
+                    if m:
+                        yield m.group("utterance"), float(m.group("loglike")), int(
+                            m.group("num_frames")
+                        )
+            self.check_call(decode_proc)

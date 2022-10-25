@@ -10,12 +10,13 @@ import os
 import re
 import typing
 from queue import Empty
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import tqdm
 from sqlalchemy.orm import joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin, MetaDict, TopLevelMfaWorker
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import VadConfigMixin
 from montreal_forced_aligner.data import MfaArguments, TextFileType
@@ -29,9 +30,6 @@ from montreal_forced_aligner.utils import (
     log_kaldi_errors,
     parse_logs,
 )
-
-if TYPE_CHECKING:
-    from argparse import Namespace
 
 SegmentationType = List[Dict[str, float]]
 
@@ -207,8 +205,8 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
     def parse_parameters(
         cls,
         config_path: Optional[str] = None,
-        args: Optional[Namespace] = None,
-        unknown_args: Optional[List[str]] = None,
+        args: Optional[Dict[str, typing.Any]] = None,
+        unknown_args: Optional[typing.Iterable[str]] = None,
     ) -> MetaDict:
         """
         Parse parameters for segmentation from a config path or command-line arguments
@@ -217,10 +215,10 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         ----------
         config_path: str
             Config path
-        args: :class:`~argparse.Namespace`
-            Command-line arguments from argparse
-        unknown_args: list[str], optional
-            Extra command-line arguments
+        args: dict[str, Any]
+            Parsed arguments
+        unknown_args: list[str]
+            Optional list of arguments that were not parsed
 
         Returns
         -------
@@ -255,7 +253,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         return [
             SegmentVadArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"segment_vad.{j.name}.log"),
                 j.construct_path(self.split_directory, "vad", "scp"),
                 self.segmentation_options,
@@ -296,9 +294,9 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         new_utts = []
 
         with tqdm.tqdm(
-            total=self.num_utterances, disable=getattr(self, "quiet", False)
+            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
-            if self.use_mp:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -397,6 +395,7 @@ class Segmenter(VadConfigMixin, AcousticCorpusMixin, FileExporterMixin, TopLevel
         self.check_previous_run()
         log_dir = os.path.join(self.working_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
+        print(log_dir)
         try:
             self.load_corpus()
         except Exception as e:

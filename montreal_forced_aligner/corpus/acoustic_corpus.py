@@ -1,6 +1,7 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
+import datetime
 import multiprocessing as mp
 import os
 import subprocess
@@ -13,9 +14,9 @@ from typing import Dict, List, Optional
 
 import sqlalchemy
 import tqdm
-from sqlalchemy.orm import Session
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.features import (
@@ -32,14 +33,19 @@ from montreal_forced_aligner.corpus.multiprocessing import (
     AcousticDirectoryParser,
     CorpusProcessWorker,
 )
-from montreal_forced_aligner.data import DatabaseImportData
+from montreal_forced_aligner.data import DatabaseImportData, PhoneType, WorkflowType
 from montreal_forced_aligner.db import (
     Corpus,
+    CorpusWorkflow,
     File,
-    ReferencePhoneInterval,
+    Phone,
+    PhoneInterval,
     SoundFile,
     Speaker,
+    TextFile,
     Utterance,
+    Word,
+    bulk_update,
 )
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin, SanitizeFunction
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -81,10 +87,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
     ----------
     sound_file_errors: list[str]
         List of sound files with errors in loading
-    transcriptions_without_wavs: list[str]
-        List of text files without sound files
-    no_transcription_files: list[str]
-        List of sound files without transcription files
     stopped: Stopped
         Stop check for loading the corpus
     """
@@ -93,29 +95,55 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         super().__init__(**kwargs)
         self.audio_directory = audio_directory
         self.sound_file_errors = []
-        self.transcriptions_without_wavs = []
-        self.no_transcription_files = []
         self.stopped = Stopped()
         self.features_generated = False
-        self.alignment_done = False
         self.transcription_done = False
-        self.has_reference_alignments = False
         self.alignment_evaluation_done = False
+        self.alignment_checks: typing.Dict[WorkflowType, bool] = {}
+
+    def has_alignments(self, workflow: typing.Optional[WorkflowType] = None):
+        if workflow is None:
+            with self.session() as session:
+                return session.query(sqlalchemy.exists().where(PhoneInterval.id > 0)).scalar()
+
+        if workflow not in self.alignment_checks:
+            with self.session() as session:
+                workflow_obj = self.get_latest_workflow_run(workflow, session)
+                if workflow_obj is None:
+                    self.alignment_checks[workflow] = False
+                else:
+                    self.alignment_checks[workflow] = session.query(
+                        sqlalchemy.exists().where(PhoneInterval.workflow_id == workflow_obj.id)
+                    ).scalar()
+        return self.alignment_checks[workflow]
+
+    @property
+    def no_transcription_files(self) -> List[str]:
+        """List of sound files without text files"""
+        with self.session() as session:
+            files = session.query(SoundFile.sound_file_path).filter(
+                ~sqlalchemy.exists().where(SoundFile.file_id == TextFile.file_id)
+            )
+            return [x[0] for x in files]
+
+    @property
+    def transcriptions_without_wavs(self) -> List[str]:
+        """List of text files without sound files"""
+        with self.session() as session:
+            files = session.query(TextFile.text_file_path).filter(
+                ~sqlalchemy.exists().where(SoundFile.file_id == TextFile.file_id)
+            )
+            return [x[0] for x in files]
 
     def inspect_database(self) -> None:
         """Check if a database file exists and create the necessary metadata"""
-        exist_check = os.path.exists(self.db_path)
-        if not exist_check:
-            self.initialize_database()
+        self.initialize_database()
         with self.session() as session:
             corpus = session.query(Corpus).first()
             if corpus:
                 self.imported = corpus.imported
                 self.features_generated = corpus.features_generated
-                self.alignment_done = corpus.alignment_done
-                self.transcription_done = corpus.transcription_done
-                self.has_reference_alignments = corpus.has_reference_alignments
-                self.alignment_evaluation_done = corpus.alignment_evaluation_done
+                self.text_normalized = corpus.text_normalized
             else:
                 session.add(Corpus(name=self.data_source_identifier))
                 session.commit()
@@ -130,7 +158,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             Directory containing reference alignments
 
         """
-        if self.has_reference_alignments:
+        if self.has_alignments(WorkflowType.reference):
             self.log_info("Reference alignments already loaded!")
             return
         self.log_info("Loading reference files...")
@@ -138,8 +166,21 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         jobs = []
         reference_intervals = []
         with tqdm.tqdm(
-            total=self.num_files, disable=getattr(self, "quiet", False)
-        ) as pbar, Session(self.db_engine, autoflush=False) as session:
+            total=self.num_files, disable=GLOBAL_CONFIG.quiet
+        ) as pbar, self.session() as session:
+            workflow = CorpusWorkflow(
+                workflow=WorkflowType.reference, time_stamp=datetime.datetime.now()
+            )
+            session.add(workflow)
+            session.flush()
+            phone_mapping = {}
+            max_id = 0
+            interval_id = session.query(sqlalchemy.func.max(PhoneInterval.id)).scalar() + 1
+            for p, p_id in session.query(Phone.phone, Phone.id):
+                phone_mapping[p] = p_id
+                if p_id > max_id:
+                    max_id = p_id
+            new_phones = []
             for root, _, files in os.walk(reference_directory, followlinks=True):
                 root_speaker = os.path.basename(root)
                 for f in files:
@@ -148,68 +189,110 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         file_id = session.query(File.id).filter_by(name=file_name).scalar()
                         if not file_id:
                             continue
-                        if self.use_mp:
+                        if GLOBAL_CONFIG.use_mp:
                             indices.append(file_id)
                             jobs.append((os.path.join(root, f), root_speaker))
                         else:
                             intervals = parse_aligned_textgrid(os.path.join(root, f), root_speaker)
                             utterances = (
-                                session.query(Utterance.id, Speaker.name, Utterance.end)
+                                session.query(
+                                    Utterance.id, Speaker.name, Utterance.begin, Utterance.end
+                                )
                                 .join(Utterance.speaker)
-                                .join(Utterance.file)
-                                .filter(File.id == file_id)
+                                .filter(Utterance.file_id == file_id)
+                                .order_by(Utterance.begin)
                             )
-                            for u_id, speaker_name, end in utterances:
+                            for u_id, speaker_name, begin, end in utterances:
                                 if speaker_name not in intervals:
                                     continue
-                                while (
-                                    intervals[speaker_name]
-                                    and intervals[speaker_name][0].end <= end
-                                ):
+                                while intervals[speaker_name]:
                                     interval = intervals[speaker_name].pop(0)
-                                    reference_intervals.append(
-                                        {
-                                            "begin": interval.begin,
-                                            "end": interval.end,
-                                            "label": interval.label,
-                                            "utterance_id": u_id,
-                                        }
-                                    )
+                                    dur = interval.end - interval.begin
+                                    mid_point = interval.begin + (dur / 2)
+                                    if begin <= mid_point <= end:
+                                        if interval.label not in phone_mapping:
+                                            max_id += 1
+                                            phone_mapping[interval.label] = max_id
+                                            new_phones.append(
+                                                {
+                                                    "id": max_id,
+                                                    "mapping_id": max_id - 1,
+                                                    "phone": interval.label,
+                                                    "kaldi_label": interval.label,
+                                                    "phone_type": PhoneType.extra,
+                                                }
+                                            )
+                                        reference_intervals.append(
+                                            {
+                                                "id": interval_id,
+                                                "begin": interval.begin,
+                                                "end": interval.end,
+                                                "phone_id": phone_mapping[interval.label],
+                                                "utterance_id": u_id,
+                                                "workflow_id": workflow.id,
+                                            }
+                                        )
+                                        interval_id += 1
+                                    if mid_point > end:
+                                        intervals[speaker_name].insert(0, interval)
+                                        break
 
                             pbar.update(1)
-            if self.use_mp:
-                with mp.Pool(self.num_jobs) as pool:
+
+            if GLOBAL_CONFIG.use_mp:
+                with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
                     gen = pool.starmap(parse_aligned_textgrid, jobs)
                     for i, intervals in enumerate(gen):
                         pbar.update(1)
                         file_id = indices[i]
                         utterances = (
-                            session.query(Utterance.id, Speaker.name, Utterance.end)
+                            session.query(
+                                Utterance.id, Speaker.name, Utterance.begin, Utterance.end
+                            )
                             .join(Utterance.speaker)
                             .filter(Utterance.file_id == file_id)
+                            .order_by(Utterance.begin)
                         )
-                        for u_id, speaker_name, end in utterances:
+                        for u_id, speaker_name, begin, end in utterances:
                             if speaker_name not in intervals:
                                 continue
-                            while (
-                                intervals[speaker_name] and intervals[speaker_name][0].end <= end
-                            ):
+                            while intervals[speaker_name]:
                                 interval = intervals[speaker_name].pop(0)
-                                reference_intervals.append(
-                                    {
-                                        "begin": interval.begin,
-                                        "end": interval.end,
-                                        "label": interval.label,
-                                        "utterance_id": u_id,
-                                    }
-                                )
-            with session.bind.begin() as conn:
-                conn.execute(
-                    sqlalchemy.insert(ReferencePhoneInterval.__table__), reference_intervals
-                )
+                                dur = interval.end - interval.begin
+                                mid_point = interval.begin + (dur / 2)
+                                if begin <= mid_point <= end:
+                                    if interval.label not in phone_mapping:
+                                        max_id += 1
+                                        phone_mapping[interval.label] = max_id
+                                        new_phones.append(
+                                            {
+                                                "id": max_id,
+                                                "mapping_id": max_id - 1,
+                                                "phone": interval.label,
+                                                "kaldi_label": interval.label,
+                                                "phone_type": PhoneType.extra,
+                                            }
+                                        )
+                                    reference_intervals.append(
+                                        {
+                                            "id": interval_id,
+                                            "begin": interval.begin,
+                                            "end": interval.end,
+                                            "phone_id": phone_mapping[interval.label],
+                                            "utterance_id": u_id,
+                                            "workflow_id": workflow.id,
+                                        }
+                                    )
+                                    interval_id += 1
+                                if mid_point > end:
+                                    intervals[speaker_name].insert(0, interval)
+                                    break
+            if new_phones:
+                session.execute(sqlalchemy.insert(Phone.__table__), new_phones)
                 session.commit()
-            session.query(Corpus).update({"has_reference_alignments": True})
+            session.execute(sqlalchemy.insert(PhoneInterval.__table__), reference_intervals)
             session.commit()
+            self.alignment_checks[WorkflowType.reference] = True
 
     def load_corpus(self) -> None:
         """
@@ -219,6 +302,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self._load_corpus()
 
         self.initialize_jobs()
+        self.normalize_text()
         self.create_corpus_split()
         self.generate_features()
 
@@ -257,6 +341,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             os.makedirs(os.path.join(split_dir, "log"), exist_ok=True)
             with self.session() as session:
                 for job in self.jobs:
+                    if not job.has_data:
+                        continue
                     job.output_for_features(split_dir, session)
 
     def construct_base_feature_string(self, all_feats: bool = False) -> str:
@@ -381,8 +467,6 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     if fmllr_trans_path is not None and not (
                         self.speaker_independent or speaker_independent
                     ):
-                        if not os.path.exists(fmllr_trans_path):
-                            raise Exception(f"Could not find {fmllr_trans_path}")
                         feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" ark:"{fmllr_trans_path}" ark:- ark:- |'
                 feat_strings[dict_id] = feats
             strings.append(feat_strings)
@@ -400,7 +484,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             VadArguments(
                 j.name,
-                getattr(self, "db_engine", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.split_directory, "log", f"compute_vad.{j.name}.log"),
                 j.construct_path(self.split_directory, "feats", "scp"),
                 j.construct_path(self.split_directory, "vad", "scp"),
@@ -426,7 +510,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             CalcFmllrArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"{base_log}.{j.name}.log"),
                 j.dictionary_ids,
                 feature_strings[j.name],
@@ -453,7 +537,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         return [
             MfccArguments(
                 j.name,
-                self.db_path,
+                self.read_only_db_string,
                 os.path.join(self.split_directory, "log", f"make_mfcc.{j.name}.log"),
                 j.construct_path(self.split_directory, "wav", "scp"),
                 j.construct_path(self.split_directory, "segments", "scp"),
@@ -484,8 +568,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         log_directory = os.path.join(self.split_directory, "log")
         os.makedirs(log_directory, exist_ok=True)
         arguments = self.mfcc_arguments()
-        with tqdm.tqdm(total=self.num_utterances, disable=getattr(self, "quiet", False)) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -536,7 +620,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         utt_id = int(f[0].split("-")[-1])
                         feats = f[1]
                         update_mapping.append({"id": utt_id, "features": feats, "ignored": False})
-            session.bulk_update_mappings(Utterance, update_mapping)
+            bulk_update(session, Utterance, update_mapping)
             session.commit()
 
     def calc_cmvn(self) -> None:
@@ -572,7 +656,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 if isinstance(cmvn, list):
                     cmvn = " ".join(cmvn)
                 update_mapping.append({"id": int(s), "cmvn": cmvn})
-            session.bulk_update_mappings(Speaker, update_mapping)
+            bulk_update(session, Speaker, update_mapping)
             session.commit()
 
     def calc_fmllr(self, iteration: Optional[int] = None) -> None:
@@ -595,8 +679,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.log_info("Calculating fMLLR for speaker adaptation...")
 
         arguments = self.calc_fmllr_arguments(iteration=iteration)
-        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -654,8 +738,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         self.log_info("Computing VAD...")
 
         arguments = self.compute_vad_arguments()
-        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -795,7 +879,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             file_counts,
         )
         parser.start()
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             p = CorpusProcessWorker(
                 i,
                 job_queue,
@@ -809,44 +893,50 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             procs.append(p)
             p.start()
         last_poll = time.time() - 30
-        import_data = DatabaseImportData()
         try:
-            with self.session() as session:
-                with tqdm.tqdm(total=100, disable=getattr(self, "quiet", False)) as pbar:
-                    while True:
-                        try:
-                            file = return_queue.get(timeout=1)
-                            if isinstance(file, tuple):
-                                error_type = file[0]
-                                error = file[1]
-                                if error_type == "error":
-                                    error_dict[error_type] = error
-                                else:
-                                    if error_type not in error_dict:
-                                        error_dict[error_type] = []
-                                    error_dict[error_type].append(error)
-                                continue
-                            if self.stopped.stop_check():
-                                continue
-                        except Empty:
-                            for proc in procs:
-                                if not proc.finished_processing.stop_check():
-                                    break
+            with self.session() as session, tqdm.tqdm(
+                total=100, disable=GLOBAL_CONFIG.quiet
+            ) as pbar:
+                word_mapping = {}
+                if isinstance(self, DictionaryMixin):
+                    words = session.query(Word.id, Word.mapping_id, Word.dictionary_id)
+                    for w_id, m_id, d_id in words:
+                        word_mapping[(d_id, m_id)] = {"id": w_id, "count": 0}
+                import_data = DatabaseImportData(word_mapping=word_mapping)
+                while True:
+                    try:
+                        file = return_queue.get(timeout=1)
+                        if isinstance(file, tuple):
+                            error_type = file[0]
+                            error = file[1]
+                            if error_type == "error":
+                                error_dict[error_type] = error
                             else:
-                                break
+                                if error_type not in error_dict:
+                                    error_dict[error_type] = []
+                                error_dict[error_type].append(error)
                             continue
-                        if time.time() - last_poll > 5:
-                            pbar.total = file_counts.value()
-                            last_poll = time.time()
-                        pbar.update(1)
-                        import_data.add_objects(self.generate_import_objects(file))
+                        if self.stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished_processing.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    if time.time() - last_poll > 5:
+                        pbar.total = file_counts.value()
+                        last_poll = time.time()
+                    pbar.update(1)
+                    import_data.add_objects(self.generate_import_objects(file))
 
-                    self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
+                self.log_debug(f"Processing queue: {time.process_time() - begin_time}")
 
-                    if "error" in error_dict:
-                        session.rollback()
-                        raise error_dict["error"][1]
-                    self._finalize_load(session, import_data)
+                if "error" in error_dict:
+                    session.rollback()
+                    raise error_dict["error"][1]
+                self._finalize_load(session, import_data)
             for k in ["sound_file_errors", "decode_error_files", "textgrid_read_errors"]:
                 if hasattr(self, k):
                     if k in error_dict:
@@ -856,7 +946,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                         )
                         self.log_debug(f"{k} showed {len(error_dict[k])} errors:")
                         if k in {"textgrid_read_errors", "sound_file_errors"}:
-                            getattr(self, k).update(error_dict[k])
+                            getattr(self, k).extend(error_dict[k])
                             for e in error_dict[k]:
                                 self.log_debug(f"{e.file_name}: {e.error}")
                         else:
@@ -893,6 +983,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                             break
                     else:
                         break
+            raise
         finally:
             parser.join()
             for p in procs:
@@ -905,7 +996,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     sys.exit(0)
             else:
                 self.log_debug(
-                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.process_time() - begin_time} seconds"
+                    f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.process_time() - begin_time} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:
@@ -932,8 +1023,13 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 all_sound_files.update(exts.other_audio_files)
                 all_sound_files.update(exts.wav_files)
         self.log_debug(f"Walking through {self.corpus_directory}...")
-        import_data = DatabaseImportData()
         with self.session() as session:
+            word_mapping = {}
+            if getattr(self, "oov_count_threshold", 0) > 0:
+                words = session.query(Word.id, Word.mapping_id, Word.dictionary_id)
+                for w_id, m_id, d_id in words:
+                    word_mapping[(d_id, m_id)] = {"id": w_id, "count": 0}
+            import_data = DatabaseImportData(word_mapping=word_mapping)
             for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                 exts = find_exts(files)
                 relative_path = root.replace(self.corpus_directory, "").lstrip("/").lstrip("\\")
@@ -959,13 +1055,8 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                     elif file_name in exts.textgrid_files:
                         tg_name = exts.textgrid_files[file_name]
                         transcription_path = os.path.join(root, tg_name)
-                    if wav_path is None and transcription_path is None:  # Not a file for MFA
+                    if wav_path is None:  # Not a file for MFA
                         continue
-                    if wav_path is None:
-                        self.transcriptions_without_wavs.append(transcription_path)
-                        continue
-                    if transcription_path is None:
-                        self.no_transcription_files.append(wav_path)
                     try:
                         file = FileData.parse_file(
                             file_name,
@@ -1033,16 +1124,18 @@ class AcousticCorpusPronunciationMixin(
         self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
 
         begin = time.time()
-        self.write_lexicon_information()
-        self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
-
-        begin = time.time()
         self._load_corpus()
         self.log_debug(f"Loaded corpus in {time.time() - begin}")
 
         begin = time.time()
         self.initialize_jobs()
         self.log_debug(f"Initialized jobs in {time.time() - begin}")
+
+        self.normalize_text()
+
+        begin = time.time()
+        self.write_lexicon_information()
+        self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
 
         begin = time.time()
         self.create_corpus_split()
@@ -1052,9 +1145,6 @@ class AcousticCorpusPronunciationMixin(
         self.generate_features()
         self.log_debug(f"Generated features in {time.time() - begin}")
 
-        begin = time.time()
-        self.calculate_oovs_found()
-        self.log_debug(f"Calculated oovs found in {time.time() - begin}")
         self.log_debug(f"Setting up corpus took {time.time() - all_begin} seconds")
 
 
@@ -1063,11 +1153,6 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryD
     Standalone class for working with acoustic corpora and pronunciation dictionaries
 
     Most functionality in MFA will use the :class:`~montreal_forced_aligner.corpus.acoustic_corpus.AcousticCorpusPronunciationMixin` class instead of this class.
-
-    Parameters
-    ----------
-    num_jobs: int
-        Number of jobs to use in processing the corpus
 
     See Also
     --------
@@ -1079,9 +1164,8 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryD
         For temporary directory parameters
     """
 
-    def __init__(self, num_jobs=3, **kwargs):
+    def __init__(self, **kwargs):
         super(AcousticCorpus, self).__init__(**kwargs)
-        self.num_jobs = num_jobs
 
     @property
     def sanitize_function(self) -> SanitizeFunction:
@@ -1096,7 +1180,7 @@ class AcousticCorpus(AcousticCorpusMixin, DictionaryMixin, MfaWorker, TemporaryD
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store corpus and dictionary files"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
 
     @property
     def working_directory(self) -> str:
@@ -1109,16 +1193,10 @@ class AcousticCorpusWithPronunciations(
 ):
     """
     Standalone class for parsing an acoustic corpus with a pronunciation dictionary
-
-    Parameters
-    ----------
-    num_jobs: int
-        Number of jobs to use in parsing
     """
 
-    def __init__(self, num_jobs=3, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.num_jobs = num_jobs
 
     @property
     def identifier(self) -> str:
@@ -1128,7 +1206,7 @@ class AcousticCorpusWithPronunciations(
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store corpus and dictionary files"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
 
     @property
     def working_directory(self) -> str:

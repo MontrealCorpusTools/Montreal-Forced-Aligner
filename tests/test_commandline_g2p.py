@@ -1,8 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.g2p import run_g2p
-from montreal_forced_aligner.command_line.mfa import parser
-from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
 
 
@@ -10,11 +10,11 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
         "g2p",
-        english_g2p_model,
         basic_corpus_dir,
+        english_g2p_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--num_pronunciations",
@@ -22,10 +22,17 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
         "--use_mp",
         "False",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(output_path)
-    d = MultispeakerDictionary(output_path, temporary_directory=temp_dir)
+    d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
     assert len(d.word_mapping(1)) > 0
@@ -37,20 +44,27 @@ def test_generate_pretrained_threshold(
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
         "g2p",
-        english_g2p_model,
         basic_corpus_dir,
+        english_g2p_model,
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--g2p_threshold",
         "0.95",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(output_path)
-    d = MultispeakerDictionary(output_path, temporary_directory=temp_dir)
+    d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
     assert len(d.word_mapping(1)) > 0
@@ -70,8 +84,15 @@ def test_train_g2p(basic_dict_path, basic_g2p_model_path, temp_dir, train_g2p_co
         "--config_path",
         train_g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(basic_g2p_model_path)
 
 
@@ -91,8 +112,15 @@ def test_train_g2p_phonetisaurus(
         "--phonetisaurus" "--config_path",
         train_g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_train_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(basic_phonetisaurus_g2p_model_path)
 
 
@@ -105,21 +133,28 @@ def test_generate_dict(
 ):
     command = [
         "g2p",
-        basic_g2p_model_path,
         basic_corpus_dir,
+        basic_g2p_model_path,
         g2p_basic_output,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(g2p_basic_output)
-    d = MultispeakerDictionary(dictionary_path=g2p_basic_output, temporary_directory=temp_dir)
+    d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
 
@@ -133,23 +168,28 @@ def test_generate_dict_phonetisaurus(
 ):
     command = [
         "g2p",
-        basic_phonetisaurus_g2p_model_path,
         basic_corpus_dir,
+        basic_phonetisaurus_g2p_model_path,
         g2p_basic_phonetisaurus_output,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
-    assert os.path.exists(g2p_basic_phonetisaurus_output)
-    d = MultispeakerDictionary(
-        dictionary_path=g2p_basic_phonetisaurus_output, temporary_directory=temp_dir
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
     )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
+    assert os.path.exists(g2p_basic_phonetisaurus_output)
+    d = MultispeakerDictionary(dictionary_path=g2p_basic_phonetisaurus_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
 
@@ -164,21 +204,28 @@ def test_generate_dict_text_only(
     text_dir = basic_split_dir[1]
     command = [
         "g2p",
-        basic_g2p_model_path,
         text_dir,
+        basic_g2p_model_path,
         g2p_basic_output,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(g2p_basic_output)
-    d = MultispeakerDictionary(dictionary_path=g2p_basic_output, temporary_directory=temp_dir)
+    d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
 
@@ -193,41 +240,27 @@ def test_generate_dict_textgrid(
     output_file = os.path.join(generated_dir, "tg_g2pped.dict")
     command = [
         "g2p",
-        english_g2p_model,
         multilingual_ipa_tg_corpus_dir,
+        english_g2p_model,
         output_file,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "g2p_cli"),
         "-q",
         "--clean",
         "--debug",
         "--config_path",
         g2p_config_path,
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
+    assert not result.return_value
     assert os.path.exists(output_file)
-    d = MultispeakerDictionary(dictionary_path=output_file, temporary_directory=temp_dir)
-    d.dictionary_setup()
-    assert len(d.word_mapping()) > 0
-
-
-def test_generate_orthography_dict(basic_corpus_dir, orth_basic_output, temp_dir):
-    command = [
-        "g2p",
-        basic_corpus_dir,
-        orth_basic_output,
-        "-t",
-        temp_dir,
-        "-q",
-        "--clean",
-        "--debug",
-        "--use_mp",
-        "False",
-    ]
-    args, unknown = parser.parse_known_args(command)
-    run_g2p(args, unknown)
-    assert os.path.exists(orth_basic_output)
-    d = MultispeakerDictionary(dictionary_path=orth_basic_output, temporary_directory=temp_dir)
+    d = MultispeakerDictionary(dictionary_path=output_file)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0

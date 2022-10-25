@@ -49,16 +49,18 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx_design",
     "sphinx.ext.viewcode",
-    "sphinxcontrib.autoprogram",
-    "sphinxemoji.sphinxemoji",
+    "sphinx_click",
     # "sphinx_autodoc_typehints",
 ]
+locale_dirs = ["locale/"]  # path is example but recommended.
+gettext_compact = False  # optional.
 panels_add_bootstrap_css = False
 intersphinx_mapping = {
     "sqlalchemy": ("https://docs.sqlalchemy.org/en/14/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "python": ("https://docs.python.org/3", None),
     "Bio": ("https://biopython.org/docs/latest/api/", None),
+    "click": ("https://click.palletsprojects.com/en/8.1.x/", None),
 }
 rst_prolog = """
 .. role:: ipa_inline
@@ -177,7 +179,6 @@ autodoc_type_aliases = {
     "FeatureConfig": "montreal_forced_aligner.config.FeatureConfig",
     "multiprocessing.context.Process": "multiprocessing.Process",
     "mp.Process": "multiprocessing.Process",
-    "Namespace": "argparse.Namespace",
     "MetaDict": "dict[str, Any]",
 }
 
@@ -338,10 +339,10 @@ html_theme_options = {
         # "image_dark": "logo-dark.svg",
     },
     "google_analytics_id": "UA-73068199-4",
-    "show_nav_level": 1,
-    "navigation_depth": 4,
-    "show_toc_level": 2,
-    "collapse_navigation": False,
+    # "show_nav_level": 1,
+    # "navigation_depth": 4,
+    # "show_toc_level": 2,
+    # "collapse_navigation": True,
 }
 html_context = {
     # "github_url": "https://github.com", # or your GitHub Enterprise interprise
@@ -403,6 +404,7 @@ html_css_files = [
 # Custom sidebar templates, maps document names to template names.
 #
 # html_sidebars = { '**': ['globaltoc.html', 'relations.html', 'sourcelink.html', 'searchbox.html'], }
+
 html_sidebars = {"**": ["search-field.html", "sidebar-nav-bs.html", "sidebar-ethical-ads.html"]}
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

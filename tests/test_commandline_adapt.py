@@ -1,7 +1,8 @@
 import os
 
-from montreal_forced_aligner.command_line.adapt import run_adapt_model
-from montreal_forced_aligner.command_line.mfa import parser
+import click.testing
+
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_adapt_basic(
@@ -20,14 +21,13 @@ def test_adapt_basic(
         english_acoustic_model,
         adapted_model_path,
         "--beam",
-        "100",
+        "15",
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "adapt_cli"),
         "--clean",
-        "--debug",
+        "--no-debug",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_adapt_model(args, unknown)
+    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(adapted_model_path)
 
 
@@ -58,6 +58,5 @@ def test_adapt_multilingual(
         "--clean",
         "--debug",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_adapt_model(args, unknown)
+    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
     assert os.path.exists(adapted_model_path)

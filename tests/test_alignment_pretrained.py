@@ -8,14 +8,10 @@ from montreal_forced_aligner.db import PhoneInterval, Utterance, WordInterval
 def test_align_sick(
     english_dictionary, english_acoustic_model, basic_corpus_dir, temp_dir, test_align_config
 ):
-    temp = os.path.join(temp_dir, "align_export_temp")
     a = PretrainedAligner(
         corpus_directory=basic_corpus_dir,
         dictionary_path=english_dictionary,
         acoustic_model_path=english_acoustic_model,
-        temporary_directory=temp,
-        debug=True,
-        verbose=True,
         **test_align_config
     )
     a.align()

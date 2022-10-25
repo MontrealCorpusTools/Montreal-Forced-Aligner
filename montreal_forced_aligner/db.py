@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import os
+import re
 import typing
 
 import librosa
 import numpy as np
 import sqlalchemy
 from praatio import textgrid
-from praatio.utilities.constants import Interval, TextgridFormats
-from sqlalchemy import Boolean, Column, Enum, Float, ForeignKey, Integer, String
+from praatio.utilities.constants import Interval
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, column_property, declarative_base, relationship
 
@@ -19,6 +20,7 @@ from montreal_forced_aligner.data import (
     PhoneType,
     TextFileType,
     WordType,
+    WorkflowType,
 )
 from montreal_forced_aligner.helper import mfa_open
 
@@ -26,6 +28,10 @@ if typing.TYPE_CHECKING:
     from montreal_forced_aligner.corpus.classes import UtteranceData
 
 __all__ = [
+    "Corpus",
+    "CorpusWorkflow",
+    "PhonologicalRule",
+    "RuleApplication",
     "DictBundle",
     "Dictionary",
     "Word",
@@ -40,11 +46,80 @@ __all__ = [
     "Utterance",
     "PhoneInterval",
     "WordInterval",
-    "ReferencePhoneInterval",
+    "M2MSymbol",
+    "Job",
+    "Word2Job",
+    "M2M2Job",
+    "Grapheme",
     "MfaSqlBase",
+    "bulk_update",
 ]
 
 MfaSqlBase = declarative_base()
+
+
+def bulk_update(
+    session: sqlalchemy.orm.Session,
+    table: MfaSqlBase,
+    values: typing.List[typing.Dict[str, typing.Any]],
+    id_field=None,
+) -> None:
+    """
+    Perform a bulk update of a database.
+
+    Parameters
+    ----------
+    session: :class:`sqlalchemy.orm.Session`
+        SqlAlchemy session to use
+    table: :class:`~montreal_forced_aligner.db.MfaSqlBase`
+        Table to update
+    values: list[dict[str, Any]]
+        List of field-value dictionaries to insert
+    id_field: str, optional
+        Optional specifier of the primary key field
+    """
+    if len(values) == 0:
+        return
+    if id_field is None:
+        id_field = "id"
+
+    column_names = [x for x in values[0].keys() if x != id_field]
+    columns = [getattr(table, x).copy() for x in column_names]
+    with session.begin_nested():
+        temp_table = sqlalchemy.Table(
+            f"temp_{table.__tablename__}",
+            MfaSqlBase.metadata,
+            sqlalchemy.Column(id_field, sqlalchemy.Integer, primary_key=True),
+            *columns,
+            prefixes=["TEMPORARY"],
+            extend_existing=True,
+        )
+        create_statement = str(
+            sqlalchemy.schema.CreateTable(temp_table).compile(session.get_bind())
+        )
+        session.execute(create_statement)
+        session.execute(temp_table.insert(), values)
+        set_statements = []
+        for c in column_names:
+            set_statements.append(
+                f"""{c} = (SELECT {c}
+                                          FROM temp_{table.__tablename__}
+                                          WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
+            )
+        exist_statement = f"""EXISTS (SELECT {', '.join(column_names)}
+              FROM temp_{table.__tablename__}
+              WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
+        set_statements = ",\n".join(set_statements)
+        session.execute(
+            f"""UPDATE
+                              {table.__tablename__}
+                        SET {set_statements}
+                        WHERE {exist_statement}"""
+        )
+
+        # drop temp table
+        session.execute(f"DROP TABLE temp_{table.__tablename__}")
+    MfaSqlBase.metadata.remove(temp_table)
 
 
 class DictBundle(Bundle):
@@ -87,9 +162,10 @@ class Corpus(MfaSqlBase):
 
     __tablename__ = "corpus"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), unique=True, nullable=False)
     imported = Column(Boolean, default=False)
+    text_normalized = Column(Boolean, default=False)
     features_generated = Column(Boolean, default=False)
     alignment_done = Column(Boolean, default=False)
     transcription_done = Column(Boolean, default=False)
@@ -97,6 +173,27 @@ class Corpus(MfaSqlBase):
     has_reference_alignments = Column(Boolean, default=False)
     has_sound_files = Column(Boolean, default=False)
     has_text_files = Column(Boolean, default=False)
+
+
+class Dialect(MfaSqlBase):
+    """
+    Database class for storing information about a dialect
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    name: str
+        Dialect name
+    """
+
+    __tablename__ = "dialect"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False)
+
+    dictionaries = relationship("Dictionary", back_populates="dialect")
+    rules = relationship("PhonologicalRule", back_populates="dialect")
 
 
 class Dictionary(MfaSqlBase):
@@ -109,6 +206,8 @@ class Dictionary(MfaSqlBase):
         Primary key
     name: str
         Dictionary name
+    dialect: str
+        Dialect of dictionary if dictionary name is in MFA format
     path: str
         Path to the dictionary
     phone_set_type: :class:`~montreal_forced_aligner.data.PhoneSetType`
@@ -147,45 +246,52 @@ class Dictionary(MfaSqlBase):
 
     __tablename__ = "dictionary"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False)
-    path = Column(String, unique=True, nullable=False)
-    phone_set_type = Column(Enum(PhoneSetType))
-    root_temp_directory = Column(String, nullable=False)
+    path = Column(String, unique=True)
+    phone_set_type = Column(Enum(PhoneSetType), nullable=True)
+    root_temp_directory = Column(String, nullable=True)
     clitic_cleanup_regex = Column(String, nullable=True)
     bracket_regex = Column(String, nullable=True)
     laughter_regex = Column(String, nullable=True)
-    position_dependent_phones = Column(Boolean, nullable=False)
+    position_dependent_phones = Column(Boolean, nullable=True)
     default = Column(Boolean, default=False, nullable=False)
     clitic_marker = Column(String(1), nullable=True)
-    silence_word = Column(String, nullable=False)
-    optional_silence_phone = Column(String, nullable=False)
-    oov_word = Column(String, nullable=False)
-    bracketed_word = Column(String, nullable=False)
-    laughter_word = Column(String, nullable=False)
+    silence_word = Column(String, nullable=True)
+    optional_silence_phone = Column(String, nullable=True)
+    oov_word = Column(String, nullable=True)
+    bracketed_word = Column(String, nullable=True)
+    laughter_word = Column(String, nullable=True)
 
-    use_g2p = Column(Boolean, nullable=False)
+    use_g2p = Column(Boolean, nullable=False, default=False)
     max_disambiguation_symbol = Column(Integer, default=0, nullable=False)
     silence_probability = Column(Float, default=0.5, nullable=False)
     initial_silence_probability = Column(Float, default=0.5, nullable=False)
     final_silence_correction = Column(Float, nullable=True)
     final_non_silence_correction = Column(Float, nullable=True)
 
+    dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=False)
+    dialect: Dialect = relationship("Dialect", back_populates="dictionaries")
+
     words = relationship(
         "Word",
         back_populates="dictionary",
         order_by="Word.mapping_id",
         collection_class=ordering_list("mapping_id"),
-        cascade="all, delete-orphan",
+        cascade="all, delete",
     )
     oov_words = relationship(
         "OovWord",
         back_populates="dictionary",
         order_by="OovWord.count.desc()",
         collection_class=ordering_list("count", ordering_func=lambda x: -x),
+        cascade="all, delete",
+    )
+    speakers = relationship(
+        "Speaker",
+        back_populates="dictionary",
         cascade="all, delete-orphan",
     )
-    speakers = relationship("Speaker", back_populates="dictionary")
 
     @property
     def clitic_set(self) -> typing.Set[str]:
@@ -239,6 +345,20 @@ class Dictionary(MfaSqlBase):
         return os.path.join(self.temp_directory, "L.disambig_fst")
 
     @property
+    def align_lexicon_path(self) -> str:
+        """
+        Path of lexicon file to use for aligning lattices
+        """
+        return os.path.join(self.temp_directory, "align_lexicon.fst")
+
+    @property
+    def align_lexicon_int_path(self) -> str:
+        """
+        Path of lexicon file to use for aligning lattices
+        """
+        return os.path.join(self.temp_directory, "align_lexicon.int")
+
+    @property
     def lexicon_fst_path(self) -> str:
         """
         Path of disambiguated lexicon fst (L.fst)
@@ -261,11 +381,6 @@ class Dictionary(MfaSqlBase):
     def identifier(self) -> str:
         """Dictionary name"""
         return f"{self.data_source_identifier}"
-
-    @property
-    def output_directory(self) -> str:
-        """Temporary directory for the dictionary"""
-        return os.path.join(self.temporary_directory, self.identifier)
 
     @property
     def silence_probability_info(self) -> typing.Dict[str, float]:
@@ -296,11 +411,20 @@ class Phone(MfaSqlBase):
 
     __tablename__ = "phone"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     mapping_id = Column(Integer, nullable=False, unique=True)
-    phone = Column(String(10), unique=True, nullable=False)
-    count = Column(Integer, nullable=False, default=0)
+    phone = Column(String(10), nullable=False)
+    kaldi_label = Column(String(10), unique=True, nullable=False)
+    position = Column(String(2), nullable=True)
     phone_type = Column(Enum(PhoneType), nullable=False, index=True)
+
+    phone_intervals = relationship(
+        "PhoneInterval",
+        back_populates="phone",
+        order_by="PhoneInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
 
 
 class Grapheme(MfaSqlBase):
@@ -319,9 +443,9 @@ class Grapheme(MfaSqlBase):
 
     __tablename__ = "grapheme"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     mapping_id = Column(Integer, nullable=False, unique=True)
-    grapheme = Column(String(10), unique=True, nullable=False)
+    grapheme = Column(String(25), unique=True, nullable=False)
 
 
 class Word(MfaSqlBase):
@@ -348,7 +472,7 @@ class Word(MfaSqlBase):
 
     __tablename__ = "word"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     mapping_id = Column(Integer, nullable=False, index=True)
     word = Column(String, nullable=False, index=True)
     count = Column(Integer, default=0, nullable=False, index=True)
@@ -361,6 +485,13 @@ class Word(MfaSqlBase):
         "Word2Job",
         back_populates="word",
         uselist=False,
+    )
+    word_intervals = relationship(
+        "WordInterval",
+        back_populates="word",
+        order_by="WordInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
     )
 
     __table_args__ = (
@@ -389,7 +520,7 @@ class OovWord(MfaSqlBase):
 
     __tablename__ = "oov_word"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     word = Column(String, nullable=False, index=True)
     count = Column(Integer, default=0, nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
@@ -424,15 +555,199 @@ class Pronunciation(MfaSqlBase):
 
     __tablename__ = "pronunciation"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     pronunciation = Column(String, nullable=False)
     probability = Column(Float, nullable=True)
     disambiguation = Column(Integer, nullable=True)
     silence_after_probability = Column(Float, nullable=True)
     silence_before_correction = Column(Float, nullable=True)
     non_silence_before_correction = Column(Float, nullable=True)
+
+    count = Column(Integer, nullable=False, default=1)
+    silence_following_count = Column(Integer, nullable=True)
+    non_silence_following_count = Column(Integer, nullable=True)
+
     word_id = Column(Integer, ForeignKey("word.id"), nullable=False, index=True)
     word: Word = relationship("Word", back_populates="pronunciations")
+
+    base_pronunciation_id = Column(
+        Integer, ForeignKey("pronunciation.id"), nullable=False, index=True
+    )
+    variants = relationship(
+        "Pronunciation", backref=sqlalchemy.orm.backref("base_pronunciation", remote_side=[id])
+    )
+
+    rules = relationship(
+        "RuleApplication",
+        back_populates="pronunciation",
+        cascade="all, delete-orphan",
+    )
+
+    word_intervals = relationship(
+        "WordInterval",
+        back_populates="pronunciation",
+        order_by="WordInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
+
+
+class PhonologicalRule(MfaSqlBase):
+    """
+    Database class for storing information about a phonological rule
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    segment: str
+        Segment to replace
+    preceding_context: str
+        Context before segment to match
+    following_context: str
+        Context after segment to match
+    replacement: str
+        Replacement of segment
+    probability: float
+        Probability of the rule application
+    silence_after_probability: float
+        Probability of silence following forms with rule application
+    silence_before_correction: float
+        Correction factor for silence before forms with rule application
+    non_silence_before_correction: float
+        Correction factor for non-silence before forms with rule application
+    pronunciations: list[:class:`~montreal_forced_aligner.db.RuleApplication`]
+        List of rule applications
+    """
+
+    __tablename__ = "phonological_rule"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    segment = Column(String, nullable=False, index=True)
+    preceding_context = Column(String, nullable=False, index=True)
+    following_context = Column(String, nullable=False, index=True)
+    replacement = Column(String, nullable=False)
+
+    probability = Column(Float, nullable=True)
+    silence_after_probability = Column(Float, nullable=True)
+    silence_before_correction = Column(Float, nullable=True)
+    non_silence_before_correction = Column(Float, nullable=True)
+
+    dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=False)
+    dialect: Dialect = relationship("Dialect", back_populates="rules")
+
+    pronunciations: typing.List[RuleApplication] = relationship(
+        "RuleApplication", back_populates="rule"
+    )
+
+    def __hash__(self):
+        return hash(
+            (self.segment, self.preceding_context, self.following_context, self.replacement)
+        )
+
+    def to_json(self) -> typing.Dict[str, typing.Any]:
+        """
+        Serializes the rule for export
+
+        Returns
+        -------
+        dict[str, Any]
+            Serialized rule
+        """
+        return {
+            "segment": self.segment,
+            "dialect": self.dialect,
+            "preceding_context": self.preceding_context,
+            "following_context": self.following_context,
+            "replacement": self.replacement,
+            "probability": self.probability,
+            "silence_after_probability": self.silence_after_probability,
+            "silence_before_correction": self.silence_before_correction,
+            "non_silence_before_correction": self.non_silence_before_correction,
+        }
+
+    @property
+    def match_regex(self):
+        """Regular expression of the rule"""
+        components = []
+        initial = False
+        final = False
+        preceding = self.preceding_context
+        following = self.following_context
+        if preceding.startswith("^"):
+            initial = True
+            preceding = preceding.replace("^", "").strip()
+        if following.endswith("$"):
+            final = True
+            following = following.replace("$", "").strip()
+        if preceding:
+
+            components.append(f"(?P<preceding>{preceding})")
+        if self.segment:
+            components.append(rf"\b(?P<segment>{self.segment})\b")
+        if following:
+            components.append(f"(?P<following>{following})")
+        pattern = " ".join(components)
+        if initial:
+            pattern = "^" + pattern
+        if final:
+            pattern += "$"
+        return re.compile(pattern)
+
+    def apply_rule(self, pronunciation: str) -> str:
+        """
+        Apply the rule on a pronunciation by replacing any matching segments with the replacement
+
+        Parameters
+        ----------
+        pronunciation: str
+            Pronunciation to apply rule
+
+        Returns
+        -------
+        str
+            Pronunciation with rule applied
+        """
+        preceding = self.preceding_context
+        following = self.following_context
+        if preceding.startswith("^"):
+            preceding = preceding.replace("^", "").strip()
+        if following.startswith("$"):
+            following = following.replace("$", "").strip()
+        components = []
+        if preceding:
+            components.append(r"\g<preceding>")
+        if self.replacement:
+            components.append(self.replacement)
+        if following:
+            components.append(r"\g<following>")
+        return self.match_regex.sub(" ".join(components), pronunciation).strip()
+
+
+class RuleApplication(MfaSqlBase):
+    """
+    Database class for mapping rules to generated pronunciations
+
+    Parameters
+    ----------
+    pronunciation_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Pronunciation`
+    rule_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.PhonologicalRule`
+    pronunciation: :class:`~montreal_forced_aligner.db.Pronunciation`
+        Pronunciation
+    rule: :class:`~montreal_forced_aligner.db.PhonologicalRule`
+        Rule applied
+    """
+
+    __tablename__ = "rule_applications"
+    pronunciation_id = Column(ForeignKey("pronunciation.id"), primary_key=True)
+    rule_id = Column(ForeignKey("phonological_rule.id"), primary_key=True)
+
+    pronunciation: Pronunciation = relationship("Pronunciation", back_populates="rules")
+
+    rule: PhonologicalRule = relationship("PhonologicalRule", back_populates="pronunciations")
 
 
 class Speaker(MfaSqlBase):
@@ -447,8 +762,6 @@ class Speaker(MfaSqlBase):
         Name of the speaker
     cmvn: str
         File index for the speaker's CMVN stats
-    job_id: int
-        Multiprocessing job ID for the speaker
     dictionary_id: int
         Foreign key to :class:`~montreal_forced_aligner.db.Dictionary`
     dictionary: :class:`~montreal_forced_aligner.db.Dictionary`
@@ -461,16 +774,13 @@ class Speaker(MfaSqlBase):
 
     __tablename__ = "speaker"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, nullable=False)
     cmvn = Column(String)
-    job_id = Column(Integer, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="speakers")
-    utterances = relationship("Utterance", back_populates="speaker")
-    files = relationship("SpeakerOrdering", back_populates="speaker")
-
-    __table_args__ = (sqlalchemy.Index("job_dictionary_index", "job_id", "dictionary_id"),)
+    utterances: typing.List[Utterance] = relationship("Utterance", back_populates="speaker")
+    files: typing.List[File] = relationship("SpeakerOrdering", back_populates="speaker")
 
 
 class SpeakerOrdering(MfaSqlBase):
@@ -526,7 +836,7 @@ class File(MfaSqlBase):
 
     __tablename__ = "file"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     relative_path = Column(String, nullable=False)
     modified = Column(Boolean, nullable=False, default=False)
@@ -578,7 +888,7 @@ class File(MfaSqlBase):
 
     def save(
         self,
-        output_directory: typing.Optional[str] = None,
+        output_directory,
         output_format: typing.Optional[str] = None,
         save_transcription: bool = False,
     ) -> None:
@@ -589,13 +899,15 @@ class File(MfaSqlBase):
 
         Parameters
         ----------
-        output_directory: str, optional
+        output_directory: str
             Directory to output file, if None, then it will overwrite the original file
         output_format: str, optional
             Text type to save as, if not provided, it will use either the original file type or guess the file type
         save_transcription: bool
             Flag for whether the hypothesized transcription text should be saved instead of the default text
         """
+        from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
+
         utterance_count = len(self.utterances)
         overwrite = output_format is None
         if overwrite:  # Saving directly
@@ -607,7 +919,9 @@ class File(MfaSqlBase):
                 output_format = TextFileType.LAB.value
             else:
                 output_format = TextFileType.TEXTGRID.value
-        output_path = self.construct_output_path(output_directory, output_format=output_format)
+        output_path = construct_output_path(
+            self.name, self.relative_path, output_directory, output_format=output_format
+        )
         if overwrite:
             if self.text_file is None:
                 self.text_file = TextFile(
@@ -695,74 +1009,8 @@ class File(MfaSqlBase):
             label = u.transcription_text
             if not label:
                 label = ""
-            data[speaker_name].append(CtmInterval(u.begin, u.end, label, u.id))
+            data[speaker_name].append(CtmInterval(u.begin, u.end, label))
         return data
-
-    def construct_output_tiers(
-        self,
-    ) -> typing.Dict[str, typing.Dict[str, typing.List[CtmInterval]]]:
-        """
-        Construct aligned output tiers for a file
-
-        Returns
-        -------
-        dict[str, dict[str, list[CtmInterval]]]
-            Per-speaker aligned "words" and "phones" tiers
-        """
-        data = {}
-        for utt in self.utterances:
-            if utt.speaker.name not in data:
-                data[utt.speaker.name] = {"words": [], "phones": []}
-            for wi in utt.word_intervals:
-                data[utt.speaker.name]["words"].append(
-                    CtmInterval(wi.begin, wi.end, wi.label, utt.id)
-                )
-
-            for pi in utt.phone_intervals:
-                data[utt.speaker.name]["phones"].append(
-                    CtmInterval(pi.begin, pi.end, pi.label, utt.id)
-                )
-        return data
-
-    def construct_output_path(
-        self,
-        output_directory: typing.Optional[str] = None,
-        output_format: str = TextgridFormats.SHORT_TEXTGRID,
-    ) -> str:
-        """
-        Construct the output path for the File
-
-        Parameters
-        ----------
-        output_directory: str, optional
-            Directory to output to, if None, it will overwrite the original file
-        output_format: str
-            File format to save in, one of ``lab``, ``long_textgrid``, ``short_textgrid`` (the default), or ``json``
-
-        Returns
-        -------
-        str
-            Output path
-        """
-        if output_format.upper() == "LAB":
-            extension = ".lab"
-        elif output_format.upper() == "JSON":
-            extension = ".json"
-        else:
-            extension = ".TextGrid"
-        if output_directory is None:
-            if self.text_file is None or not self.text_file.text_file_path.endswith(extension):
-                return os.path.splitext(self.sound_file.sound_file_path)[0] + extension
-            return self.text_file.text_file_path
-        if self.relative_path:
-            relative = os.path.join(output_directory, self.relative_path)
-        else:
-            relative = output_directory
-        output_path = os.path.join(relative, self.name + extension)
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        return output_path
 
 
 class SoundFile(MfaSqlBase):
@@ -917,17 +1165,18 @@ class Utterance(MfaSqlBase):
     speaker: :class:`~montreal_forced_aligner.db.Speaker`
         Speaker object of the utterance
     phone_intervals: list[:class:`~montreal_forced_aligner.db.PhoneInterval`]
-        Aligned phone intervals
-    reference_phone_intervals: list[:class:`~montreal_forced_aligner.db.ReferencePhoneInterval`]
         Reference phone intervals
     word_intervals: list[:class:`~montreal_forced_aligner.db.WordInterval`]
         Aligned word intervals
-
+    job_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Job`
+    job: :class:`~montreal_forced_aligner.db.Job`
+        Job that processes the utterance
     """
 
     __tablename__ = "utterance"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
     duration = Column(Float, nullable=False, index=True)
@@ -950,25 +1199,23 @@ class Utterance(MfaSqlBase):
     character_error_rate = Column(Float)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
+    job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
     file: File = relationship("File", back_populates="utterances")
     speaker: Speaker = relationship("Speaker", back_populates="utterances")
+    job: Job = relationship("Job", back_populates="utterances")
     phone_intervals = relationship(
         "PhoneInterval",
         back_populates="utterance",
         order_by="PhoneInterval.begin",
         collection_class=ordering_list("begin"),
-    )
-    reference_phone_intervals = relationship(
-        "ReferencePhoneInterval",
-        back_populates="utterance",
-        order_by="ReferencePhoneInterval.begin",
-        collection_class=ordering_list("begin"),
+        cascade="all, delete",
     )
     word_intervals = relationship(
         "WordInterval",
         back_populates="utterance",
         order_by="WordInterval.begin",
         collection_class=ordering_list("begin"),
+        cascade="all, delete",
     )
     kaldi_id = column_property(
         speaker_id.cast(sqlalchemy.VARCHAR) + "-" + id.cast(sqlalchemy.VARCHAR)
@@ -983,6 +1230,126 @@ class Utterance(MfaSqlBase):
     def __repr__(self) -> str:
         """String representation of the utterance object"""
         return f"<Utterance in {self.file_name} by {self.speaker_name} from {self.begin} to {self.end}>"
+
+    def phone_intervals_for_workflow(self, workflow_id: int) -> typing.List[CtmInterval]:
+        """
+        Extract phone intervals for a given :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+
+        Parameters
+        ----------
+        workflow_id: int
+            Integer ID for :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+            List of phone intervals
+        """
+        return [x.as_ctm() for x in self.phone_intervals if x.workflow_id == workflow_id]
+
+    def word_intervals_for_workflow(self, workflow_id: int) -> typing.List[CtmInterval]:
+        """
+        Extract word intervals for a given :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+
+        Parameters
+        ----------
+        workflow_id: int
+            Integer ID for :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+            List of word intervals
+        """
+        return [x.as_ctm() for x in self.word_intervals if x.workflow_id == workflow_id]
+
+    @property
+    def reference_phone_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.reference`
+        """
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow is WorkflowType.reference
+        ]
+
+    @property
+    def aligned_phone_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
+        """
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow is WorkflowType.alignment
+        ]
+
+    @property
+    def aligned_word_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Word intervals from :attr:`montreal_forced_aligner.data.WorkflowType.alignment`
+        """
+        return [
+            x.as_ctm()
+            for x in self.word_intervals
+            if x.workflow.workflow is WorkflowType.alignment
+        ]
+
+    @property
+    def transcribed_phone_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.transcription`
+        """
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow is WorkflowType.transcription
+        ]
+
+    @property
+    def transcribed_word_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Word intervals from :attr:`montreal_forced_aligner.data.WorkflowType.transcription`
+        """
+        return [
+            x.as_ctm()
+            for x in self.word_intervals
+            if x.workflow.workflow is WorkflowType.transcription
+        ]
+
+    @property
+    def per_speaker_transcribed_phone_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.per_speaker_transcription`
+        """
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow is WorkflowType.per_speaker_transcription
+        ]
+
+    @property
+    def per_speaker_transcribed_word_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Word intervals from :attr:`montreal_forced_aligner.data.WorkflowType.per_speaker_transcription`
+        """
+        return [
+            x.as_ctm()
+            for x in self.word_intervals
+            if x.workflow.workflow is WorkflowType.per_speaker_transcription
+        ]
+
+    @property
+    def phone_transcribed_phone_intervals(self) -> typing.List[CtmInterval]:
+        """
+        Phone intervals from :attr:`montreal_forced_aligner.data.WorkflowType.phone_transcription`
+        """
+        return [
+            x.as_ctm()
+            for x in self.phone_intervals
+            if x.workflow.workflow is WorkflowType.phone_transcription
+        ]
 
     @property
     def file_name(self) -> str:
@@ -1005,6 +1372,10 @@ class Utterance(MfaSqlBase):
         """
         from montreal_forced_aligner.corpus.classes import UtteranceData
 
+        if self.normalized_text is None:
+            self.normalized_text = ""
+        if self.normalized_text_int is None:
+            self.normalized_text_int = ""
         return UtteranceData(
             self.speaker_name,
             self.file_name,
@@ -1059,6 +1430,51 @@ class Utterance(MfaSqlBase):
         )
 
 
+class CorpusWorkflow(MfaSqlBase):
+    """
+
+    Database class for storing information about a particular workflow (alignment, transcription, etc)
+
+    Parameters
+    ----------
+    id: int
+        Primary key
+    workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
+        Workflow type
+    time_stamp: :class:`datetime.datetime`
+        Time stamp for the workflow run
+    score: float
+        Log likelihood or other score for the workflow run
+    phone_intervals: list[:class:`~montreal_forced_aligner.db.PhoneInterval`]
+        Phone intervals linked to the workflow
+    word_intervals: list[:class:`~montreal_forced_aligner.db.WordInterval`]
+        Word intervals linked to the workflow
+    """
+
+    __tablename__ = "corpus_workflow"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow = Column(Enum(WorkflowType), nullable=False, index=True)
+    time_stamp = Column(DateTime, nullable=False, index=True)
+    score = Column(Float, nullable=True)
+
+    phone_intervals = relationship(
+        "PhoneInterval",
+        back_populates="workflow",
+        order_by="PhoneInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
+
+    word_intervals = relationship(
+        "WordInterval",
+        back_populates="workflow",
+        order_by="WordInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
+
+
 class PhoneInterval(MfaSqlBase):
     """
 
@@ -1072,25 +1488,56 @@ class PhoneInterval(MfaSqlBase):
         Beginning timestamp of the interval
     end: float
         Ending timestamp of the interval
-    label: str
-        Text label of the interval
+    phone_goodness: float
+        Confidence score, log-likelihood, etc for the phone interval
+    phone_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Phone`
+    phone: :class:`~montreal_forced_aligner.db.Phone`
+        Phone of the interval
     utterance_id: int
         Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
     utterance: :class:`~montreal_forced_aligner.db.Utterance`
         Utterance of the interval
+    word_interval_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.WordInterval`
+    word_interval: :class:`~montreal_forced_aligner.db.WordInterval`
+        Word interval that is associated with the phone interval
+    workflow_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+    workflow: :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+        Workflow that generated the phone interval
     """
 
     __tablename__ = "phone_interval"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
-    label = Column(String, nullable=False)
+    phone_goodness = Column(Float, nullable=True)
+
+    phone_id = Column(Integer, ForeignKey("phone.id"), index=True, nullable=False)
+    phone: Phone = relationship("Phone", back_populates="phone_intervals")
+
+    word_interval_id = Column(Integer, ForeignKey("word_interval.id"), index=True, nullable=True)
+    word_interval: WordInterval = relationship("WordInterval", back_populates="phone_intervals")
+
     utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
     utterance: Utterance = relationship("Utterance", back_populates="phone_intervals")
 
+    workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
+    workflow: CorpusWorkflow = relationship("CorpusWorkflow", back_populates="phone_intervals")
+
+    __table_args__ = (
+        sqlalchemy.Index("phone_utterance_workflow_index", "utterance_id", "workflow_id"),
+    )
+
+    def __repr__(self):
+        return f"<PhoneInterval {self.kaldi_label} ({self.workflow.workflow}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
+
     @classmethod
-    def from_ctm(self, interval: CtmInterval, utterance: Utterance) -> PhoneInterval:
+    def from_ctm(
+        self, interval: CtmInterval, utterance: Utterance, workflow_id: int
+    ) -> PhoneInterval:
         """
         Construct a PhoneInterval from a CtmInterval object
 
@@ -1100,6 +1547,8 @@ class PhoneInterval(MfaSqlBase):
             CtmInterval containing data for the phone interval
         utterance: :class:`~montreal_forced_aligner.db.Utterance`
             Utterance object that the phone interval belongs to
+        workflow_id: int
+            Integer id for the workflow that generated the phone interval
 
         Returns
         -------
@@ -1107,7 +1556,11 @@ class PhoneInterval(MfaSqlBase):
             Phone interval object
         """
         return PhoneInterval(
-            begin=interval.begin, end=interval.end, label=interval.label, utterance=utterance
+            begin=interval.begin,
+            end=interval.end,
+            label=interval.label,
+            utterance=utterance,
+            workflow_id=workflow_id,
         )
 
     def as_ctm(self) -> CtmInterval:
@@ -1119,7 +1572,7 @@ class PhoneInterval(MfaSqlBase):
         :class:`~montreal_forced_aligner.data.CtmInterval`
             CTM interval object
         """
-        return CtmInterval(self.begin, self.end, self.label, self.utterance_id)
+        return CtmInterval(self.begin, self.end, self.phone.phone, confidence=self.phone_goodness)
 
 
 class WordInterval(MfaSqlBase):
@@ -1135,25 +1588,60 @@ class WordInterval(MfaSqlBase):
         Beginning timestamp of the interval
     end: float
         Ending timestamp of the interval
-    label: str
-        Text label of the interval
+    word_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Word`
+    word: :class:`~montreal_forced_aligner.db.Word`
+        Word of the interval
+    pronunciation_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Pronunciation`
+    pronunciation: :class:`~montreal_forced_aligner.db.Pronunciation`
+        Pronunciation of the word
     utterance_id: int
         Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
     utterance: :class:`~montreal_forced_aligner.db.Utterance`
         Utterance of the interval
+    workflow_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+    workflow: :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+        Workflow that generated the interval
+    phone_intervals: list[:class:`~montreal_forced_aligner.db.PhoneInterval`]
+        Phone intervals for the word interval
     """
 
     __tablename__ = "word_interval"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
-    label = Column(String, nullable=False)
+
     utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
     utterance: Utterance = relationship("Utterance", back_populates="word_intervals")
 
+    word_id = Column(Integer, ForeignKey("word.id"), index=True, nullable=False)
+    word: Word = relationship("Word", back_populates="word_intervals")
+
+    pronunciation_id = Column(Integer, ForeignKey("pronunciation.id"), index=True, nullable=False)
+    pronunciation: Pronunciation = relationship("Pronunciation", back_populates="word_intervals")
+
+    workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
+    workflow: CorpusWorkflow = relationship("CorpusWorkflow", back_populates="word_intervals")
+
+    phone_intervals = relationship(
+        "PhoneInterval",
+        back_populates="word_interval",
+        order_by="PhoneInterval.begin",
+        collection_class=ordering_list("begin"),
+        cascade="all, delete",
+    )
+
+    __table_args__ = (
+        sqlalchemy.Index("word_utterance_workflow_index", "utterance_id", "workflow_id"),
+    )
+
     @classmethod
-    def from_ctm(self, interval: CtmInterval, utterance: Utterance) -> WordInterval:
+    def from_ctm(
+        self, interval: CtmInterval, utterance: Utterance, workflow_id: int
+    ) -> WordInterval:
         """
         Construct a WordInterval from a CtmInterval object
 
@@ -1163,6 +1651,8 @@ class WordInterval(MfaSqlBase):
             CtmInterval containing data for the word interval
         utterance: :class:`~montreal_forced_aligner.db.Utterance`
             Utterance object that the word interval belongs to
+        workflow_id: int
+            Integer id for the workflow that generated the phone interval
 
         Returns
         -------
@@ -1170,7 +1660,11 @@ class WordInterval(MfaSqlBase):
             Word interval object
         """
         return WordInterval(
-            begin=interval.begin, end=interval.end, label=interval.label, utterance=utterance
+            begin=interval.begin,
+            end=interval.end,
+            label=interval.label,
+            utterance=utterance,
+            workflow_id=workflow_id,
         )
 
     def as_ctm(self) -> CtmInterval:
@@ -1182,13 +1676,12 @@ class WordInterval(MfaSqlBase):
         :class:`~montreal_forced_aligner.data.CtmInterval`
             CTM interval object
         """
-        return CtmInterval(self.begin, self.end, self.label, self.utterance_id)
+        return CtmInterval(self.begin, self.end, self.word.word)
 
 
-class ReferencePhoneInterval(MfaSqlBase):
+class Job(MfaSqlBase):
     """
-
-    Database class for storing information about reference phone intervals
+    Database class for storing information about multiprocessing jobs
 
     Parameters
     ----------
@@ -1198,40 +1691,34 @@ class ReferencePhoneInterval(MfaSqlBase):
         Beginning timestamp of the interval
     end: float
         Ending timestamp of the interval
-    label: str
-        Text label of the interval
+    word_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Word`
+    word: :class:`~montreal_forced_aligner.db.Word`
+        Word of the interval
+    pronunciation_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Pronunciation`
+    pronunciation: :class:`~montreal_forced_aligner.db.Pronunciation`
+        Pronunciation of the word
     utterance_id: int
         Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
     utterance: :class:`~montreal_forced_aligner.db.Utterance`
         Utterance of the interval
+    workflow_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+    workflow: :class:`~montreal_forced_aligner.db.CorpusWorkflow`
+        Workflow that generated the interval
+    utterances: list[:class:`~montreal_forced_aligner.db.Utterance`]
+        Utterances associated with the job
+    symbols: list[:class:`~montreal_forced_aligner.db.M2M2Job`]
+        Symbols associated with the job in training phonetisaurus models
+    words: list[:class:`~montreal_forced_aligner.db.Word2Job`]
+        Words associated with the job in training phonetisaurus models
     """
-
-    __tablename__ = "reference_phone_interval"
-
-    id = Column(Integer, primary_key=True)
-    begin = Column(Float, nullable=False, index=True)
-    end = Column(Float, nullable=False)
-    label = Column(String, nullable=False)
-    utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
-    utterance: Utterance = relationship("Utterance", back_populates="reference_phone_intervals")
-
-    def as_ctm(self) -> CtmInterval:
-        """
-        Generate a CtmInterval from the database object
-
-        Returns
-        -------
-        :class:`~montreal_forced_aligner.data.CtmInterval`
-            CTM interval object
-        """
-        return CtmInterval(self.begin, self.end, self.label, self.utterance_id)
-
-
-class Job(MfaSqlBase):
 
     __tablename__ = "job"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    utterances = relationship("Utterance", back_populates="job")
 
     symbols = relationship(
         "M2M2Job",
@@ -1265,11 +1752,13 @@ class M2MSymbol(MfaSqlBase):
         Phone order
     weight: float
         Weight of arcs
+    jobs: list[:class:`~montreal_forced_aligner.db.M2M2Job`]
+        Jobs that use this symbol
     """
 
     __tablename__ = "m2m_symbol"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False, index=True, unique=True)
     total_order = Column(Integer, nullable=False)
     max_order = Column(Integer, nullable=False)

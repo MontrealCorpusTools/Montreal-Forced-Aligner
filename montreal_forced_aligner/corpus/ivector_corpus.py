@@ -7,6 +7,7 @@ from typing import List
 
 import tqdm
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusMixin
 from montreal_forced_aligner.corpus.features import (
     ExtractIvectorsArguments,
@@ -56,7 +57,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         return [
             ExtractIvectorsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"extract_ivectors.{j.name}.log"),
                 j.construct_path(self.split_directory, "feats", "scp"),
                 self.ivector_options,
@@ -88,8 +89,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         os.makedirs(log_dir, exist_ok=True)
 
         arguments = self.extract_ivectors_arguments()
-        with tqdm.tqdm(total=self.num_speakers, disable=getattr(self, "quiet", False)) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()

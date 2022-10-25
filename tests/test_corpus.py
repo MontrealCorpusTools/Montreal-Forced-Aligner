@@ -25,12 +25,18 @@ def test_opus(opus_test_path):
 
 
 def test_speaker_word_set(
-    multilingual_ipa_tg_corpus_dir, multispeaker_dictionary_config_path, temp_dir
+    multilingual_ipa_tg_corpus_dir,
+    multispeaker_dictionary_config_path,
+    generated_dir,
+    global_config,
 ):
+    output_directory = os.path.join(generated_dir, "corpus_tests")
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=multispeaker_dictionary_config_path,
-        temporary_directory=temp_dir,
     )
     corpus.load_corpus()
     sanitize = corpus.sanitize_function
@@ -40,16 +46,15 @@ def test_speaker_word_set(
     assert san.oov_word not in sp
 
 
-def test_add(basic_corpus_dir, generated_dir):
+def test_add(basic_corpus_dir, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_dir,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
-    corpus._load_corpus()
+    corpus.load_corpus()
     with corpus.session() as session:
         new_speaker = "new_speaker"
         corpus.add_speaker(new_speaker, session)
@@ -76,14 +81,13 @@ def test_add(basic_corpus_dir, generated_dir):
     assert len(corpus.get_utterances(file=new_file_name, speaker=new_speaker)) == 0
 
 
-def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir):
+def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
         use_pitch=True,
     )
     corpus.load_corpus()
@@ -93,14 +97,14 @@ def test_basic_txt(basic_corpus_txt_dir, basic_dict_path, generated_dir):
     assert corpus.get_feat_dim() == 48
 
 
-def test_acoustic_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir):
+def test_acoustic_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
+    global_config.clean = False
     corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -108,55 +112,59 @@ def test_acoustic_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir
 
     new_corpus = AcousticCorpus(
         corpus_directory=basic_corpus_txt_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     new_corpus.load_corpus()
     assert len(new_corpus.no_transcription_files) == 0
     assert new_corpus.get_feat_dim() == 39
+    global_config.clean = True
 
 
-def test_text_corpus_from_temp(basic_corpus_txt_dir, basic_dict_path, generated_dir):
+def test_text_corpus_from_temp(
+    basic_corpus_txt_dir, basic_dict_path, generated_dir, global_config
+):
     output_directory = os.path.join(generated_dir, "corpus_tests")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
+    global_config.clean = False
     corpus = TextCorpus(
         corpus_directory=basic_corpus_txt_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert corpus.num_utterances > 0
 
+    new_corpus = TextCorpus(
+        corpus_directory=basic_corpus_txt_dir,
+    )
+    new_corpus.load_corpus()
+    assert new_corpus.num_utterances > 0
+    global_config.clean = True
 
-def test_extra(basic_dict_path, extra_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+
+def test_extra(basic_dict_path, extra_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "extra")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=extra_corpus_dir,
         dictionary_path=basic_dict_path,
-        use_mp=False,
-        num_jobs=2,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
     assert corpus.get_feat_dim() == 39
 
 
-def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir):
+def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir, global_config):
 
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = os.path.join(generated_dir, "corpus_tests", "stereo")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
 
     corpus = AcousticCorpus(
         corpus_directory=stereo_corpus_dir,
-        use_mp=False,
-        num_jobs=1,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -164,15 +172,16 @@ def test_stereo(basic_dict_path, stereo_corpus_dir, generated_dir):
     assert corpus.get_file(name="michaelandsickmichael").num_channels == 2
 
 
-def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_stereo_short_tg(
+    basic_dict_path, stereo_corpus_short_tg_dir, generated_dir, global_config
+):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "stereo_short")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
 
     corpus = AcousticCorpus(
         corpus_directory=stereo_corpus_short_tg_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -180,32 +189,16 @@ def test_stereo_short_tg(basic_dict_path, stereo_corpus_short_tg_dir, generated_
     assert corpus.get_file(name="michaelandsickmichael").num_channels == 2
 
 
-def test_flac(basic_dict_path, flac_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory, ignore_errors=True)
-
-    corpus = AcousticCorpus(
-        corpus_directory=flac_corpus_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
-    )
-    corpus.load_corpus()
-    assert len(corpus.no_transcription_files) == 0
-    assert corpus.get_feat_dim() == 39
-
-
-def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir):
+def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir, global_config):
     audio_dir, text_dir = basic_split_dir
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+    output_directory = os.path.join(generated_dir, "corpus_tests", "audio_dir")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
 
     corpus = AcousticCorpus(
         corpus_directory=text_dir,
-        use_mp=False,
         audio_directory=audio_dir,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -216,9 +209,7 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir):
         shutil.rmtree(output_directory, ignore_errors=True)
     corpus = AcousticCorpus(
         corpus_directory=text_dir,
-        use_mp=True,
         audio_directory=audio_dir,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -226,15 +217,30 @@ def test_audio_directory(basic_dict_path, basic_split_dir, generated_dir):
     assert corpus.num_files > 0
 
 
-def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_flac(basic_dict_path, flac_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "flac")
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
+    global_config.use_mp = False
 
     corpus = AcousticCorpus(
         corpus_directory=flac_corpus_dir,
-        use_mp=True,
-        temporary_directory=output_directory,
+    )
+    corpus.load_corpus()
+    assert len(corpus.no_transcription_files) == 0
+    assert corpus.get_feat_dim() == 39
+
+
+def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_mp")
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.use_mp = True
+    global_config.temporary_directory = output_directory
+
+    corpus = AcousticCorpus(
+        corpus_directory=flac_corpus_dir,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -242,15 +248,31 @@ def test_flac_mp(basic_dict_path, flac_corpus_dir, generated_dir):
     assert corpus.num_files > 0
 
 
-def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_no_mp")
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory, ignore_errors=True)
+    global_config.temporary_directory = output_directory
+    global_config.use_mp = False
+
+    corpus = AcousticCorpus(
+        corpus_directory=flac_tg_corpus_dir,
+    )
+    corpus.load_corpus()
+    assert len(corpus.no_transcription_files) == 0
+    assert corpus.get_feat_dim() == 39
+    assert corpus.num_files > 0
+
+
+def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "flac_tg_mp")
+    global_config.temporary_directory = output_directory
+    global_config.use_mp = True
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpus(
         corpus_directory=flac_tg_corpus_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 0
@@ -258,31 +280,14 @@ def test_flac_tg(basic_dict_path, flac_tg_corpus_dir, generated_dir):
     assert corpus.num_files > 0
 
 
-def test_flac_tg_mp(basic_dict_path, flac_tg_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory, ignore_errors=True)
-
-    corpus = AcousticCorpus(
-        corpus_directory=flac_tg_corpus_dir,
-        use_mp=True,
-        temporary_directory=output_directory,
-    )
-    corpus.load_corpus()
-    assert len(corpus.no_transcription_files) == 0
-    assert corpus.get_feat_dim() == 39
-    assert corpus.num_files > 0
-
-
-def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "24bit")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpus(
         corpus_directory=transcribe_corpus_24bit_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert len(corpus.no_transcription_files) == 2
@@ -290,15 +295,14 @@ def test_24bit_wav(transcribe_corpus_24bit_dir, basic_dict_path, generated_dir):
     assert corpus.num_files > 0
 
 
-def test_short_segments(shortsegments_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_short_segments(shortsegments_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "short_segments")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpus(
         corpus_directory=shortsegments_corpus_dir,
-        use_mp=False,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     assert corpus.num_utterances == 3
@@ -308,16 +312,17 @@ def test_short_segments(shortsegments_corpus_dir, generated_dir):
     assert len([x for x in corpus.utterances() if x.features is None]) == 1
 
 
-def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_us_mfa_dictionary):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_speaker_groupings(
+    multilingual_ipa_corpus_dir, generated_dir, english_us_mfa_dictionary, global_config
+):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "speaker_groupings")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     with corpus.session() as session:
@@ -337,9 +342,6 @@ def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_u
     new_corpus = AcousticCorpusWithPronunciations(
         corpus_directory=multilingual_ipa_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
-        num_jobs=1,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
     new_corpus.load_corpus()
     files = new_corpus.files()
@@ -355,15 +357,14 @@ def test_speaker_groupings(multilingual_ipa_corpus_dir, generated_dir, english_u
                 raise Exception(f"File {name} not loaded")
 
 
-def test_subset(multilingual_ipa_corpus_dir, generated_dir):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_subset(multilingual_ipa_corpus_dir, generated_dir, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "subset")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpus(
         corpus_directory=multilingual_ipa_corpus_dir,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     sd = corpus.split_directory
@@ -373,16 +374,15 @@ def test_subset(multilingual_ipa_corpus_dir, generated_dir):
     assert os.path.exists(s)
 
 
-def test_weird_words(weird_words_dir, generated_dir, basic_dict_path):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_weird_words(weird_words_dir, generated_dir, basic_dict_path, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "weird_words")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=weird_words_dir,
         dictionary_path=basic_dict_path,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     with corpus.session() as session:
@@ -467,16 +467,15 @@ def test_weird_words(weird_words_dir, generated_dir, basic_dict_path):
     assert "'m" not in oovs
 
 
-def test_punctuated(punctuated_dir, generated_dir, basic_dict_path):
-    output_directory = os.path.join(generated_dir, "corpus_tests")
+def test_punctuated(punctuated_dir, generated_dir, basic_dict_path, global_config):
+    output_directory = os.path.join(generated_dir, "corpus_tests", "punctuated")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
 
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
         dictionary_path=basic_dict_path,
-        use_mp=True,
-        temporary_directory=output_directory,
     )
     corpus.load_corpus()
     print(corpus.files())
@@ -492,21 +491,24 @@ def test_punctuated(punctuated_dir, generated_dir, basic_dict_path):
 
 
 def test_alternate_punctuation(
-    punctuated_dir, generated_dir, basic_dict_path, different_punctuation_config_path
+    punctuated_dir,
+    generated_dir,
+    basic_dict_path,
+    different_punctuation_config_path,
+    global_config,
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
     output_directory = os.path.join(generated_dir, "corpus_tests", "alternate")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
         TrainableAligner.parse_parameters(different_punctuation_config_path)
     )
-    params["use_mp"] = True
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=output_directory,
         **params,
     )
     corpus.load_corpus()
@@ -517,21 +519,20 @@ def test_alternate_punctuation(
 
 
 def test_no_punctuation(
-    punctuated_dir, generated_dir, basic_dict_path, no_punctuation_config_path
+    punctuated_dir, generated_dir, basic_dict_path, no_punctuation_config_path, global_config
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
     output_directory = os.path.join(generated_dir, "corpus_tests", "no_punctuation")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
         TrainableAligner.parse_parameters(no_punctuation_config_path)
     )
-    params["use_mp"] = False
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=punctuated_dir,
         dictionary_path=basic_dict_path,
-        temporary_directory=output_directory,
         **params,
     )
     assert not corpus.punctuation
@@ -581,21 +582,24 @@ def test_no_punctuation(
 
 
 def test_xsampa_corpus(
-    xsampa_corpus_dir, xsampa_dict_path, generated_dir, different_punctuation_config_path
+    xsampa_corpus_dir,
+    xsampa_dict_path,
+    generated_dir,
+    different_punctuation_config_path,
+    global_config,
 ):
     from montreal_forced_aligner.acoustic_modeling.trainer import TrainableAligner
 
     output_directory = os.path.join(generated_dir, "corpus_tests", "xsampa")
+    global_config.temporary_directory = output_directory
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory, ignore_errors=True)
     params, skipped = AcousticCorpusWithPronunciations.extract_relevant_parameters(
         TrainableAligner.parse_parameters(different_punctuation_config_path)
     )
-    params["use_mp"] = True
     corpus = AcousticCorpusWithPronunciations(
         corpus_directory=xsampa_corpus_dir,
         dictionary_path=xsampa_dict_path,
-        temporary_directory=output_directory,
         **params,
     )
     print(corpus.quote_markers)

@@ -3,6 +3,7 @@ import os
 import shutil
 import typing
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
@@ -79,7 +80,7 @@ class DictionaryValidator(PyniniTrainer):
             g2p_model_path=self.g2p_model_path,
             word_list=list(self.g2p_training_dictionary.keys()),
             temporary_directory=os.path.join(self.working_directory, "validation"),
-            num_jobs=self.num_jobs,
+            num_jobs=GLOBAL_CONFIG.num_jobs,
             num_pronunciations=self.num_pronunciations,
         )
         gen.evaluate_g2p_model(self.g2p_training_dictionary)

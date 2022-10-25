@@ -6,6 +6,8 @@ Align with an acoustic model ``(mfa align)``
 
 This is the primary workflow of MFA, where you can use pretrained :term:`acoustic models` to align your dataset.  There are a number of :xref:`pretrained_acoustic_models` to use, but you can also adapt a pretrained model to your data (see :ref:`adapt_acoustic_model`) or train an acoustic model from scratch using your dataset (see :ref:`train_acoustic_model`).
 
+.. _alignment_evaluation:
+
 Evaluation mode
 ---------------
 
@@ -45,13 +47,34 @@ Phone error rate is calculated as:
 
    Phone \: error \: rate = \frac{insertions + deletions + (2 * substitutions)} {length_{ref}}
 
+.. _phone_models:
+
+Phone model alignments
+----------------------
+
+With the ``--use_phone_model`` flag, an ngram language model for phones will be constructed and used to generate phone transcripts with alignments.  The phone language model uses bigrams and higher orders (up to 4), with no unigrams included to speed up transcription (and because the phonotactics of languages highly constrain the possible sequences of phones).  The phone language model is trained on phone transcriptions extracted from alignments and includes silence and OOV phones.
+
+The phone transcription additionally uses speaker-adaptation transforms from the regular alignment as well to speed up transcription.  From the phone transcription lattices, we extract phone-level alignments along with confidence score using :kaldi_src:`lattice-to-ctm-conf`.
+
+The alignments extracted from phone transcriptions are compared to the baseline alignments using the procedure outlined in :ref:`alignment_evaluation` above.
+
+.. _fine_tune_alignments:
+
+Fine-tuning alignments
+----------------------
+
+By default and standard in ASR, the frame step between feature frames is set to 10 ms, which limits the accuracy of MFA to a minimum of 0.01 seconds. When the ``--fine_tune`` flag is specified, the aligner does an extra fine-tuning step following alignment. The audio surrounding each interval's initial boundary is extracted with a frame step of 1 ms (0.001s) and is aligned using a simple phone dictionary combined with a transcript of the previous phone and the current phone.  Extracting the phone alignment gives the possibility of higher degrees of accuracy (down to 1ms).
+
+.. warning::
+
+   The actual accuracy bound is not clear as each frame uses the surrounding 25ms to generate features, so each frame necessary incorporates time-smeared acoustic information.
 
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: align
+.. click:: montreal_forced_aligner.command_line.align:align_corpus_cli
+   :prog: mfa align
+   :nested: full
 
 Configuration reference
 -----------------------

@@ -2,92 +2,74 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
 
-from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.exceptions import ArgumentError
+import click
+
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    common_options,
+    validate_ivector_extractor,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.speaker_classifier import SpeakerClassifier
 
-if TYPE_CHECKING:
-    from argparse import Namespace
-
-__all__ = ["classify_speakers", "validate_args", "run_classify_speakers"]
+__all__ = ["classify_speakers_cli"]
 
 
-def classify_speakers(
-    args: Namespace, unknown_args: Optional[List[str]] = None
-) -> None:  # pragma: no cover
+@click.command(
+    name="diarize",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Diarize a corpus",
+)
+@click.argument("corpus_directory", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.argument(
+    "ivector_extractor_path", type=click.UNPROCESSED, callback=validate_ivector_extractor
+)
+@click.argument("output_directory", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option("--num_speakers", "-s", help="Number of speakers if known.", type=int, default=0)
+@click.option(
+    "--output_format",
+    help="Format for aligned output files (default is long_textgrid).",
+    default="long_textgrid",
+    type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def classify_speakers_cli(context, **kwargs) -> None:  # pragma: no cover
     """
-    Run the speaker classification
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Use an ivector extractor to cluster utterances into speakers
     """
+    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    corpus_directory = kwargs["corpus_directory"]
+    ivector_extractor_path = kwargs["ivector_extractor_path"]
+    output_directory = kwargs["output_directory"]
     classifier = SpeakerClassifier(
-        ivector_extractor_path=args.ivector_extractor_path,
-        corpus_directory=args.corpus_directory,
-        temporary_directory=args.temporary_directory,
-        **SpeakerClassifier.parse_parameters(args.config_path, args, unknown_args),
+        corpus_directory=corpus_directory,
+        ivector_extractor_path=ivector_extractor_path,
+        **SpeakerClassifier.parse_parameters(config_path, context.params, context.args),
     )
     try:
 
         classifier.cluster_utterances()
 
-        classifier.export_files(args.output_directory)
+        classifier.export_files(output_directory)
     except Exception:
         classifier.dirty = True
         raise
     finally:
         classifier.cleanup()
-
-
-def validate_args(args: Namespace) -> None:  # pragma: no cover
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    args.output_directory = args.output_directory.rstrip("/").rstrip("\\")
-    args.corpus_directory = args.corpus_directory.rstrip("/").rstrip("\\")
-    if args.cluster and not args.num_speakers:
-        raise ArgumentError("If using clustering, num_speakers must be specified")
-    if not os.path.exists(args.corpus_directory):
-        raise ArgumentError(f"Could not find the corpus directory {args.corpus_directory}.")
-    if not os.path.isdir(args.corpus_directory):
-        raise ArgumentError(
-            f"The specified corpus directory ({args.corpus_directory}) is not a directory."
-        )
-
-    if args.corpus_directory == args.output_directory:
-        raise ArgumentError("Corpus directory and output directory cannot be the same folder.")
-
-    args.ivector_extractor_path = validate_model_arg(args.ivector_extractor_path, "ivector")
-
-
-def run_classify_speakers(
-    args: Namespace, unknown_args: Optional[List[str]] = None
-) -> None:  # pragma: no cover
-    """
-    Wrapper function for running speaker classification
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    classify_speakers(args)

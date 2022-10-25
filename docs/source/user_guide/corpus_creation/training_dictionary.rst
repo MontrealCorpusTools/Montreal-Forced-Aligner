@@ -349,6 +349,6 @@ The resulting trained dictionary can then be used as a dictionary for :ref:`alig
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: train_dictionary
+.. click:: montreal_forced_aligner.command_line.train_dictionary:train_dictionary_cli
+   :prog: mfa train_dictionary
+   :nested: full

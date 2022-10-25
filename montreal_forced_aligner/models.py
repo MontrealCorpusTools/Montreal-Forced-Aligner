@@ -21,8 +21,8 @@ from montreal_forced_aligner.exceptions import (
     LanguageModelNotFoundError,
     ModelLoadError,
     ModelsConnectionError,
-    PretrainedModelNotFoundError,
     PronunciationAcousticMismatchError,
+    RemoteModelNotFoundError,
 )
 from montreal_forced_aligner.helper import EnhancedJSONEncoder, TerminalPrinter, mfa_open
 from montreal_forced_aligner.utils import configure_logger
@@ -258,7 +258,7 @@ class Archive(MfaModel):
             The trainer to construct the metadata from
         """
         with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
-            json.dump(trainer.meta, f)
+            json.dump(trainer.meta, f, ensure_ascii=False)
 
     @classmethod
     def empty(
@@ -337,8 +337,10 @@ class AcousticModel(Archive):
     files = [
         "final.mdl",
         "final.alimdl",
-        "final.occs",
         "lda.mat",
+        "phone_pdf.counts",
+        "rules.yaml",
+        "phone_lm.fst",
         "tree",
         "phones.txt",
         "graphemes.txt",
@@ -363,7 +365,7 @@ class AcousticModel(Archive):
             Trainer to supply metadata information about the acoustic model
         """
         with mfa_open(os.path.join(self.dirname, "meta.json"), "w") as f:
-            json.dump(trainer.meta, f)
+            json.dump(trainer.meta, f, ensure_ascii=False)
 
     @property
     def parameters(self) -> MetaDict:
@@ -381,6 +383,10 @@ class AcousticModel(Archive):
         params["final_silence_correction"] = self.meta.get("final_silence_correction", None)
         if "other_noise_phone" in self.meta:
             params["other_noise_phone"] = self.meta["other_noise_phone"]
+        rules_path = os.path.join(self.dirname, "rules.yaml")
+        if os.path.exists(rules_path):
+            params["rules_path"] = rules_path
+        params["position_dependent_phones"] = self.meta.get("position_dependent_phones", True)
         return params
 
     @property
@@ -586,7 +592,8 @@ class AcousticModel(Archive):
             missing_phones = dictionary.meta["phones"] - set(self.meta["phones"])
         else:
             missing_phones = dictionary.non_silence_phones - set(self.meta["phones"])
-        if missing_phones and missing_phones != {"sp"}:  # Compatibility
+        missing_phones -= {"sp", "<eps>"}
+        if missing_phones:  # Compatibility
             raise (PronunciationAcousticMismatchError(missing_phones))
 
 
@@ -1022,9 +1029,7 @@ class DictionaryModel(MfaModel):
         temp_directory = os.path.join(self.dirname, "temp")
         if os.path.exists(temp_directory):
             shutil.rmtree(temp_directory)
-        dictionary = MultispeakerDictionary(
-            self.path, temporary_directory=temp_directory, phone_set_type=self.phone_set_type
-        )
+        dictionary = MultispeakerDictionary(self.path, phone_set_type=self.phone_set_type)
         graphemes, phone_counts = dictionary.dictionary_setup()
         configuration_data["Dictionary"]["data"]["phones"] = sorted(dictionary.non_silence_phones)
         configuration_data["Dictionary"]["data"]["detailed_phone_info"] = {}
@@ -1292,7 +1297,7 @@ class ModelManager:
                 ]
             page += 1
         with mfa_open(self.cache_path, "w") as f:
-            json.dump(self._cache_info, f)
+            json.dump(self._cache_info, f, ensure_ascii=False)
 
     def has_local_model(self, model_type: str, model_name: str) -> bool:
         """Check for local model"""
@@ -1386,7 +1391,7 @@ class ModelManager:
         if not self.synced_remote:
             self.refresh_remote()
         if model_name not in self.remote_models[model_type]:
-            raise PretrainedModelNotFoundError(
+            raise RemoteModelNotFoundError(
                 model_name, model_type, sorted(self.remote_models[model_type].keys())
             )
         release = self.remote_models[model_type][model_name]

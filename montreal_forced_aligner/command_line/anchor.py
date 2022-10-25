@@ -2,26 +2,23 @@
 from __future__ import annotations
 
 import sys
-import warnings
 
-__all__ = ["run_anchor"]
+import click
+
+__all__ = ["anchor_cli"]
 
 
-def run_anchor() -> None:  # pragma: no cover
+@click.command(name="anchor", short_help="Launch Anchor")
+@click.help_option("-h", "--help")
+def anchor_cli(*args, **kwargs) -> None:  # pragma: no cover
     """
-    Wrapper function for launching Anchor Annotator
+    Launch Anchor Annotator (if installed)
     """
     try:
-        from anchor import Application, MainWindow
+        from anchor.command_line import run_anchor as main
     except ImportError:
         print(
             "Anchor annotator utility is not installed, please install it via pip install anchor-annotator."
         )
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        app = Application(sys.argv)
-        main = MainWindow()
-
-        app.setActiveWindow(main)
-        main.show()
-        sys.exit(app.exec_())
+        sys.exit(1)
+    main()

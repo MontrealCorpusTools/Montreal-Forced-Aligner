@@ -19,6 +19,7 @@ import tqdm
 from pynini import Fst
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import WordType
 from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
@@ -531,14 +532,14 @@ class PyniniTrainerMixin:
             self.log_info("Calculating alignments...")
             begin = time.time()
             with tqdm.tqdm(
-                total=num_commands * self.num_iterations, disable=getattr(self, "quiet", False)
+                total=num_commands * self.num_iterations, disable=GLOBAL_CONFIG.quiet
             ) as pbar:
                 for start in starts:
                     job_queue.put(start)
                 error_dict = {}
                 return_queue = mp.Queue()
                 procs = []
-                for i in range(self.num_jobs):
+                for i in range(GLOBAL_CONFIG.num_jobs):
                     log_path = os.path.join(self.working_log_directory, f"baumwelch.{i}.log")
                     p = RandomStartWorker(
                         i,
@@ -720,7 +721,7 @@ class PyniniTrainer(
                 self.g2p_validation_dictionary = {
                     k: v for k, v in word_dict.items() if k in validation_words
                 }
-                if self.debug:
+                if GLOBAL_CONFIG.debug:
                     with mfa_open(
                         os.path.join(self.working_directory, "validation_set.txt"),
                         "w",
@@ -752,11 +753,11 @@ class PyniniTrainer(
                 grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
                 phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
                 if grapheme_diff:
-                    self.log_warning(
+                    self.log_debug(
                         f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
                     )
                 if phone_diff:
-                    self.log_warning(
+                    self.log_debug(
                         f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
                     )
 
@@ -764,7 +765,7 @@ class PyniniTrainer(
         """
         Clean up temporary files
         """
-        if self.debug:
+        if GLOBAL_CONFIG.debug:
             return
         for name in os.listdir(self.working_directory):
             path = os.path.join(self.working_directory, name)
@@ -836,8 +837,7 @@ class PyniniTrainer(
         gen = PyniniValidator(
             g2p_model_path=temp_model_path,
             word_list=list(self.g2p_validation_dictionary.keys()),
-            temporary_directory=os.path.join(self.working_directory, "validation"),
-            num_jobs=self.num_jobs,
+            num_jobs=GLOBAL_CONFIG.num_jobs,
             num_pronunciations=self.num_pronunciations,
         )
         gen.evaluate_g2p_model(self.g2p_training_dictionary)

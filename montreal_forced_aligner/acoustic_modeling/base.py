@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from montreal_forced_aligner.abc import MfaWorker, ModelExporterMixin, TrainerMixin
 from montreal_forced_aligner.alignment import AlignMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
 from montreal_forced_aligner.corpus.features import FeatureConfigMixin
 from montreal_forced_aligner.db import Utterance
@@ -115,9 +116,14 @@ class AcousticModelTrainingMixin(
         self.final_gaussian_iteration = 0  # Gets set later
 
     @property
-    def db_path(self) -> str:
-        """Root worker's path to database file"""
-        return self.worker.db_path
+    def db_string(self) -> str:
+        """Root worker's database connection string"""
+        return self.worker.db_string
+
+    @property
+    def read_only_db_string(self) -> str:
+        """Root worker's database connection string"""
+        return self.worker.read_only_db_string
 
     def acc_stats_arguments(self) -> List[AccStatsArguments]:
         """
@@ -132,7 +138,7 @@ class AcousticModelTrainingMixin(
         return [
             AccStatsArguments(
                 j.name,
-                self.db_path,
+                self.read_only_db_string,
                 os.path.join(self.working_directory, "log", f"acc.{self.iteration}.{j.name}.log"),
                 j.dictionary_ids,
                 feat_strings[j.name],
@@ -278,12 +284,8 @@ class AcousticModelTrainingMixin(
         self.worker.current_trainer = self
         self.compute_calculated_properties()
         self.current_gaussians = self.initial_gaussians
-        if self.initialized:
-            self.log_info(
-                f"{self.identifier} training already initialized, skipping initialization."
-            )
-            if os.path.exists(done_path):
-                self.training_complete = True
+        if os.path.exists(done_path):
+            self.training_complete = True
             return
         if os.path.exists(dirty_path):  # if there was an error, let's redo from scratch
             shutil.rmtree(self.working_directory)
@@ -372,10 +374,8 @@ class AcousticModelTrainingMixin(
         """
         self.log_info("Accumulating statistics...")
         arguments = self.acc_stats_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -476,7 +476,7 @@ class AcousticModelTrainingMixin(
                 log_like += average_logdet_sum / average_logdet_frames
             self.log_debug(f"Likelihood for iteration {self.iteration}: {log_like}")
 
-        if not self.debug:
+        if not GLOBAL_CONFIG.debug:
             for f in acc_files:
                 os.remove(f)
 
@@ -584,7 +584,7 @@ class AcousticModelTrainingMixin(
                 os.path.join(self.working_directory, "final.alimdl"),
             )
         self.export_model(self.exported_model_path)
-        if not self.debug:
+        if not GLOBAL_CONFIG.debug:
             for i in range(1, self.num_iterations + 1):
                 model_path = os.path.join(self.working_directory, f"{i}.mdl")
                 try:

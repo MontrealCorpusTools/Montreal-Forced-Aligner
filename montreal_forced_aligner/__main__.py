@@ -1,3 +1,3 @@
-from .command_line.mfa import main
+from .command_line.mfa import mfa_cli
 
-main()
+mfa_cli()

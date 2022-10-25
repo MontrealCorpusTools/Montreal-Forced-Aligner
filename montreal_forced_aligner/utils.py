@@ -11,23 +11,28 @@ import os
 import shutil
 import subprocess
 import sys
+import typing
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ansiwrap
+import numpy as np
 import sqlalchemy
 from colorama import Fore, Style
 from sqlalchemy.orm import Session
 
-from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.data import DatasetType, MfaArguments
+from montreal_forced_aligner.abc import DatabaseBackend, KaldiFunction
+from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.data import CtmInterval, DatasetType, MfaArguments
 from montreal_forced_aligner.db import Corpus, Dictionary
 from montreal_forced_aligner.exceptions import (
+    DictionaryError,
     KaldiProcessingError,
     MultiprocessingError,
     ThirdpartyError,
 )
 from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.textgrid import process_ctm_line
 
 __all__ = [
     "thirdparty_binary",
@@ -38,6 +43,7 @@ __all__ = [
     "Counter",
     "Stopped",
     "ProcessWorker",
+    "KaldiProcessWorker",
     "run_mp",
     "run_non_mp",
 ]
@@ -55,7 +61,7 @@ canary_kaldi_bins = [
 ]
 
 
-def inspect_database(path: str) -> DatasetType:
+def inspect_database(name: str) -> DatasetType:
     """
     Inspect the database file to generate its DatasetType
 
@@ -69,25 +75,35 @@ def inspect_database(path: str) -> DatasetType:
     DatasetType
         Dataset type of the database
     """
-    if not os.path.exists(path):
-        return DatasetType.NONE
-    engine = sqlalchemy.create_engine(f"sqlite:///file:{path}?mode=ro&nolock=1&uri=true")
-    with Session(engine) as session:
-        corpus = session.query(Corpus).first()
-        dictionary = session.query(Dictionary).first()
-        if corpus is None and dictionary is None:
+    if GLOBAL_CONFIG.current_profile.database_backend == DatabaseBackend.POSTGRES.value:
+        string = f"postgresql+psycopg2://{os.getlogin()}@localhost/{name}"
+    else:
+        db_path = os.path.join(
+            GLOBAL_CONFIG.current_profile.temporary_directory, name, f"{name}.db"
+        )
+        if not os.path.exists(db_path):
             return DatasetType.NONE
-        elif corpus is None:
-            return DatasetType.DICTIONARY
-        elif dictionary is None:
+        string = f"sqlite:///{db_path}"
+    try:
+        engine = sqlalchemy.create_engine(string)
+        with Session(engine) as session:
+            corpus = session.query(Corpus).first()
+            dictionary = session.query(Dictionary).first()
+            if corpus is None and dictionary is None:
+                return DatasetType.NONE
+            elif corpus is None:
+                return DatasetType.DICTIONARY
+            elif dictionary is None:
+                if corpus.has_sound_files:
+                    return DatasetType.ACOUSTIC_CORPUS
+                else:
+                    return DatasetType.TEXT_CORPUS
             if corpus.has_sound_files:
-                return DatasetType.ACOUSTIC_CORPUS
+                return DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY
             else:
-                return DatasetType.TEXT_CORPUS
-        if corpus.has_sound_files:
-            return DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY
-        else:
-            return DatasetType.TEXT_CORPUS_WITH_DICTIONARY
+                return DatasetType.TEXT_CORPUS_WITH_DICTIONARY
+    except sqlalchemy.exc.OperationalError:
+        return DatasetType.NONE
 
 
 def get_class_for_dataset_type(dataset_type: DatasetType):
@@ -120,6 +136,130 @@ def get_class_for_dataset_type(dataset_type: DatasetType):
         DatasetType.DICTIONARY: MultispeakerDictionary,
     }
     return mapping[dataset_type]
+
+
+def parse_dictionary_file(
+    path: str,
+) -> typing.Generator[
+    typing.Tuple[
+        str,
+        typing.List[str],
+        typing.Optional[float],
+        typing.Optional[float],
+        typing.Optional[float],
+        typing.Optional[float],
+    ]
+]:
+    """
+    Parses a lexicon file and yields parsed pronunciation lines
+
+    Parameters
+    ----------
+    path: str
+        Path to lexicon file
+
+    Yields
+    ------
+    str
+        Orthographic word
+    list[str]
+        Pronunciation
+    float or None
+        Pronunciation probability
+    float or None
+        Probability of silence following the pronunciation
+    float or None
+        Correction factor for silence before the pronunciation
+    float or None
+        Correction factor for no silence before the pronunciation
+    """
+    with mfa_open(path) as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            if "\t" not in line:
+                raise DictionaryError(
+                    f"Error parsing line {i} of {path}: Did not find any tabs, "
+                    f"please ensure that your dictionary has tabs between words and their pronunciations."
+                )
+            line = line.split("\t")
+            if len(line) <= 1:
+                raise DictionaryError(
+                    f'Error parsing line {i} of {path}: "{line}" did not have a pronunciation'
+                )
+            word = line.pop(0)
+            pron = tuple(line.pop(-1).split())
+            prob = None
+            try:
+                if len(line) < 1:
+                    raise ValueError
+                prob = float(line[0])
+                if prob > 1 or prob < 0.01:
+                    raise ValueError
+                line.pop(0)
+            except ValueError:
+                pass
+            silence_after_prob = None
+            silence_before_correct = None
+            non_silence_before_correct = None
+            try:
+                if len(line) < 3:
+                    raise ValueError
+                silence_after_prob = float(line[0])
+                if silence_after_prob == 0:
+                    silence_after_prob = None
+                silence_before_correct = float(line[1])
+                if silence_before_correct == 1.0 or silence_before_correct == 0:
+                    silence_before_correct = None
+                non_silence_before_correct = float(line[2])
+                if non_silence_before_correct == 1.0 or non_silence_before_correct == 0:
+                    non_silence_before_correct = None
+            except ValueError:
+                pass
+            yield word, pron, prob, silence_after_prob, silence_before_correct, non_silence_before_correct
+
+
+def parse_ctm_output(
+    proc: subprocess.Popen, reversed_phone_mapping: Dict[int, Any], raw_id: bool = False
+) -> typing.Generator[typing.Tuple[int, typing.List[CtmInterval]]]:
+    """
+    Parse stdout of a process into intervals grouped by utterance
+
+    Parameters
+    ----------
+    proc: :class:`subprocess.Popen`
+    reversed_phone_mapping: dict[int, Any]
+        Mapping from kaldi integer IDs to phones
+    raw_id: bool
+        Flag for returning the kaldi internal ID of the utterance rather than its integer ID
+
+    Yields
+    -------
+    int or str
+        Utterance ID
+    list[:class:`~montreal_forced_aligner.data.CtmInterval`]
+        List of CTM intervals for the utterance
+    """
+    current_utt = None
+    intervals = []
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            utt, interval = process_ctm_line(line, reversed_phone_mapping, raw_id=raw_id)
+        except ValueError:
+            continue
+        if current_utt is None:
+            current_utt = utt
+        if current_utt != utt:
+            yield current_utt, intervals
+            intervals = []
+            current_utt = utt
+        intervals.append(interval)
+    if intervals:
+        yield current_utt, intervals
 
 
 def get_mfa_version() -> str:
@@ -236,7 +376,7 @@ def configure_logger(
     logger = logging.getLogger(identifier)
     logger.setLevel(logging.DEBUG)
     if log_file is not None:
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf8")
         file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
@@ -260,11 +400,8 @@ class CustomFormatter(logging.Formatter):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from .config import load_global_config
 
-        config = load_global_config()
-        self.width = config["terminal_width"]
-        use_colors = config.get("terminal_colors", True)
+        use_colors = GLOBAL_CONFIG.terminal_colors
         red = ""
         green = ""
         yellow = ""
@@ -304,8 +441,61 @@ class CustomFormatter(logging.Formatter):
             record.getMessage(),
             initial_indent=log_fmt[0],
             subsequent_indent=" " * len(log_fmt[0]),
-            width=self.width,
+            width=shutil.get_terminal_size().columns,
         )
+
+
+def read_feats(proc: subprocess.Popen) -> Dict[str, np.array]:
+    """
+    Inspired by https://github.com/it-muslim/kaldi-helpers/blob/master/kaldi-helpers/kaldi_io.py#L87
+
+    Reading from stdout, import feats (or feats-like) data as a numpy array
+    As feats are generated "on-fly" in kaldi, there is no a feats file
+    (except most simple cases like raw mfcc, plp or fbank).  So, that is why
+    we take feats as a command rather that a file path. Can be applied to
+    other commands (like gmm-compute-likes) generating an output in same
+    format as feats, i.e:
+    utterance_id_1  [
+      70.31843 -2.872698 -0.06561285 22.71824 -15.57525 ...
+      78.39457 -1.907646 -1.593253 23.57921 -14.74229 ...
+      ...
+      57.27236 -16.17824 -15.33368 -5.945696 0.04276848 ... -0.5812851 ]
+    utterance_id_2  [
+      64.00951 -8.952017 4.134113 33.16264 11.09073 ...
+      ...
+
+    Parameters
+    ----------
+    proc : subprocess.Popen
+        A process that generates features or feature-like specifications
+
+    Returns
+    -------
+    feats : numpy.array
+        A dict of pairs {utterance: feats}
+    """
+    feats = []
+    # current_row = 0
+    current_id = None
+    for line in proc.stdout:
+        line = line.decode("ascii").strip()
+        if "[" in line:
+            ids = line.strip().split()[0]
+            speaker_id, utt_id = ids.split("-")
+            utt_id = int(utt_id)
+            if current_id is None:
+                current_id = utt_id
+            if current_id != utt_id:
+                feats = np.array(feats)
+                yield current_id, feats
+                feats = []
+                current_id = utt_id
+            continue
+        if not line:
+            continue
+        feats.append([float(x) for x in line.replace("]", "").split()])
+    feats = np.array(feats)
+    yield current_id, feats
 
 
 def parse_logs(log_directory: str) -> None:
@@ -372,6 +562,10 @@ class Counter(object):
 
 
 class ProgressCallback(object):
+    """
+    Class for sending progress indications back to the main process
+    """
+
     def __init__(self, callback=None, total_callback=None):
         self._total = 0
         self.callback = callback
@@ -382,32 +576,59 @@ class ProgressCallback(object):
 
     @property
     def total(self) -> int:
+        """Total entries to process"""
         with self.lock:
             return self._total
 
     @property
     def progress(self) -> int:
+        """Current number of entries processed"""
         with self.lock:
             return self._progress
 
     @property
     def progress_percent(self) -> float:
+        """Current progress as percetage"""
         with self.lock:
             if not self._total:
                 return 0.0
             return self._progress / self._total
 
     def update_total(self, total: int) -> None:
+        """
+        Update the total for the callback
+
+        Parameters
+        ----------
+        total: int
+            New total
+        """
         with self.lock:
             self._total = total
             if self.total_callback is not None:
                 self.total_callback(self._total)
 
-    def set_progress(self, total_progress: int) -> None:
+    def set_progress(self, progress: int) -> None:
+        """
+        Update the number of entries processed for the callback
+
+        Parameters
+        ----------
+        progress: int
+            New progress
+        """
         with self.lock:
-            self._progress = total_progress
+            self._progress = progress
 
     def increment_progress(self, increment: int) -> None:
+        """
+        Increment the number of entries processed for the callback
+
+        Parameters
+        ----------
+        increment: int
+            Update the progress by this amount
+        """
         with self.lock:
             self._progress += increment
             if self.callback is not None:
@@ -549,10 +770,9 @@ class KaldiProcessWorker(mp.Process):
         """
         Run through the arguments in the queue apply the function to them
         """
-        from .config import BLAS_THREADS
 
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
-        os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
         try:
             for result in self.function.run():
                 self.return_q.put(result)
@@ -628,10 +848,9 @@ def run_mp(
     return_info: dict, optional
         If the function returns information, supply the return dict to populate
     """
-    from .config import BLAS_THREADS
 
-    os.environ["OPENBLAS_NUM_THREADS"] = f"{BLAS_THREADS}"
-    os.environ["MKL_NUM_THREADS"] = f"{BLAS_THREADS}"
+    os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+    os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
     stopped = Stopped()
     job_queue = mp.Queue()
     return_queue = mp.Queue()

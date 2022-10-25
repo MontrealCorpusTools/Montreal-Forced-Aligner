@@ -38,7 +38,6 @@ __all__ = [
     "CorpusError",
     "ModelLoadError",
     "CorpusReadError",
-    "ArgumentError",
     "AlignerError",
     "AlignmentError",
     "AlignmentExportError",
@@ -189,7 +188,25 @@ class ModelLoadError(ModelError):
     def __init__(self, path: str):
         super().__init__("")
         self.message_lines = [
-            f"The archive {self.printer.error_text(path)} could not be parsed as an MFA model"
+            f"The archive {self.printer.error_text(path)} could not be parsed as an MFA model."
+        ]
+
+
+class ModelSaveError(ModelError):
+    """
+    Exception during saving of a model archive
+
+    Parameters
+    ----------
+    path: str
+        Path of the model archive
+    """
+
+    def __init__(self, path: str):
+        super().__init__("")
+        self.message_lines = [
+            f"The archive {self.printer.error_text(path)} already exists.",
+            "Please specify --overwrite if you would like to overwrite  it.",
         ]
 
 
@@ -413,7 +430,7 @@ class NoAlignmentsError(MFAError):
         suggested_beam_size = beam_size * 10
         suggested_retry_beam_size = suggested_beam_size * 4
         self.message_lines.append(
-            f'You can try rerunning with a larger beam (i.e. "mfa align ... --beam={suggested_beam_size} --retry_beam={suggested_retry_beam_size}").'
+            f'You can try rerunning with a larger beam (i.e. "mfa align ... --beam {suggested_beam_size} --retry_beam {suggested_retry_beam_size}").'
         )
         self.message_lines.append(
             'If increasing the beam size does not help, then there are likely issues with the corpus, dictionary, or acoustic model, and can be further diagnosed with the "mfa validate" command'

@@ -11,6 +11,7 @@
        WordData
        WordType
        PhoneType
+       WorkflowType
        DatabaseImportData
        PronunciationProbabilityCounter
-       CtmInterval -- Data class for representing intervals in Kaldi's CTM files
+       CtmInterval

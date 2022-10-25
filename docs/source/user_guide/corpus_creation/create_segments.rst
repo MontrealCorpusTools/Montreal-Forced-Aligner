@@ -16,9 +16,9 @@ a longer sound file.
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: create_segments
+.. click:: montreal_forced_aligner.command_line.create_segments:create_segments_cli
+   :prog: mfa create_segments
+   :nested: full
 
 Configuration reference
 -----------------------

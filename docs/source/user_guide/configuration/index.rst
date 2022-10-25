@@ -15,9 +15,9 @@ Global configuration
 
 Global configuration for MFA can be updated via the ``mfa configure`` subcommand. Once the command is called with a flag, it will set a default value for any future runs (though, you can overwrite most settings when you call other commands).
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: configure
+.. click:: montreal_forced_aligner.command_line.configure:configure_cli
+   :prog: mfa configure
+   :nested: full
 
 Configuring specific commands
 =============================

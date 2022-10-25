@@ -15,7 +15,6 @@ Running the dictionary validation utility
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:parser
+.. click:: montreal_forced_aligner.command_line.mfa:mfa_cli
    :prog: mfa
-   :start_command: validate_dictionary
-   :groups:
+   :commands: validate_dictionary

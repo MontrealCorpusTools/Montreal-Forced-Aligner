@@ -84,7 +84,7 @@ by TextGrids that specify orthographic transcriptions for short intervals
 of speech.
 
 
-    .. figure:: ../../_static/librispeech_textgrid.png
+    .. figure:: ../_static/librispeech_textgrid.png
         :align: center
         :alt: Input TextGrid in Praat with intervals for each utterance and a single tier for a speaker
 
@@ -95,7 +95,7 @@ By default, each tier corresponds to a speaker (speaker "237" in the above examp
 align speech for multiple speakers per sound file using this format.
 
 
-    .. figure:: ../../_static/multiple_speakers_textgrid.png
+    .. figure:: ../_static/multiple_speakers_textgrid.png
         :align: center
         :alt: Input TextGrid in Praat with intervals for each utterance and tiers for each speaker
 
@@ -106,7 +106,7 @@ channel, and the second half of speaker tiers are associated with the second cha
 The output from aligning will be a TextGrid with word and phone tiers for
 each speaker.
 
-    .. figure:: ../../_static/multiple_speakers_output_textgrid.png
+    .. figure:: ../_static/multiple_speakers_output_textgrid.png
         :align: center
         :alt: TextGrid in Praat following alignment with interval tiers for each speaker's words and phones
 

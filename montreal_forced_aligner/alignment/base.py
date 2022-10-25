@@ -6,13 +6,15 @@ import csv
 import functools
 import multiprocessing as mp
 import os
+import subprocess
 import time
+import typing
 from queue import Empty
 from typing import Dict, List, Optional
 
 import sqlalchemy
 import tqdm
-from sqlalchemy.orm import joinedload, selectinload, subqueryload
+from sqlalchemy.orm import joinedload, subqueryload
 
 from montreal_forced_aligner.abc import FileExporterMixin
 from montreal_forced_aligner.alignment.mixins import AlignMixin
@@ -21,19 +23,29 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     AlignmentExtractionFunction,
     ExportTextGridArguments,
     ExportTextGridProcessWorker,
+    FineTuneArguments,
+    FineTuneFunction,
     GeneratePronunciationsArguments,
     GeneratePronunciationsFunction,
+    TranscriptionAlignmentExtractionFunction,
     construct_output_path,
+    construct_output_tiers,
 )
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.acoustic_corpus import AcousticCorpusPronunciationMixin
-from montreal_forced_aligner.data import CtmInterval, PronunciationProbabilityCounter, TextFileType
+from montreal_forced_aligner.data import (
+    PronunciationProbabilityCounter,
+    TextFileType,
+    WorkflowType,
+)
 from montreal_forced_aligner.db import (
     Corpus,
-    DictBundle,
     Dictionary,
     File,
     PhoneInterval,
+    PhonologicalRule,
     Pronunciation,
+    RuleApplication,
     SoundFile,
     Speaker,
     TextFile,
@@ -41,11 +53,20 @@ from montreal_forced_aligner.db import (
     Word,
     WordInterval,
     WordType,
+    bulk_update,
 )
 from montreal_forced_aligner.exceptions import AlignmentExportError
-from montreal_forced_aligner.helper import align_phones, mfa_open
+from montreal_forced_aligner.helper import (
+    align_phones,
+    format_correction,
+    format_probability,
+    mfa_open,
+)
 from montreal_forced_aligner.textgrid import export_textgrid, output_textgrid_writing_errors
-from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped
+from montreal_forced_aligner.utils import Counter, KaldiProcessWorker, Stopped, thirdparty_binary
+
+if typing.TYPE_CHECKING:
+    from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["CorpusAligner"]
 
@@ -64,11 +85,52 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         For file exporting parameters
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, max_active: int = 2500, lattice_beam: int = 6, **kwargs):
         super().__init__(**kwargs)
         self.export_output_directory = None
+        self.max_active = max_active
+        self.lattice_beam = lattice_beam
+        self.phone_lm_order = 2
+        self.phone_lm_method = "unsmoothed"
 
-    def alignment_extraction_arguments(self) -> List[AlignmentExtractionArguments]:
+    @property
+    def hclg_options(self) -> MetaDict:
+        """Options for constructing HCLG FSTs"""
+        context_width, central_pos = self.get_tree_info()
+        return {
+            "context_width": context_width,
+            "central_pos": central_pos,
+            "self_loop_scale": self.self_loop_scale,
+            "transition_scale": self.transition_scale,
+        }
+
+    @property
+    def decode_options(self) -> MetaDict:
+        """Options needed for decoding"""
+        return {
+            "first_beam": getattr(self, "first_beam", 10),
+            "beam": self.beam,
+            "first_max_active": getattr(self, "first_max_active", 2000),
+            "max_active": self.max_active,
+            "lattice_beam": self.lattice_beam,
+            "acoustic_scale": self.acoustic_scale,
+            "transition_scale": self.transition_scale,
+            "self_loop_scale": self.self_loop_scale,
+            "uses_speaker_adaptation": self.uses_speaker_adaptation,
+        }
+
+    @property
+    def score_options(self) -> MetaDict:
+        """Options needed for scoring lattices"""
+        return {
+            "frame_shift": round(self.frame_shift / 1000, 3),
+            "language_model_weight": getattr(self, "language_model_weight", 10),
+            "word_insertion_penalty": getattr(self, "word_insertion_penalty", 0.5),
+        }
+
+    def alignment_extraction_arguments(
+        self, from_transcription=False
+    ) -> List[AlignmentExtractionArguments]:
         """
         Generate Job arguments for
         :class:`~montreal_forced_aligner.alignment.multiprocessing.AlignmentExtractionFunction`
@@ -82,23 +144,27 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         for j in self.jobs:
             if not j.has_data:
                 continue
+            ali_paths = j.construct_path_dictionary(self.working_directory, "ali", "ark")
+            if from_transcription:
+                ali_paths = j.construct_path_dictionary(self.working_directory, "lat", "ark")
             arguments.append(
                 AlignmentExtractionArguments(
                     j.name,
-                    getattr(self, "db_path", ""),
+                    getattr(self, "read_only_db_string", ""),
                     os.path.join(self.working_log_directory, f"get_phone_ctm.{j.name}.log"),
                     self.alignment_model_path,
                     round(self.frame_shift / 1000, 4),
-                    self.cleanup_textgrids,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    ali_paths,
                     j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
+                    self.phone_symbol_table_path,
+                    self.score_options,
                 )
             )
 
         return arguments
 
     def export_textgrid_arguments(
-        self, output_format: str, include_original_text: bool = False
+        self, output_format: str, workflow_id: int, include_original_text: bool = False
     ) -> List[ExportTextGridArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.ExportTextGridProcessWorker`
@@ -116,12 +182,15 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         return [
             ExportTextGridArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"export_textgrids.{j.name}.log"),
-                self.frame_shift,
+                self.export_frame_shift,
+                GLOBAL_CONFIG.cleanup_textgrids,
+                self.clitic_marker,
                 self.export_output_directory,
                 output_format,
                 include_original_text,
+                workflow_id,
             )
             for j in self.jobs
             if j.has_data
@@ -142,7 +211,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         return [
             GeneratePronunciationsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"generate_pronunciations.{j.name}.log"),
                 j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -153,7 +222,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             if j.has_data
         ]
 
-    def compute_pronunciation_probabilities(self, compute_silence_probabilities=True):
+    def compute_pronunciation_probabilities(self):
         """
         Multiprocessing function that computes pronunciation probabilities from alignments
 
@@ -161,6 +230,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         ----------
         compute_silence_probabilities: bool
             Flag for whether to compute silence probabilities for pronunciations, defaults to True
+
         See Also
         --------
         :class:`~montreal_forced_aligner.alignment.multiprocessing.GeneratePronunciationsFunction`
@@ -173,17 +243,6 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Reference Kaldi script
         """
 
-        def format_probability(probability_value: float) -> float:
-            """Format a probability to have two decimal places and be between 0.01 and 0.99"""
-            return min(max(round(probability_value, 2), 0.01), 0.99)
-
-        def format_correction(correction_value: float) -> float:
-            """Format a probability correction value to have two decimal places and be  greater than 0.01"""
-            correction_value = round(correction_value, 2)
-            if correction_value == 0:
-                correction_value = 0.01
-            return correction_value
-
         begin = time.time()
         dictionary_counters = {
             dict_id: PronunciationProbabilityCounter()
@@ -191,10 +250,8 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         }
         self.log_info("Generating pronunciations...")
         arguments = self.generate_pronunciations_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -272,14 +329,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 for (w,) in words:
                     if w in {initial_key[0], final_key[0], self.silence_word}:
                         continue
+                    if w not in counter.word_pronunciation_counts:
+                        continue
                     pron_counts = counter.word_pronunciation_counts[w]
                     max_value = max(pron_counts.values())
                     for p, c in pron_counts.items():
+                        pron_mapping[(w, p)]["count"] = c
                         pron_mapping[(w, p)]["probability"] = format_probability(c / max_value)
 
-                if not compute_silence_probabilities:
-                    log_file.write("Skipping silence calculations")
-                    continue
                 silence_count = sum(counter.silence_before_counts.values())
                 non_silence_count = sum(counter.non_silence_before_counts.values())
                 log_file.write(f"Total silence count was {silence_count}\n")
@@ -293,6 +350,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         counter.silence_following_counts[(w, p)]
                         + counter.non_silence_following_counts[(w, p)]
                     )
+                    pron_mapping[(w, p)]["silence_following_count"] = count
+                    pron_mapping[(w, p)][
+                        "non_silence_following_count"
+                    ] = counter.non_silence_following_counts[(w, p)]
                     w_p_silence_count = count + (silence_probability * lambda_2)
                     prob = format_probability(w_p_silence_count / (total_count + lambda_2))
                     silence_probabilities[(w, p)] = prob
@@ -355,20 +416,107 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         "final_non_silence_correction": final_non_silence_correction,
                     }
                 )
-            if compute_silence_probabilities:
-                self.silence_probability = silence_prob_sum / self.num_dictionaries
-                self.initial_silence_probability = initial_silence_prob_sum / self.num_dictionaries
-                self.final_silence_correction = (
-                    final_silence_correction_sum / self.num_dictionaries
-                )
-                self.final_non_silence_correction = (
-                    final_non_silence_correction_sum / self.num_dictionaries
-                )
-            session.bulk_update_mappings(Dictionary, dictionary_mappings)
+            self.silence_probability = silence_prob_sum / self.num_dictionaries
+            self.initial_silence_probability = initial_silence_prob_sum / self.num_dictionaries
+            self.final_silence_correction = final_silence_correction_sum / self.num_dictionaries
+            self.final_non_silence_correction = (
+                final_non_silence_correction_sum / self.num_dictionaries
+            )
+            bulk_update(session, Dictionary, dictionary_mappings)
             session.commit()
+            rules: List[PhonologicalRule] = (
+                session.query(PhonologicalRule)
+                .options(
+                    subqueryload(PhonologicalRule.pronunciations).joinedload(
+                        RuleApplication.pronunciation, innerjoin=True
+                    )
+                )
+                .all()
+            )
+            if rules:
+                for r in rules:
+                    base_count = 0
+                    base_sil_after_count = 0
+                    base_nonsil_after_count = 0
+
+                    rule_count = 0
+                    rule_sil_before_correction = 0
+                    base_sil_before_correction = 0
+                    rule_nonsil_before_correction = 0
+                    base_nonsil_before_correction = 0
+                    rule_sil_after_count = 0
+                    rule_nonsil_after_count = 0
+                    rule_correction_count = 0
+                    base_correction_count = 0
+                    non_application_query = session.query(Pronunciation).filter(
+                        Pronunciation.pronunciation.regexp_match(r.match_regex.pattern),
+                        Pronunciation.count > 1,
+                    )
+                    for p in non_application_query:
+                        base_count += p.count
+
+                        if p.silence_before_correction:
+                            base_sil_before_correction += p.silence_before_correction
+                            base_nonsil_before_correction += p.non_silence_before_correction
+                            base_correction_count += 1
+
+                        base_sil_after_count += (
+                            p.silence_following_count if p.silence_following_count else 0
+                        )
+                        base_nonsil_after_count += (
+                            p.non_silence_following_count if p.non_silence_following_count else 0
+                        )
+
+                    for p in r.pronunciations:
+                        p = p.pronunciation
+                        if p.count == 1:
+                            continue
+                        rule_count += p.count
+
+                        if p.silence_before_correction:
+                            rule_sil_before_correction += p.silence_before_correction
+                            rule_nonsil_before_correction += p.non_silence_before_correction
+                            rule_correction_count += 1
+
+                        rule_sil_after_count += (
+                            p.silence_following_count if p.silence_following_count else 0
+                        )
+                        rule_nonsil_after_count += (
+                            p.non_silence_following_count if p.non_silence_following_count else 0
+                        )
+                    if not rule_count:
+                        continue
+                    r.probability = format_probability(rule_count / (rule_count + base_count))
+                    if rule_correction_count:
+                        rule_sil_before_correction = (
+                            rule_sil_before_correction / rule_correction_count
+                        )
+                        rule_nonsil_before_correction = (
+                            rule_nonsil_before_correction / rule_correction_count
+                        )
+                        base_sil_before_correction = (
+                            base_sil_before_correction / base_correction_count
+                        )
+                        base_nonsil_before_correction = (
+                            base_nonsil_before_correction / base_correction_count
+                        )
+                        r.silence_before_correction = format_correction(
+                            base_sil_before_correction - rule_sil_before_correction
+                        )
+                        r.non_silence_before_correction = format_correction(
+                            base_nonsil_before_correction - rule_nonsil_before_correction
+                        )
+
+                    r.silence_after_probability = format_probability(
+                        (rule_sil_after_count + lambda_2)
+                        / (rule_sil_after_count + rule_nonsil_after_count + lambda_2)
+                    )
+
+            session.commit()
+        self.calculate_phonological_variant_probability()
         self.log_debug(f"Calculating pronunciation probabilities took {time.time() - begin}")
 
-    def _collect_alignments(self) -> None:
+    def _collect_alignments(self, workflow: WorkflowType = WorkflowType.alignment) -> None:
         """
         Process alignment archives to extract word or phone alignments
 
@@ -381,20 +529,35 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         :meth:`.CorpusAligner.phone_alignment_arguments`
             Arguments for phone alignment
         """
-        self.log_info("Collecting phone and word alignments from alignment lattices...")
-        jobs = self.alignment_extraction_arguments()  # Phone CTM jobs
+        if self.has_alignments(workflow):
+            return
+        self.log_info(f"Collecting phone and word alignments from {workflow.name} lattices...")
+
+        arguments = self.alignment_extraction_arguments(
+            from_transcription=workflow is not WorkflowType.alignment
+        )  # Phone CTM jobs
         with self.session() as session, tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
+            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
+            workflow_id = self.get_latest_workflow_run(workflow, session).id
+            extraction_function = TranscriptionAlignmentExtractionFunction
+            if workflow is WorkflowType.alignment:
+                extraction_function = AlignmentExtractionFunction
+            max_phone_interval_id = session.query(sqlalchemy.func.max(PhoneInterval.id)).scalar()
+            if max_phone_interval_id is None:
+                max_phone_interval_id = 0
+            max_word_interval_id = session.query(sqlalchemy.func.max(WordInterval.id)).scalar()
+            if max_word_interval_id is None:
+                max_word_interval_id = 0
             phone_interval_mappings = []
             word_interval_mappings = []
-            if self.use_mp:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
                 procs = []
-                for i, args in enumerate(jobs):
-                    function = AlignmentExtractionFunction(args)
+                for i, args in enumerate(arguments):
+                    function = extraction_function(args)
                     p = KaldiProcessWorker(i, return_queue, function, stopped)
                     procs.append(p)
                     p.start()
@@ -413,26 +576,41 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         else:
                             break
                         continue
-                    utterance, word_intervals, phone_intervals = result
+                    utterance, word_intervals, phone_intervals, phone_word_mapping = result
+                    new_phone_interval_mappings = []
+                    new_word_interval_mappings = []
                     for interval in phone_intervals:
-                        phone_interval_mappings.append(
+                        max_phone_interval_id += 1
+                        new_phone_interval_mappings.append(
                             {
+                                "id": max_phone_interval_id,
                                 "begin": interval.begin,
                                 "end": interval.end,
-                                "label": interval.label,
+                                "phone_id": interval.label,
                                 "utterance_id": utterance,
+                                "workflow_id": workflow_id,
+                                "phone_goodness": interval.confidence,
                             }
                         )
                     for interval in word_intervals:
-                        word_interval_mappings.append(
+                        max_word_interval_id += 1
+                        new_word_interval_mappings.append(
                             {
+                                "id": max_word_interval_id,
                                 "begin": interval.begin,
                                 "end": interval.end,
-                                "label": interval.label,
+                                "word_id": interval.word_id,
+                                "pronunciation_id": interval.pronunciation_id,
                                 "utterance_id": utterance,
+                                "workflow_id": workflow_id,
                             }
                         )
-
+                    for i, index in enumerate(phone_word_mapping):
+                        new_phone_interval_mappings[i][
+                            "word_interval_id"
+                        ] = new_word_interval_mappings[index]["id"]
+                    phone_interval_mappings.extend(new_phone_interval_mappings)
+                    word_interval_mappings.extend(new_word_interval_mappings)
                     pbar.update(1)
                 for p in procs:
                     p.join()
@@ -440,52 +618,236 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     for v in error_dict.values():
                         raise v
             else:
-                for args in jobs:
-                    function = AlignmentExtractionFunction(args)
-                    for utterance, word_intervals, phone_intervals in function.run():
-
+                for args in arguments:
+                    function = extraction_function(args)
+                    for (
+                        utterance,
+                        word_intervals,
+                        phone_intervals,
+                        phone_word_mapping,
+                    ) in function.run():
+                        new_phone_interval_mappings = []
+                        new_word_interval_mappings = []
                         for interval in phone_intervals:
-                            phone_interval_mappings.append(
+                            max_phone_interval_id += 1
+                            new_phone_interval_mappings.append(
                                 {
+                                    "id": max_phone_interval_id,
                                     "begin": interval.begin,
                                     "end": interval.end,
-                                    "label": interval.label,
+                                    "phone_id": interval.label,
                                     "utterance_id": utterance,
+                                    "workflow_id": workflow_id,
+                                    "phone_goodness": interval.confidence,
                                 }
                             )
                         for interval in word_intervals:
-                            word_interval_mappings.append(
+                            max_word_interval_id += 1
+                            new_word_interval_mappings.append(
                                 {
+                                    "id": max_word_interval_id,
                                     "begin": interval.begin,
                                     "end": interval.end,
-                                    "label": interval.label,
+                                    "word_id": interval.word_id,
+                                    "pronunciation_id": interval.pronunciation_id,
                                     "utterance_id": utterance,
+                                    "workflow_id": workflow_id,
                                 }
                             )
+                        for i, index in enumerate(phone_word_mapping):
+                            new_phone_interval_mappings[i][
+                                "word_interval_id"
+                            ] = new_word_interval_mappings[index]["id"]
+                        phone_interval_mappings.extend(new_phone_interval_mappings)
+                        word_interval_mappings.extend(new_word_interval_mappings)
 
                         pbar.update(1)
-            self.alignment_done = True
-            session.query(Corpus).update({"alignment_done": True})
+            self.alignment_checks[workflow] = True
             session.bulk_insert_mappings(
                 PhoneInterval, phone_interval_mappings, return_defaults=False, render_nulls=True
             )
-            session.bulk_insert_mappings(
-                WordInterval, word_interval_mappings, return_defaults=False, render_nulls=True
-            )
+            if word_interval_mappings:
+                session.bulk_insert_mappings(
+                    WordInterval, word_interval_mappings, return_defaults=False, render_nulls=True
+                )
             session.commit()
 
-    def collect_alignments(self) -> None:
+    def fine_tune_alignments(self, workflow: WorkflowType) -> None:
+        """
+        Fine tune aligned boundaries to millisecond precision
+
+        Parameters
+        ----------
+        workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow type to fine tune
+
+        """
+        self.log_info("Fine tuning alignments...")
+        begin = time.time()
+        with self.session() as session:
+
+            with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+                update_mappings = []
+                workflow_id = self.get_latest_workflow_run(workflow, session).id
+                arguments = self.fine_tune_arguments(workflow_id)
+                if GLOBAL_CONFIG.use_mp:
+                    error_dict = {}
+                    return_queue = mp.Queue()
+                    stopped = Stopped()
+                    procs = []
+                    for i, args in enumerate(arguments):
+                        function = FineTuneFunction(args)
+                        p = KaldiProcessWorker(i, return_queue, function, stopped)
+                        procs.append(p)
+                        p.start()
+                    while True:
+                        try:
+                            result = return_queue.get(timeout=1)
+                            if isinstance(result, Exception):
+                                error_dict[getattr(result, "job_name", 0)] = result
+                                continue
+                            if stopped.stop_check():
+                                continue
+                        except Empty:
+                            for proc in procs:
+                                if not proc.finished.stop_check():
+                                    break
+                            else:
+                                break
+                            continue
+
+                        update_mappings.extend(result[0])
+                        update_mappings.extend(
+                            [{"id": x, "begin": 0, "end": 0, "label": ""} for x in result[1]]
+                        )
+                        pbar.update(1)
+                    for p in procs:
+                        p.join()
+
+                    if error_dict:
+                        for v in error_dict.values():
+                            raise v
+
+                else:
+                    self.log_debug("Not using multiprocessing...")
+                    for args in arguments:
+                        function = FineTuneFunction(args)
+                        for result in function.run():
+                            update_mappings.extend(result[0])
+                            update_mappings.extend(
+                                [{"id": x, "begin": 0, "end": 0, "label": ""} for x in result[1]]
+                            )
+                            pbar.update(1)
+                bulk_update(session, PhoneInterval, update_mappings)
+                session.flush()
+                session.execute(PhoneInterval.__table__.delete().where(PhoneInterval.end == 0))
+                session.flush()
+                word_update_mappings = []
+                word_intervals = (
+                    session.query(
+                        WordInterval.id,
+                        sqlalchemy.func.min(PhoneInterval.begin),
+                        sqlalchemy.func.min(PhoneInterval.end),
+                    )
+                    .join(PhoneInterval.word_interval)
+                    .group_by(WordInterval.id)
+                )
+                for wi_id, begin, end in word_intervals:
+                    word_update_mappings.append({"id": wi_id, "begin": begin, "end": end})
+                bulk_update(session, WordInterval, word_update_mappings)
+                session.commit()
+            self.export_frame_shift = round(self.export_frame_shift / 10, 4)
+            self.log_debug(f"Fine tuning alignments took {time.time() - begin}")
+
+    def fine_tune_arguments(self, workflow_id: int) -> List[FineTuneArguments]:
+        """
+        Generate Job arguments for :class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneFunction`
+
+        Returns
+        -------
+        list[:class:`~montreal_forced_aligner.alignment.multiprocessing.FineTuneArguments`]
+            Arguments for processing
+        """
+        args = []
+        for j in self.jobs:
+            if not j.has_data:
+                continue
+            log_path = os.path.join(self.working_log_directory, f"fine_tune.{j.name}.log")
+            fmllr_paths = None
+            if not getattr(self, "speaker_independent", True):
+                fmllr_paths = j.construct_path_dictionary(self.working_directory, "trans", "ark")
+            cmvn_paths = j.construct_path_dictionary(self.data_directory, "cmvn", "scp")
+            lda_mat_path = os.path.join(self.working_directory, "lda.mat")
+            if not os.path.exists(lda_mat_path):
+                lda_mat_path = None
+            args.append(
+                FineTuneArguments(
+                    j.name,
+                    getattr(self, "read_only_db_string", ""),
+                    log_path,
+                    self.working_directory,
+                    self.phone_symbol_table_path,
+                    self.disambiguation_symbols_int_path,
+                    self.tree_path,
+                    self.model_path,
+                    self.frame_shift,
+                    cmvn_paths,
+                    fmllr_paths,
+                    lda_mat_path,
+                    self.mfcc_options,
+                    self.pitch_options,
+                    self.lda_options,
+                    self.align_options,
+                    workflow_id,
+                    self.position_dependent_phones,
+                    self.kaldi_grouped_phones,
+                )
+            )
+        return args
+
+    def collect_alignments(self, workflow: WorkflowType = WorkflowType.alignment) -> None:
         """
         Collect word and phone alignments from alignment archives
         """
-        if self.alignment_done:
+        if self.has_alignments(workflow):
             if self.export_output_directory is not None:
-                self.export_textgrids()
+                self.export_textgrids(workflow=workflow)
             return
-        self._collect_alignments()
+        self._collect_alignments(workflow)
+
+    def get_tree_info(self) -> typing.Tuple[int, int]:
+        """
+        Get the context width and central position for the acoustic model
+
+        Returns
+        -------
+        int
+            Context width
+        int
+            Central position
+        """
+        tree_proc = subprocess.Popen(
+            [thirdparty_binary("tree-info"), self.tree_path],
+            encoding="utf8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, _ = tree_proc.communicate()
+        context_width = 1
+        central_pos = 0
+        for line in stdout.split("\n"):
+            text = line.strip().split(" ")
+            if text[0] == "context-width":
+                context_width = int(text[1])
+            elif text[0] == "central-position":
+                central_pos = int(text[1])
+        return context_width, central_pos
 
     def export_textgrids(
-        self, output_format: str = TextFileType.TEXTGRID.value, include_original_text: bool = False
+        self,
+        output_format: str = TextFileType.TEXTGRID.value,
+        include_original_text: bool = False,
+        workflow: WorkflowType = WorkflowType.alignment,
     ) -> None:
         """
         Exports alignments to TextGrid files
@@ -502,14 +864,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
         """
-        if not self.alignment_done:
-            self._collect_alignments()
+        if not self.has_alignments(workflow):
+            self._collect_alignments(workflow)
         begin = time.time()
         error_dict = {}
 
-        with tqdm.tqdm(total=self.num_files, disable=getattr(self, "quiet", False)) as pbar:
-
+        with tqdm.tqdm(total=self.num_files, disable=GLOBAL_CONFIG.quiet) as pbar:
             with self.session() as session:
+                workflow_id = self.get_latest_workflow_run(workflow, session).id
                 files = (
                     session.query(
                         File.id,
@@ -521,14 +883,14 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                     .join(File.sound_file)
                     .join(File.text_file)
                 )
-                if self.use_mp and self.num_jobs > 1:
+                if GLOBAL_CONFIG.use_mp and GLOBAL_CONFIG.num_jobs > 1:
                     stopped = Stopped()
 
                     finished_adding = Stopped()
                     for_write_queue = mp.Queue()
                     return_queue = mp.Queue()
                     export_args = self.export_textgrid_arguments(
-                        output_format, include_original_text
+                        output_format, workflow_id, include_original_text
                     )
                     exported_file_count = Counter()
                     export_procs = []
@@ -537,7 +899,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         if not j.has_data:
                             continue
                         export_proc = ExportTextGridProcessWorker(
-                            self.db_path,
+                            self.read_only_db_string,
                             for_write_queue,
                             return_queue,
                             stopped,
@@ -573,8 +935,9 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         stopped.stop()
                         raise
                     finally:
-
-                        for i in range(self.num_jobs):
+                        for i in range(GLOBAL_CONFIG.num_jobs):
+                            if not self.jobs[i].has_data:
+                                continue
                             export_procs[i].join()
                 else:
                     self.log_debug("Not using multiprocessing for TextGrid export")
@@ -587,35 +950,20 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                             text_file_path,
                             output_format,
                         )
-                        utterances = (
-                            session.query(Utterance)
-                            .options(
-                                joinedload(Utterance.speaker, innerjoin=True).load_only(
-                                    Speaker.name
-                                ),
-                                selectinload(Utterance.phone_intervals),
-                                selectinload(Utterance.word_intervals),
-                            )
-                            .filter(Utterance.file_id == file_id)
-                        )
-                        data = {}
-                        for utt in utterances:
-                            if utt.speaker.name not in data:
-                                data[utt.speaker.name] = {"words": [], "phones": []}
-                            for wi in utt.word_intervals:
-                                data[utt.speaker.name]["words"].append(
-                                    CtmInterval(wi.begin, wi.end, wi.label, utt.id)
-                                )
 
-                            for pi in utt.phone_intervals:
-                                data[utt.speaker.name]["phones"].append(
-                                    CtmInterval(pi.begin, pi.end, pi.label, utt.id)
-                                )
+                        data = construct_output_tiers(
+                            session,
+                            file_id,
+                            workflow_id,
+                            GLOBAL_CONFIG.cleanup_textgrids,
+                            self.clitic_marker,
+                            include_original_text,
+                        )
                         export_textgrid(
                             data,
                             output_path,
                             duration,
-                            self.frame_shift,
+                            self.export_frame_shift,
                             output_format=output_format,
                         )
                         pbar.update(1)
@@ -635,6 +983,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         output_directory: str,
         output_format: Optional[str] = None,
         include_original_text: bool = False,
+        workflow: WorkflowType = WorkflowType.alignment,
     ) -> None:
         """
         Export a TextGrid file for every sound file in the dataset
@@ -645,19 +994,25 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Directory to save to
         output_format: str, optional
             Format to save alignments, one of 'long_textgrids' (the default), 'short_textgrids', or 'json', passed to praatio
+        include_original_text: bool
+            Flag for including the original text of the corpus files as a tier
+        workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow to use when exporting files
         """
         if output_format is None:
             output_format = TextFileType.TEXTGRID.value
         self.export_output_directory = output_directory
 
-        self.log_info(f"Exporting TextGrids to {self.export_output_directory}...")
+        self.log_info(f"Exporting {workflow.name} TextGrids to {self.export_output_directory}...")
         os.makedirs(self.export_output_directory, exist_ok=True)
-        self.export_textgrids(output_format, include_original_text)
+        self.export_textgrids(output_format, include_original_text, workflow)
 
     def evaluate_alignments(
         self,
         mapping: Optional[Dict[str, str]] = None,
         output_directory: Optional[str] = None,
+        comparison_source=WorkflowType.alignment,
+        reference_source=WorkflowType.reference,
     ) -> None:
         """
         Evaluate alignments against a reference directory
@@ -668,12 +1023,24 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             Mapping between phones that should be considered equal across different phone set types
         output_directory: str, optional
             Directory to save results, if not specified, it will be saved in the log directory
+        comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow to compare to the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.alignment`
+        comparison_source: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow to use as the reference intervals, defaults to :attr:`~montreal_forced_aligner.data.WorkflowType.reference`
         """
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+
         begin = time.time()
         if output_directory:
-            csv_path = os.path.join(output_directory, "alignment_evaluation.csv")
+            csv_path = os.path.join(
+                output_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
+            )
         else:
-            csv_path = os.path.join(self.working_log_directory, "alignment_evaluation.csv")
+            csv_path = os.path.join(
+                self.working_log_directory,
+                f"{comparison_source.name}_{reference_source.name}_evaluation.csv",
+            )
         csv_header = [
             "file",
             "begin",
@@ -694,151 +1061,128 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
         score_sum = 0
         phone_edit_sum = 0
         phone_length_sum = 0
-        if self.alignment_evaluation_done:
-            self.log_info("Exporting saved evaluation...")
-            with self.session() as session, mfa_open(csv_path, "w") as f:
-                writer = csv.DictWriter(f, fieldnames=csv_header)
-                writer.writeheader()
-                bn = DictBundle(
-                    "evaluation_data",
-                    File.c.name.label("file"),
-                    Utterance.begin,
-                    Utterance.end,
-                    Speaker.c.name.label("speaker"),
-                    Utterance.duration,
-                    Utterance.normalized_text,
-                    Utterance.oovs,
-                    sqlalchemy.func.count(Utterance.reference_phone_intervals).label(
-                        "reference_phone_count"
-                    ),
-                    Utterance.alignment_score,
-                    Utterance.phone_error_rate,
-                    Utterance.alignment_log_likelihood,
-                )
-                utterances = (
-                    session.query(bn)
-                    .join(Utterance.speaker)
-                    .join(Utterance.file)
-                    .group_by(Utterance.id)
-                    .join(Utterance.reference_phone_intervals)
-                )
-                for line in utterances:
-                    data = line["evaluation_data"]
-                    data["word_count"] = len(data["normalized_text"].split())
-                    data["oov_count"] = len(data["oovs"].split())
-                    phone_error_rate = data["phone_error_rate"]
-                    reference_phone_count = data["reference_phone_count"]
-                    if data["alignment_score"] is not None:
-                        score_count += 1
-                        score_sum += data["alignment_score"]
-                    phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                    phone_length_sum += reference_phone_count
-                    writer.writerow(data)
-        else:
+        with self.session() as session:
             # Set up
             self.log_info("Evaluating alignments...")
             self.log_debug(f"Mapping: {mapping}")
+            reference_workflow_id = self.get_latest_workflow_run(reference_source, session).id
+            comparison_workflow_id = self.get_latest_workflow_run(comparison_source, session).id
             update_mappings = []
             indices = []
             to_comp = []
             score_func = functools.partial(
                 align_phones,
                 silence_phone=self.optional_silence_phone,
-                ignored_phones={self.oov_phone},
                 custom_mapping=mapping,
             )
-            with self.session() as session:
-                unaligned_utts = []
-                utterances = session.query(Utterance).options(
-                    subqueryload(Utterance.reference_phone_intervals),
-                    subqueryload(Utterance.phone_intervals),
-                    joinedload(Utterance.file, innerjoin=True),
-                    joinedload(Utterance.speaker, innerjoin=True),
+            unaligned_utts = []
+            utterances = session.query(Utterance).options(
+                joinedload(Utterance.file, innerjoin=True),
+                joinedload(Utterance.speaker, innerjoin=True),
+                subqueryload(Utterance.phone_intervals).options(
+                    joinedload(PhoneInterval.phone, innerjoin=True),
+                    joinedload(PhoneInterval.workflow, innerjoin=True),
+                ),
+                subqueryload(Utterance.word_intervals).options(
+                    joinedload(WordInterval.word, innerjoin=True),
+                    joinedload(WordInterval.workflow, innerjoin=True),
+                ),
+            )
+            reference_phone_counts = {}
+            for u in utterances:
+                reference_phones = u.phone_intervals_for_workflow(reference_workflow_id)
+                comparison_phones = u.phone_intervals_for_workflow(comparison_workflow_id)
+                reference_phone_counts[u.id] = len(reference_phones)
+                if not reference_phone_counts[u.id]:
+                    continue
+                if not comparison_phones:  # couldn't be aligned
+                    phone_error_rate = reference_phone_counts[u.id]
+                    unaligned_utts.append(u)
+                    update_mappings.append(
+                        {
+                            "id": u.id,
+                            "alignment_score": None,
+                            "phone_error_rate": phone_error_rate,
+                        }
+                    )
+                    continue
+                indices.append(u)
+                to_comp.append((reference_phones, comparison_phones))
+            with mp.Pool(GLOBAL_CONFIG.num_jobs) as pool:
+                gen = pool.starmap(score_func, to_comp)
+                for i, (score, phone_error_rate) in enumerate(gen):
+                    if score is None:
+                        continue
+                    u = indices[i]
+                    reference_phone_count = reference_phone_counts[u.id]
+                    update_mappings.append(
+                        {
+                            "id": u.id,
+                            "alignment_score": score,
+                            "phone_error_rate": phone_error_rate,
+                        }
+                    )
+                    score_count += 1
+                    score_sum += score
+                    phone_edit_sum += int(phone_error_rate * reference_phone_count)
+                    phone_length_sum += reference_phone_count
+            bulk_update(session, Utterance, update_mappings)
+            self.alignment_evaluation_done = True
+            session.query(Corpus).update({Corpus.alignment_evaluation_done: True})
+            session.commit()
+            self.log_info("Exporting evaluation...")
+            with mfa_open(csv_path, "w") as f:
+                writer = csv.DictWriter(f, fieldnames=csv_header)
+                writer.writeheader()
+                utterances = (
+                    session.query(
+                        File.name,
+                        Utterance.begin,
+                        Utterance.end,
+                        Speaker.name,
+                        Utterance.duration,
+                        Utterance.normalized_text,
+                        Utterance.oovs,
+                        Utterance.alignment_score,
+                        Utterance.phone_error_rate,
+                        Utterance.alignment_log_likelihood,
+                    )
+                    .join(Utterance.speaker)
+                    .join(Utterance.file)
+                    .join(Utterance.phone_intervals)
+                    .where(PhoneInterval.workflow_id == reference_workflow_id)
                 )
-                for u in utterances:
-                    reference_phone_count = len(u.reference_phone_intervals)
-                    if not reference_phone_count:
-                        continue
-                    if u.alignment_log_likelihood is None:  # couldn't be aligned
-                        phone_error_rate = reference_phone_count
-                        unaligned_utts.append(u)
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "alignment_score": None,
-                                "phone_error_rate": phone_error_rate,
-                            }
-                        )
-                        continue
-                    reference_phone_labels = [x.as_ctm() for x in u.reference_phone_intervals]
-                    phone_labels = [x.as_ctm() for x in u.phone_intervals]
-                    indices.append(u)
-                    to_comp.append((reference_phone_labels, phone_labels))
-
-                with mp.Pool(self.num_jobs) as pool, mfa_open(csv_path, "w") as f:
-                    writer = csv.DictWriter(f, fieldnames=csv_header)
-                    writer.writeheader()
-                    gen = pool.starmap(score_func, to_comp)
-                    for u in unaligned_utts:
-                        word_count = len(u.normalized_text.split())
-                        oov_count = len(u.oovs.split())
-                        reference_phone_count = len(u.reference_phone_intervals)
-                        writer.writerow(
-                            {
-                                "file": u.file_name,
-                                "begin": u.begin,
-                                "end": u.end,
-                                "speaker": u.speaker_name,
-                                "duration": u.duration,
-                                "normalized_text": u.normalized_text,
-                                "oovs": u.oovs,
-                                "reference_phone_count": reference_phone_count,
-                                "alignment_score": None,
-                                "phone_error_rate": reference_phone_count,
-                                "alignment_log_likelihood": None,
-                                "word_count": word_count,
-                                "oov_count": oov_count,
-                            }
-                        )
-                    for i, (score, phone_error_rate) in enumerate(gen):
-                        if score is None:
-                            continue
-                        u = indices[i]
-
-                        word_count = len(u.normalized_text.split())
-                        oov_count = len(u.oovs.split())
-                        reference_phone_count = len(u.reference_phone_intervals)
-                        update_mappings.append(
-                            {
-                                "id": u.id,
-                                "alignment_score": score,
-                                "phone_error_rate": phone_error_rate,
-                            }
-                        )
-                        writer.writerow(
-                            {
-                                "file": u.file_name,
-                                "begin": u.begin,
-                                "end": u.end,
-                                "speaker": u.speaker_name,
-                                "duration": u.duration,
-                                "normalized_text": u.normalized_text,
-                                "oovs": u.oovs,
-                                "reference_phone_count": reference_phone_count,
-                                "alignment_score": score,
-                                "phone_error_rate": phone_error_rate,
-                                "alignment_log_likelihood": u.alignment_log_likelihood,
-                                "word_count": word_count,
-                                "oov_count": oov_count,
-                            }
-                        )
+                for (
+                    file_name,
+                    begin,
+                    end,
+                    speaker_name,
+                    duration,
+                    normalized_text,
+                    oovs,
+                    alignment_score,
+                    phone_error_rate,
+                    alignment_log_likelihood,
+                ) in utterances:
+                    data = {
+                        "file": file_name,
+                        "begin": begin,
+                        "end": end,
+                        "speaker": speaker_name,
+                        "duration": duration,
+                        "normalized_text": normalized_text,
+                        "oovs": oovs,
+                        "reference_phone_count": reference_phone_counts[u.id],
+                        "alignment_score": alignment_score,
+                        "phone_error_rate": phone_error_rate,
+                        "alignment_log_likelihood": alignment_log_likelihood,
+                    }
+                    data["word_count"] = len(data["normalized_text"].split())
+                    data["oov_count"] = len(data["oovs"].split())
+                    if alignment_score is not None:
                         score_count += 1
-                        score_sum += score
-                        phone_edit_sum += int(phone_error_rate * reference_phone_count)
-                        phone_length_sum += reference_phone_count
-                session.bulk_update_mappings(Utterance, update_mappings)
-                session.query(Corpus).update({"alignment_evaluation_done": True})
-                session.commit()
+                        score_sum += alignment_score
+                    writer.writerow(data)
         self.log_info(f"Average overlap score: {score_sum/score_count}")
         self.log_info(f"Average phone error rate: {phone_edit_sum/phone_length_sum}")
         self.log_debug(f"Alignment evaluation took {time.time()-begin} seconds")

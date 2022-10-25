@@ -4,24 +4,26 @@ Command line functionality
 
 """
 
-from montreal_forced_aligner.command_line.adapt import run_adapt_model
-from montreal_forced_aligner.command_line.align import run_align_corpus
-from montreal_forced_aligner.command_line.anchor import run_anchor
-from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
-from montreal_forced_aligner.command_line.create_segments import run_create_segments
-from montreal_forced_aligner.command_line.g2p import run_g2p
-from montreal_forced_aligner.command_line.mfa import create_parser, main
-from montreal_forced_aligner.command_line.model import inspect_model, run_model, save_model
-from montreal_forced_aligner.command_line.train_acoustic_model import run_train_acoustic_model
-from montreal_forced_aligner.command_line.train_dictionary import run_train_dictionary
-from montreal_forced_aligner.command_line.train_g2p import run_train_g2p
-from montreal_forced_aligner.command_line.train_ivector_extractor import (
-    run_train_ivector_extractor,
+from montreal_forced_aligner.command_line.adapt import adapt_model_cli
+from montreal_forced_aligner.command_line.align import align_corpus_cli
+from montreal_forced_aligner.command_line.anchor import anchor_cli
+from montreal_forced_aligner.command_line.classify_speakers import classify_speakers_cli
+from montreal_forced_aligner.command_line.configure import configure_cli
+from montreal_forced_aligner.command_line.create_segments import create_segments_cli
+from montreal_forced_aligner.command_line.g2p import g2p_cli
+from montreal_forced_aligner.command_line.history import history_cli
+from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.command_line.model import model_cli
+from montreal_forced_aligner.command_line.train_acoustic_model import train_acoustic_model_cli
+from montreal_forced_aligner.command_line.train_dictionary import train_dictionary_cli
+from montreal_forced_aligner.command_line.train_g2p import train_g2p_cli
+from montreal_forced_aligner.command_line.train_ivector_extractor import train_ivector_cli
+from montreal_forced_aligner.command_line.train_lm import train_lm_cli
+from montreal_forced_aligner.command_line.transcribe import transcribe_corpus_cli
+from montreal_forced_aligner.command_line.validate import (
+    validate_corpus_cli,
+    validate_dictionary_cli,
 )
-from montreal_forced_aligner.command_line.train_lm import run_train_lm
-from montreal_forced_aligner.command_line.transcribe import run_transcribe_corpus
-from montreal_forced_aligner.command_line.utils import validate_model_arg
-from montreal_forced_aligner.command_line.validate import run_validate_corpus
 
 __all__ = [
     "adapt",
@@ -32,6 +34,8 @@ __all__ = [
     "g2p",
     "mfa",
     "model",
+    "configure",
+    "history",
     "train_acoustic_model",
     "train_dictionary",
     "train_g2p",
@@ -40,23 +44,22 @@ __all__ = [
     "transcribe",
     "utils",
     "validate",
-    "run_transcribe_corpus",
-    "run_validate_corpus",
-    "run_train_lm",
-    "run_train_g2p",
-    "run_align_corpus",
-    "run_train_dictionary",
-    "run_anchor",
-    "run_model",
-    "run_adapt_model",
-    "run_train_acoustic_model",
-    "run_train_ivector_extractor",
-    "run_g2p",
-    "run_create_segments",
-    "run_classify_speakers",
-    "create_parser",
-    "validate_model_arg",
-    "main",
-    "save_model",
-    "inspect_model",
+    "adapt_model_cli",
+    "align_corpus_cli",
+    "classify_speakers_cli",
+    "create_segments_cli",
+    "g2p_cli",
+    "mfa_cli",
+    "configure_cli",
+    "history_cli",
+    "anchor_cli",
+    "model_cli",
+    "train_acoustic_model_cli",
+    "train_dictionary_cli",
+    "train_g2p_cli",
+    "train_ivector_cli",
+    "train_lm_cli",
+    "transcribe_corpus_cli",
+    "validate_dictionary_cli",
+    "validate_corpus_cli",
 ]

@@ -10,6 +10,7 @@ from queue import Empty
 import tqdm
 
 from montreal_forced_aligner.abc import MfaWorker, TemporaryDirectoryMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
@@ -46,7 +47,7 @@ class TextCorpusMixin(CorpusMixin):
         error_dict = {}
         finished_adding = Stopped()
         procs = []
-        for i in range(self.num_jobs):
+        for i in range(GLOBAL_CONFIG.num_jobs):
             p = CorpusProcessWorker(
                 i,
                 job_queue,
@@ -63,7 +64,7 @@ class TextCorpusMixin(CorpusMixin):
         try:
             file_count = 0
             with tqdm.tqdm(
-                total=1, disable=getattr(self, "quiet", False)
+                total=1, disable=GLOBAL_CONFIG.quiet
             ) as pbar, self.session() as session:
                 for root, _, files in os.walk(self.corpus_directory, followlinks=True):
                     exts = find_exts(files)
@@ -136,7 +137,7 @@ class TextCorpusMixin(CorpusMixin):
                             )
                             self.log_debug(f"{k} showed {len(error_dict[k])} errors:")
                             if k == "textgrid_read_errors":
-                                getattr(self, k).update(error_dict[k])
+                                getattr(self, k).extend(error_dict[k])
                                 for e in error_dict[k]:
                                     self.log_debug(f"{e.file_name}: {e.error}")
                             else:
@@ -171,7 +172,7 @@ class TextCorpusMixin(CorpusMixin):
                     sys.exit(0)
             else:
                 self.log_debug(
-                    f"Parsed corpus directory with {self.num_jobs} jobs in {time.time() - begin_time} seconds"
+                    f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.time() - begin_time} seconds"
                 )
 
     def _load_corpus_from_source(self) -> None:
@@ -261,8 +262,9 @@ class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
         self.dictionary_setup()
 
         self._load_corpus()
-        self.write_lexicon_information()
         self.initialize_jobs()
+        self.normalize_text()
+        self.write_lexicon_information()
         self.create_corpus_split()
 
 
@@ -271,11 +273,6 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     Standalone class for working with text corpora without a pronunciation dictionary
 
     Most MFA functionality will use the :class:`~montreal_forced_aligner.corpus.text_corpus.TextCorpusMixin` class rather than this class.
-
-    Parameters
-    ----------
-    num_jobs: int
-        Number of jobs to use when loading the corpus
 
     See Also
     --------
@@ -287,9 +284,8 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
         For temporary directory parameters
     """
 
-    def __init__(self, num_jobs=3, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.num_jobs = num_jobs
 
     def load_corpus(self) -> None:
         """
@@ -309,7 +305,7 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all corpus and dictionary files"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
 
     @property
     def working_directory(self) -> str:
@@ -323,11 +319,6 @@ class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirect
 
     Most MFA functionality will use the :class:`~montreal_forced_aligner.corpus.text_corpus.DictionaryTextCorpusMixin` class rather than this class.
 
-    Parameters
-    ----------
-    num_jobs: int
-        Number of jobs to use when loading the corpus
-
     See Also
     --------
     :class:`~montreal_forced_aligner.corpus.text_corpus.DictionaryTextCorpusMixin`
@@ -338,9 +329,8 @@ class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirect
         For temporary directory parameters
     """
 
-    def __init__(self, num_jobs=3, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.num_jobs = num_jobs
 
     @property
     def identifier(self) -> str:
@@ -350,7 +340,7 @@ class DictionaryTextCorpus(DictionaryTextCorpusMixin, MfaWorker, TemporaryDirect
     @property
     def output_directory(self) -> str:
         """Root temporary directory to store all corpus and dictionary files"""
-        return os.path.join(self.temporary_directory, self.identifier)
+        return os.path.join(GLOBAL_CONFIG.temporary_directory, self.identifier)
 
     @property
     def working_directory(self) -> str:

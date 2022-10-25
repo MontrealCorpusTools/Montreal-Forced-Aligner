@@ -8,11 +8,12 @@ from montreal_forced_aligner.db import Pronunciation
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionary
 
 
-def test_abstract(abstract_dict_path, generated_dir):
+def test_abstract(abstract_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "abstract")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
-        dictionary_path=abstract_dict_path, temporary_directory=output_directory
+        dictionary_path=abstract_dict_path, position_dependent_phones=True
     )
     dictionary.dictionary_setup()
 
@@ -34,40 +35,40 @@ def test_abstract(abstract_dict_path, generated_dir):
     }
 
 
-def test_tabbed(tabbed_dict_path, basic_dict_path, generated_dir):
+def test_tabbed(tabbed_dict_path, basic_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "tabbed")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
-    tabbed_dictionary = MultispeakerDictionary(
-        dictionary_path=tabbed_dict_path, temporary_directory=output_directory
-    )
+    tabbed_dictionary = MultispeakerDictionary(dictionary_path=tabbed_dict_path)
     tabbed_dictionary.dictionary_setup()
-    basic_dictionary = MultispeakerDictionary(
-        dictionary_path=basic_dict_path, temporary_directory=output_directory
-    )
+    basic_dictionary = MultispeakerDictionary(dictionary_path=basic_dict_path)
     basic_dictionary.dictionary_setup()
     assert tabbed_dictionary.word_mapping(1) == basic_dictionary.word_mapping(1)
 
 
 @pytest.mark.skip("Outdated models")
 def test_missing_phones(
-    basic_corpus_dir, generated_dir, german_prosodylab_acoustic_model, german_prosodylab_dictionary
+    basic_corpus_dir,
+    generated_dir,
+    german_prosodylab_acoustic_model,
+    german_prosodylab_dictionary,
+    global_config,
 ):
     output_directory = os.path.join(generated_dir, "dictionary_tests")
+    global_config.temporary_directory = output_directory
     aligner = PretrainedAligner(
         acoustic_model_path=german_prosodylab_acoustic_model,
         corpus_directory=basic_corpus_dir,
         dictionary_path=german_prosodylab_dictionary,
-        temporary_directory=output_directory,
     )
     aligner.setup()
 
 
-def test_extra_annotations(extra_annotations_path, generated_dir):
+def test_extra_annotations(extra_annotations_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "extras")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
-    dictionary = MultispeakerDictionary(
-        dictionary_path=extra_annotations_path, temporary_directory=output_directory
-    )
+    dictionary = MultispeakerDictionary(dictionary_path=extra_annotations_path)
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     from montreal_forced_aligner.db import Grapheme
@@ -77,26 +78,26 @@ def test_extra_annotations(extra_annotations_path, generated_dir):
         assert g is not None
 
 
-def test_abstract_noposition(abstract_dict_path, generated_dir):
+def test_abstract_noposition(abstract_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "abstract_no_position")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=abstract_dict_path,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
     )
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
     assert set(dictionary.phones) == {"sil", "spn", "phonea", "phoneb", "phonec"}
 
 
-def test_frclitics(frclitics_dict_path, generated_dir):
+def test_frclitics(frclitics_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "fr_clitics")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=frclitics_dict_path,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
     )
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
@@ -118,13 +119,13 @@ def test_frclitics(frclitics_dict_path, generated_dir):
     assert spl("flying'purple-people-eater") == ["flying'purple-people-eater"]
 
 
-def test_english_clitics(english_dictionary, generated_dir):
+def test_english_clitics(english_dictionary, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "english_clitics")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=english_dictionary,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
         phone_set_type="AUTO",
     )
     dictionary.dictionary_setup()
@@ -156,13 +157,13 @@ def test_english_clitics(english_dictionary, generated_dir):
     assert list(s("Hello 'smart guy'.")) == ["hello", "smart", "guy"]
 
 
-def test_english_mfa(english_us_mfa_dictionary, generated_dir):
+def test_english_mfa(english_us_mfa_dictionary, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "english_mfa")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=english_us_mfa_dictionary,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
         phone_set_type="AUTO",
     )
     dictionary.dictionary_setup()
@@ -179,13 +180,13 @@ def test_english_mfa(english_us_mfa_dictionary, generated_dir):
 
 
 @pytest.mark.skip("No support for mixed formats")
-def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
+def test_mandarin_pinyin(pinyin_dictionary, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "pinyin")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=pinyin_dictionary,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
         phone_set_type="AUTO",
     )
     dictionary.dictionary_setup()
@@ -215,40 +216,40 @@ def test_mandarin_pinyin(pinyin_dictionary, generated_dir):
     assert "uai1" in dictionary.extra_questions_mapping["tone_1"]
 
 
-def test_devanagari(english_dictionary, generated_dir):
+def test_devanagari(english_dictionary, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "devanagari")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     d = MultispeakerDictionary(
         dictionary_path=english_dictionary,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
     )
     test_cases = ["हैं", "हूं", "हौं"]
     for tc in test_cases:
         assert [tc] == list(d.sanitize(tc))
 
 
-def test_japanese(english_dictionary, generated_dir):
+def test_japanese(english_dictionary, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "japanese")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     d = MultispeakerDictionary(
         dictionary_path=english_dictionary,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
     )
     assert ["かぎ括弧"] == list(d.sanitize("「かぎ括弧」"))
     assert ["二重かぎ括弧"] == list(d.sanitize("『二重かぎ括弧』"))
 
 
-def test_xsampa_dir(xsampa_dict_path, generated_dir):
+def test_xsampa_dir(xsampa_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "xsampa")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
 
     dictionary = MultispeakerDictionary(
         dictionary_path=xsampa_dict_path,
         position_dependent_phones=False,
         punctuation=list(".-']["),
-        temporary_directory=output_directory,
     )
 
     dictionary.dictionary_setup()
@@ -259,27 +260,27 @@ def test_xsampa_dir(xsampa_dict_path, generated_dir):
     assert dictionary.word_mapping(1)[r"r\{und"]
 
 
-def test_multispeaker_config(multispeaker_dictionary_config_path, generated_dir):
+def test_multispeaker_config(multispeaker_dictionary_config_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "multispeaker")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=multispeaker_dictionary_config_path,
         position_dependent_phones=False,
         punctuation=list(".-']["),
-        temporary_directory=output_directory,
     )
     dictionary.dictionary_setup()
     dictionary.write_lexicon_information()
 
 
 @pytest.mark.skip("No support for mixed formats")
-def test_mixed_dictionary(mixed_dict_path, generated_dir):
+def test_mixed_dictionary(mixed_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "mixed")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     dictionary = MultispeakerDictionary(
         dictionary_path=mixed_dict_path,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
     )
 
     dictionary.dictionary_setup()
@@ -311,13 +312,13 @@ def test_mixed_dictionary(mixed_dict_path, generated_dir):
         assert pron.non_silence_before_correction is None
 
 
-def test_vietnamese_tones(vietnamese_dict_path, generated_dir):
+def test_vietnamese_tones(vietnamese_dict_path, generated_dir, global_config):
     output_directory = os.path.join(generated_dir, "dictionary_tests", "vietnamese")
+    global_config.temporary_directory = output_directory
     shutil.rmtree(output_directory, ignore_errors=True)
     d = MultispeakerDictionary(
         dictionary_path=vietnamese_dict_path,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
         phone_set_type="IPA",
     )
     d.dictionary_setup()
@@ -328,10 +329,10 @@ def test_vietnamese_tones(vietnamese_dict_path, generated_dir):
     d.db_engine.dispose()
 
     output_directory = os.path.join(generated_dir, "dictionary_tests", "vietnamese_keep_tone")
+    global_config.temporary_directory = output_directory
     d = MultispeakerDictionary(
         dictionary_path=vietnamese_dict_path,
         position_dependent_phones=False,
-        temporary_directory=output_directory,
         preserve_suprasegmentals=True,
         phone_set_type="IPA",
     )

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import typing
 from queue import Empty, Queue
 from typing import Dict, Optional, Union
 
@@ -106,8 +107,6 @@ class AcousticDirectoryParser(mp.Process):
                 elif file_name in exts.textgrid_files:
                     tg_name = exts.textgrid_files[file_name]
                     transcription_path = os.path.join(root, tg_name)
-                if wav_path is None and transcription_path is None:  # Not a file for MFA
-                    continue
                 if wav_path is None:
                     continue
                 self.job_queue.put((file_name, wav_path, transcription_path, relative_path))
@@ -193,6 +192,128 @@ class CorpusProcessWorker(mp.Process):
         return
 
 
+def normalize(
+    job_name: int, session: sqlalchemy.orm.Session, sanitize_function: typing.Callable
+) -> typing.Generator[typing.Tuple[typing.Dict[str, typing.Any], str]]:
+    """
+    Normalize utterance texts for a job
+
+    Parameters
+    ----------
+    job_name: int
+        Job ID
+    session: sqlalchemy.orm.Session
+        Database session
+    sanitize_function: callable
+        Function to use for sanitizing texts
+
+    Yields
+    ------
+    typing.Dict[str, typing.Any]
+        Normalized utterance text information
+    str
+        Speaker name
+    """
+    utterances = (
+        session.query(Utterance.id, Utterance.text, Speaker.name)
+        .join(Utterance.speaker)
+        .filter(Utterance.text != "")
+        .filter(Utterance.job_id == job_name)
+    )
+    for u_id, u_text, s_name in utterances:
+        try:
+            sanitize, split = sanitize_function.get_functions_for_speaker(s_name)
+        except AttributeError:
+            sanitize, split = sanitize_function, None
+        if sanitize is None:
+            words = u_text.split()
+        else:
+            words = sanitize(u_text)
+        normalized_text = []
+        normalized_character_text = []
+        normalized_text_int = []
+        normalized_character_text_int = []
+        oovs = set()
+        if split is not None:
+            text = ""
+            for w in words:
+                for new_w in split(w):
+                    if new_w in split.specials_set or (
+                        split.word_mapping is not None and new_w not in split.word_mapping
+                    ):
+                        oovs.add(new_w)
+                    normalized_text.append(new_w)
+                    if split.word_mapping is not None:
+                        normalized_text_int.append(str(split.to_int(new_w)))
+                if normalized_character_text:
+                    normalized_character_text.append("<space>")
+                    normalized_character_text_int.append(str(split.grapheme_to_int("<space>")))
+                for c in split.parse_graphemes(w):
+                    normalized_character_text.append(c)
+                    normalized_character_text_int.append(str(split.grapheme_to_int(c)))
+                if text:
+                    text += " "
+                text += w
+        yield {
+            "id": u_id,
+            "oovs": " ".join(sorted(oovs)),
+            "normalized_text": " ".join(normalized_text),
+            "normalized_character_text": " ".join(normalized_character_text),
+            "normalized_text_int": " ".join(normalized_text_int),
+            "normalized_character_text_int": " ".join(normalized_character_text_int),
+        }, s_name
+
+
+class NormalizationWorker(mp.Process):
+    """
+    Multiprocessing corpus text normalization worker
+
+    Attributes
+    ----------
+    job_name: int
+        Job id
+    return_q: :class:`~multiprocessing.Queue`
+        Return queue for processed Files
+    db_string: str
+        String for connection to a database
+    sanitize_function: :class:`~montreal_forced_aligner.dictionary.multispeaker.MultispeakerSanitizationFunction`, optional
+        Sanitization function
+    stopped: :class:`~montreal_forced_aligner.utils.Stopped`
+        Stop check for whether corpus loading should exit
+    """
+
+    def __init__(
+        self,
+        job_name: int,
+        return_q: mp.Queue,
+        db_string: str,
+        sanitize_function: Optional[MultispeakerSanitizationFunction],
+        stopped: Stopped,
+    ):
+        mp.Process.__init__(self)
+        self.job_name = job_name
+        self.return_q = return_q
+        self.stopped = stopped
+        self.db_string = db_string
+        self.finished = Stopped()
+        self.sanitize_function = sanitize_function
+
+    def run(self) -> None:
+        """
+        Run the corpus loading job
+        """
+        db_engine = sqlalchemy.create_engine(self.db_string)
+
+        with Session(db_engine) as session:
+            try:
+                for d in normalize(self.job_name, session, self.sanitize_function):
+                    self.return_q.put(d)
+            except Exception as e:
+                self.stopped.stop()
+                self.return_q.put(e)
+        self.finished.stop()
+
+
 class Job:
     """
     Class representing information about corpus jobs that will be run in parallel.
@@ -233,13 +354,16 @@ class Job:
             Session to use for refreshing
         """
         job_dict_query = (
-            session.query(Speaker.dictionary_id).filter(Speaker.job_id == self.name).distinct()
+            session.query(Speaker.dictionary_id)
+            .join(Utterance.speaker)
+            .filter(Utterance.job_id == self.name)
+            .distinct()
         )
         self.dictionary_ids = [x[0] for x in job_dict_query]
 
     def construct_path_dictionary(
         self, directory: str, identifier: str, extension: str
-    ) -> Dict[str, str]:
+    ) -> Dict[int, str]:
         """
         Helper function for constructing dictionary-dependent paths for the Job
 
@@ -254,7 +378,7 @@ class Job:
 
         Returns
         -------
-        dict[str, str]
+        dict[int, str]
             Path for each dictionary
         """
         output = {}
@@ -337,9 +461,10 @@ class Job:
                 .join(File.speakers)
                 .join(SpeakerOrdering.speaker)
                 .join(File.sound_file)
-                .distinct()
-                .filter(Speaker.job_id == self.name)
+                .join(File.utterances)
+                .filter(Utterance.job_id == self.name)
                 .order_by(File.id.cast(sqlalchemy.String))
+                .distinct()
             )
             for f_id, sox_string, sound_file_path in files:
                 if not sox_string:
@@ -356,7 +481,7 @@ class Job:
                     Utterance.channel,
                 )
                 .join(Utterance.speaker)
-                .filter(Speaker.job_id == self.name)
+                .filter(Utterance.job_id == self.name)
                 .order_by(Utterance.kaldi_id)
             )
             for u_id, f_id, begin, end, channel in utterances:
@@ -393,7 +518,7 @@ class Job:
                 Speaker.dictionary_id,
             )
             .join(Utterance.speaker)
-            .filter(Speaker.job_id == self.name)
+            .filter(Utterance.job_id == self.name)
             .filter(Utterance.ignored == False)  # noqa
             .order_by(Utterance.kaldi_id)
         )

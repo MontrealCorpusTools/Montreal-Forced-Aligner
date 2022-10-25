@@ -1,6 +1,5 @@
 beam: 10
 retry_beam: 400
-use_mp: false
 ignore_case: false
 punctuation: .-'][
 

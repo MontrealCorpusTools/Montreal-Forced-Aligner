@@ -26,33 +26,42 @@ __all__ = [
 ]
 
 
-def process_ctm_line(line: str) -> CtmInterval:
+def process_ctm_line(
+    line: str, reversed_phone_mapping: Dict[int, int], raw_id=False
+) -> typing.Tuple[int, CtmInterval]:
     """
     Helper function for parsing a line of CTM file to construct a CTMInterval
+
+    CTM format is:
+
+    utt_id channel_num start_time phone_dur phone_id [confidence]
 
     Parameters
     ----------
     line: str
         Input string
+    reversed_phone_mapping: dict[int, str]
+        Mapping from integer IDs to phone labels
 
     Returns
     -------
     :class:`~montreal_forced_aligner.data.CtmInterval`
         Extracted data from the line
     """
-    line = line.split(" ")
-    utt = int(line[0].split("-")[-1])
-    if len(line) == 5:
-        begin = round(float(line[2]), 4)
-        duration = float(line[3])
-        end = round(begin + duration, 4)
-        label = line[4]
-    else:
-        begin = round(float(line[1]), 4)
-        duration = float(line[2])
-        end = round(begin + duration, 4)
-        label = line[3]
-    return CtmInterval(begin, end, label, utt)
+    line = line.split()
+    utt = line[0]
+    if not raw_id:
+        utt = int(line[0].split("-")[-1])
+    begin = round(float(line[2]), 4)
+    duration = float(line[3])
+    end = round(begin + duration, 4)
+    label = line[4]
+    conf = None
+    if len(line) > 5:
+        conf = round(float(line[5]), 4)
+
+    label = reversed_phone_mapping[int(label)]
+    return utt, CtmInterval(begin, end, label, confidence=conf)
 
 
 def output_textgrid_writing_errors(
@@ -127,7 +136,7 @@ def parse_aligned_textgrid(
             begin, end = round(begin, 4), round(end, 4)
             if end - begin < 0.01:
                 continue
-            interval = CtmInterval(begin, end, text, 0)
+            interval = CtmInterval(begin, end, text)
             data[speaker_name].append(interval)
     return data
 
@@ -136,7 +145,7 @@ def export_textgrid(
     speaker_data: Dict[str, Dict[str, List[CtmInterval]]],
     output_path: str,
     duration: float,
-    frame_shift: int,
+    frame_shift: float,
     output_format: str = TextFileType.TEXTGRID.value,
 ) -> None:
     """
@@ -150,13 +159,11 @@ def export_textgrid(
         Output path of the file
     duration: float
         Duration of the file
-    frame_shift: int
-        Frame shift of features, in ms
+    frame_shift: float
+        Frame shift of features, in seconds
     output_format: str, optional
         Output format, one of: "long_textgrid" (default), "short_textgrid", "json", or "csv"
     """
-    if frame_shift > 1:
-        frame_shift = round(frame_shift / 1000, 4)
     has_data = False
     if output_format == "csv":
         csv_data = []
@@ -200,7 +207,7 @@ def export_textgrid(
                     json_data["tiers"][tier_name]["entries"].append([a.begin, a.end, a.label])
         if has_data:
             with mfa_open(output_path, "w") as f:
-                json.dump(json_data, f)
+                json.dump(json_data, f, ensure_ascii=False)
     else:
         # Create initial textgrid
         tg = tgio.Textgrid()

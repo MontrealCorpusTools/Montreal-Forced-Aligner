@@ -7,7 +7,7 @@ Speaker classification
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from praatio import textgrid
 from sqlalchemy.orm import joinedload, selectinload
@@ -23,7 +23,6 @@ from montreal_forced_aligner.models import IvectorExtractorModel
 from montreal_forced_aligner.utils import log_kaldi_errors
 
 if TYPE_CHECKING:
-    from argparse import Namespace
 
     from .abc import MetaDict
 __all__ = ["SpeakerClassifier"]
@@ -66,7 +65,7 @@ class SpeakerClassifier(
     def parse_parameters(
         cls,
         config_path: Optional[str] = None,
-        args: Optional[Namespace] = None,
+        args: Optional[Dict[str, Any]] = None,
         unknown_args: Optional[List[str]] = None,
     ) -> MetaDict:
         """
@@ -76,10 +75,10 @@ class SpeakerClassifier(
         ----------
         config_path: str
             Config path
-        args: :class:`~argparse.Namespace`
-            Command-line arguments from argparse
-        unknown_args: list[str], optional
-            Extra command-line arguments
+        args: dict[str, Any]
+            Parsed arguments
+        unknown_args: list[str]
+            Optional list of arguments that were not parsed
 
         Returns
         -------

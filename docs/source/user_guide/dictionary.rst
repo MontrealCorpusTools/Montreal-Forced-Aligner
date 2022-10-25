@@ -13,13 +13,13 @@
 Pronunciation dictionary format
 *******************************
 
-.. _text_normalization:
-
 .. warning::
 
    As of 2.0.5, dictionaries have a firmer format of requiring tab-delimited columns (words, pronunciations, etc), and space-delimited pronunciations to avoid confusions in automatically interpreting dictionary format for phonesets that include numbers like X-SAMPA.
 
    If your dictionary uses spaces as the delimiter between orthography and pronunciations, you can re-encode it with tabs in a text editor that has regex search and replace support. The regex pattern :code:`^(\S+)\s+` replaced with :code:`\1\t` or :code:`$1\t`, depending on the text editor in question, will replace the first whitespace in every line with a tab.
+
+.. _text_normalization:
 
 Text normalization and dictionary lookup
 ========================================
@@ -186,6 +186,17 @@ to align annotations like laughter, coughing, etc.
   {LG}   spn
   {SL}   sil
 
+.. _cutoff_modeling:
+
+Modeling cutoffs and hesitations
+================================
+
+Often in spontaneous speech, speakers will produce truncated or cut-off words of the following word/words. To help model this specific case, using the flag :code:`--use_cutoff_model` will enable a mode where pronunciations are generated for cutoff words matching one of the following criteria:
+
+1. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)`, where :code:`{start_bracket}` is the set of all left side brackets defined in :code:`brackets` (:ref:`configuration_dictionary`). The following word must not be an OOV or non-speech word (silence, laughter, another cutoff, etc).
+2. The cutoff word matches the pattern of :code:`{start_bracket}(cutoff|hes)[-_](word){end_bracket}`, where start and end brackets are defined in :code:`brackets` (:ref:`configuration_dictionary`).  The :code:`word` will be used in place of the following word above, but needs to be present in the dictionary, otherwise the target word for the cutoff will default back to the following word.
+
+The generated pronunciations
 
 .. _speaker_dictionaries:
 

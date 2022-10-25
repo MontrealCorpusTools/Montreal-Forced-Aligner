@@ -12,6 +12,6 @@ The Montreal Forced Aligner can use trained ivector models (see :ref:`train_ivec
 Command reference
 -----------------
 
-.. autoprogram:: montreal_forced_aligner.command_line.mfa:create_parser()
-   :prog: mfa
-   :start_command: classify_speakers
+.. click:: montreal_forced_aligner.command_line.classify_speakers:classify_speakers_cli
+   :prog: mfa classify_speakers
+   :nested: full

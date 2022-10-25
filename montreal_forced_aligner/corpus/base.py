@@ -1,29 +1,37 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import sys
 import time
 import typing
 from abc import ABCMeta, abstractmethod
 from collections import Counter
+from queue import Empty
 
 import sqlalchemy.engine
+import tqdm
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from montreal_forced_aligner.abc import DatabaseMixin, MfaWorker
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.classes import FileData, UtteranceData
-from montreal_forced_aligner.corpus.multiprocessing import Job
-from montreal_forced_aligner.data import DatabaseImportData, TextFileType
+from montreal_forced_aligner.corpus.multiprocessing import Job, NormalizationWorker, normalize
+from montreal_forced_aligner.data import DatabaseImportData, TextFileType, WordType, WorkflowType
+from montreal_forced_aligner.db import Corpus, CorpusWorkflow, Dialect, Dictionary, File
+from montreal_forced_aligner.db import Job as JobTable
 from montreal_forced_aligner.db import (
-    Corpus,
-    Dictionary,
-    File,
+    OovWord,
     SoundFile,
     Speaker,
     SpeakerOrdering,
     TextFile,
     Utterance,
+    Word,
+    bulk_update,
 )
+from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import CorpusError
 from montreal_forced_aligner.helper import output_mapping
 from montreal_forced_aligner.utils import Stopped
@@ -58,7 +66,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
     Attributes
     ----------
-    jobs: list[Job]
+    jobs: list[:class:`~montreal_forced_aligner.corpus.multiprocessing.Job`]
         List of jobs for processing the corpus and splitting speakers
     word_counts: Counter
         Counts of words in the corpus
@@ -98,19 +106,20 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         super().__init__(**kwargs)
         os.makedirs(self.corpus_output_directory, exist_ok=True)
         self.imported = False
+        self.text_normalized = False
         self._current_speaker_index = 1
         self._current_file_index = 1
         self._speaker_ids = {}
+        self._word_set = []
 
     def inspect_database(self) -> None:
         """Check if a database file exists and create the necessary metadata"""
-        exist_check = os.path.exists(self.db_path)
-        if not exist_check:
-            self.initialize_database()
+        self.initialize_database()
         with self.session() as session:
             corpus = session.query(Corpus).first()
             if corpus:
                 self.imported = corpus.imported
+                self.text_normalized = corpus.text_normalized
             else:
                 session.add(Corpus(name=self.data_source_identifier))
                 session.commit()
@@ -223,7 +232,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     @property
     def split_directory(self) -> str:
         """Directory used to store information split by job"""
-        return os.path.join(self.corpus_output_directory, f"split{self.num_jobs}")
+        return os.path.join(self.corpus_output_directory, f"split{GLOBAL_CONFIG.num_jobs}")
 
     def _write_spk2utt(self) -> None:
         """Write spk2utt scp file for Kaldi"""
@@ -254,7 +263,13 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
     @property
     def corpus_word_set(self) -> typing.List[str]:
         """Set of words used in the corpus"""
-        return sorted(self.word_counts)
+        if not self._word_set:
+            with self.session() as session:
+                self._word_set = [
+                    x[0]
+                    for x in session.query(Word.word).filter(Word.count > 0).order_by(Word.word)
+                ]
+        return self._word_set
 
     def add_utterance(self, utterance: UtteranceData, session: Session = None) -> Utterance:
         """
@@ -379,7 +394,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
 
         Returns
         -------
-        sqlalchemy.orm.Query
+        :class:`sqlalchemy.orm.Query`
             Utterance query
         """
         close = False
@@ -391,7 +406,6 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
             joinedload(Utterance.speaker, innerjoin=True),
             selectinload(Utterance.phone_intervals),
             selectinload(Utterance.word_intervals),
-            selectinload(Utterance.reference_phone_intervals),
         )
         if close:
             session.close()
@@ -404,57 +418,109 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         self.log_info("Initializing multiprocessing jobs...")
 
         with self.session() as session:
-            if self.num_speakers < self.num_jobs:
+            if self.num_speakers < GLOBAL_CONFIG.num_jobs and not GLOBAL_CONFIG.single_speaker:
                 self.log_warning(
-                    f"Number of jobs was specified as {self.num_jobs}, "
+                    f"Number of jobs was specified as {GLOBAL_CONFIG.num_jobs}, "
                     f"but due to only having {self.num_speakers} speakers, MFA "
-                    f"will only use {self.num_speakers} jobs."
+                    f"will only use {self.num_speakers} jobs. Use the --single_speaker flag if you would like to split "
+                    f"utterances across jobs regardless of their speaker."
                 )
-                self.num_jobs = self.num_speakers
-            self.jobs = [Job(i, self.db_engine) for i in range(self.num_jobs)]
-            utt_counts = {i: 0 for i in range(self.num_jobs)}
+                GLOBAL_CONFIG.num_jobs = self.num_speakers
+            session.commit()
+            self.jobs = [Job(i, self.db_engine) for i in range(GLOBAL_CONFIG.num_jobs)]
             update_mappings = []
-            speakers = (
-                session.query(Speaker.id, sqlalchemy.func.count(Utterance.id))
-                .outerjoin(Speaker.utterances)
-                .group_by(Speaker.id)
-                .filter(Speaker.job_id == None)  # noqa
-                .order_by(sqlalchemy.func.count(Utterance.id).desc())
-            )
-            if speakers:
+            if GLOBAL_CONFIG.single_speaker:
+                utts_per_job = int(self.num_utterances / GLOBAL_CONFIG.num_jobs)
+                if utts_per_job == 0:
+                    utts_per_job = 1
+                for j in range(min(GLOBAL_CONFIG.num_jobs, self.num_utterances)):
+                    update_mappings.extend(
+                        {"id": u, "job_id": j}
+                        for u in range((utts_per_job * j) + 1, (utts_per_job * (j + 1)) + 1)
+                    )
+                for j_id in range(j + 1, GLOBAL_CONFIG.num_jobs):
+                    self.jobs[j_id].has_data = False
+                last_ind = update_mappings[-1]["id"] + 1
+                for u in range(last_ind, self.num_utterances):
+                    update_mappings.append({"id": u, "job_id": GLOBAL_CONFIG.num_jobs - 1})
+                bulk_update(session, Utterance, update_mappings)
+            else:
+                utt_counts = {i: 0 for i in range(GLOBAL_CONFIG.num_jobs)}
+                speakers = (
+                    session.query(Speaker.id, sqlalchemy.func.count(Utterance.id))
+                    .outerjoin(Speaker.utterances)
+                    .group_by(Speaker.id)
+                    .order_by(sqlalchemy.func.count(Utterance.id).desc())
+                )
                 for s_id, speaker_utt_count in speakers:
                     if not speaker_utt_count:
                         continue
                     job_id = min(utt_counts.keys(), key=lambda x: utt_counts[x])
-                    update_mappings.append({"id": s_id, "job_id": job_id})
+                    update_mappings.append({"speaker_id": s_id, "job_id": job_id})
                     utt_counts[job_id] += speaker_utt_count
-                session.bulk_update_mappings(Speaker, update_mappings)
-                session.commit()
+                bulk_update(session, Utterance, update_mappings, id_field="speaker_id")
+            session.commit()
             for j in self.jobs:
                 j.refresh_dictionaries(session)
 
     def _finalize_load(self, session: Session, import_data: DatabaseImportData):
         """Finalize the import of database objects after parsing"""
-        with session.bind.begin() as conn:
+        with session.begin_nested():
 
+            job_objs = [{"id": j} for j in range(GLOBAL_CONFIG.num_jobs)]
+            session.execute(sqlalchemy.insert(JobTable.__table__), job_objs)
             if import_data.speaker_objects:
-                conn.execute(sqlalchemy.insert(Speaker.__table__), import_data.speaker_objects)
+                session.execute(sqlalchemy.insert(Speaker.__table__), import_data.speaker_objects)
             if import_data.file_objects:
-                conn.execute(sqlalchemy.insert(File.__table__), import_data.file_objects)
+                session.execute(sqlalchemy.insert(File.__table__), import_data.file_objects)
             if import_data.text_file_objects:
-                conn.execute(sqlalchemy.insert(TextFile.__table__), import_data.text_file_objects)
+                session.execute(
+                    sqlalchemy.insert(TextFile.__table__), import_data.text_file_objects
+                )
             if import_data.sound_file_objects:
-                conn.execute(
+                session.execute(
                     sqlalchemy.insert(SoundFile.__table__), import_data.sound_file_objects
                 )
             if import_data.speaker_ordering_objects:
-                conn.execute(
+                session.execute(
                     sqlalchemy.insert(SpeakerOrdering.__table__),
                     import_data.speaker_ordering_objects,
                 )
             if import_data.utterance_objects:
-                conn.execute(sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects)
-            session.commit()
+                session.execute(
+                    sqlalchemy.insert(Utterance.__table__), import_data.utterance_objects
+                )
+            session.flush()
+            if import_data.word_mapping:
+                if isinstance(self, MultispeakerDictionaryMixin):
+                    bulk_update(session, Word, list(import_data.word_mapping.values()))
+                else:
+                    dialect = Dialect(name="unspecified")
+                    d = Dictionary(name="corpus", default=True, dialect=dialect)
+                    session.add(dialect)
+                    session.add(d)
+                    session.flush()
+                    index = 1
+                    mapping = []
+                    for word in sorted(import_data.word_mapping.keys()):
+                        import_data.word_mapping[word]["id"] = index
+                        import_data.word_mapping[word]["word"] = word
+                        import_data.word_mapping[word]["mapping_id"] = index
+                        import_data.word_mapping[word]["dictionary_id"] = d.id
+                        index += 1
+                        mapping.append(
+                            {
+                                "id": index,
+                                "word": word,
+                                "mapping_id": index,
+                                "dictionary_id": d.id,
+                                "word_type": WordType.speech,
+                                "count": import_data.word_mapping[word]["count"],
+                            }
+                        )
+                    session.execute(sqlalchemy.insert(Word.__table__), mapping)
+                    session.flush()
+
         self.imported = True
         speakers = (
             session.query(Speaker.id)
@@ -474,7 +540,110 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if speaker_ids:
             session.query(Speaker).filter(Speaker.id.in_(speaker_ids)).delete()
             self._num_speakers = None
+        self._num_utterances = None  # Recalculate if already cached
+        self._num_files = None
         session.commit()
+
+    def normalize_text(self) -> None:
+        """Normalize the text of the corpus using a dictionary's sanitization functions and word mappings"""
+        if self.text_normalized:
+            return
+        from montreal_forced_aligner.dictionary.multispeaker import SanitizeFunction
+
+        sanitize_function = getattr(self, "sanitize_function", None)
+        if sanitize_function is None or isinstance(sanitize_function, SanitizeFunction):
+            return
+        self.log_info("Normalizing text...")
+        log_directory = os.path.join(self.split_directory, "log")
+        words_mappings = {}
+        os.makedirs(log_directory, exist_ok=True)
+        update_mapping = []
+        oov_words = {}
+        with tqdm.tqdm(
+            total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
+        ) as pbar, self.session() as session:
+            sanitize_function = getattr(self, "sanitize_function", None)
+            session.query(OovWord).delete()
+            session.query(Word).update({"count": 0})
+            session.commit()
+            words = session.query(Word.id, Word.dictionary_id, Word.mapping_id)
+            for w_id, d_id, m_id in words:
+                words_mappings[(d_id, m_id)] = {"id": w_id, "count": 0}
+            if GLOBAL_CONFIG.use_mp:
+                error_dict = {}
+                return_queue = mp.Queue()
+                stopped = Stopped()
+                procs = []
+                for i in range(GLOBAL_CONFIG.num_jobs):
+                    p = NormalizationWorker(
+                        i, return_queue, self.read_only_db_string, sanitize_function, stopped
+                    )
+                    procs.append(p)
+                    p.start()
+                while True:
+                    try:
+                        result = return_queue.get(timeout=1)
+                        if isinstance(result, Exception):
+                            error_dict[getattr(result, "job_name", 0)] = result
+                            continue
+                        if stopped.stop_check():
+                            continue
+                    except Empty:
+                        for proc in procs:
+                            if not proc.finished.stop_check():
+                                break
+                        else:
+                            break
+                        continue
+                    pbar.update(1)
+                    result, speaker_name = result
+                    if sanitize_function is not None:
+                        dict_id = sanitize_function.get_dict_id_for_speaker(speaker_name)
+                        for w in result["oovs"].split():
+                            if (w, dict_id) not in oov_words:
+                                oov_words[(w, dict_id)] = {
+                                    "word": w,
+                                    "count": 0,
+                                    "dictionary_id": dict_id,
+                                }
+                            oov_words[(w, dict_id)]["count"] += 1
+                        for m_id in result["normalized_text_int"].split():
+                            m_id = int(m_id)
+                            words_mappings[(dict_id, m_id)]["count"] += 1
+                    update_mapping.append(result)
+                for p in procs:
+                    p.join()
+                if error_dict:
+                    for e in error_dict.values():
+                        print(e)
+                    self.dirty = True
+                    sys.exit(1)
+            else:
+                for i in range(GLOBAL_CONFIG.num_jobs):
+                    for result in normalize(i, session, sanitize_function):
+                        pbar.update(1)
+                        result, speaker_name = result
+                        if sanitize_function is not None:
+                            dict_id = sanitize_function.get_dict_id_for_speaker(speaker_name)
+                            for w in result["oovs"].split():
+                                if (w, dict_id) not in oov_words:
+                                    oov_words[(w, dict_id)] = {
+                                        "word": w,
+                                        "count": 0,
+                                        "dictionary_id": dict_id,
+                                    }
+                                oov_words[(w, dict_id)]["count"] += 1
+                        for m_id in result["normalized_text_int"].split():
+                            m_id = int(m_id)
+                            words_mappings[(dict_id, m_id)]["count"] += 1
+                        update_mapping.append(result)
+            bulk_update(session, Utterance, update_mapping)
+            bulk_update(session, Word, list(words_mappings.values()))
+            if oov_words:
+                session.execute(sqlalchemy.insert(OovWord.__table__), list(oov_words.values()))
+            self.text_normalized = True
+            session.query(Corpus).update({"text_normalized": True})
+            session.commit()
 
     def add_speaker(self, name: str, session: Session = None):
         """
@@ -688,10 +857,28 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     "in_subset": False,
                     "ignored": False,
                     "file_id": self._current_file_index,
+                    "job_id": 1,
                     "speaker_id": self._speaker_ids[u.speaker_name],
                 }
             )
-
+            c = Counter()
+            if isinstance(self, MultispeakerDictionaryMixin):
+                dict_id = self.get_dict_id_for_speaker(u.speaker_name)
+                c.update(u.normalized_text_int.split())
+                for w, count in c.items():
+                    if (dict_id, int(w)) not in data.word_mapping:
+                        data.word_mapping[(dict_id, int(w))] = {
+                            "mapping_id": int(w),
+                            "count": 0,
+                            "dictionary_id": dict_id,
+                        }
+                    data.word_mapping[(dict_id, int(w))]["count"] += count
+            else:
+                c.update(u.text.split())
+                for w, count in c.items():
+                    if w not in data.word_mapping:
+                        data.word_mapping[w] = {"word": w, "count": 0}
+                    data.word_mapping[w]["count"] += count
         self._current_file_index += 1
         return data
 
@@ -897,25 +1084,35 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
                     session.query(Utterance)
                     .join(Utterance.speaker)
                     .filter(Utterance.in_subset == True)  # noqa
-                    .filter(Speaker.job_id == j.name)
+                    .filter(Utterance.job_id == j.name)
                 )
                 if session.query(q.exists()).scalar():
                     j.has_data = True
         return directory
 
-    def calculate_word_counts(self) -> None:
+    def get_latest_workflow_run(self, workflow: WorkflowType, session: Session) -> CorpusWorkflow:
         """
-        Calculates word frequencies of normalized texts, falling back to use the un-normalized text if an utterance
-        does not have normalized text
+        Get the latest version of a workflow type
+
+        Parameters
+        ----------
+        workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
+            Workflow type
+        session: :class:`sqlalchemy.orm.Session`
+            Database session
+
+        Returns
+        -------
+        :class:`~montreal_forced_aligner.db.CorpusWorkflow` or None
+            Latest run of workflow type
         """
-        self.word_counts = Counter()
-        with self.session() as session:
-            utterances = session.query(Utterance.normalized_text, Utterance.text)
-            for normalized, text in utterances:
-                if normalized:
-                    self.word_counts.update(normalized.split())
-                elif text:
-                    self.word_counts.update(text.split())
+        workflow = (
+            session.query(CorpusWorkflow)
+            .filter(CorpusWorkflow.workflow == workflow)
+            .order_by(CorpusWorkflow.time_stamp.desc())
+            .first()
+        )
+        return workflow
 
     def _load_corpus(self) -> None:
         """
@@ -927,7 +1124,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if not self.imported:
             self.log_debug("Could not load from temp")
             self.log_info("Loading corpus from source files...")
-            if self.use_mp:
+            if GLOBAL_CONFIG.use_mp:
                 self._load_corpus_from_source_mp()
             else:
                 self._load_corpus_from_source()

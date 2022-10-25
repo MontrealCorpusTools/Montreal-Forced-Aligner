@@ -1,6 +1,7 @@
 """Classes for configuring feature generation"""
 from __future__ import annotations
 
+import io
 import os
 import re
 import subprocess
@@ -84,7 +85,7 @@ class ExtractIvectorsArguments(MfaArguments):
     dubm_path: str
 
 
-def make_safe(value: Any) -> str:
+def feature_make_safe(value: Any) -> str:
     """
     Transform an arbitrary value into a string
 
@@ -101,6 +102,201 @@ def make_safe(value: Any) -> str:
     if isinstance(value, bool):
         return str(value).lower()
     return str(value)
+
+
+def compute_feature_process(
+    log_file: io.FileIO,
+    wav_path: str,
+    segment_path: str,
+    mfcc_options: MetaDict,
+    pitch_options: MetaDict,
+    min_length=0.1,
+    no_logging=False,
+) -> typing.Tuple[typing.Optional[subprocess.Popen], subprocess.Popen]:
+    """
+    Construct processes for computing features
+
+    Parameters
+    ----------
+    log_file: io.FileIO
+        File for logging stderr
+    wav_path: str
+        Wav scp to use
+    segment_path: str
+        Segments scp to use
+    mfcc_options: dict[str, Any]
+        Options for computing MFCC features
+    pitch_options: dict[str, Any]
+        Options for computing pitch features
+    min_length: float
+        Minimum length of segments in seconds
+    no_logging: bool
+        Flag for logging progress information to log_file rather than a subprocess pipe
+
+    Returns
+    -------
+    subprocess.Popen
+        Feature pasting process
+    subprocess.Popen
+        Computation process for progress information
+    """
+    use_pitch = pitch_options.pop("use-pitch")
+    mfcc_base_command = [thirdparty_binary("compute-mfcc-feats")]
+    for k, v in mfcc_options.items():
+        mfcc_base_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
+    comp_proc_logger = subprocess.PIPE
+    if no_logging:
+        comp_proc_logger = log_file
+    if os.path.exists(segment_path):
+        mfcc_base_command += ["ark:-", "ark:-"]
+        seg_proc = subprocess.Popen(
+            [
+                thirdparty_binary("extract-segments"),
+                f"--min-segment-length={min_length}",
+                f"scp:{wav_path}",
+                segment_path,
+                "ark:-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+            env=os.environ,
+        )
+        comp_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=comp_proc_logger,
+            stdin=seg_proc.stdout,
+            env=os.environ,
+        )
+    else:
+        mfcc_base_command += [f"scp,p:{wav_path}", "ark:-"]
+        comp_proc = subprocess.Popen(
+            mfcc_base_command,
+            stdout=subprocess.PIPE,
+            stderr=comp_proc_logger,
+            env=os.environ,
+        )
+    if not use_pitch:
+        return None, comp_proc
+    pitch_base_command = [
+        thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
+    ]
+    for k, v in pitch_options.items():
+        pitch_base_command.append(f"--{k.replace('_', '-')}={feature_make_safe(v)}")
+        if k == "delta-pitch":
+            pitch_base_command.append(f"--delta-pitch-noise-stddev={feature_make_safe(v)}")
+    pitch_command = " ".join(pitch_base_command)
+    if os.path.exists(segment_path):
+        segment_command = f'extract-segments --min-segment-length={min_length} scp:"{wav_path}" "{segment_path}" ark:- | '
+        pitch_input = "ark:-"
+    else:
+        segment_command = ""
+        pitch_input = f'scp:"{wav_path}"'
+    pitch_feat_string = f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
+    length_tolerance = 2
+    paste_proc = subprocess.Popen(
+        [
+            thirdparty_binary("paste-feats"),
+            f"--length-tolerance={length_tolerance}",
+            "ark:-",
+            pitch_feat_string,
+            "ark:-",
+        ],
+        stdin=comp_proc.stdout,
+        env=os.environ,
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+    )
+    return paste_proc, comp_proc
+
+
+def compute_transform_process(
+    log_file: io.FileIO,
+    feat_proc: subprocess.Popen,
+    utt2spk_path: str,
+    cmvn_path: str,
+    lda_mat_path: typing.Optional[str],
+    fmllr_path: typing.Optional[str],
+    lda_options: MetaDict,
+) -> subprocess.Popen:
+    """
+    Construct feature transformation process
+
+    Parameters
+    ----------
+    log_file: io.FileIO
+        File for logging stderr
+    feat_proc: subprocess.Popen
+        Feature generation process
+    utt2spk_path: str
+        Utterance to speaker SCP file path
+    cmvn_path: str
+        CMVN SCP file path
+    lda_mat_path: str
+        LDA matrix file path
+    fmllr_path: str
+        fMLLR transform file path
+    lda_options: dict[str, Any]
+        Options for LDA
+
+    Returns
+    -------
+    subprocess.Popen
+        Processing for transforming features
+    """
+    cmvn_proc = subprocess.Popen(
+        ["apply-cmvn", f"--utt2spk=ark:{utt2spk_path}", f"scp:{cmvn_path}", "ark:-", "ark:-"],
+        env=os.environ,
+        stdin=feat_proc.stdout,
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+    )
+    if lda_mat_path is not None:
+        splice_proc = subprocess.Popen(
+            [
+                "splice-feats",
+                f'--left-context={lda_options["splice_left_context"]}',
+                f'--right-context={lda_options["splice_right_context"]}',
+                "ark:-",
+                "ark:-",
+            ],
+            env=os.environ,
+            stdin=cmvn_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+        )
+        delta_proc = subprocess.Popen(
+            ["transform-feats", lda_mat_path, "ark:-", "ark:-"],
+            env=os.environ,
+            stdin=splice_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+        )
+    else:
+        delta_proc = subprocess.Popen(
+            ["add-deltas", "ark:-", "ark:-"],
+            env=os.environ,
+            stdin=cmvn_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=log_file,
+        )
+    if fmllr_path is None:
+        return delta_proc
+
+    fmllr_proc = subprocess.Popen(
+        [
+            "transform-feats",
+            f"--utt2spk=ark:{utt2spk_path}",
+            f"ark:{fmllr_path}",
+            "ark:-",
+            "ark,t:-",
+        ],
+        env=os.environ,
+        stdin=delta_proc.stdout,
+        stdout=subprocess.PIPE,
+        stderr=log_file,
+    )
+    return fmllr_proc
 
 
 class MfccFunction(KaldiFunction):
@@ -142,103 +338,26 @@ class MfccFunction(KaldiFunction):
         """Run the function"""
         processed = 0
         with mfa_open(self.log_path, "w") as log_file:
-            use_pitch = self.pitch_options.pop("use-pitch")
-            mfcc_base_command = [thirdparty_binary("compute-mfcc-feats"), "--verbose=2"]
             raw_ark_path = self.feats_scp_path.replace(".scp", ".ark")
             if os.path.exists(raw_ark_path):
                 return
-            for k, v in self.mfcc_options.items():
-                mfcc_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-            if os.path.exists(self.segment_path):
-                mfcc_base_command += ["ark:-", "ark:-"]
-                seg_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("extract-segments"),
-                        f"scp:{self.wav_path}",
-                        self.segment_path,
-                        "ark:-",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                    env=os.environ,
-                )
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    stdin=seg_proc.stdout,
-                    env=os.environ,
-                )
-            else:
-                mfcc_base_command += [f"scp,p:{self.wav_path}", "ark:-"]
-                comp_proc = subprocess.Popen(
-                    mfcc_base_command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=os.environ,
-                )
-            if use_pitch:
-                pitch_base_command = [
-                    thirdparty_binary("compute-and-process-kaldi-pitch-feats"),
+            paste_proc, comp_proc = compute_feature_process(
+                log_file, self.wav_path, self.segment_path, self.mfcc_options, self.pitch_options
+            )
+            copy_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("copy-feats"),
                     "--verbose=2",
-                ]
-                for k, v in self.pitch_options.items():
-                    pitch_base_command.append(f"--{k.replace('_', '-')}={make_safe(v)}")
-                    if k == "delta-pitch":
-                        pitch_base_command.append(f"--delta-pitch-noise-stddev={make_safe(v)}")
-                pitch_command = " ".join(pitch_base_command)
-                if os.path.exists(self.segment_path):
-                    segment_command = (
-                        f'extract-segments scp:"{self.wav_path}" "{self.segment_path}" ark:- | '
-                    )
-                    pitch_input = "ark:-"
-                else:
-                    segment_command = ""
-                    pitch_input = f'scp:"{self.wav_path}"'
-                pitch_feat_string = (
-                    f"ark,s,cs:{segment_command}{pitch_command} {pitch_input} ark:- |"
-                )
-                length_tolerance = 2
-                paste_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("paste-feats"),
-                        f"--length-tolerance={length_tolerance}",
-                        "ark:-",
-                        pitch_feat_string,
-                        "ark:-",
-                    ],
-                    stdin=comp_proc.stdout,
-                    env=os.environ,
-                    stdout=subprocess.PIPE,
-                    stderr=log_file,
-                )
-                copy_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("copy-feats"),
-                        "--verbose=2",
-                        "--compress=true",
-                        "ark:-",
-                        f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
-                    ],
-                    stdin=paste_proc.stdout,
-                    stderr=subprocess.PIPE,
-                    env=os.environ,
-                    encoding="utf8",
-                )
-            else:
-                copy_proc = subprocess.Popen(
-                    [
-                        thirdparty_binary("copy-feats"),
-                        "--verbose=2",
-                        "--compress=true",
-                        "ark:-",
-                        f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
-                    ],
-                    stdin=comp_proc.stdout,
-                    stderr=log_file,
-                    env=os.environ,
-                    encoding="utf8",
-                )
+                    "--compress=true",
+                    "ark:-",
+                    f"ark,scp:{raw_ark_path},{self.feats_scp_path}",
+                ],
+                stdin=paste_proc.stdout if paste_proc is not None else comp_proc.stdout,
+                stderr=log_file,
+                env=os.environ,
+                encoding="utf8",
+            )
+
             for line in comp_proc.stderr:
                 line = line.strip().decode("utf8")
                 log_file.write(line + "\n")
@@ -563,7 +682,7 @@ class FeatureConfigMixin:
         splice_right_context: int = 3,
         use_pitch: bool = False,
         min_f0: float = 50,
-        max_f0: float = 500,
+        max_f0: float = 600,
         delta_pitch: float = 0.005,
         penalty_factor: float = 0.1,
         **kwargs,
@@ -572,6 +691,7 @@ class FeatureConfigMixin:
         self.feature_type = feature_type
         self.use_energy = use_energy
         self.frame_shift = frame_shift
+        self.export_frame_shift = round(frame_shift / 1000, 4)
         self.frame_length = frame_length
         self.snip_edges = snip_edges
         self.low_frequency = low_frequency
@@ -678,6 +798,14 @@ class FeatureConfigMixin:
             "silence_csl": getattr(
                 self, "silence_csl", ""
             ),  # If we have silence phones from a dictionary, use them
+        }
+
+    @property
+    def lda_options(self) -> MetaDict:
+        """Options for computing LDA"""
+        return {
+            "splice_left_context": self.splice_left_context,
+            "splice_right_context": self.splice_right_context,
         }
 
     @property

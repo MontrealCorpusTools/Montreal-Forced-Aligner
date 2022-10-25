@@ -1,83 +1,88 @@
 """Command line functions for training G2P models"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+import os
 
-from montreal_forced_aligner.command_line.utils import validate_model_arg
+import click
+
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    common_options,
+    validate_dictionary,
+)
+from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
 from montreal_forced_aligner.g2p.phonetisaurus_trainer import PhonetisaurusTrainer
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
 
-if TYPE_CHECKING:
-    from argparse import Namespace
+__all__ = ["train_g2p_cli"]
 
 
-__all__ = ["train_g2p", "validate_args", "run_train_g2p"]
-
-
-def train_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
+@click.command(
+    name="train_g2p",
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+        allow_interspersed_args=True,
+    ),
+    short_help="Train a G2P model",
+)
+@click.argument("dictionary_path", type=click.UNPROCESSED, callback=validate_dictionary)
+@click.argument("output_model_path", type=click.Path(file_okay=True, dir_okay=False))
+@click.option(
+    "--config_path",
+    "-c",
+    help="Path to config file to use for training.",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--phonetisaurus",
+    is_flag=True,
+    help="Flag for using Phonetisaurus-style models.",
+    default=False,
+)
+@click.option(
+    "--evaluate",
+    "--validate",
+    "evaluation_mode",
+    is_flag=True,
+    help="Perform an analysis of accuracy training on "
+    "most of the data and validating on an unseen subset.",
+    default=False,
+)
+@common_options
+@click.help_option("-h", "--help")
+@click.pass_context
+def train_g2p_cli(context, **kwargs) -> None:
     """
-    Run the G2P model training
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Command line arguments
-    unknown_args: list[str]
-        Optional arguments that will be passed to configuration objects
+    Train a G2P model from a pronunciation dictionary.
     """
-    if getattr(args, "phonetisaurus", True):
+    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
+    check_databases()
+    config_path = kwargs.get("config_path", None)
+    dictionary_path = kwargs["dictionary_path"]
+    phonetisaurus = kwargs["phonetisaurus"]
+    output_model_path = kwargs["output_model_path"]
+    if phonetisaurus:
         trainer = PhonetisaurusTrainer(
-            dictionary_path=args.dictionary_path,
-            temporary_directory=args.temporary_directory,
-            **PhonetisaurusTrainer.parse_parameters(args.config_path, args, unknown_args)
+            dictionary_path=dictionary_path,
+            **PhonetisaurusTrainer.parse_parameters(config_path, context.params, context.args)
         )
 
     else:
         trainer = PyniniTrainer(
-            dictionary_path=args.dictionary_path,
-            temporary_directory=args.temporary_directory,
-            **PyniniTrainer.parse_parameters(args.config_path, args, unknown_args)
+            dictionary_path=dictionary_path,
+            **PyniniTrainer.parse_parameters(config_path, context.params, context.args)
         )
 
     try:
         trainer.setup()
         trainer.train()
-        trainer.export_model(args.output_model_path)
+        trainer.export_model(output_model_path)
 
     except Exception:
         trainer.dirty = True
         raise
     finally:
         trainer.cleanup()
-
-
-def validate_args(args: Namespace) -> None:
-    """
-    Validate the command line arguments
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-
-    Raises
-    ------
-    :class:`~montreal_forced_aligner.exceptions.ArgumentError`
-        If there is a problem with any arguments
-    """
-    args.dictionary_path = validate_model_arg(args.dictionary_path, "dictionary")
-
-
-def run_train_g2p(args: Namespace, unknown_args: Optional[List[str]] = None) -> None:
-    """
-    Wrapper function for running G2P model training
-
-    Parameters
-    ----------
-    args: :class:`~argparse.Namespace`
-        Parsed command line arguments
-    unknown_args: list[str]
-        Parsed command line arguments to be passed to the configuration objects
-    """
-    validate_args(args)
-    train_g2p(args, unknown_args)

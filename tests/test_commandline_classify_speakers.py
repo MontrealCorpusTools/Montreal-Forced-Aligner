@@ -1,9 +1,9 @@
 import os
 
+import click.testing
 import pytest
 
-from montreal_forced_aligner.command_line.classify_speakers import run_classify_speakers
-from montreal_forced_aligner.command_line.mfa import parser
+from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 @pytest.mark.skip("Speaker diarization functionality disabled.")
@@ -22,7 +22,7 @@ def test_cluster(
         "english_ivector",
         output_path,
         "-t",
-        temp_dir,
+        os.path.join(temp_dir, "diarize_cli"),
         "-q",
         "--clean",
         "--debug",
@@ -31,5 +31,5 @@ def test_cluster(
         "2",
         "--disable_mp",
     ]
-    args, unknown = parser.parse_known_args(command)
-    run_classify_speakers(args)
+    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+    assert os.path.exists(output_path)

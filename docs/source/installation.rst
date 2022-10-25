@@ -5,7 +5,7 @@ Installation
 
 .. important::
 
-   Kaldi and MFA are now built on :xref:`conda_forge` |:tada:|, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards. Installing MFA via conda will pick up Kaldi as well.
+   Kaldi and MFA are now built on :xref:`conda_forge` :fas:`party-horn`, so installation of third party binaries is wholly through conda from 2.0.0b4 onwards. Installing MFA via conda will pick up Kaldi as well.
 
 
 All platforms

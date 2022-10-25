@@ -7,21 +7,20 @@ dependencies:
   - tqdm
   - requests
   - colorama
-  - setuptools_scm
   - ansiwrap
   - pyyaml
   - praatio
   - dataclassy
   - sqlalchemy>=1.4
-  - pip
   - pynini
   - biopython
+  - click
+  - setuptools_scm
+  - importlib_metadata
   - sphinx
   - numpydoc
   - sphinx-design
-  - sphinxcontrib-autoprogram
+  - sphinx-click
+  - sphinx-intl
   - pydata-sphinx-theme
   - interrogate
-  - importlib_metadata
-  - pip:
-      - sphinxemoji

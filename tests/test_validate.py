@@ -4,13 +4,16 @@ import os
 from montreal_forced_aligner.validation.corpus_validator import TrainingValidator
 
 
-def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir):
-    temp_dir = os.path.join(temp_dir, "training_validator")
+def test_training_validator_arpa(
+    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, global_config
+):
+    output_directory = os.path.join(temp_dir, "training_validator")
+    global_config.temporary_directory = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_dictionary,
-        temporary_directory=temp_dir,
         phone_set_type="ARPA",
+        position_dependent_phones=True,
     )
     validator.setup()
     assert validator.phone_set_type.name == "ARPA"
@@ -55,14 +58,15 @@ def test_training_validator_arpa(multilingual_ipa_tg_corpus_dir, english_diction
 
 
 def test_training_validator_ipa(
-    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir
+    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, global_config
 ):
-    temp_dir = os.path.join(temp_dir, "training_validator_ipa")
+    output_directory = os.path.join(temp_dir, "training_validator_ipa")
+    global_config.temporary_directory = output_directory
     validator = TrainingValidator(
         corpus_directory=multilingual_ipa_tg_corpus_dir,
         dictionary_path=english_us_mfa_dictionary,
-        temporary_directory=temp_dir,
         phone_set_type="IPA",
+        position_dependent_phones=True,
     )
     validator.setup()
     assert validator.phone_set_type.name == "IPA"

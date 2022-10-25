@@ -14,6 +14,7 @@ import tqdm
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import (
@@ -302,7 +303,7 @@ class LdaTrainer(TriphoneTrainer):
         return [
             LdaAccStatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"lda_acc_stats.{j.name}.log"),
                 j.dictionary_ids,
                 feat_strings[j.name],
@@ -328,7 +329,7 @@ class LdaTrainer(TriphoneTrainer):
         return [
             CalcLdaMlltArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(
                     self.working_log_directory, f"lda_mllt.{self.iteration}.{j.name}.log"
                 ),
@@ -355,6 +356,8 @@ class LdaTrainer(TriphoneTrainer):
             "lda_dimension": self.lda_dimension,
             "random_prune": self.random_prune,
             "silence_csl": self.silence_csl,
+            "splice_left_context": self.splice_left_context,
+            "splice_right_context": self.splice_right_context,
         }
 
     def compute_calculated_properties(self) -> None:
@@ -383,10 +386,8 @@ class LdaTrainer(TriphoneTrainer):
         if os.path.exists(worker_lda_path):
             os.remove(worker_lda_path)
         arguments = self.lda_acc_stats_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -482,10 +483,8 @@ class LdaTrainer(TriphoneTrainer):
         """
         self.log_info("Re-calculating LDA...")
         arguments = self.calc_lda_mllt_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -569,6 +568,9 @@ class LdaTrainer(TriphoneTrainer):
         Run a single LDA training iteration
         """
         if os.path.exists(self.next_model_path):
+            if self.iteration <= self.final_gaussian_iteration:
+                self.increment_gaussians()
+            self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
             self.align_iteration()

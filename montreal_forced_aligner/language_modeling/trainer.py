@@ -487,6 +487,8 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.dictionary_setup()
         self._load_corpus()
+        self.initialize_jobs()
+        self.normalize_text()
         self.write_lexicon_information()
 
         with mfa_open(self.training_path, "w") as f:
@@ -514,6 +516,8 @@ class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
             return
         os.makedirs(self.working_log_directory, exist_ok=True)
         self._load_corpus()
+        self.initialize_jobs()
+        self.normalize_text()
 
         with mfa_open(self.training_path, "w") as f:
             for text in self.normalized_text_iter(self.count_threshold):

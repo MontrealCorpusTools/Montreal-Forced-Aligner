@@ -9,6 +9,7 @@ import functools
 import itertools
 import json
 import re
+import shutil
 import typing
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
@@ -39,6 +40,7 @@ __all__ = [
     "compare_labels",
     "overlap_scoring",
     "align_phones",
+    "split_phone_position",
 ]
 
 
@@ -99,7 +101,13 @@ def split_phone_position(phone_label: str) -> List[str]:
     List[str]
         Phone and position
     """
-    return phone_label.rsplit("_", maxsplit=1)
+    phone = phone_label
+    pos = None
+    try:
+        phone, pos = phone_label.rsplit("_", maxsplit=1)
+    except ValueError:
+        pass
+    return phone, pos
 
 
 def parse_old_features(config: MetaDict) -> MetaDict:
@@ -162,9 +170,8 @@ class TerminalPrinter:
             self.print_function = print_function
         else:
             self.print_function = print
-        from .config import load_global_config
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
 
-        c = load_global_config()
         self.colors = {}
         self.colors["bright"] = ""
         self.colors["green"] = ""
@@ -174,10 +181,9 @@ class TerminalPrinter:
         self.colors["yellow"] = ""
         self.colors["reset"] = ""
         self.colors["normal"] = ""
-        self.width = c["terminal_width"]
         self.indent_level = 0
         self.indent_size = 2
-        if c["terminal_colors"]:
+        if GLOBAL_CONFIG.terminal_colors:
             self.colors["bright"] = Style.BRIGHT
             self.colors["green"] = Fore.GREEN
             self.colors["red"] = Fore.RED
@@ -316,7 +322,7 @@ class TerminalPrinter:
                 line,
                 initial_indent=self.indent_string,
                 subsequent_indent=" " * self.indent_size * (self.indent_level + 1),
-                width=self.width,
+                width=shutil.get_terminal_size().columns,
                 break_on_hyphens=False,
                 break_long_words=False,
                 drop_whitespace=False,
@@ -487,7 +493,7 @@ class TerminalPrinter:
         self.print_function(
             ansiwrap.fill(
                 f"{self.colorize(key, key_color)} {value}",
-                width=self.width,
+                width=shutil.get_terminal_size().columns,
                 initial_indent=indent,
                 subsequent_indent=subsequent_indent,
             )
@@ -944,3 +950,16 @@ def align_phones(
         score = None
     phone_error_rate = (num_insertions + num_deletions + (2 * num_substitutions)) / len(ref)
     return score, phone_error_rate
+
+
+def format_probability(probability_value: float) -> float:
+    """Format a probability to have two decimal places and be between 0.01 and 0.99"""
+    return min(max(round(probability_value, 2), 0.01), 0.99)
+
+
+def format_correction(correction_value: float) -> float:
+    """Format a probability correction value to have two decimal places and be  greater than 0.01"""
+    correction_value = round(correction_value, 2)
+    if correction_value <= 0:
+        correction_value = 0.01
+    return correction_value

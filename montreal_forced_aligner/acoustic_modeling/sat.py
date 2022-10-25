@@ -14,6 +14,7 @@ from typing import Dict, List
 import tqdm
 
 from montreal_forced_aligner.acoustic_modeling.triphone import TriphoneTrainer
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
@@ -168,7 +169,7 @@ class SatTrainer(TriphoneTrainer):
         return [
             AccStatsTwoFeatsArguments(
                 j.name,
-                getattr(self, "db_path", ""),
+                getattr(self, "read_only_db_string", ""),
                 os.path.join(self.working_log_directory, f"acc_stats_two_feats.{j.name}.log"),
                 j.dictionary_ids,
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
@@ -278,6 +279,8 @@ class SatTrainer(TriphoneTrainer):
         Run a single training iteration
         """
         if os.path.exists(self.next_model_path):
+            if self.iteration <= self.final_gaussian_iteration:
+                self.increment_gaussians()
             self.iteration += 1
             return
         if self.iteration in self.realignment_iterations:
@@ -322,10 +325,8 @@ class SatTrainer(TriphoneTrainer):
         begin = time.time()
 
         arguments = self.acc_stats_two_feats_arguments()
-        with tqdm.tqdm(
-            total=self.num_current_utterances, disable=getattr(self, "quiet", False)
-        ) as pbar:
-            if self.use_mp:
+        with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
                 return_queue = mp.Queue()
                 stopped = Stopped()
@@ -399,7 +400,7 @@ class SatTrainer(TriphoneTrainer):
             )
             est_proc.communicate()
         parse_logs(self.working_log_directory)
-        if not self.debug:
+        if not GLOBAL_CONFIG.debug:
             for f in acc_files:
                 os.remove(f)
         self.log_debug(f"Alignment model creation took {time.time() - begin}")
