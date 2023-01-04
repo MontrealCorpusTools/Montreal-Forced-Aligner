@@ -31,3 +31,11 @@ dependencies:
   - pytorch
   - torchaudio
   - setuptools_scm
+  - pytest
+  - pytest-mypy
+  - coverage
+  - coveralls
+  - interrogate
+  - pip:
+      - build
+      - twine
