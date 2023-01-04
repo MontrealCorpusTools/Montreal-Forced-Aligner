@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install tox tox-gh-actions tox-conda twine build setuptools setuptools_scm[toml] wheel
+          pip install tox==3.18.0 tox-gh-actions tox-conda twine build setuptools setuptools_scm[toml] wheel
       - name: sdist
         run: python setup.py sdist
       - name: Test with tox
