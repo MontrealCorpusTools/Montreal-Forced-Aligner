@@ -16,6 +16,7 @@ dependencies:
   - pgvector
   - pgvector-python
   - postgresql
+  - hdbscan
   - psycopg2
   - biopython=1.79
   - click

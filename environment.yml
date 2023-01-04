@@ -17,6 +17,7 @@ dependencies:
   - ffmpeg
   - pynini
   - openfst
+  - hdbscan
   - baumwelch
   - ngram
   - praatio
