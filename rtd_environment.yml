@@ -13,6 +13,10 @@ dependencies:
   - dataclassy
   - sqlalchemy>=1.4
   - pynini
+  - pgvector
+  - pgvector-python
+  - postgresql
+  - psycopg2
   - biopython=1.79
   - click
   - setuptools_scm
@@ -23,14 +27,8 @@ dependencies:
   - sphinx-click
   - sphinx-intl
   - pydata-sphinx-theme
-  - interrogate
   - myst-parser
-  - pytest
   - mock
-  - coverage
-  - coveralls
-  - tox
-  - tox-conda
   - setuptools-scm
   - pip:
       - sphinx-needs

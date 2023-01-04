@@ -2,7 +2,6 @@ channels:
   - conda-forge
   - pytorch
   - nvidia
-  - local
 dependencies:
   - python>=3.8
   - numpy
@@ -33,6 +32,7 @@ dependencies:
   - setuptools_scm
   - pytest
   - pytest-mypy
+  - mock
   - coverage
   - coveralls
   - interrogate
