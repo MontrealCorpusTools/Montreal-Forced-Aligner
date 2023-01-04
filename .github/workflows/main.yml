@@ -32,32 +32,32 @@ jobs:
           - os: windows-latest
             label: win-64
             prefix: C:\Miniconda3\envs\my-env
+
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: ${{ matrix.label }}
-        runs-on: ${{ matrix.os }}
-        steps:
-          - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-          - name: Setup Mambaforge
-            uses: conda-incubator/setup-miniconda@v2
-            with:
-              miniforge-variant: Mambaforge
-              miniforge-version: latest
-              activate-environment: my-env
-              use-mamba: true
-          - name: Set cache date
-            run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
+      - name: Setup Mambaforge
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          activate-environment: my-env
+          use-mamba: true
+      - name: Set cache date
+        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-          - uses: actions/cache@v2
-            with:
-              path: ${{ matrix.prefix }}
-              key: ${{ matrix.label }}-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
-            id: cache
+      - uses: actions/cache@v2
+        with:
+          path: ${{ matrix.prefix }}
+          key: ${{ matrix.label }}-conda-${{ hashFiles('environment.yml') }}-${{ env.DATE }}-${{ env.CACHE_NUMBER }}
+        id: cache
 
-          - name: Update environment
-            run: mamba env update -n my-env -f environment.yml
-            if: steps.cache.outputs.cache-hit != 'true'
+      - name: Update environment
+        run: mamba env update -n my-env -f environment.yml
+        if: steps.cache.outputs.cache-hit != 'true'
 
-          - name: Run tests
-            shell: bash -l {0}
-            run: pytest ./tests
+      - name: Run tests
+        shell: bash -l {0}
+        run: pytest ./tests
