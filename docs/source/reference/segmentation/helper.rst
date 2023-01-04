@@ -2,7 +2,7 @@
 Helper functions
 ================
 
-.. currentmodule:: montreal_forced_aligner.segmenter
+.. currentmodule:: montreal_forced_aligner.vad.multiprocessing
 
 .. autosummary::
    :toctree: generated/

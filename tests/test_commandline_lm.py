@@ -5,7 +5,12 @@ import click.testing
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
-def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_config_path):
+def test_train_lm(
+    basic_corpus_dir,
+    temp_dir,
+    generated_dir,
+    basic_train_lm_config_path,
+):
     temp_dir = os.path.join(temp_dir, "train_lm")
     output_model_path = os.path.join(generated_dir, "test_basic_lm.zip")
     command = [
@@ -31,7 +36,12 @@ def test_train_lm(basic_corpus_dir, temp_dir, generated_dir, basic_train_lm_conf
     assert os.path.exists(output_model_path)
 
 
-def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
+def test_train_lm_text(
+    basic_split_dir,
+    temp_dir,
+    generated_dir,
+    basic_train_lm_config_path,
+):
     temp_dir = os.path.join(temp_dir, "train_lm_text")
     text_dir = basic_split_dir[1]
     output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
@@ -51,7 +61,11 @@ def test_train_lm_text(basic_split_dir, temp_dir, generated_dir, basic_train_lm_
 
 
 def test_train_lm_dictionary(
-    basic_split_dir, basic_dict_path, temp_dir, generated_dir, basic_train_lm_config_path
+    basic_split_dir,
+    basic_dict_path,
+    temp_dir,
+    generated_dir,
+    basic_train_lm_config_path,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_dictionary")
     text_dir = basic_split_dir[1]
@@ -74,7 +88,10 @@ def test_train_lm_dictionary(
 
 
 def test_train_lm_arpa(
-    transcription_language_model_arpa, temp_dir, generated_dir, basic_train_lm_config_path
+    transcription_language_model_arpa,
+    temp_dir,
+    generated_dir,
+    basic_train_lm_config_path,
 ):
     temp_dir = os.path.join(temp_dir, "train_lm_arpa")
     output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
@@ -93,7 +110,12 @@ def test_train_lm_arpa(
     assert os.path.exists(output_model_path)
 
 
-def test_train_lm_text_no_mp(basic_split_dir, temp_dir, generated_dir, basic_train_lm_config_path):
+def test_train_lm_text_no_mp(
+    basic_split_dir,
+    temp_dir,
+    generated_dir,
+    basic_train_lm_config_path,
+):
     text_dir = basic_split_dir[1]
     output_model_path = os.path.join(generated_dir, "test_basic_lm_split.zip")
     command = [

@@ -8,12 +8,14 @@ import typing
 import librosa
 import numpy as np
 import sqlalchemy
+from pgvector.sqlalchemy import Vector
 from praatio import textgrid
 from praatio.utilities.constants import Interval
 from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.ext.orderinglist import ordering_list
-from sqlalchemy.orm import Bundle, column_property, declarative_base, relationship
+from sqlalchemy.orm import Bundle, declarative_base, relationship
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import (
     CtmInterval,
     PhoneSetType,
@@ -35,7 +37,6 @@ __all__ = [
     "DictBundle",
     "Dictionary",
     "Word",
-    "OovWord",
     "Phone",
     "Pronunciation",
     "File",
@@ -84,7 +85,8 @@ def bulk_update(
         id_field = "id"
 
     column_names = [x for x in values[0].keys() if x != id_field]
-    columns = [getattr(table, x).copy() for x in column_names]
+    columns = [getattr(table, x)._copy() for x in column_names]
+    column_names = [f'"{x}"' for x in column_names]
     with session.begin_nested():
         temp_table = sqlalchemy.Table(
             f"temp_{table.__tablename__}",
@@ -102,7 +104,7 @@ def bulk_update(
         set_statements = []
         for c in column_names:
             set_statements.append(
-                f"""{c} = (SELECT {c}
+                f""" {c} = (SELECT {c}
                                           FROM temp_{table.__tablename__}
                                           WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
             )
@@ -120,6 +122,22 @@ def bulk_update(
         # drop temp table
         session.execute(f"DROP TABLE temp_{table.__tablename__}")
     MfaSqlBase.metadata.remove(temp_table)
+
+
+Dictionary2Job = sqlalchemy.Table(
+    "dictionary_job",
+    MfaSqlBase.metadata,
+    Column("dictionary_id", ForeignKey("dictionary.id"), primary_key=True),
+    Column("job_id", ForeignKey("job.id"), primary_key=True),
+)
+
+SpeakerOrdering = sqlalchemy.Table(
+    "speaker_ordering",
+    MfaSqlBase.metadata,
+    Column("speaker_id", ForeignKey("speaker.id"), primary_key=True),
+    Column("file_id", ForeignKey("file.id"), primary_key=True),
+    Column("index", Integer, primary_key=True),
+)
 
 
 class DictBundle(Bundle):
@@ -164,15 +182,35 @@ class Corpus(MfaSqlBase):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), unique=True, nullable=False)
+    path = Column(String, unique=True, nullable=False)
     imported = Column(Boolean, default=False)
     text_normalized = Column(Boolean, default=False)
+    cutoffs_found = Column(Boolean, default=False)
     features_generated = Column(Boolean, default=False)
+    vad_calculated = Column(Boolean, default=False)
+    ivectors_calculated = Column(Boolean, default=False)
     alignment_done = Column(Boolean, default=False)
     transcription_done = Column(Boolean, default=False)
     alignment_evaluation_done = Column(Boolean, default=False)
     has_reference_alignments = Column(Boolean, default=False)
     has_sound_files = Column(Boolean, default=False)
     has_text_files = Column(Boolean, default=False)
+    num_jobs = Column(Integer, default=0)
+
+    current_subset = Column(Integer, default=0)
+    data_directory: typing.Union[str, Column] = Column(String, nullable=False)
+
+    jobs = relationship("Job", back_populates="corpus")
+
+    @property
+    def split_directory(self):
+        return os.path.join(self.data_directory, f"split{self.num_jobs}")
+
+    @property
+    def current_subset_directory(self):
+        if not self.current_subset:
+            return self.split_directory
+        return os.path.join(self.data_directory, f"subset_{self.current_subset}")
 
 
 class Dialect(MfaSqlBase):
@@ -270,7 +308,7 @@ class Dictionary(MfaSqlBase):
     final_silence_correction = Column(Float, nullable=True)
     final_non_silence_correction = Column(Float, nullable=True)
 
-    dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=False)
+    dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=True)
     dialect: Dialect = relationship("Dialect", back_populates="dictionaries")
 
     words = relationship(
@@ -280,17 +318,16 @@ class Dictionary(MfaSqlBase):
         collection_class=ordering_list("mapping_id"),
         cascade="all, delete",
     )
-    oov_words = relationship(
-        "OovWord",
-        back_populates="dictionary",
-        order_by="OovWord.count.desc()",
-        collection_class=ordering_list("count", ordering_func=lambda x: -x),
-        cascade="all, delete",
-    )
     speakers = relationship(
         "Speaker",
         back_populates="dictionary",
         cascade="all, delete-orphan",
+    )
+
+    jobs = relationship(
+        "Job",
+        secondary=Dictionary2Job,
+        back_populates="dictionaries",
     )
 
     @property
@@ -350,6 +387,13 @@ class Dictionary(MfaSqlBase):
         Path of lexicon file to use for aligning lattices
         """
         return os.path.join(self.temp_directory, "align_lexicon.fst")
+
+    @property
+    def align_lexicon_disambig_path(self) -> str:
+        """
+        Path of lexicon file to use for aligning lattices
+        """
+        return os.path.join(self.temp_directory, "align_lexicon.disambig_fst")
 
     @property
     def align_lexicon_int_path(self) -> str:
@@ -479,12 +523,13 @@ class Word(MfaSqlBase):
     word_type = Column(Enum(WordType), nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="words")
-    pronunciations = relationship("Pronunciation", back_populates="word")
+    pronunciations = relationship("Pronunciation", back_populates="word", cascade="all, delete")
 
     job = relationship(
         "Word2Job",
         back_populates="word",
         uselist=False,
+        cascade="all, delete",
     )
     word_intervals = relationship(
         "WordInterval",
@@ -498,35 +543,6 @@ class Word(MfaSqlBase):
         sqlalchemy.Index("dictionary_word_type_index", "dictionary_id", "word_type"),
         sqlalchemy.Index("word_dictionary_index", "word", "dictionary_id"),
     )
-
-
-class OovWord(MfaSqlBase):
-    """
-    Database class for storing words, their integer IDs, and pronunciation information
-
-    Parameters
-    ----------
-    id: int
-        Primary key
-    word: str
-        Word label
-    count: int
-        Count frequency of word in the corpus
-    dictionary_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Dictionary`
-    dictionary: :class:`~montreal_forced_aligner.db.Dictionary`
-        Pronunciation dictionary that the word belongs to
-    """
-
-    __tablename__ = "oov_word"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    word = Column(String, nullable=False, index=True)
-    count = Column(Integer, default=0, nullable=False, index=True)
-    dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
-    dictionary: Dictionary = relationship("Dictionary", back_populates="oov_words")
-
-    __table_args__ = (sqlalchemy.Index("oov_word_dictionary_index", "word", "dictionary_id"),)
 
 
 class Pronunciation(MfaSqlBase):
@@ -563,7 +579,7 @@ class Pronunciation(MfaSqlBase):
     silence_before_correction = Column(Float, nullable=True)
     non_silence_before_correction = Column(Float, nullable=True)
 
-    count = Column(Integer, nullable=False, default=1)
+    count = Column(Integer, nullable=False, default=0)
     silence_following_count = Column(Integer, nullable=True)
     non_silence_following_count = Column(Integer, nullable=True)
 
@@ -580,7 +596,7 @@ class Pronunciation(MfaSqlBase):
     rules = relationship(
         "RuleApplication",
         back_populates="pronunciation",
-        cascade="all, delete-orphan",
+        cascade="all, delete",
     )
 
     word_intervals = relationship(
@@ -638,7 +654,9 @@ class PhonologicalRule(MfaSqlBase):
     dialect: Dialect = relationship("Dialect", back_populates="rules")
 
     pronunciations: typing.List[RuleApplication] = relationship(
-        "RuleApplication", back_populates="rule"
+        "RuleApplication",
+        back_populates="rule",
+        cascade="all, delete",
     )
 
     def __hash__(self):
@@ -683,17 +701,53 @@ class PhonologicalRule(MfaSqlBase):
             following = following.replace("$", "").strip()
         if preceding:
 
-            components.append(f"(?P<preceding>{preceding})")
+            components.append(rf"(?P<preceding>{preceding})")
         if self.segment:
-            components.append(rf"\b(?P<segment>{self.segment})\b")
+            components.append(rf"(?P<segment>{self.segment})")
         if following:
-            components.append(f"(?P<following>{following})")
+            components.append(rf"(?P<following>{following})")
         pattern = " ".join(components)
         if initial:
             pattern = "^" + pattern
+        else:
+            pattern = r"(?:^|(?<=\s))" + pattern
         if final:
             pattern += "$"
-        return re.compile(pattern)
+        else:
+            pattern += r"(?:$|(?=\s))"
+        return re.compile(pattern, flags=re.UNICODE)
+
+    def __str__(self):
+        from_components = []
+        to_components = []
+        initial = False
+        final = False
+        preceding = self.preceding_context
+        following = self.following_context
+        if preceding.startswith("^"):
+            initial = True
+            preceding = preceding.replace("^", "").strip()
+        if following.endswith("$"):
+            final = True
+            following = following.replace("$", "").strip()
+        if preceding:
+            from_components.append(preceding)
+            to_components.append(preceding)
+        if self.segment:
+            from_components.append(self.segment)
+        if self.replacement:
+            to_components.append(self.replacement)
+        if following:
+            from_components.append(following)
+            to_components.append(following)
+
+        from_string = " ".join(from_components)
+        to_string = " ".join(to_components)
+        if initial:
+            from_string = "^" + from_string
+        if final:
+            from_string += "$"
+        return f"<PhonologicalRule {self.id} for Dialect {self.dialect_id}: {from_string} -> {to_string}>"
 
     def apply_rule(self, pronunciation: str) -> str:
         """
@@ -742,12 +796,26 @@ class RuleApplication(MfaSqlBase):
     """
 
     __tablename__ = "rule_applications"
-    pronunciation_id = Column(ForeignKey("pronunciation.id"), primary_key=True)
-    rule_id = Column(ForeignKey("phonological_rule.id"), primary_key=True)
+    pronunciation_id = Column(ForeignKey("pronunciation.id", ondelete="CASCADE"), primary_key=True)
+    rule_id = Column(ForeignKey("phonological_rule.id", ondelete="CASCADE"), primary_key=True)
 
     pronunciation: Pronunciation = relationship("Pronunciation", back_populates="rules")
 
     rule: PhonologicalRule = relationship("PhonologicalRule", back_populates="pronunciations")
+
+
+class SpeakerCluster(MfaSqlBase):
+
+    __tablename__ = "speaker_cluster"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    score = Column(Float)
+
+    speakers = relationship(
+        "Speaker",
+        back_populates="cluster",
+        cascade="all, delete-orphan",
+    )
 
 
 class Speaker(MfaSqlBase):
@@ -777,37 +845,15 @@ class Speaker(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, nullable=False)
     cmvn = Column(String)
+    ivector = Column(Vector(GLOBAL_CONFIG.current_profile.plda_dimension), nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="speakers")
     utterances: typing.List[Utterance] = relationship("Utterance", back_populates="speaker")
-    files: typing.List[File] = relationship("SpeakerOrdering", back_populates="speaker")
-
-
-class SpeakerOrdering(MfaSqlBase):
-    """
-    Mapping class between :class:`~montreal_forced_aligner.db.Speaker`
-    and :class:`~montreal_forced_aligner.db.File` that preserves the order of tiers
-
-    Parameters
-    ----------
-    speaker_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Speaker`
-    file_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.File`
-    index: int
-        Position of speaker in the input TextGrid
-    speaker: :class:`~montreal_forced_aligner.db.Speaker`
-        Speaker object
-    file: :class:`~montreal_forced_aligner.db.File`
-        File object
-    """
-
-    __tablename__ = "speaker_ordering"
-    speaker_id = Column(ForeignKey("speaker.id"), primary_key=True)
-    file_id = Column(ForeignKey("file.id"), primary_key=True)
-    index = Column(Integer)
-    speaker: Speaker = relationship("Speaker", back_populates="files")
-    file: File = relationship("File", back_populates="speakers")
+    files: typing.List[File] = relationship(
+        "File", secondary=SpeakerOrdering, back_populates="speakers"
+    )
+    cluster_id = Column(Integer, ForeignKey("speaker_cluster.id"), nullable=True, index=True)
+    cluster: SpeakerCluster = relationship("SpeakerCluster", back_populates="speakers")
 
 
 class File(MfaSqlBase):
@@ -828,7 +874,7 @@ class File(MfaSqlBase):
         TextFile object with information about the transcript of a file
     sound_file: :class:`~montreal_forced_aligner.db.SoundFile`
         SoundFile object with information about the audio of a file
-    speakers: list[:class:`~montreal_forced_aligner.db.SpeakerOrdering`]
+    speakers: list[:class:`~montreal_forced_aligner.db.Speaker`]
         Speakers in the file ordered by their index
     utterances: list[:class:`~montreal_forced_aligner.db.Utterance`]
         Utterances in the file
@@ -837,28 +883,27 @@ class File(MfaSqlBase):
     __tablename__ = "file"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, index=True)
     relative_path = Column(String, nullable=False)
-    modified = Column(Boolean, nullable=False, default=False)
+    modified = Column(Boolean, nullable=False, default=False, index=True)
     speakers = relationship(
-        "SpeakerOrdering",
-        back_populates="file",
-        order_by="SpeakerOrdering.index",
-        collection_class=ordering_list("index"),
-        cascade="all, delete-orphan",
+        "Speaker",
+        secondary=SpeakerOrdering,
+        back_populates="files",
+        order_by=SpeakerOrdering.c.index,
     )
     text_file: TextFile = relationship(
-        "TextFile", back_populates="file", uselist=False, cascade="all, delete-orphan"
+        "TextFile", back_populates="file", uselist=False, cascade="all, delete"
     )
     sound_file: SoundFile = relationship(
-        "SoundFile", back_populates="file", uselist=False, cascade="all, delete-orphan"
+        "SoundFile", back_populates="file", uselist=False, cascade="all, delete"
     )
     utterances = relationship(
         "Utterance",
         back_populates="file",
         order_by="Utterance.begin",
         collection_class=ordering_list("begin"),
-        cascade="all, delete-orphan",
+        cascade="all, delete",
     )
 
     @property
@@ -891,6 +936,7 @@ class File(MfaSqlBase):
         output_directory,
         output_format: typing.Optional[str] = None,
         save_transcription: bool = False,
+        overwrite: bool = False,
     ) -> None:
         """
         Output File to TextGrid or lab.  If ``text_type`` is not specified, the original file type will be used,
@@ -909,8 +955,7 @@ class File(MfaSqlBase):
         from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
 
         utterance_count = len(self.utterances)
-        overwrite = output_format is None
-        if overwrite:  # Saving directly
+        if output_format is None:  # Saving directly
             if (
                 utterance_count == 1
                 and self.utterances[0].begin == 0
@@ -955,14 +1000,17 @@ class File(MfaSqlBase):
             max_time = self.sound_file.duration
             tiers = {}
             for speaker in self.speakers:
-                tiers[speaker.speaker.name] = textgrid.IntervalTier(
-                    speaker.speaker.name, [], minT=0, maxT=max_time
+                tiers[speaker.name] = textgrid.IntervalTier(
+                    speaker.name, [], minT=0, maxT=max_time
                 )
 
             tg = textgrid.Textgrid()
             tg.maxTimestamp = max_time
             for utterance in self.utterances:
-
+                if utterance.speaker.name not in tiers:
+                    tiers[utterance.speaker.name] = textgrid.IntervalTier(
+                        utterance.speaker.name, [], minT=0, maxT=max_time
+                    )
                 if save_transcription:
                     tiers[utterance.speaker.name].entryList.append(
                         Interval(
@@ -1001,8 +1049,8 @@ class File(MfaSqlBase):
         for u in self.utterances:
             speaker_name = ""
             for speaker in self.speakers:
-                if u.speaker_id == speaker.speaker.id:
-                    speaker_name = speaker.speaker.name
+                if u.speaker_id == speaker.id:
+                    speaker_name = speaker.name
                     break
             if speaker_name not in data:
                 data[speaker_name] = []
@@ -1138,8 +1186,6 @@ class Utterance(MfaSqlBase):
     normalized_text: str
         Normalized text for the utterance, after removing case and punctuation, and splitting up compounds and clitics if the whole word is not
         found in the speaker's pronunciation dictionary
-    normalized_text_int: str
-        Space-delimited list of the normalized text converted to integer IDs for use in Kaldi programs
     features:str
         File index for generated features
     in_subset: bool
@@ -1179,7 +1225,7 @@ class Utterance(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     begin = Column(Float, nullable=False, index=True)
     end = Column(Float, nullable=False)
-    duration = Column(Float, nullable=False, index=True)
+    duration = Column(Float, sqlalchemy.Computed('"end" - "begin"'), index=True)
     channel = Column(Integer, nullable=False)
     num_frames = Column(Integer)
     text = Column(String, index=True)
@@ -1187,9 +1233,9 @@ class Utterance(MfaSqlBase):
     normalized_text = Column(String)
     normalized_character_text = Column(String)
     transcription_text = Column(String)
-    normalized_text_int = Column(String)
-    normalized_character_text_int = Column(String)
     features = Column(String)
+    ivector_ark = Column(String)
+    vad_ark = Column(String)
     in_subset = Column(Boolean, nullable=False, default=False, index=True)
     ignored = Column(Boolean, nullable=False, default=False, index=True)
     alignment_log_likelihood = Column(Float)
@@ -1197,28 +1243,32 @@ class Utterance(MfaSqlBase):
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
+    ivector = Column(Vector(GLOBAL_CONFIG.current_profile.plda_dimension), nullable=True)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
+    kaldi_id = Column(
+        String,
+        sqlalchemy.Computed("CAST(speaker_id AS text)|| '-' ||CAST(id AS text)"),
+        unique=True,
+        index=True,
+    )
     job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
     file: File = relationship("File", back_populates="utterances")
     speaker: Speaker = relationship("Speaker", back_populates="utterances")
     job: Job = relationship("Job", back_populates="utterances")
-    phone_intervals = relationship(
+    phone_intervals: typing.List[PhoneInterval] = relationship(
         "PhoneInterval",
         back_populates="utterance",
         order_by="PhoneInterval.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete",
     )
-    word_intervals = relationship(
+    word_intervals: typing.List[WordInterval] = relationship(
         "WordInterval",
         back_populates="utterance",
         order_by="WordInterval.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete",
-    )
-    kaldi_id = column_property(
-        speaker_id.cast(sqlalchemy.VARCHAR) + "-" + id.cast(sqlalchemy.VARCHAR)
     )
 
     __table_args__ = (
@@ -1271,7 +1321,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow is WorkflowType.reference
+            if x.workflow.workflow_type is WorkflowType.reference
         ]
 
     @property
@@ -1282,7 +1332,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow is WorkflowType.alignment
+            if x.workflow.workflow_type is WorkflowType.alignment
         ]
 
     @property
@@ -1293,7 +1343,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.word_intervals
-            if x.workflow.workflow is WorkflowType.alignment
+            if x.workflow.workflow_type is WorkflowType.alignment
         ]
 
     @property
@@ -1304,7 +1354,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow is WorkflowType.transcription
+            if x.workflow.workflow_type is WorkflowType.transcription
         ]
 
     @property
@@ -1315,7 +1365,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.word_intervals
-            if x.workflow.workflow is WorkflowType.transcription
+            if x.workflow.workflow_type is WorkflowType.transcription
         ]
 
     @property
@@ -1326,7 +1376,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow is WorkflowType.per_speaker_transcription
+            if x.workflow.workflow_type is WorkflowType.per_speaker_transcription
         ]
 
     @property
@@ -1337,7 +1387,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.word_intervals
-            if x.workflow.workflow is WorkflowType.per_speaker_transcription
+            if x.workflow.workflow_type is WorkflowType.per_speaker_transcription
         ]
 
     @property
@@ -1348,7 +1398,7 @@ class Utterance(MfaSqlBase):
         return [
             x.as_ctm()
             for x in self.phone_intervals
-            if x.workflow.workflow is WorkflowType.phone_transcription
+            if x.workflow.workflow_type is WorkflowType.phone_transcription
         ]
 
     @property
@@ -1374,8 +1424,6 @@ class Utterance(MfaSqlBase):
 
         if self.normalized_text is None:
             self.normalized_text = ""
-        if self.normalized_text_int is None:
-            self.normalized_text_int = ""
         return UtteranceData(
             self.speaker_name,
             self.file_name,
@@ -1384,7 +1432,6 @@ class Utterance(MfaSqlBase):
             self.channel,
             self.text,
             self.normalized_text.split(),
-            self.normalized_text_int.split(),
             set(self.oovs.split()),
         )
 
@@ -1418,12 +1465,10 @@ class Utterance(MfaSqlBase):
         return Utterance(
             begin=data.begin,
             end=data.end,
-            duration=data.end - data.begin,
             channel=data.channel,
             oovs=" ".join(sorted(data.oovs)),
             normalized_text=" ".join(data.normalized_text),
             text=data.text,
-            normalized_text_int=" ".join(str(x) for x in data.normalized_text_int),
             num_frames=num_frames,
             file=file,
             speaker_id=speaker,
@@ -1439,7 +1484,7 @@ class CorpusWorkflow(MfaSqlBase):
     ----------
     id: int
         Primary key
-    workflow: :class:`~montreal_forced_aligner.data.WorkflowType`
+    workflow_type: :class:`~montreal_forced_aligner.data.WorkflowType`
         Workflow type
     time_stamp: :class:`datetime.datetime`
         Time stamp for the workflow run
@@ -1454,8 +1499,14 @@ class CorpusWorkflow(MfaSqlBase):
     __tablename__ = "corpus_workflow"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    workflow = Column(Enum(WorkflowType), nullable=False, index=True)
-    time_stamp = Column(DateTime, nullable=False, index=True)
+    name = Column(String, unique=True, index=True)
+    workflow_type = Column(Enum(WorkflowType), nullable=False, index=True)
+    working_directory = Column(String, nullable=False)
+    time_stamp = Column(DateTime, nullable=False, server_default=sqlalchemy.func.now(), index=True)
+    current = Column(Boolean, nullable=False, default=False, index=True)
+    done = Column(Boolean, nullable=False, default=False, index=True)
+    dirty = Column(Boolean, nullable=False, default=False, index=True)
+    alignments_collected = Column(Boolean, nullable=False, default=False, index=True)
     score = Column(Float, nullable=True)
 
     phone_intervals = relationship(
@@ -1473,6 +1524,10 @@ class CorpusWorkflow(MfaSqlBase):
         collection_class=ordering_list("begin"),
         cascade="all, delete",
     )
+
+    @property
+    def lda_mat_path(self) -> str:
+        return os.path.join(self.working_directory, "lda.mat")
 
 
 class PhoneInterval(MfaSqlBase):
@@ -1532,7 +1587,7 @@ class PhoneInterval(MfaSqlBase):
     )
 
     def __repr__(self):
-        return f"<PhoneInterval {self.kaldi_label} ({self.workflow.workflow}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
+        return f"<PhoneInterval {self.kaldi_label} ({self.workflow.workflow_type}) from {self.begin}-{self.end} for utterance {self.utterance_id}>"
 
     @classmethod
     def from_ctm(
@@ -1620,7 +1675,7 @@ class WordInterval(MfaSqlBase):
     word_id = Column(Integer, ForeignKey("word.id"), index=True, nullable=False)
     word: Word = relationship("Word", back_populates="word_intervals")
 
-    pronunciation_id = Column(Integer, ForeignKey("pronunciation.id"), index=True, nullable=False)
+    pronunciation_id = Column(Integer, ForeignKey("pronunciation.id"), index=True, nullable=True)
     pronunciation: Pronunciation = relationship("Pronunciation", back_populates="word_intervals")
 
     workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
@@ -1687,26 +1742,10 @@ class Job(MfaSqlBase):
     ----------
     id: int
         Primary key
-    begin: float
-        Beginning timestamp of the interval
-    end: float
-        Ending timestamp of the interval
-    word_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Word`
-    word: :class:`~montreal_forced_aligner.db.Word`
-        Word of the interval
-    pronunciation_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Pronunciation`
-    pronunciation: :class:`~montreal_forced_aligner.db.Pronunciation`
-        Pronunciation of the word
-    utterance_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.Utterance`
-    utterance: :class:`~montreal_forced_aligner.db.Utterance`
-        Utterance of the interval
-    workflow_id: int
-        Foreign key to :class:`~montreal_forced_aligner.db.CorpusWorkflow`
-    workflow: :class:`~montreal_forced_aligner.db.CorpusWorkflow`
-        Workflow that generated the interval
+    corpus_id: int
+        Foreign key to :class:`~montreal_forced_aligner.db.Corpus`
+    corpus: :class:`~montreal_forced_aligner.db.Corpus`
+        Corpus
     utterances: list[:class:`~montreal_forced_aligner.db.Utterance`]
         Utterances associated with the job
     symbols: list[:class:`~montreal_forced_aligner.db.M2M2Job`]
@@ -1718,6 +1757,9 @@ class Job(MfaSqlBase):
     __tablename__ = "job"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    corpus_id = Column(Integer, ForeignKey("corpus.id"), index=True, nullable=False)
+    corpus: Corpus = relationship("Corpus", back_populates="jobs")
     utterances = relationship("Utterance", back_populates="job")
 
     symbols = relationship(
@@ -1729,6 +1771,213 @@ class Job(MfaSqlBase):
         "Word2Job",
         back_populates="job",
     )
+
+    dictionaries: typing.List[Dictionary] = relationship(
+        "Dictionary",
+        secondary=Dictionary2Job,
+        back_populates="jobs",
+    )
+
+    def __str__(self):
+        return f"<Job {self.id}>"
+
+    @property
+    def has_dictionaries(self) -> bool:
+        return len(self.dictionaries) > 0
+
+    @property
+    def dictionary_ids(self) -> typing.List[int]:
+        return [x.id for x in self.dictionaries]
+
+    @property
+    def wav_scp_path(self):
+        return self.construct_path(self.corpus.split_directory, "wav", "scp")
+
+    @property
+    def segments_scp_path(self):
+        return self.construct_path(self.corpus.split_directory, "segments", "scp")
+
+    @property
+    def feats_scp_path(self):
+        return self.construct_path(self.corpus.split_directory, "feats", "scp")
+
+    @property
+    def feats_ark_path(self):
+        return self.construct_path(self.corpus.split_directory, "feats", "ark")
+
+    @property
+    def per_dictionary_feats_scp_paths(self):
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "feats", "scp", d.id
+            )
+        return paths
+
+    @property
+    def per_dictionary_utt2spk_scp_paths(self):
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "utt2spk", "scp", d.id
+            )
+        return paths
+
+    @property
+    def per_dictionary_spk2utt_scp_paths(self):
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "spk2utt", "scp", d.id
+            )
+        return paths
+
+    @property
+    def per_dictionary_cmvn_scp_paths(self):
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "cmvn", "scp", d.id
+            )
+        return paths
+
+    @property
+    def per_dictionary_text_int_scp_paths(self):
+        paths = {}
+        for d in self.dictionaries:
+            paths[d.id] = self.construct_path(
+                self.corpus.current_subset_directory, "text", "int.scp", d.id
+            )
+        return paths
+
+    def construct_path(
+        self, directory: str, identifier: str, extension: str, dictionary_id: int = None
+    ) -> str:
+        """
+        Helper function for constructing dictionary-dependent paths for the Job
+
+        Parameters
+        ----------
+        directory: str
+            Directory to use as the root
+        identifier: str
+            Identifier for the path name, like ali or acc
+        extension: str
+            Extension of the path, like .scp or .ark
+
+        Returns
+        -------
+        str
+            Path
+        """
+        if dictionary_id is None:
+            return os.path.join(directory, f"{identifier}.{self.id}.{extension}")
+        return os.path.join(directory, f"{identifier}.{dictionary_id}.{self.id}.{extension}")
+
+    def construct_path_dictionary(self, directory: str, identifier: str, extension: str):
+        paths = {}
+        for d_id in self.dictionary_ids:
+            paths[d_id] = self.construct_path(directory, identifier, extension, d_id)
+        return paths
+
+    def construct_dictionary_dependent_paths(
+        self, directory: str, identifier: str, extension: str
+    ) -> typing.Dict[int, str]:
+        """
+        Helper function for constructing paths that depend only on the dictionaries of the job, and not the job name itself.
+        These paths should be merged with all other jobs to get a full set of dictionary paths.
+        Parameters
+        ----------
+        directory: str
+            Directory to use as the root
+        identifier: str
+            Identifier for the path name, like ali or acc
+        extension: str
+            Extension of the path, like .scp or .ark
+        Returns
+        -------
+        dict[int, str]
+            Path for each dictionary
+        """
+        output = {}
+        for dict_id in self.dictionary_ids:
+            output[dict_id] = os.path.join(directory, f"{identifier}.{dict_id}.{extension}")
+        return output
+
+    def construct_online_feature_proc_string(
+        self,
+        uses_vad=True,
+        subsample_feats: int = None,
+    ):
+        feat_path = self.construct_path(self.corpus.current_subset_directory, "feats", "scp")
+        vad_path = self.construct_path(self.corpus.current_subset_directory, "vad", "scp")
+        parts = [
+            f'ark,s,cs:apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 scp,s,cs:"{feat_path}" ark:- |',
+            "add-deltas ark,s,cs:-  ark:- |",
+        ]
+        if os.path.exists(vad_path) and uses_vad:
+            parts.append(f'select-voiced-frames ark,s,cs:- scp,s,cs:"{vad_path}" ark:- |')
+        if subsample_feats:
+            parts.append(f"subsample-feats --n={subsample_feats} ark,s,cs:- ark:- |")
+        return " ".join(parts)
+
+    def construct_feature_proc_string(
+        self,
+        working_directory,
+        dictionary_id,
+        uses_splices: bool,
+        splice_left_context: int,
+        splice_right_context: int,
+        uses_speaker_adaptation: bool = False,
+    ) -> str:
+        """
+        Constructs a feature processing string to supply to Kaldi binaries, taking into account corpus features and the
+        current working directory of the aligner (whether fMLLR or LDA transforms should be used, etc).
+
+        Parameters
+        ----------
+        uses_speaker_adaptation: bool
+            Flag for whether features should be speaker-independent regardless of the presence of fMLLR transforms
+
+        Returns
+        -------
+        dict[int, dict[str, str]]
+            Feature strings per job
+        """
+        lda_mat_path = None
+        fmllr_trans_path = None
+        if working_directory is not None:
+            lda_mat_path = os.path.join(working_directory, "lda.mat")
+            if not os.path.exists(lda_mat_path):
+                lda_mat_path = None
+            fmllr_trans_path = self.construct_path(
+                working_directory, "trans", "ark", dictionary_id
+            )
+
+            if not os.path.exists(fmllr_trans_path):
+                fmllr_trans_path = None
+        feat_path = self.construct_path(
+            self.corpus.current_subset_directory, "feats", "scp", dictionary_id
+        )
+        cmvn_path = self.construct_path(
+            self.corpus.current_subset_directory, "cmvn", "scp", dictionary_id
+        )
+        utt2spk_path = self.construct_path(
+            self.corpus.current_subset_directory, "utt2spk", "scp", dictionary_id
+        )
+
+        feats = f'ark,s,cs:apply-cmvn --utt2spk=ark:"{utt2spk_path}" scp:"{cmvn_path}" scp:"{feat_path}" ark:- |'
+        if lda_mat_path is not None:
+            feats += f" splice-feats --left-context={splice_left_context} --right-context={splice_right_context} ark:- ark:- |"
+            feats += f' transform-feats "{lda_mat_path}" ark:- ark:- |'
+        elif uses_splices:
+            feats += f" splice-feats --left-context={splice_left_context} --right-context={splice_right_context} ark:- ark:- |"
+        else:
+            feats += " add-deltas ark:- ark:- |"
+        if fmllr_trans_path is not None and uses_speaker_adaptation:
+            feats += f' transform-feats --utt2spk=ark:"{utt2spk_path}" ark:"{fmllr_trans_path}" ark:- ark:- |'
+
+        return feats
 
 
 class M2MSymbol(MfaSqlBase):

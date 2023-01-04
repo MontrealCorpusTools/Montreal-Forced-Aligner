@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import collections
 import csv
-import datetime
 import logging
 import multiprocessing as mp
 import os
@@ -38,10 +37,8 @@ from montreal_forced_aligner.db import (
     Dictionary,
     File,
     Phone,
-    PhoneInterval,
     SoundFile,
     Speaker,
-    SpeakerOrdering,
     Utterance,
     bulk_update,
 )
@@ -53,6 +50,8 @@ from montreal_forced_aligner.helper import (
     score_wer,
 )
 from montreal_forced_aligner.language_modeling.multiprocessing import (
+    TrainLmArguments,
+    TrainPhoneLmFunction,
     TrainSpeakerLmArguments,
     TrainSpeakerLmFunction,
 )
@@ -83,6 +82,7 @@ from montreal_forced_aligner.utils import (
     KaldiProcessWorker,
     Stopped,
     log_kaldi_errors,
+    run_kaldi_function,
     thirdparty_binary,
 )
 
@@ -91,6 +91,8 @@ if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = ["Transcriber", "TranscriberMixin"]
+
+logger = logging.getLogger("mfa")
 
 
 class TranscriberMixin(CorpusAligner):
@@ -163,8 +165,6 @@ class TranscriberMixin(CorpusAligner):
         arguments = []
         with self.session() as session:
             for j in self.jobs:
-                if not j.has_data:
-                    continue
                 speaker_mapping = {}
                 speaker_paths = {}
                 words_symbol_paths = {}
@@ -173,7 +173,7 @@ class TranscriberMixin(CorpusAligner):
                     session.query(Speaker)
                     .join(Speaker.utterances)
                     .options(joinedload(Speaker.dictionary, innerjoin=True))
-                    .filter(Utterance.job_id == j.name)
+                    .filter(Utterance.job_id == j.id)
                     .distinct()
                 )
                 for s in speakers:
@@ -185,17 +185,14 @@ class TranscriberMixin(CorpusAligner):
                     speaker_paths[s.id] = os.path.join(self.data_directory, f"{s.id}.txt")
                 arguments.append(
                     TrainSpeakerLmArguments(
-                        j.name,
-                        getattr(self, "read_only_db_string", ""),
-                        os.path.join(self.working_log_directory, f"train_lm.{j.name}.log"),
-                        self.model_directory,
-                        words_symbol_paths,
-                        speaker_mapping,
-                        speaker_paths,
-                        self.oov_word,
+                        j.id,
+                        getattr(self, "db_string", ""),
+                        os.path.join(self.working_log_directory, f"train_lm.{j.id}.log"),
+                        self.model_path,
                         self.order,
                         self.method,
                         self.target_num_ngrams,
+                        self.hclg_options,
                     )
                 )
         return arguments
@@ -205,20 +202,7 @@ class TranscriberMixin(CorpusAligner):
         begin = time.time()
         log_directory = self.model_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        self.log_info("Compiling per speaker biased language models...")
-        with self.session() as session:
-            speakers = session.query(Speaker).options(
-                selectinload(Speaker.utterances).load_only(Utterance.normalized_text)
-            )
-            for s in speakers:
-                with mfa_open(os.path.join(self.model_directory, f"{s.id}.txt"), "w") as f:
-                    for u in s.utterances:
-                        text = [
-                            x if self.word_counts[x] > self.oov_count_threshold else self.oov_word
-                            for x in u.normalized_text.split()
-                        ]
-
-                        f.write(" ".join(text) + "\n")
+        logger.info("Compiling per speaker biased language models...")
         arguments = self.train_speaker_lm_arguments()
         with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -252,12 +236,12 @@ class TranscriberMixin(CorpusAligner):
                     for v in error_dict.values():
                         raise v
             else:
-                self.log_debug("Not using multiprocessing...")
+                logger.debug("Not using multiprocessing...")
                 for args in arguments:
                     function = TrainSpeakerLmFunction(args)
                     for _ in function.run():
                         pbar.update(1)
-        self.log_debug(f"Compiling speaker language models took {time.time() - begin}")
+        logger.debug(f"Compiling speaker language models took {time.time() - begin}")
 
     @property
     def model_directory(self) -> str:
@@ -280,7 +264,7 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.lm_rescore_arguments`
             Arguments for function
         """
-        self.log_info("Rescoring lattices with medium G.fst...")
+        logger.info("Rescoring lattices with medium G.fst...")
         if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
@@ -309,7 +293,7 @@ class TranscriberMixin(CorpusAligner):
                         continue
                     succeeded, failed = result
                     if failed:
-                        self.log_warning("Some lattices failed to be rescored")
+                        logger.warning("Some lattices failed to be rescored")
                     pbar.update(succeeded + failed)
             for p in procs:
                 p.join()
@@ -322,7 +306,7 @@ class TranscriberMixin(CorpusAligner):
                 with tqdm.tqdm(total=GLOBAL_CONFIG.num_jobs, disable=GLOBAL_CONFIG.quiet) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
-                            self.log_warning("Some lattices failed to be rescored")
+                            logger.warning("Some lattices failed to be rescored")
                         pbar.update(succeeded + failed)
 
     def carpa_lm_rescore(self) -> None:
@@ -336,7 +320,7 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.carpa_lm_rescore_arguments`
             Arguments for function
         """
-        self.log_info("Rescoring lattices with large G.carpa...")
+        logger.info("Rescoring lattices with large G.carpa...")
         if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
@@ -365,7 +349,7 @@ class TranscriberMixin(CorpusAligner):
                         continue
                     succeeded, failed = result
                     if failed:
-                        self.log_warning("Some lattices failed to be rescored")
+                        logger.warning("Some lattices failed to be rescored")
                     pbar.update(succeeded + failed)
             for p in procs:
                 p.join()
@@ -378,74 +362,94 @@ class TranscriberMixin(CorpusAligner):
                 with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                     for succeeded, failed in function.run():
                         if failed:
-                            self.log_warning("Some lattices failed to be rescored")
+                            logger.warning("Some lattices failed to be rescored")
                         pbar.update(succeeded + failed)
 
     def train_phone_lm(self):
         """Train a phone-based language model (i.e., not using words)."""
-        if not self.has_alignments(WorkflowType.alignment):
-            self.log_error("Cannot train phone LM without alignments")
+        if not self.has_alignments(self.current_workflow.id):
+            logger.error("Cannot train phone LM without alignments")
             return
+        logger.info("Beginning phone LM training...")
+        logger.info("Collecting training data...")
 
         ngram_order = 4
         num_ngrams = 20000
-        training_path = os.path.join(self.phones_dir, "phone_lm_training.txt")
         phone_lm_path = os.path.join(self.phones_dir, "phone_lm.fst")
         log_path = os.path.join(self.phones_dir, "phone_lm_training.log")
         unigram_phones = set()
-        with mfa_open(training_path, "w") as outf, self.session() as session:
-
-            workflow_id = self.get_latest_workflow_run(WorkflowType.alignment, session).id
-            pronunciation_query = session.query(Utterance)
-            allowed_bigrams = collections.defaultdict(set)
-            for utt in pronunciation_query:
-                phone_intervals = (
-                    session.query(PhoneInterval)
-                    .options(joinedload(PhoneInterval.phone))
-                    .filter(PhoneInterval.utterance_id == utt.id)
-                    .filter(PhoneInterval.workflow_id == workflow_id)
-                    .order_by(PhoneInterval.begin)
-                )
-                phones = [x.phone.kaldi_label for x in phone_intervals]
-                unigram_phones.update(phones)
-                outf.write(f'{" ".join(phones)}\n')
-                phones = ["<s>"] + phones + ["</s>"]
-                for i in range(len(phones) - 1):
-                    allowed_bigrams[phones[i]].add(phones[i + 1])
+        return_queue = mp.Queue()
+        stopped = Stopped()
+        error_dict = {}
+        procs = []
+        count_paths = []
+        allowed_bigrams = collections.defaultdict(set)
+        with self.session() as session, tqdm.tqdm(
+            total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
+        ) as pbar:
 
             with mfa_open(os.path.join(self.phones_dir, "phone_boundaries.int"), "w") as f:
                 for p in session.query(Phone):
                     f.write(f"{p.mapping_id} singleton\n")
+            for j in self.jobs:
+                args = TrainLmArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"ngram_count.{j.id}.log"),
+                    self.phones_dir,
+                    self.phone_symbol_table_path,
+                    ngram_order,
+                    self.oov_word,
+                )
+                function = TrainPhoneLmFunction(args)
+                p = KaldiProcessWorker(j.id, return_queue, function, stopped)
+                procs.append(p)
+                p.start()
+                count_paths.append(os.path.join(self.phones_dir, f"{j.id}.cnts"))
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if isinstance(result, Exception):
+                        error_dict[getattr(result, "job_name", 0)] = result
+                        continue
+                    if stopped.stop_check():
+                        continue
+                except Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                _, phones = result
+                phones = phones.split()
+                unigram_phones.update(phones)
+                phones = ["<s>"] + phones + ["</s>"]
+                for i in range(len(phones) - 1):
+                    allowed_bigrams[phones[i]].add(phones[i + 1])
+
+                pbar.update(1)
+        for p in procs:
+            p.join()
+        if error_dict:
+            for v in error_dict.values():
+                raise v
+        logger.info("Training model...")
         with mfa_open(log_path, "w") as log_file:
-            farcompile_proc = subprocess.Popen(
+            merged_file = os.path.join(self.phones_dir, "merged.cnts")
+            ngrammerge_proc = subprocess.Popen(
                 [
-                    thirdparty_binary("farcompilestrings"),
-                    "--v=2",
-                    "--token_type=symbol",
-                    f"--symbols={self.phone_symbol_table_path}",
-                    training_path,
+                    thirdparty_binary("ngrammerge"),
+                    f"--ofile={merged_file}",
+                    *count_paths,
                 ],
                 stderr=log_file,
-                stdout=subprocess.PIPE,
                 env=os.environ,
             )
-            ngramcount_proc = subprocess.Popen(
-                [
-                    thirdparty_binary("ngramcount"),
-                    "--v=2",
-                    "--require_symbols=false",
-                    "--round_to_int",
-                    f"--order={ngram_order}",
-                ],
-                stderr=log_file,
-                stdin=farcompile_proc.stdout,
-                stdout=subprocess.PIPE,
-                env=os.environ,
-            )
+            ngrammerge_proc.communicate()
             ngrammake_proc = subprocess.Popen(
-                [thirdparty_binary("ngrammake"), "--v=2", "--method=kneser_ney"],
+                [thirdparty_binary("ngrammake"), "--v=2", "--method=kneser_ney", merged_file],
                 stderr=log_file,
-                stdin=ngramcount_proc.stdout,
                 stdout=subprocess.PIPE,
                 env=os.environ,
             )
@@ -547,7 +551,7 @@ class TranscriberMixin(CorpusAligner):
             )
             log_file.write("Generating HCLGa.fst...")
             compose_hclg(
-                self.working_directory,
+                self.model_path,
                 ilabels_temp,
                 self.hclg_options["transition_scale"],
                 clg_path,
@@ -581,7 +585,28 @@ class TranscriberMixin(CorpusAligner):
             )
             convert_proc.communicate()
 
-    def transcribe(self, workflow: WorkflowType = WorkflowType.transcription) -> None:
+    def transcribe(self, workflow_type: WorkflowType = WorkflowType.transcription):
+        self.initialize_database()
+        previous_working_directory = self.working_directory
+        self.create_new_current_workflow(workflow_type)
+        if workflow_type is WorkflowType.phone_transcription:
+            self.setup_phone_lm()
+            for a in self.calc_fmllr_arguments():
+                for p in a.trans_paths.values():
+                    shutil.copyfile(
+                        p.replace(self.working_directory, previous_working_directory), p
+                    )
+        elif workflow_type is WorkflowType.per_speaker_transcription:
+            for a in self.calc_fmllr_arguments():
+                for p in a.trans_paths.values():
+                    if os.path.exists(p):
+                        shutil.copyfile(
+                            p.replace(self.working_directory, previous_working_directory), p
+                        )
+        self.acoustic_model.export_model(self.working_directory)
+        self.transcribe_utterances()
+
+    def transcribe_utterances(self) -> None:
         """
         Transcribe the corpus
 
@@ -599,53 +624,42 @@ class TranscriberMixin(CorpusAligner):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        self.log_info("Beginning transcription...")
-        previous_working_directory = self.working_directory
-        self._current_workflow = workflow.name
-        os.makedirs(self.working_log_directory, exist_ok=True)
-        self.acoustic_model.export_model(self.working_directory)
-        if workflow is WorkflowType.phone_transcription:
-            self.setup_phone_lm()
-            for a in self.calc_fmllr_arguments():
-                for p in a.trans_paths.values():
-                    shutil.copyfile(
-                        p.replace(self.working_directory, previous_working_directory), p
-                    )
-        done_path = os.path.join(self.working_directory, "done")
-        dirty_path = os.path.join(self.working_directory, "dirty")
+        logger.info("Beginning transcription...")
+        workflow = self.current_workflow
+        if workflow.done:
+            logger.info("Transcription already done, skipping!")
+            return
         try:
-            if not os.path.exists(done_path):
-                if workflow is not WorkflowType.phone_transcription:
-                    self.speaker_independent = True
+            if workflow.workflow_type is WorkflowType.transcription:
+                self.uses_speaker_adaptation = False
 
-                self.decode(workflow)
-                if (
-                    self.uses_speaker_adaptation
-                    and workflow is not WorkflowType.phone_transcription
-                ):
-                    self.log_info("Performing speaker adjusted transcription...")
-                    self.transcribe_fmllr(workflow)
-                if workflow is WorkflowType.transcription:
-                    self.lm_rescore()
-                    self.carpa_lm_rescore()
-            else:
-                self.log_info("Transcription already done, skipping!")
-            self._collect_alignments(workflow)
+            self.decode()
+            if workflow.workflow_type is WorkflowType.transcription:
+                logger.info("Performing speaker adjusted transcription...")
+                self.transcribe_fmllr()
+                self.lm_rescore()
+                self.carpa_lm_rescore()
+            self.collect_alignments()
             if self.fine_tune:
-                self.fine_tune_alignments(workflow)
+                self.fine_tune_alignments()
             if self.evaluation_mode:
                 os.makedirs(self.working_log_directory, exist_ok=True)
                 ser, wer = self.evaluate_transcriptions()
-                self.log_info(f"SER={ser:.2f}%, WER={wer:.2f}%")
+                logger.info(f"SER={ser:.2f}%, WER={wer:.2f}%")
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"done": True}
+                )
+                session.commit()
         except Exception as e:
-            with mfa_open(dirty_path, "w"):
-                pass
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == workflow.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     def evaluate_transcriptions(self) -> Tuple[float, float]:
@@ -662,9 +676,9 @@ class TranscriberMixin(CorpusAligner):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        self.log_info("Evaluating transcripts...")
+        logger.info("Evaluating transcripts...")
         ser, wer, cer = self.compute_wer()
-        self.log_info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
+        logger.info(f"SER: {100 * ser:.2f}%, WER: {100 * wer:.2f}%, CER: {100 * cer:.2f}%")
         return ser, wer
 
     def save_transcription_evaluation(self, output_directory: str) -> None:
@@ -754,7 +768,7 @@ class TranscriberMixin(CorpusAligner):
         """
         if not hasattr(self, "db_engine"):
             raise Exception("Must be used as part of a class with a database engine")
-        self.log_info("Evaluating transcripts...")
+        logger.info("Evaluating transcripts...")
         # Sentence-level measures
         incorrect = 0
         total_count = 0
@@ -839,7 +853,7 @@ class TranscriberMixin(CorpusAligner):
             "acoustic_scale": self.acoustic_scale,
         }
 
-    def decode(self, workflow: WorkflowType = WorkflowType.transcription) -> None:
+    def decode(self) -> None:
         """
         Generate lattices
 
@@ -850,71 +864,25 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.decode_arguments`
             Arguments for function
         """
-        self.log_info("Generating lattices...")
-        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
-            os.path.join(self.working_log_directory, "decode_log_like.csv"), "w"
-        ) as log_file:
-            log_file.write("utterance,log_likelihood,num_frames\n")
-            arguments = self.decode_arguments(workflow)
+        logger.info("Generating lattices...")
+        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            workflow = self.current_workflow
+            arguments = self.decode_arguments(workflow.workflow_type)
             log_likelihood_sum = 0
             log_likelihood_count = 0
-            if workflow is workflow.per_speaker_transcription:
+            if workflow.workflow_type is WorkflowType.per_speaker_transcription:
                 decode_function = PerSpeakerDecodeFunction
-            elif workflow is workflow.phone_transcription:
+            elif workflow.workflow_type is WorkflowType.phone_transcription:
                 decode_function = DecodePhoneFunction
             else:
                 decode_function = DecodeFunction
-            if GLOBAL_CONFIG.use_mp:
-                error_dict = {}
-                return_queue = mp.Queue()
-                stopped = Stopped()
-                procs = []
-                for i, args in enumerate(arguments):
-                    function = decode_function(args)
-                    p = KaldiProcessWorker(i, return_queue, function, stopped)
-                    procs.append(p)
-                    p.start()
-                while True:
-                    try:
-                        result = return_queue.get(timeout=1)
-                        if isinstance(result, Exception):
-                            error_dict[getattr(result, "job_name", 0)] = result
-                            continue
-                        if stopped.stop_check():
-                            continue
-                    except Empty:
-                        for proc in procs:
-                            if not proc.finished.stop_check():
-                                break
-                        else:
-                            break
-                        continue
-                    utterance, log_likelihood, num_frames = result
-                    log_likelihood_sum += log_likelihood
-                    log_likelihood_count += 1
-                    log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
-                    pbar.update(1)
-                for p in procs:
-                    p.join()
-                if error_dict:
-                    for v in error_dict.values():
-                        raise v
-            else:
-                for args in arguments:
-                    function = decode_function(args)
-                    for utterance, log_likelihood, num_frames in function.run():
-                        log_likelihood_sum += log_likelihood
-                        log_likelihood_count += 1
-                        log_file.write(f"{utterance},{log_likelihood},{num_frames}\n")
-                        pbar.update(1)
-
+            for _, log_likelihood, _ in run_kaldi_function(
+                decode_function, arguments, pbar.update
+            ):
+                log_likelihood_sum += log_likelihood
+                log_likelihood_count += 1
             with self.session() as session:
-                workflow = CorpusWorkflow(
-                    workflow=workflow,
-                    time_stamp=datetime.datetime.now(),
-                    score=log_likelihood_sum / log_likelihood_count,
-                )
-                session.add(workflow)
+                workflow.score = log_likelihood_sum / log_likelihood_count
                 session.commit()
 
     def calc_initial_fmllr(self) -> None:
@@ -928,7 +896,7 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.initial_fmllr_arguments`
             Arguments for function
         """
-        self.log_info("Calculating initial fMLLR transforms...")
+        logger.info("Calculating initial fMLLR transforms...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -968,9 +936,9 @@ class TranscriberMixin(CorpusAligner):
                     for _ in function.run():
                         pbar.update(1)
             if sum_errors:
-                self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+                logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
-    def lat_gen_fmllr(self, workflow: WorkflowType = WorkflowType.transcription) -> None:
+    def lat_gen_fmllr(self) -> None:
         """
         Generate lattice with fMLLR transforms
 
@@ -981,8 +949,9 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.lat_gen_fmllr_arguments`
             Arguments for function
         """
-        self.log_info("Regenerating lattices with fMLLR transforms...")
-        arguments = self.lat_gen_fmllr_arguments(workflow)
+        logger.info("Regenerating lattices with fMLLR transforms...")
+        workflow = self.current_workflow
+        arguments = self.lat_gen_fmllr_arguments(workflow.workflow_type)
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar, mfa_open(
             os.path.join(self.working_log_directory, "lat_gen_fmllr_log_like.csv"),
             "w",
@@ -1040,7 +1009,7 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.final_fmllr_arguments`
             Arguments for function
         """
-        self.log_info("Calculating final fMLLR transforms...")
+        logger.info("Calculating final fMLLR transforms...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -1080,7 +1049,7 @@ class TranscriberMixin(CorpusAligner):
                     for _ in function.run():
                         pbar.update(1)
             if sum_errors:
-                self.log_warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
+                logger.warning(f"{sum_errors} utterances had errors on calculating fMLLR.")
 
     def fmllr_rescore(self) -> None:
         """
@@ -1093,7 +1062,7 @@ class TranscriberMixin(CorpusAligner):
         :meth:`.TranscriberMixin.fmllr_rescore_arguments`
             Arguments for function
         """
-        self.log_info("Rescoring fMLLR lattices with final transform...")
+        logger.info("Rescoring fMLLR lattices with final transform...")
         sum_errors = 0
         with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -1136,9 +1105,9 @@ class TranscriberMixin(CorpusAligner):
                         sum_errors += errors
                         pbar.update(done + errors)
             if sum_errors:
-                self.log_warning(f"{errors} utterances had errors on calculating fMLLR.")
+                logger.warning(f"{errors} utterances had errors on calculating fMLLR.")
 
-    def transcribe_fmllr(self, workflow: WorkflowType = WorkflowType.transcription) -> None:
+    def transcribe_fmllr(self) -> None:
         """
         Run fMLLR estimation over initial decoding lattices and rescore
 
@@ -1158,17 +1127,14 @@ class TranscriberMixin(CorpusAligner):
             Multiprocessing helper function for each job
 
         """
-        if self.speaker_independent:
-            self.calc_initial_fmllr()
-            self.speaker_independent = False
-            self.lat_gen_fmllr(workflow)
-            self.calc_final_fmllr()
-        else:
-            for decode_args, fmllr_args in zip(
-                self.decode_arguments(workflow), self.lat_gen_fmllr_arguments(workflow)
-            ):
-                for d_id, lat_path in decode_args.lat_paths.items():
-                    os.rename(lat_path, fmllr_args.tmp_lat_paths[d_id])
+        workflow = self.current_workflow
+        self.calc_initial_fmllr()
+        self.uses_speaker_adaptation = True
+        self.lat_gen_fmllr()
+        self.calc_final_fmllr()
+        for decode_args in self.decode_arguments(workflow.workflow_type):
+            for lat_path in decode_args.lat_paths.values():
+                os.remove(lat_path)
 
         self.fmllr_rescore()
 
@@ -1183,60 +1149,69 @@ class TranscriberMixin(CorpusAligner):
         list[:class:`~montreal_forced_aligner.transcription.multiprocessing.DecodeArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
-        if workflow is WorkflowType.per_speaker_transcription:
-            arguments = [
-                PerSpeakerDecodeArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
-                    os.path.join(self.working_log_directory, f"per_speaker_decode.{j.name}.log"),
-                    self.model_directory,
-                    feat_strings[j.name],
-                    j.construct_path_dictionary(self.working_directory, "lat", "ark"),
-                    self.model_path,
-                    self.disambiguation_symbols_int_path,
-                    self.decode_options,
-                    self.tree_path,
-                    self.order,
-                    self.method,
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
                 )
-                for j in self.jobs
-                if j.has_data
-            ]
-        elif workflow is WorkflowType.phone_transcription:
-            arguments = [
-                DecodePhoneArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
-                    os.path.join(self.working_log_directory, f"decode.{j.name}.log"),
-                    j.dictionary_ids,
-                    feat_strings[j.name],
-                    self.decode_options,
-                    self.alignment_model_path,
-                    j.construct_path_dictionary(self.working_directory, "lat", "ark"),
-                    self.phone_symbol_table_path,
-                    os.path.join(self.working_directory, "HCLG_phone.fst"),
+            if workflow is WorkflowType.per_speaker_transcription:
+                arguments.append(
+                    PerSpeakerDecodeArguments(
+                        j.id,
+                        getattr(self, "db_string", ""),
+                        os.path.join(self.working_log_directory, f"per_speaker_decode.{j.id}.log"),
+                        self.model_directory,
+                        feat_strings,
+                        j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+                        self.model_path,
+                        self.disambiguation_symbols_int_path,
+                        self.decode_options,
+                        self.tree_path,
+                        self.order,
+                        self.method,
+                    )
                 )
-                for j in self.jobs
-                if j.has_data
-            ]
-        else:
-            arguments = [
-                DecodeArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
-                    os.path.join(self.working_log_directory, f"decode.{j.name}.log"),
-                    j.dictionary_ids,
-                    feat_strings[j.name],
-                    self.decode_options,
-                    self.alignment_model_path,
-                    j.construct_path_dictionary(self.working_directory, "lat", "ark"),
-                    j.construct_dictionary_dependent_paths(self.model_directory, "words", "txt"),
-                    j.construct_dictionary_dependent_paths(self.model_directory, "HCLG", "fst"),
+            elif workflow is WorkflowType.phone_transcription:
+                arguments.append(
+                    DecodePhoneArguments(
+                        j.id,
+                        getattr(self, "db_string", ""),
+                        os.path.join(self.working_log_directory, f"decode.{j.id}.log"),
+                        j.dictionary_ids,
+                        feat_strings,
+                        self.decode_options,
+                        self.alignment_model_path,
+                        j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+                        self.phone_symbol_table_path,
+                        os.path.join(self.working_directory, "HCLG_phone.fst"),
+                    )
                 )
-                for j in self.jobs
-                if j.has_data
-            ]
+            else:
+                arguments.append(
+                    DecodeArguments(
+                        j.id,
+                        getattr(self, "db_string", ""),
+                        os.path.join(self.working_log_directory, f"decode.{j.id}.log"),
+                        j.dictionary_ids,
+                        feat_strings,
+                        self.decode_options,
+                        self.alignment_model_path,
+                        j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+                        j.construct_dictionary_dependent_paths(
+                            self.model_directory, "words", "txt"
+                        ),
+                        j.construct_dictionary_dependent_paths(
+                            self.model_directory, "HCLG", "fst"
+                        ),
+                    )
+                )
         return arguments
 
     def lm_rescore_arguments(self) -> List[LmRescoreArguments]:
@@ -1250,9 +1225,9 @@ class TranscriberMixin(CorpusAligner):
         """
         return [
             LmRescoreArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"lm_rescore.{j.name}.log"),
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"lm_rescore.{j.id}.log"),
                 j.dictionary_ids,
                 self.lm_rescore_options,
                 j.construct_path_dictionary(self.working_directory, "lat", "ark"),
@@ -1261,7 +1236,6 @@ class TranscriberMixin(CorpusAligner):
                 j.construct_dictionary_dependent_paths(self.model_directory, "G.med", "fst"),
             )
             for j in self.jobs
-            if j.has_data
         ]
 
     def carpa_lm_rescore_arguments(self) -> List[CarpaLmRescoreArguments]:
@@ -1275,9 +1249,9 @@ class TranscriberMixin(CorpusAligner):
         """
         return [
             CarpaLmRescoreArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"carpa_lm_rescore.{j.name}.log"),
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"carpa_lm_rescore.{j.id}.log"),
                 j.dictionary_ids,
                 j.construct_path_dictionary(self.working_directory, "lat.rescored", "ark"),
                 j.construct_path_dictionary(self.working_directory, "lat.carpa.rescored", "ark"),
@@ -1285,7 +1259,6 @@ class TranscriberMixin(CorpusAligner):
                 j.construct_dictionary_dependent_paths(self.model_directory, "G", "carpa"),
             )
             for j in self.jobs
-            if j.has_data
         ]
 
     @property
@@ -1306,23 +1279,33 @@ class TranscriberMixin(CorpusAligner):
         list[:class:`~montreal_forced_aligner.transcription.multiprocessing.InitialFmllrArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
-        return [
-            InitialFmllrArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"initial_fmllr.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                self.model_path,
-                self.fmllr_options,
-                j.construct_path_dictionary(self.working_directory, "trans", "ark"),
-                j.construct_path_dictionary(self.working_directory, "lat", "ark"),
-                j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                InitialFmllrArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"initial_fmllr.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    self.model_path,
+                    self.fmllr_options,
+                    j.construct_path_dictionary(self.working_directory, "trans", "ark"),
+                    j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+                    j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def lat_gen_fmllr_arguments(
         self, workflow: WorkflowType = WorkflowType.transcription
@@ -1335,38 +1318,51 @@ class TranscriberMixin(CorpusAligner):
         list[:class:`~montreal_forced_aligner.transcription.multiprocessing.LatGenFmllrArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
         arguments = []
-        with self.session() as session:
-            dictionaries = session.query(Dictionary)
-            for j in self.jobs:
-                if not j.has_data:
-                    continue
-                word_paths = {}
-                hclg_paths = {}
-                if workflow is not WorkflowType.phone_transcription:
-                    for d in dictionaries:
-                        if d.id not in j.dictionary_ids:
-                            continue
-                        word_paths[d.id] = d.words_symbol_path
-                        hclg_paths[d.id] = os.path.join(self.model_directory, f"HCLG.{d.id}.fst")
-                else:
-                    hclg_paths = os.path.join(self.working_directory, "HCLG_phone.fst")
-                    word_paths = self.phone_symbol_table_path
-                arguments.append(
-                    LatGenFmllrArguments(
-                        j.name,
-                        getattr(self, "read_only_db_string", ""),
-                        os.path.join(self.working_log_directory, f"lat_gen_fmllr.{j.name}.log"),
-                        j.dictionary_ids,
-                        feat_strings[j.name],
-                        self.model_path,
-                        self.decode_options,
-                        word_paths,
-                        hclg_paths,
-                        j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
+        for j in self.jobs:
+            feat_strings = {}
+            word_paths = {}
+            hclg_paths = {}
+            if workflow is not WorkflowType.phone_transcription:
+                for d in j.dictionaries:
+                    word_paths[d.id] = d.words_symbol_path
+                    hclg_paths[d.id] = os.path.join(self.model_directory, f"HCLG.{d.id}.fst")
+
+                    feat_strings[d.id] = j.construct_feature_proc_string(
+                        self.working_directory,
+                        d.id,
+                        self.feature_options["uses_splices"],
+                        self.feature_options["splice_left_context"],
+                        self.feature_options["splice_right_context"],
+                        self.feature_options["uses_speaker_adaptation"],
                     )
+            else:
+                hclg_paths = os.path.join(self.working_directory, "HCLG_phone.fst")
+                word_paths = self.phone_symbol_table_path
+
+                feat_strings = j.construct_feature_proc_string(
+                    self.working_directory,
+                    None,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
                 )
+
+            arguments.append(
+                LatGenFmllrArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"lat_gen_fmllr.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    self.model_path,
+                    self.decode_options,
+                    word_paths,
+                    hclg_paths,
+                    j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
+                )
+            )
 
         return arguments
 
@@ -1379,23 +1375,33 @@ class TranscriberMixin(CorpusAligner):
         list[:class:`~montreal_forced_aligner.transcription.multiprocessing.FinalFmllrArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
-        return [
-            FinalFmllrArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"final_fmllr.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                self.model_path,
-                self.fmllr_options,
-                j.construct_path_dictionary(self.working_directory, "trans", "ark"),
-                j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
-                j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                FinalFmllrArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"final_fmllr.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    self.model_path,
+                    self.fmllr_options,
+                    j.construct_path_dictionary(self.working_directory, "trans", "ark"),
+                    j.construct_path_dictionary(self.data_directory, "spk2utt", "scp"),
+                    j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def fmllr_rescore_arguments(self) -> List[FmllrRescoreArguments]:
         """
@@ -1406,22 +1412,32 @@ class TranscriberMixin(CorpusAligner):
         list[:class:`~montreal_forced_aligner.transcription.multiprocessing.FmllrRescoreArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
-        return [
-            FmllrRescoreArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"fmllr_rescore.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                self.model_path,
-                self.fmllr_options,
-                j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
-                j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                FmllrRescoreArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"fmllr_rescore.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    self.model_path,
+                    self.fmllr_options,
+                    j.construct_path_dictionary(self.working_directory, "lat.tmp", "ark"),
+                    j.construct_path_dictionary(self.working_directory, "lat", "ark"),
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
 
 class Transcriber(TranscriberMixin, TopLevelMfaWorker):
@@ -1468,6 +1484,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         super(Transcriber, self).__init__(**kwargs)
         self.language_model = LanguageModel(language_model_path, self.model_directory)
         self.output_type = output_type
+        self.ignore_empty_utterances = False
 
     def create_hclgs_arguments(self) -> Dict[int, CreateHclgArguments]:
         """
@@ -1483,7 +1500,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             for d in session.query(Dictionary):
                 args[d.id] = CreateHclgArguments(
                     d.id,
-                    getattr(self, "read_only_db_string", ""),
+                    getattr(self, "db_string", ""),
                     os.path.join(self.model_directory, "log", f"hclg.{d.id}.log"),
                     self.model_directory,
                     os.path.join(self.model_directory, f"{{file_name}}.{d.id}.fst"),
@@ -1508,7 +1525,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
         dict_arguments = self.create_hclgs_arguments()
         dict_arguments = list(dict_arguments.values())
-        self.log_info("Generating HCLG.fst...")
+        logger.info("Generating HCLG.fst...")
         if GLOBAL_CONFIG.use_mp:
             error_dict = {}
             return_queue = mp.Queue()
@@ -1537,9 +1554,9 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                         continue
                     result, hclg_path = result
                     if result:
-                        self.log_debug(f"Done generating {hclg_path}!")
+                        logger.debug(f"Done generating {hclg_path}!")
                     else:
-                        self.log_warning(f"There was an error in generating {hclg_path}")
+                        logger.warning(f"There was an error in generating {hclg_path}")
                     pbar.update(1)
             for p in procs:
                 p.join()
@@ -1552,9 +1569,9 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 with tqdm.tqdm(total=len(dict_arguments), disable=GLOBAL_CONFIG.quiet) as pbar:
                     for result, hclg_path in function.run():
                         if result:
-                            self.log_debug(f"Done generating {hclg_path}!")
+                            logger.debug(f"Done generating {hclg_path}!")
                         else:
-                            self.log_warning(f"There was an error in generating {hclg_path}")
+                            logger.warning(f"There was an error in generating {hclg_path}")
                         pbar.update(1)
         error_logs = []
         for arg in dict_arguments:
@@ -1574,7 +1591,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         """
         done_path = os.path.join(self.model_directory, "done")
         if os.path.exists(done_path):
-            self.log_info("Graph construction already done, skipping!")
+            logger.info("Graph construction already done, skipping!")
         log_dir = os.path.join(self.model_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
         self.write_lexicon_information(write_disambiguation=True)
@@ -1587,11 +1604,11 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         small_arpa_path = self.language_model.small_arpa_path
         medium_arpa_path = self.language_model.medium_arpa_path
         if not os.path.exists(small_arpa_path) or not os.path.exists(medium_arpa_path):
-            self.log_warning(
+            logger.warning(
                 "Creating small and medium language models from scratch, this may take some time. "
                 "Running `mfa train_lm` on the ARPA file will remove this warning."
             )
-            self.log_info("Parsing large ngram model...")
+            logger.info("Parsing large ngram model...")
             mod_path = os.path.join(self.model_directory, "base_lm.mod")
             new_carpa_path = os.path.join(self.model_directory, "base_lm.arpa")
             with mfa_open(big_arpa_path, "r") as inf, mfa_open(new_carpa_path, "w") as outf:
@@ -1601,7 +1618,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             subprocess.call(["ngramread", "--ARPA", big_arpa_path, mod_path])
 
             if not os.path.exists(small_arpa_path):
-                self.log_info(
+                logger.info(
                     "Generating small model from the large ARPA with a pruning threshold of 3e-7"
                 )
                 prune_thresh_small = 0.0000003
@@ -1618,7 +1635,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 subprocess.call(["ngramprint", "--ARPA", small_mod_path, small_arpa_path])
 
             if not os.path.exists(medium_arpa_path):
-                self.log_info(
+                logger.info(
                     "Generating medium model from the large ARPA with a pruning threshold of 1e-7"
                 )
                 prune_thresh_medium = 0.0000001
@@ -1640,11 +1657,8 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
             with mfa_open(dirty_path, "w"):
                 pass
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     @classmethod
@@ -1693,16 +1707,12 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
 
     def setup(self) -> None:
         """Set up transcription"""
+        super().setup()
         if self.initialized:
             return
+        self.create_new_current_workflow(WorkflowType.transcription)
         begin = time.time()
         os.makedirs(self.working_log_directory, exist_ok=True)
-        check = self.check_previous_run()
-        if check:
-            self.log_debug(
-                "There were some differences in the current run compared to the last one. "
-                "This may cause issues, run with --clean, if you hit an error."
-            )
         self.load_corpus()
         dirty_path = os.path.join(self.working_directory, "dirty")
         if os.path.exists(dirty_path):
@@ -1717,23 +1727,17 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
         self.acoustic_model.validate(self)
         self.acoustic_model.export_model(self.model_directory)
         self.acoustic_model.export_model(self.working_directory)
-        logger = logging.getLogger(self.identifier)
-        self.acoustic_model.log_details(logger)
+        self.acoustic_model.log_details()
         self.create_decoding_graph()
         self.initialized = True
-        self.log_debug(f"Setup for transcription in {time.time() - begin} seconds")
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Transcriber identifier"""
-        return "transcriber"
+        logger.debug(f"Setup for transcription in {time.time() - begin} seconds")
 
     def export_transcriptions(self) -> None:
         """Export transcriptions"""
         with self.session() as session:
             files = session.query(File).options(
                 selectinload(File.utterances),
-                selectinload(File.speakers).selectinload(SpeakerOrdering.speaker),
+                selectinload(File.speakers),
                 joinedload(File.sound_file, innerjoin=True).load_only(SoundFile.duration),
             )
             for file in files:
@@ -1741,7 +1745,7 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                 duration = file.sound_file.duration
 
                 if utterance_count == 0:
-                    self.log_debug(f"Could not find any utterances for {file.name}")
+                    logger.debug(f"Could not find any utterances for {file.name}")
                 elif (
                     utterance_count == 1
                     and file.utterances[0].begin == 0
@@ -1762,13 +1766,13 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                         with mfa_open(output_path, "w") as f:
                             f.write(intervals[0].label)
                 else:
-                    self.export_textgrids(workflow=WorkflowType.transcription)
+                    self.export_textgrids()
 
                     tg = textgrid.Textgrid()
                     tg.minTimestamp = 0
                     tg.maxTimestamp = duration
                     for speaker in file.speakers:
-                        speaker = speaker.speaker.name
+                        speaker = speaker.name
                         intervals = data[speaker]
                         tier = textgrid.IntervalTier(
                             speaker, [x.to_tg_interval() for x in intervals], minT=0, maxT=duration

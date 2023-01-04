@@ -7,6 +7,7 @@ import mock
 import pytest
 import yaml
 
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.helper import mfa_open
 
 
@@ -59,9 +60,6 @@ def language_model_dir(test_dir):
 
 @pytest.fixture(scope="session")
 def generated_dir(test_dir):
-    from montreal_forced_aligner.command_line.utils import check_databases
-
-    check_databases()
     generated = os.path.join(test_dir, "generated")
     shutil.rmtree(generated, ignore_errors=True)
     if not os.path.exists(generated):
@@ -71,13 +69,14 @@ def generated_dir(test_dir):
 
 @pytest.fixture(scope="session")
 def global_config():
-    from montreal_forced_aligner.config import GLOBAL_CONFIG
 
     GLOBAL_CONFIG.current_profile_name = "test"
     GLOBAL_CONFIG.current_profile.clean = True
-    GLOBAL_CONFIG.current_profile.database_backend = "sqlite"
+    GLOBAL_CONFIG.current_profile.database_backend = "psycopg2"
+    GLOBAL_CONFIG.current_profile.database_port = 65432
     GLOBAL_CONFIG.current_profile.debug = True
     GLOBAL_CONFIG.current_profile.verbose = True
+    GLOBAL_CONFIG.current_profile.num_jobs = 2
     GLOBAL_CONFIG.current_profile.use_mp = False
     GLOBAL_CONFIG.save()
     yield GLOBAL_CONFIG
@@ -89,6 +88,24 @@ def temp_dir(generated_dir, global_config):
     global_config.current_profile.temporary_directory = temp_dir
     global_config.save()
     yield temp_dir
+
+
+@pytest.fixture(scope="function")
+def db_setup(temp_dir, global_config, request):
+    from montreal_forced_aligner.command_line.utils import (
+        check_databases,
+        cleanup_databases,
+        remove_databases,
+    )
+
+    check_databases()
+
+    def fin():
+        cleanup_databases()
+        remove_databases()
+
+    yield True
+    request.addfinalizer(fin)
 
 
 @pytest.fixture(scope="session")
@@ -199,7 +216,6 @@ def english_uk_mfa_dictionary(model_manager):
 
 @pytest.fixture(scope="session")
 def english_ivector_model(model_manager):
-    return None
     if not model_manager.has_local_model("ivector", "english_ivector"):
         model_manager.download_model("ivector", "english_ivector")
     return "english_ivector"
@@ -249,7 +265,7 @@ def mono_align_model_path(output_model_dir):
     return os.path.join(output_model_dir, "mono_model.zip")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_basic")
     os.makedirs(path, exist_ok=True)
@@ -274,7 +290,55 @@ def basic_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
+def combined_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
+    path = os.path.join(corpus_root_dir, "test_combined")
+    os.makedirs(path, exist_ok=True)
+    names = [
+        ("michael", ["acoustic_corpus.wav"]),
+        ("sickmichael", ["cold_corpus.wav", "cold_corpus3.wav"]),
+        (
+            "speaker",
+            [
+                "multilingual_ipa.flac",
+                "multilingual_ipa_2.flac",
+                "multilingual_ipa_3.flac",
+                "multilingual_ipa_4.flac",
+                "multilingual_ipa_5.flac",
+            ],
+        ),
+        (
+            "speaker_two",
+            [
+                "multilingual_ipa_us.flac",
+                "multilingual_ipa_us_2.flac",
+                "multilingual_ipa_us_3.flac",
+                "multilingual_ipa_us_4.flac",
+                "multilingual_ipa_us_5.flac",
+            ],
+        ),
+        (
+            "speaker_three",
+            [
+                "common_voice_en_22058264.mp3",
+                "common_voice_en_22058266.mp3",
+                "common_voice_en_22058267.mp3",
+            ],
+        ),
+    ]
+    for s, files in names:
+        s_dir = os.path.join(path, s)
+        os.makedirs(s_dir, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(wav_dir, name), os.path.join(s_dir, name))
+            text_name = name.split(".")[0] + ".lab"
+            if not os.path.exists(os.path.join(lab_dir, text_name)):
+                text_name = name.split(".")[0] + ".txt"
+            shutil.copyfile(os.path.join(lab_dir, text_name), os.path.join(s_dir, text_name))
+    return path
+
+
+@pytest.fixture()
 def duplicated_name_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_duplicated")
     os.makedirs(path, exist_ok=True)
@@ -309,7 +373,7 @@ def basic_reference_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def xsampa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_xsampa")
     os.makedirs(path, exist_ok=True)
@@ -323,7 +387,7 @@ def xsampa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_split")
     audio_path = os.path.join(path, "audio")
@@ -369,7 +433,7 @@ def basic_split_dir(corpus_root_dir, wav_dir, lab_dir, textgrid_dir):
     return audio_path, text_path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_multilingual")
     os.makedirs(path, exist_ok=True)
@@ -408,7 +472,7 @@ def multilingual_ipa_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_multilingual_tg")
     os.makedirs(path, exist_ok=True)
@@ -448,7 +512,7 @@ def multilingual_ipa_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def weird_words_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_weird_words")
     os.makedirs(path, exist_ok=True)
@@ -460,7 +524,7 @@ def weird_words_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_punctuated")
     os.makedirs(path, exist_ok=True)
@@ -477,7 +541,7 @@ def punctuated_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def swedish_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_swedish")
     os.makedirs(path, exist_ok=True)
@@ -505,7 +569,7 @@ def swedish_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_basic_txt")
     os.makedirs(path, exist_ok=True)
@@ -523,7 +587,7 @@ def basic_corpus_txt_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def extra_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_extra")
     os.makedirs(path, exist_ok=True)
@@ -533,7 +597,7 @@ def extra_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def transcribe_corpus_24bit_dir(corpus_root_dir, wav_dir):
     path = os.path.join(corpus_root_dir, "test_24bit")
     os.makedirs(path, exist_ok=True)
@@ -544,7 +608,7 @@ def transcribe_corpus_24bit_dir(corpus_root_dir, wav_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_stereo")
     os.makedirs(path, exist_ok=True)
@@ -556,7 +620,7 @@ def stereo_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def mp3_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_cv_mp3")
     os.makedirs(path, exist_ok=True)
@@ -567,7 +631,7 @@ def mp3_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def opus_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_mls_opus")
     os.makedirs(path, exist_ok=True)
@@ -578,7 +642,7 @@ def opus_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def stereo_corpus_short_tg_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_stereo_short_tg")
     os.makedirs(path, exist_ok=True)
@@ -591,7 +655,7 @@ def stereo_corpus_short_tg_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def flac_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     path = os.path.join(corpus_root_dir, "test_flac_corpus")
     os.makedirs(path, exist_ok=True)
@@ -601,7 +665,7 @@ def flac_corpus_dir(corpus_root_dir, wav_dir, lab_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def flac_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_flac_tg_corpus")
     os.makedirs(path, exist_ok=True)
@@ -613,7 +677,7 @@ def flac_tg_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def shortsegments_corpus_dir(corpus_root_dir, wav_dir, textgrid_dir):
     path = os.path.join(corpus_root_dir, "test_short_segments")
     os.makedirs(path, exist_ok=True)
@@ -673,6 +737,16 @@ def vietnamese_dict_path(dict_dir):
 @pytest.fixture(scope="session")
 def acoustic_dict_path(dict_dir):
     return os.path.join(dict_dir, "test_acoustic.txt")
+
+
+@pytest.fixture(scope="session")
+def rules_path(config_directory):
+    return os.path.join(config_directory, "test_rules.yaml")
+
+
+@pytest.fixture(scope="session")
+def groups_path(config_directory):
+    return os.path.join(config_directory, "test_groups.yaml")
 
 
 @pytest.fixture(scope="session")

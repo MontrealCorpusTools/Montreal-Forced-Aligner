@@ -1,6 +1,7 @@
 """Command line functions for interacting with MFA models"""
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import typing
@@ -17,7 +18,6 @@ from montreal_forced_aligner.exceptions import (
     PretrainedModelNotFoundError,
 )
 from montreal_forced_aligner.models import MODEL_TYPES, Archive, ModelManager, guess_model_type
-from montreal_forced_aligner.utils import configure_logger
 
 __all__ = [
     "model_cli",
@@ -89,11 +89,11 @@ def inspect_model_cli(model_type: str, model: str) -> None:
     """
     from montreal_forced_aligner.config import GLOBAL_CONFIG, get_temporary_directory
 
-    GLOBAL_CONFIG.current_profile.database_backend = "sqlite"
     GLOBAL_CONFIG.current_profile.clean = True
     GLOBAL_CONFIG.current_profile.temporary_directory = os.path.join(
         get_temporary_directory(), "model_inspect"
     )
+    shutil.rmtree(GLOBAL_CONFIG.current_profile.temporary_directory, ignore_errors=True)
     if model_type and model_type not in MODEL_TYPES:
         raise ModelTypeNotSupportedError(model_type, MODEL_TYPES)
     elif model_type:
@@ -161,7 +161,7 @@ def save_model_cli(path: str, model_type: str, name: str, overwrite: bool) -> No
     model_type: str
         Type of model
     """
-    logger = configure_logger("save_model")
+    logger = logging.getLogger("mfa")
     model_name = os.path.splitext(os.path.basename(path))[0]
     model_class = MODEL_TYPES[model_type]
     if name:

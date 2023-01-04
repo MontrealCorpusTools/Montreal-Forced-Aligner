@@ -374,3 +374,4 @@ class OnlineAlignmentFunction(KaldiFunction):
                         log_likelihood = float(line[-1])
                 yield utterance, word_intervals, phone_intervals, phone_word_mapping, log_likelihood
             self.check_call(ctm_proc)
+        db_engine.dispose()

@@ -91,6 +91,8 @@ def load_command_history() -> List[Dict[str, Any]]:
     if os.path.exists(path):
         with mfa_open(path, "r") as f:
             history = yaml.safe_load(f)
+            if not history:
+                history = []
     for h in history:
         h["command"] = re.sub(r"^\S+.py ", "mfa ", h["command"])
     return history
@@ -132,7 +134,9 @@ class MfaProfile:
     terminal_colors: bool = True
     cleanup_textgrids: bool = True
     detect_phone_set: bool = False
-    database_backend: str = "sqlite"
+    database_backend: str = "psycopg2"
+    database_port: int = 5432
+    plda_dimension: int = 50
     num_jobs: int = 3
     blas_num_threads: int = 1
     use_mp: bool = True
@@ -156,6 +160,8 @@ class MfaProfile:
         for k, v in data.items():
             if k == "temp_directory":
                 k = "temporary_directory"
+            if v is None:
+                continue
             if hasattr(self, k):
                 setattr(self, k, v)
 
@@ -169,7 +175,7 @@ class MfaConfiguration:
         self.current_profile_name = os.getenv(MFA_PROFILE_VARIABLE, "global")
         self.config_path = generate_config_path()
         self.global_profile = MfaProfile()
-        self.profiles = {}
+        self.profiles: Dict[str, MfaProfile] = {}
         self.profiles["global"] = self.global_profile
         if not os.path.exists(self.config_path):
             self.save()

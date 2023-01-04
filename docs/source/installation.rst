@@ -18,6 +18,15 @@ All platforms
 
 3. Ensure you're in the new environment created (:code:`conda activate aligner`)
 
+Installing SpeechBrain
+----------------------
+
+1. Ensure you are in the conda environment created above
+2. Install PyTorch
+   a. CPU: :code:`conda install pytorch torchvision torchaudio cpuonly -c pytorch`
+   b. GPU: :code:`conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia`
+3. Install Speechbrain via pip: :code:`pip install speechbrain`
+
 Upgrading from non-conda version
 ================================
 

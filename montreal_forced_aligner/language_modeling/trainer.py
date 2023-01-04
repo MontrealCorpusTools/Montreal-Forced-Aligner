@@ -1,20 +1,33 @@
 """Classes for training language models"""
 from __future__ import annotations
 
+import logging
+import multiprocessing as mp
 import os
 import re
 import subprocess
-from typing import TYPE_CHECKING, Generator
+import typing
+from queue import Empty
+
+import sqlalchemy
+import tqdm
 
 from montreal_forced_aligner.abc import TopLevelMfaWorker, TrainerMixin
+from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.corpus.text_corpus import MfaWorker, TextCorpusMixin
-from montreal_forced_aligner.db import Dictionary, Utterance
+from montreal_forced_aligner.data import WordType, WorkflowType
+from montreal_forced_aligner.db import Dictionary, Word
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.helper import mfa_open
+from montreal_forced_aligner.language_modeling.multiprocessing import (
+    TrainLmArguments,
+    TrainLmFunction,
+)
 from montreal_forced_aligner.models import LanguageModel
+from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
 
 __all__ = [
@@ -25,6 +38,8 @@ __all__ = [
     "MfaLmCorpusTrainer",
     "MfaLmDictionaryCorpusTrainer",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
@@ -105,7 +120,7 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
 
     def prune_large_language_model(self) -> None:
         """Prune the large language model into small and medium versions"""
-        self.log_info("Pruning large ngram model to medium and small versions...")
+        logger.info("Pruning large ngram model to medium and small versions...")
         small_mod_path = self.mod_path.replace(".mod", "_small.mod")
         med_mod_path = self.mod_path.replace(".mod", "_med.mod")
         subprocess.check_call(
@@ -118,10 +133,21 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
             ]
         )
         assert os.path.exists(med_mod_path)
-        subprocess.check_call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
+        if getattr(self, "sym_path", None):
+            subprocess.check_call(
+                [
+                    "ngramprint",
+                    "--ARPA",
+                    f"--symbols={self.sym_path}",
+                    med_mod_path,
+                    self.medium_arpa_path,
+                ]
+            )
+        else:
+            subprocess.check_call(["ngramprint", "--ARPA", med_mod_path, self.medium_arpa_path])
         assert os.path.exists(self.medium_arpa_path)
 
-        self.log_debug("Finished pruning medium arpa!")
+        logger.debug("Finished pruning medium arpa!")
         subprocess.check_call(
             [
                 "ngramshrink",
@@ -132,11 +158,22 @@ class LmTrainerMixin(DictionaryMixin, TrainerMixin, MfaWorker):
             ]
         )
         assert os.path.exists(small_mod_path)
-        subprocess.check_call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
+        if getattr(self, "sym_path", None):
+            subprocess.check_call(
+                [
+                    "ngramprint",
+                    "--ARPA",
+                    f"--symbols={self.sym_path}",
+                    small_mod_path,
+                    self.small_arpa_path,
+                ]
+            )
+        else:
+            subprocess.check_call(["ngramprint", "--ARPA", small_mod_path, self.small_arpa_path])
         assert os.path.exists(self.small_arpa_path)
 
-        self.log_debug("Finished pruning small arpa!")
-        self.log_info("Done pruning!")
+        logger.debug("Finished pruning small arpa!")
+        logger.info("Done pruning!")
 
     def export_model(self, output_model_path: str) -> None:
         """
@@ -183,9 +220,8 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
         For top-level parameters
     """
 
-    def __init__(self, count_threshold: int = 1, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.count_threshold = count_threshold
         self.large_perplexity = None
         self.medium_perplexity = None
         self.small_perplexity = None
@@ -217,6 +253,19 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
 
         from ..utils import get_mfa_version
 
+        with self.session() as session:
+            word_count = (
+                session.query(sqlalchemy.func.sum(Word.count))
+                .filter(Word.word_type == WordType.speech)
+                .scalar()
+            )
+            oov_count = (
+                session.query(sqlalchemy.func.sum(Word.count))
+                .filter(Word.word_type == WordType.oov)
+                .scalar()
+            )
+            if not oov_count:
+                oov_count = 0
         return {
             "architecture": "ngram",
             "order": self.order,
@@ -224,8 +273,8 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             "train_date": str(datetime.now()),
             "version": get_mfa_version(),
             "training": {
-                "num_words": sum(self.word_counts.values()),
-                "num_oovs": sum(self.oovs_found.values()),
+                "num_words": word_count,
+                "num_oovs": oov_count,
             },
             "evaluation_training": {
                 "large_perplexity": self.large_perplexity,
@@ -276,8 +325,8 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
             self.num_sentences = num_sentences
             self.num_words = num_words
             self.num_oovs = num_oovs
-            self.log_info(f"{num_sentences}, {num_words}, {num_oovs}")
-            self.log_info(f"Perplexity of large model: {perplexity}")
+            logger.info(f"{num_sentences}, {num_words}, {num_oovs}")
+            logger.info(f"Perplexity of large model: {perplexity}")
 
             perplexity_proc = subprocess.Popen(
                 [
@@ -298,7 +347,7 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 if m:
                     perplexity = float(m.group("perplexity"))
             self.medium_perplexity = perplexity
-            self.log_info(f"Perplexity of medium model: {perplexity}")
+            logger.info(f"Perplexity of medium model: {perplexity}")
             perplexity_proc = subprocess.Popen(
                 [
                     "ngramperplexity",
@@ -318,61 +367,92 @@ class LmCorpusTrainerMixin(LmTrainerMixin, TextCorpusMixin):
                 if m:
                     perplexity = float(m.group("perplexity"))
             self.small_perplexity = perplexity
-            self.log_info(f"Perplexity of small model: {perplexity}")
-
-    def normalized_text_iter(self, min_count: int = 1) -> Generator:
-        """
-        Construct an iterator over the normalized texts in the corpus
-
-        Parameters
-        ----------
-        min_count: int
-            Minimum word count to include in the output, otherwise will use OOV code, defaults to 1
-
-        Yields
-        -------
-        str
-            Normalized text
-        """
-        unk_words = {k for k, v in self.word_counts.items() if v <= min_count} | self.specials_set
-
-        with self.session() as session:
-            utterances = session.query(Utterance.normalized_text, Utterance.text)
-            for (normalized_text, text) in utterances:
-                if not normalized_text:
-                    normalized_text = text
-                text = normalized_text.split()
-                yield " ".join(x if x not in unk_words else self.oov_word for x in text)
+            logger.info(f"Perplexity of small model: {perplexity}")
 
     def train_large_lm(self) -> None:
         """Train a large language model"""
-        self.log_info("Beginning training large ngram model...")
-        subprocess.check_call(
-            [
-                "farcompilestrings",
-                "--fst_type=compact",
-                f"--unknown_symbol={self.oov_word}",
-                f"--symbols={self.sym_path}",
-                "--keep_symbols",
-                self.training_path,
-                self.far_path,
-            ]
-        )
-        assert os.path.exists(self.far_path)
-        subprocess.check_call(
-            ["ngramcount", f"--order={self.order}", self.far_path, self.cnts_path]
-        )
+        logger.info("Beginning training large ngram model...")
+        log_path = os.path.join(self.working_log_directory, "lm_training.log")
+        return_queue = mp.Queue()
+        stopped = Stopped()
+        error_dict = {}
+        procs = []
+        count_paths = []
 
-        assert os.path.exists(self.cnts_path)
-        subprocess.check_call(
-            ["ngrammake", f"--method={self.method}", self.cnts_path, self.mod_path]
-        )
-        assert os.path.exists(self.mod_path)
-        self.log_info("Done!")
-        subprocess.check_call(["ngramprint", "--ARPA", self.mod_path, self.large_arpa_path])
-        assert os.path.exists(self.large_arpa_path)
+        for j in self.jobs:
+            args = TrainLmArguments(
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"ngram_count.{j.id}.log"),
+                self.working_directory,
+                self.sym_path,
+                self.order,
+                self.oov_word,
+            )
+            function = TrainLmFunction(args)
+            p = KaldiProcessWorker(j.id, return_queue, function, stopped)
+            procs.append(p)
+            p.start()
+            count_paths.append(os.path.join(self.working_directory, f"{j.id}.cnts"))
+        with tqdm.tqdm(total=self.num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
+            while True:
+                try:
+                    result = return_queue.get(timeout=1)
+                    if isinstance(result, Exception):
+                        error_dict[getattr(result, "job_name", 0)] = result
+                        continue
+                    if stopped.stop_check():
+                        continue
+                except Empty:
+                    for proc in procs:
+                        if not proc.finished.stop_check():
+                            break
+                    else:
+                        break
+                    continue
+                pbar.update(1)
+        logger.info("Training model...")
+        with mfa_open(log_path, "w") as log_file:
+            merged_file = os.path.join(self.working_directory, "merged.cnts")
+            if len(count_paths) > 1:
+                ngrammerge_proc = subprocess.Popen(
+                    [
+                        thirdparty_binary("ngrammerge"),
+                        f"--ofile={merged_file}",
+                        *count_paths,
+                    ],
+                    stderr=log_file,
+                    env=os.environ,
+                )
+                ngrammerge_proc.communicate()
+            else:
+                os.rename(count_paths[0], merged_file)
+            ngrammake_proc = subprocess.Popen(
+                [
+                    thirdparty_binary("ngrammake"),
+                    "--v=2",
+                    "--method=kneser_ney",
+                    merged_file,
+                    self.mod_path,
+                ],
+                stderr=log_file,
+                env=os.environ,
+            )
+            ngrammake_proc.communicate()
+            subprocess.check_call(
+                [
+                    "ngramprint",
+                    "--ARPA",
+                    f"--symbols={self.sym_path}",
+                    self.mod_path,
+                    self.large_arpa_path,
+                ],
+                stderr=log_file,
+                stdout=log_file,
+            )
+            assert os.path.exists(self.large_arpa_path)
 
-        self.log_info("Large ngram model created!")
+        logger.info("Large ngram model created!")
 
     def train(self) -> None:
         """
@@ -421,8 +501,13 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         self.keep_case = keep_case
         super().__init__(**kwargs)
 
+    @property
+    def working_directory(self) -> str:
+        return os.path.join(self.output_directory, self.data_source_identifier)
+
     def setup(self) -> None:
         """Set up language model training"""
+        super().setup()
         os.makedirs(self.working_log_directory, exist_ok=True)
         with mfa_open(self.arpa_path, "r") as inf, mfa_open(
             self.large_arpa_path, "w", newline=""
@@ -439,11 +524,6 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
         return ""
 
     @property
-    def workflow_identifier(self) -> str:
-        """Workflow identifier"""
-        return "train_lm_from_arpa"
-
-    @property
     def data_source_identifier(self) -> str:
         """Data source identifier"""
         return os.path.splitext(os.path.basename(self.arpa_path))[0]
@@ -455,7 +535,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
 
     def train(self) -> None:
         """Convert the arpa model to MFA format"""
-        self.log_info("Parsing large ngram model...")
+        logger.info("Parsing large ngram model...")
 
         with mfa_open(os.path.join(self.working_log_directory, "read.log"), "w") as log_file:
             subprocess.check_call(
@@ -463,7 +543,7 @@ class MfaLmArpaTrainer(LmTrainerMixin, TopLevelMfaWorker):
             )
         assert os.path.exists(self.mod_path)
 
-        self.log_info("Large ngram model parsed!")
+        logger.info("Large ngram model parsed!")
 
         self.prune_large_language_model()
 
@@ -482,8 +562,10 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
 
     def setup(self) -> None:
         """Set up language model training"""
+        super().setup()
         if self.initialized:
             return
+        self.create_new_current_workflow(WorkflowType.language_model_training)
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.dictionary_setup()
         self._load_corpus()
@@ -491,18 +573,9 @@ class MfaLmDictionaryCorpusTrainer(LmDictionaryCorpusTrainerMixin, TopLevelMfaWo
         self.normalize_text()
         self.write_lexicon_information()
 
-        with mfa_open(self.training_path, "w") as f:
-            for text in self.normalized_text_iter(self.count_threshold):
-                f.write(f"{text}\n")
-
         self.save_oovs_found(self.working_directory)
 
         self.initialized = True
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Language model trainer identifier"""
-        return "train_lm_corpus_dictionary"
 
 
 class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
@@ -512,23 +585,19 @@ class MfaLmCorpusTrainer(LmCorpusTrainerMixin, TopLevelMfaWorker):
 
     def setup(self) -> None:
         """Set up language model training"""
+        super().setup()
         if self.initialized:
             return
+        self.create_new_current_workflow(WorkflowType.language_model_training)
         os.makedirs(self.working_log_directory, exist_ok=True)
         self._load_corpus()
+        self._create_dummy_dictionary()
         self.initialize_jobs()
         self.normalize_text()
+        with mfa_open(self.sym_path, "w") as f, self.session() as session:
+            words = session.query(Word.mapping_id, Word.word)
+            f.write(f"{self.silence_word} 0\n")
+            for m_id, w in words:
+                f.write(f"{w} {m_id}\n")
 
-        with mfa_open(self.training_path, "w") as f:
-            for text in self.normalized_text_iter(self.count_threshold):
-                f.write(f"{text}\n")
-
-        subprocess.call(
-            ["ngramsymbols", f"--OOV_symbol={self.oov_word}", self.training_path, self.sym_path]
-        )
         self.initialized = True
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Language model trainer identifier"""
-        return "train_lm_corpus"

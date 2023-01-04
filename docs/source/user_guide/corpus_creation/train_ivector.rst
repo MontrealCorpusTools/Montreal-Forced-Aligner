@@ -3,7 +3,7 @@
 Train an ivector extractor ``(mfa train_ivector)``
 ==================================================
 
-The Montreal Forced Aligner can train :term:`ivector extractors` using an acoustic model for generating alignments.  As part of this training process, a classifier is built in that can be used as part of :ref:`classify_speakers`.
+The Montreal Forced Aligner can train :term:`ivector extractors` using an acoustic model for generating alignments.  As part of this training process, a classifier is built in that can be used as part of :ref:`diarize_speakers`.
 
 .. warning::
 

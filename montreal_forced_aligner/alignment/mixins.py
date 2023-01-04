@@ -24,10 +24,10 @@ from montreal_forced_aligner.alignment.multiprocessing import (
     compile_information_func,
 )
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import (
     CorpusWorkflow,
     File,
+    Job,
     PhoneInterval,
     Speaker,
     Utterance,
@@ -40,7 +40,9 @@ from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, run_mp, r
 
 if TYPE_CHECKING:
     from montreal_forced_aligner.abc import MetaDict
-    from montreal_forced_aligner.corpus.multiprocessing import Job
+
+
+logger = logging.getLogger("mfa")
 
 
 class AlignMixin(DictionaryMixin):
@@ -130,22 +132,18 @@ class AlignMixin(DictionaryMixin):
             Arguments for processing
         """
         args = []
+        model_path = self.model_path
+        if not os.path.exists(model_path):
+            model_path = self.alignment_model_path
         for j in self.jobs:
-            if not j.has_data:
-                continue
-            model_path = self.model_path
-            if not os.path.exists(model_path):
-                model_path = self.alignment_model_path
             args.append(
                 CompileTrainGraphsArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
-                    os.path.join(self.working_log_directory, f"compile_train_graphs.{j.name}.log"),
-                    j.dictionary_ids,
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"compile_train_graphs.{j.id}.log"),
                     os.path.join(self.working_directory, "tree"),
                     model_path,
-                    j.construct_path_dictionary(self.data_directory, "text", "int.scp"),
-                    j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
+                    getattr(self, "use_g2p", False),
                 )
             )
         return args
@@ -160,30 +158,29 @@ class AlignMixin(DictionaryMixin):
             Arguments for processing
         """
         args = []
-        feat_strings = self.construct_feature_proc_strings()
         iteration = getattr(self, "iteration", None)
         for j in self.jobs:
-            if not j.has_data:
-                continue
             if iteration is not None:
                 log_path = os.path.join(
-                    self.working_log_directory, f"align.{iteration}.{j.name}.log"
+                    self.working_log_directory, f"align.{iteration}.{j.id}.log"
                 )
             else:
-                log_path = os.path.join(self.working_log_directory, f"align.{j.name}.log")
-            if not getattr(self, "speaker_independent", True):
+                log_path = os.path.join(self.working_log_directory, f"align.{j.id}.log")
+            if getattr(self, "uses_speaker_adaptation", False):
                 log_path = log_path.replace(".log", ".fmllr.log")
             args.append(
                 AlignArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
+                    j.id,
+                    getattr(self, "db_string", ""),
                     log_path,
-                    j.dictionary_ids,
-                    j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
-                    feat_strings[j.name],
                     self.alignment_model_path,
-                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                    self.align_options,
+                    self.decode_options
+                    if self.phone_confidence
+                    and getattr(self, "uses_speaker_adaptation", False)
+                    and hasattr(self, "decode_options")
+                    else self.align_options,
+                    self.feature_options,
+                    self.phone_confidence,
                 )
             )
         return args
@@ -198,19 +195,27 @@ class AlignMixin(DictionaryMixin):
             Arguments for processing
         """
         args = []
-        feat_strings = self.construct_feature_proc_strings()
         for j in self.jobs:
-            if not j.has_data:
-                continue
-            log_path = os.path.join(self.working_log_directory, f"phone_confidence.{j.name}.log")
+            log_path = os.path.join(self.working_log_directory, f"phone_confidence.{j.id}.log")
+
+            feat_strings = {}
+            for d in j.dictionaries:
+                feat_strings[d.id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d.id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
             args.append(
                 PhoneConfidenceArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
+                    j.id,
+                    getattr(self, "db_string", ""),
                     log_path,
                     self.model_path,
                     self.phone_pdf_counts_path,
-                    feat_strings[j.name],
+                    feat_strings,
                 )
             )
         return args
@@ -227,19 +232,17 @@ class AlignMixin(DictionaryMixin):
         args = []
         iteration = getattr(self, "iteration", None)
         for j in self.jobs:
-            if not j.has_data:
-                continue
             if iteration is not None:
                 log_path = os.path.join(
-                    self.working_log_directory, f"align.{iteration}.{j.name}.log"
+                    self.working_log_directory, f"align.{iteration}.{j.id}.log"
                 )
             else:
-                log_path = os.path.join(self.working_log_directory, f"align.{j.name}.log")
+                log_path = os.path.join(self.working_log_directory, f"align.{j.id}.log")
             args.append(
                 CompileInformationArguments(
-                    j.name,
-                    getattr(self, "read_only_db_string", ""),
-                    os.path.join(self.working_log_directory, f"compile_information.{j.name}.log"),
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"compile_information.{j.id}.log"),
                     log_path,
                 )
             )
@@ -293,7 +296,7 @@ class AlignMixin(DictionaryMixin):
         begin = time.time()
         log_directory = self.working_log_directory
         os.makedirs(log_directory, exist_ok=True)
-        self.log_info("Compiling training graphs...")
+        logger.info("Compiling training graphs...")
         error_sum = 0
         arguments = self.compile_train_graphs_arguments()
         with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
@@ -331,21 +334,21 @@ class AlignMixin(DictionaryMixin):
                     for v in error_dict.values():
                         raise v
             else:
-                self.log_debug("Not using multiprocessing...")
+                logger.debug("Not using multiprocessing...")
                 for args in arguments:
                     function = CompileTrainGraphsFunction(args)
                     for done, errors in function.run():
                         pbar.update(done + errors)
                         error_sum += errors
         if error_sum:
-            self.log_warning(f"Compilation of training graphs failed for {error_sum} utterances.")
-        self.log_debug(f"Compiling training graphs took {time.time() - begin}")
+            logger.warning(f"Compilation of training graphs failed for {error_sum} utterances.")
+        logger.debug(f"Compiling training graphs took {time.time() - begin}")
 
     def get_phone_confidences(self):
         if not os.path.exists(self.phone_pdf_counts_path):
-            self.log_warning("Cannot calculate phone confidences with the current model.")
+            logger.warning("Cannot calculate phone confidences with the current model.")
             return
-        self.log_info("Calculating phone confidences...")
+        logger.info("Calculating phone confidences...")
         begin = time.time()
 
         with self.session() as session:
@@ -387,7 +390,7 @@ class AlignMixin(DictionaryMixin):
                             raise v
 
                 else:
-                    self.log_debug("Not using multiprocessing...")
+                    logger.debug("Not using multiprocessing...")
                     for args in arguments:
                         function = PhoneConfidenceFunction(args)
                         for result in function.run():
@@ -395,7 +398,7 @@ class AlignMixin(DictionaryMixin):
                             pbar.update(1)
                 bulk_update(session, PhoneInterval, interval_update_mappings)
                 session.commit()
-            self.log_debug(f"Calculating phone confidences took {time.time() - begin}")
+            logger.debug(f"Calculating phone confidences took {time.time() - begin}")
 
     def align_utterances(self, training=False) -> None:
         """
@@ -413,7 +416,7 @@ class AlignMixin(DictionaryMixin):
             Reference Kaldi script
         """
         begin = time.time()
-        self.log_info("Generating alignments...")
+        logger.info("Generating alignments...")
         with tqdm.tqdm(
             total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
@@ -471,7 +474,7 @@ class AlignMixin(DictionaryMixin):
                         raise v
 
             else:
-                self.log_debug("Not using multiprocessing...")
+                logger.debug("Not using multiprocessing...")
                 for args in self.align_arguments():
                     function = AlignFunction(args)
                     for utterance, log_likelihood in function.run():
@@ -498,17 +501,16 @@ class AlignMixin(DictionaryMixin):
                     synchronize_session="fetch",
                 )
                 if not training:
-                    if not getattr(self, "uses_speaker_adaptation", False) or not getattr(
-                        self, "speaker_independent", False
-                    ):
-                        workflow = CorpusWorkflow(
-                            workflow=WorkflowType.alignment,
-                            time_stamp=datetime.datetime.now(),
-                            score=log_like_sum / log_like_count,
+                    if not getattr(self, "uses_speaker_adaptation", False):
+                        workflow = (
+                            session.query(CorpusWorkflow)
+                            .filter(CorpusWorkflow.current == True)  # noqa
+                            .first()
                         )
-                        session.add(workflow)
+                        workflow.time_stamp = datetime.datetime.now()
+                        workflow.score = log_like_sum / log_like_count
                 session.commit()
-            self.log_debug(f"Alignment round took {time.time() - begin}")
+            logger.debug(f"Alignment round took {time.time() - begin}")
 
     def compile_information(self) -> None:
         """
@@ -575,24 +577,24 @@ class AlignMixin(DictionaryMixin):
                     )
 
         if not avg_like_frames:
-            self.log_warning(
+            logger.warning(
                 "No files were aligned, this likely indicates serious problems with the aligner."
             )
         else:
             if too_short_count:
-                self.log_debug(
+                logger.debug(
                     f"There were {too_short_count} utterances that were too short to be aligned."
                 )
             if beam_too_narrow_count:
-                self.log_debug(
+                logger.debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
-            self.log_debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        self.log_debug(f"Compiling information took {time.time() - compile_info_begin}")
+            logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
+        logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
 
     @property
     @abstractmethod
@@ -620,6 +622,6 @@ class AlignMixin(DictionaryMixin):
     def alignment_model_path(self) -> str:
         """Acoustic model file path for speaker-independent alignment"""
         path = os.path.join(self.working_directory, "final.alimdl")
-        if os.path.exists(path) and getattr(self, "speaker_independent", True):
+        if os.path.exists(path) and not getattr(self, "uses_speaker_adaptation", False):
             return path
         return self.model_path

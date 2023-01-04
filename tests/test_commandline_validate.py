@@ -6,7 +6,10 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_validate_corpus(
-    multilingual_ipa_tg_corpus_dir, english_mfa_acoustic_model, english_us_mfa_dictionary, temp_dir
+    multilingual_ipa_tg_corpus_dir,
+    english_mfa_acoustic_model,
+    english_us_mfa_dictionary,
+    temp_dir,
 ):
     command = [
         "validate",

@@ -27,7 +27,14 @@ def test_adapt_basic(
         "--clean",
         "--no-debug",
     ]
-    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
     assert os.path.exists(adapted_model_path)
 
 
@@ -58,5 +65,12 @@ def test_adapt_multilingual(
         "--clean",
         "--debug",
     ]
-    click.testing.CliRunner().invoke(mfa_cli, command, catch_exceptions=False)
+    result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
+        mfa_cli, command, catch_exceptions=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.exception:
+        print(result.exc_info)
+        raise result.exception
     assert os.path.exists(adapted_model_path)

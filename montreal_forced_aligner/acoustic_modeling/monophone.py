@@ -1,20 +1,23 @@
 """Class definitions for Monophone trainer"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import re
 import subprocess
 import typing
 from queue import Empty
-from typing import Dict, List
 
+import sqlalchemy
 import tqdm
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.db import CorpusWorkflow, Job
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import KaldiProcessWorker, Stopped, thirdparty_binary
@@ -24,16 +27,14 @@ if typing.TYPE_CHECKING:
 
 __all__ = ["MonophoneTrainer", "MonoAlignEqualFunction", "MonoAlignEqualArguments"]
 
+logger = logging.getLogger("mfa")
+
 
 class MonoAlignEqualArguments(MfaArguments):
     """Arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`"""
 
-    dictionaries: List[str]
-    feature_strings: Dict[str, str]
-    fst_ark_paths: Dict[str, str]
-    ali_ark_paths: Dict[str, str]
-    acc_paths: Dict[str, str]
     model_path: str
+    feature_options: MetaDict
 
 
 class MonoAlignEqualFunction(KaldiFunction):
@@ -63,25 +64,44 @@ class MonoAlignEqualFunction(KaldiFunction):
 
     def __init__(self, args: MonoAlignEqualArguments):
         super().__init__(args)
-        self.dictionaries = args.dictionaries
-        self.feature_strings = args.feature_strings
-        self.fst_ark_paths = args.fst_ark_paths
         self.model_path = args.model_path
-        self.ali_ark_paths = args.ali_ark_paths
-        self.acc_paths = args.acc_paths
+        self.feature_options = args.feature_options
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int]]:
         """Run the function"""
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.dictionaries:
-                fst_path = self.fst_ark_paths[dict_id]
-                ali_path = self.ali_ark_paths[dict_id]
-                acc_path = self.acc_paths[dict_id]
+        db_engine = sqlalchemy.create_engine(self.db_string)
+
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+            job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .get(self.job_name)
+            )
+            workflow: CorpusWorkflow = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+            for dict_id in job.dictionary_ids:
+                feature_string = job.construct_feature_proc_string(
+                    workflow.working_directory,
+                    dict_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+
+                fst_ark_path = job.construct_path(
+                    workflow.working_directory, "fsts", "ark", dict_id
+                )
+                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
+                acc_path = job.construct_path(workflow.working_directory, "0", "acc", dict_id)
                 align_proc = subprocess.Popen(
                     [
                         thirdparty_binary("align-equal-compiled"),
-                        f"ark:{fst_path}",
-                        self.feature_strings[dict_id],
+                        f"ark:{fst_ark_path}",
+                        feature_string,
                         f"ark:{ali_path}",
                     ],
                     stderr=log_file,
@@ -93,7 +113,7 @@ class MonoAlignEqualFunction(KaldiFunction):
                         thirdparty_binary("gmm-acc-stats-ali"),
                         "--binary=true",
                         self.model_path,
-                        self.feature_strings[dict_id],
+                        feature_string,
                         f"ark:{ali_path}",
                         acc_path,
                     ],
@@ -108,6 +128,7 @@ class MonoAlignEqualFunction(KaldiFunction):
                     if m:
                         yield int(m.group("utterances")), int(m.group("errors"))
                 self.check_call(acc_proc)
+        db_engine.dispose()
 
 
 class MonophoneTrainer(AcousticModelTrainingMixin):
@@ -148,7 +169,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         self.power = power
         self.last_gaussian_increase_iteration = 0
 
-    def mono_align_equal_arguments(self) -> List[MonoAlignEqualArguments]:
+    def mono_align_equal_arguments(self) -> typing.List[MonoAlignEqualArguments]:
         """
         Generate Job arguments for :func:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualFunction`
 
@@ -157,21 +178,15 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         list[:class:`~montreal_forced_aligner.acoustic_modeling.monophone.MonoAlignEqualArguments`]
             Arguments for processing
         """
-        feat_strings = self.worker.construct_feature_proc_strings()
         return [
             MonoAlignEqualArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"mono_align_equal.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                j.construct_path_dictionary(self.working_directory, "fsts", "ark"),
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(self.working_directory, "0", "acc"),
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"mono_align_equal.{j.id}.log"),
                 self.model_path,
+                self.feature_options,
             )
             for j in self.jobs
-            if j.has_data
         ]
 
     def compute_calculated_properties(self) -> None:
@@ -224,7 +239,7 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             Reference Kaldi script
         """
 
-        self.log_info("Generating initial alignments...")
+        logger.info("Generating initial alignments...")
         arguments = self.mono_align_equal_arguments()
         with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
@@ -264,11 +279,8 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
                         else:
                             raise e
                     if error_logs:
-                        import logging
-
-                        logger = logging.getLogger(self.identifier)
                         e = KaldiProcessingError(e.error_logs)
-                        e.update_log_file(logger)
+                        e.update_log_file()
                         raise e
             else:
                 for args in arguments:
@@ -279,8 +291,9 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
         log_path = os.path.join(self.working_log_directory, "update.0.log")
         with mfa_open(log_path, "w") as log_file:
             acc_files = []
-            for x in arguments:
-                acc_files.extend(sorted(x.acc_paths.values()))
+            for j in self.jobs:
+                for dict_id in j.dictionary_ids:
+                    acc_files.append(j.construct_path(self.working_directory, "0", "acc", dict_id))
             sum_proc = subprocess.Popen(
                 [thirdparty_binary("gmm-sum-accs"), "-"] + acc_files,
                 stderr=log_file,
@@ -314,10 +327,16 @@ class MonophoneTrainer(AcousticModelTrainingMixin):
             return
         self.iteration = 0
         tree_path = os.path.join(self.working_directory, "tree")
-
         feat_dim = self.worker.get_feat_dim()
 
-        feature_string = self.worker.construct_base_feature_string()
+        feature_string = self.jobs[0].construct_feature_proc_string(
+            self.working_directory,
+            self.jobs[0].dictionary_ids[0],
+            self.feature_options["uses_splices"],
+            self.feature_options["splice_left_context"],
+            self.feature_options["splice_right_context"],
+            self.feature_options["uses_speaker_adaptation"],
+        )
         shared_phones_path = os.path.join(self.worker.phones_dir, "sets.int")
         init_log_path = os.path.join(self.working_log_directory, "init.log")
         temp_feats_path = os.path.join(self.working_directory, "temp_feats")

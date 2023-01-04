@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import collections
 import json
+import logging
 import multiprocessing as mp
 import os
 import re
@@ -13,12 +14,14 @@ import typing
 from queue import Empty
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import sqlalchemy
 import tqdm
+from sqlalchemy.orm import Session, joinedload, subqueryload
 
 from montreal_forced_aligner.abc import KaldiFunction, ModelExporterMixin, TopLevelMfaWorker
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import MfaArguments, WorkflowType
-from montreal_forced_aligner.db import Dictionary
+from montreal_forced_aligner.db import CorpusWorkflow, Dictionary, Job
 from montreal_forced_aligner.exceptions import ConfigError, KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open, parse_old_features
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel
@@ -35,10 +38,16 @@ if TYPE_CHECKING:
 
     from montreal_forced_aligner.abc import MetaDict
     from montreal_forced_aligner.acoustic_modeling.base import AcousticModelTrainingMixin
+    from montreal_forced_aligner.acoustic_modeling.pronunciation_probabilities import (
+        PronunciationProbabilityTrainer,
+    )
 else:
     from dataclassy import dataclass
 
 __all__ = ["TrainableAligner", "TransitionAccFunction", "TransitionAccArguments"]
+
+
+logger = logging.getLogger("mfa")
 
 
 @dataclass
@@ -46,8 +55,6 @@ class TransitionAccArguments(MfaArguments):
     """Arguments for :class:`~montreal_forced_aligner.acoustic_modeling.trainer.TransitionAccFunction`"""
 
     model_path: str
-    ali_paths: Dict[str, str]
-    tacc_paths: Dict[str, str]
 
 
 class TransitionAccFunction(KaldiFunction):
@@ -74,15 +81,26 @@ class TransitionAccFunction(KaldiFunction):
     def __init__(self, args: TransitionAccArguments):
         super().__init__(args)
         self.model_path = args.model_path
-        self.ali_paths = args.ali_paths
-        self.tacc_paths = args.tacc_paths
 
     def _run(self) -> typing.Generator[typing.Tuple[int, str]]:
         """Run the function"""
-        with mfa_open(self.log_path, "w") as log_file:
-            for dict_id in self.ali_paths.keys():
-                ali_path = self.ali_paths[dict_id]
-                tacc_path = self.tacc_paths[dict_id]
+        db_engine = sqlalchemy.create_engine(self.db_string)
+
+        with mfa_open(self.log_path, "w") as log_file, Session(db_engine) as session:
+            job = (
+                session.query(Job)
+                .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
+                .get(self.job_name)
+            )
+            workflow: CorpusWorkflow = (
+                session.query(CorpusWorkflow)
+                .filter(CorpusWorkflow.current == True)  # noqa
+                .first()
+            )
+            for dict_id in job.dictionary_ids:
+                ali_path = job.construct_path(workflow.working_directory, "ali", "ark", dict_id)
+
+                tacc_path = job.construct_path(workflow.working_directory, "t", "acc", dict_id)
 
                 ali_post_proc = subprocess.Popen(
                     [
@@ -114,6 +132,7 @@ class TransitionAccFunction(KaldiFunction):
                         progress_update = int(m.group("utterances"))
                         yield progress_update
                 self.check_call(tacc_proc)
+        db_engine.dispose()
 
 
 class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
@@ -175,7 +194,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             )
         self.phone_set_type = self.dictionary_model.phone_set_type
         os.makedirs(self.output_directory, exist_ok=True)
-        self.training_configs: Dict[str, AcousticModelTrainingMixin] = {}
+        self.training_configs: Dict[
+            str, typing.Union[AcousticModelTrainingMixin, PronunciationProbabilityTrainer]
+        ] = {}
         if training_configuration is None:
             training_configuration = TrainableAligner.default_training_configurations()
         for k, v in training_configuration:
@@ -286,33 +307,48 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         global_params.update(cls.parse_args(args, unknown_args))
         return global_params
 
-    def setup(self) -> None:
-        """Setup for acoustic model training"""
-
-        if self.initialized:
-            return
-        self.check_previous_run()
-        try:
-            self.load_corpus()
-            self.write_training_information()
-            for config in self.training_configs.values():
+    def setup_trainers(self):
+        self.write_training_information()
+        with self.session() as session:
+            workflows: typing.Dict[str, CorpusWorkflow] = {
+                x.name: x for x in session.query(CorpusWorkflow)
+            }
+            for i, (identifier, config) in enumerate(self.training_configs.items()):
                 if isinstance(config, str):
                     continue
                 config.non_silence_phones = self.non_silence_phones
+                ali_identifier = f"{identifier}_ali"
+                if identifier not in workflows:
+                    self.create_new_current_workflow(
+                        WorkflowType.acoustic_training, name=identifier
+                    )
+                    self.create_new_current_workflow(WorkflowType.alignment, name=ali_identifier)
+                else:
+                    wf = workflows[identifier]
+                    if wf.dirty:
+                        shutil.rmtree(wf.working_directory, ignore_errors=True)
+                    ali_wf = workflows[ali_identifier]
+                    if ali_wf.dirty:
+                        shutil.rmtree(ali_wf.working_directory, ignore_errors=True)
+                    if i == 0:
+                        wf.current = True
+            session.commit()
+
+    def setup(self) -> None:
+        """Setup for acoustic model training"""
+        super().setup()
+        self.ignore_empty_utterances = True
+        if self.initialized:
+            return
+        try:
+            self.load_corpus()
+            self.setup_trainers()
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
         self.initialized = True
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Acoustic model training identifier"""
-        return "train_acoustic_model"
 
     @property
     def configuration(self) -> MetaDict:
@@ -369,6 +405,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 k: v for k, v in p.items() if k in MonophoneTrainer.get_configuration_parameters()
             }
             config = MonophoneTrainer(identifier=identifier, worker=self, **p)
+
         elif train_type == "triphone":
             p = {k: v for k, v in p.items() if k in TriphoneTrainer.get_configuration_parameters()}
             config = TriphoneTrainer(identifier=identifier, worker=self, **p)
@@ -406,9 +443,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             export_directory = os.path.dirname(output_model_path)
             if export_directory:
                 os.makedirs(export_directory, exist_ok=True)
-            self.export_trained_rules(
-                self.training_configs[self.final_identifier].working_directory
-            )
+            # self.export_trained_rules(
+            #    self.training_configs[self.final_identifier].working_directory
+            # )
             with self.session() as session:
                 for d in session.query(Dictionary):
                     base_name = self.dictionary_base_names[d.id]
@@ -444,7 +481,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                             probability=True,
                         )
         self.training_configs[self.final_identifier].export_model(output_model_path)
-        self.log_info(f"Saved model to {output_model_path}")
+        logger.info(f"Saved model to {output_model_path}")
 
     @property
     def tree_path(self) -> str:
@@ -460,7 +497,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         begin = time.time()
         for trainer in self.training_configs.values():
             if self.current_subset is None and trainer.optional:
-                self.log_info(
+                logger.info(
                     "Exiting training early to save time as the corpus is below the subset size for later training stages"
                 )
                 break
@@ -469,14 +506,17 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             else:
                 self.current_subset = None
                 trainer.subset = 0
+            self.subset_directory(self.current_subset)
             if previous is not None:
+                self.set_current_workflow(f"{previous.identifier}_ali")
                 self.current_aligner = previous
                 os.makedirs(self.working_directory, exist_ok=True)
                 self.current_acoustic_model = AcousticModel(
                     previous.exported_model_path, self.working_directory
                 )
-
                 self.align()
+
+            self.set_current_workflow(trainer.identifier)
             if trainer.identifier.startswith("pronunciation_probabilities"):
                 trainer.train_pronunciation_probabilities()
             else:
@@ -485,11 +525,13 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             self.final_identifier = trainer.identifier
         self.current_subset = None
         self.current_aligner = previous
+        self.set_current_workflow(f"{previous.identifier}_ali")
 
         os.makedirs(self.working_log_directory, exist_ok=True)
         self.current_acoustic_model = AcousticModel(
             previous.exported_model_path, self.working_directory
         )
+        self.acoustic_model = AcousticModel(previous.exported_model_path, self.working_directory)
         self.align()
         self.finalize_training()
         counts_path = os.path.join(self.working_directory, "phone_pdf.counts")
@@ -501,7 +543,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         new_phone_lm_path = os.path.join(previous.working_directory, "phone_lm.fst")
         if not os.path.exists(new_phone_lm_path):
             shutil.copyfile(phone_lm_path, new_phone_lm_path)
-        self.log_info(f"Completed training in {time.time()-begin} seconds!")
+        logger.info(f"Completed training in {time.time()-begin} seconds!")
 
     def transition_acc_arguments(self) -> List[TransitionAccArguments]:
         """
@@ -515,15 +557,12 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
 
         return [
             TransitionAccArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"test_utterances.{j.name}.log"),
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"test_utterances.{j.id}.log"),
                 self.model_path,
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(self.working_directory, "t", "acc"),
             )
             for j in self.jobs
-            if j.has_data
         ]
 
     def compute_phone_pdf_counts(self) -> None:
@@ -532,7 +571,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         """
         try:
 
-            self.log_info("Accumulating transition stats...")
+            logger.info("Accumulating transition stats...")
 
             begin = time.time()
             log_directory = self.working_log_directory
@@ -571,14 +610,15 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                         for v in error_dict.values():
                             raise v
                 else:
-                    self.log_debug("Not using multiprocessing...")
+                    logger.debug("Not using multiprocessing...")
                     for args in arguments:
                         function = TransitionAccFunction(args)
                         for result in function.run():
                             pbar.update(result)
             t_accs = []
-            for args in arguments:
-                t_accs.extend(args.tacc_paths.values())
+            for j in self.jobs:
+                for dict_id in j.dictionary_ids:
+                    t_accs.append(j.construct_path(self.working_directory, "t", "acc", dict_id))
             subprocess.check_call(
                 [
                     thirdparty_binary("vector-sum"),
@@ -626,7 +666,9 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
             with mfa_open(os.path.join(self.working_directory, "final.tacc"), "r") as f:
                 data = f.read().strip().split()[1:-1]
 
-                transition_counts = {i: smoothing + int(x) for i, x in enumerate(data) if i != 0}
+                transition_counts = {
+                    i: smoothing + int(float(x)) for i, x in enumerate(data) if i != 0
+                }
             assert len(transition_counts) == len(phone_pdfs)
             pdf_counts = collections.Counter()
             pdf_phone_counts = collections.Counter()
@@ -637,21 +679,18 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 phone_pdf_mapping[phone][pdf] += transition_counts[transition_id]
             with mfa_open(os.path.join(self.working_directory, "phone_pdf.counts"), "w") as f:
                 json.dump(phone_pdf_mapping, f, ensure_ascii=False)
-            self.log_debug(f"Accumulating transition stats took {time.time() - begin}")
-            self.log_info("Finished accumulating transition stats!")
+            logger.debug(f"Accumulating transition stats took {time.time() - begin}")
+            logger.info("Finished accumulating transition stats!")
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     def finalize_training(self):
         self.compute_phone_pdf_counts()
-        self._collect_alignments()
+        self.collect_alignments()
         self.train_phone_lm()
 
     def export_files(
@@ -674,7 +713,7 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         """
         self.align()
         super(TrainableAligner, self).export_files(
-            output_directory, output_format, include_original_text, WorkflowType.alignment
+            output_directory, output_format, include_original_text
         )
 
     @property
@@ -706,13 +745,13 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
         :kaldi_steps:`align_fmllr`
             Reference Kaldi script
         """
-        done_path = os.path.join(self.working_directory, "done")
-        if os.path.exists(done_path):
-            self.log_debug(f"Skipping {self.current_aligner.identifier} alignments")
+        wf = self.current_workflow
+        if wf.done:
+            logger.debug(f"Skipping {self.current_aligner.identifier} alignments")
             return
         try:
             self.current_acoustic_model.export_model(self.working_directory)
-            self.speaker_independent = True
+            self.uses_speaker_adaptation = False
             self.compile_train_graphs()
             self.align_utterances()
             if self.current_acoustic_model.meta["features"]["uses_speaker_adaptation"]:
@@ -726,34 +765,39 @@ class TrainableAligner(TranscriberMixin, TopLevelMfaWorker, ModelExporterMixin):
                 if missing_transforms:
                     assert self.alignment_model_path.endswith(".alimdl")
                     self.calc_fmllr()
-                self.speaker_independent = False
+                self.uses_speaker_adaptation = True
                 assert self.alignment_model_path.endswith(".mdl")
                 self.align_utterances()
             if self.current_subset:
-                self.log_debug(
+                logger.debug(
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on {self.current_subset} utterances"
                 )
             else:
-                self.log_debug(
+                logger.debug(
                     f"Analyzing alignment diagnostics for {self.current_aligner.identifier} on the full corpus"
                 )
             self.compile_information()
-            with mfa_open(done_path, "w"):
-                pass
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"done": True}
+                )
+                session.commit()
         except Exception as e:
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     @property
     def alignment_model_path(self) -> str:
         """Current alignment model path"""
         path = os.path.join(self.working_directory, "final.alimdl")
-        if os.path.exists(path) and self.speaker_independent:
+        if os.path.exists(path) and not self.uses_speaker_adaptation:
             return path
         return self.model_path
 

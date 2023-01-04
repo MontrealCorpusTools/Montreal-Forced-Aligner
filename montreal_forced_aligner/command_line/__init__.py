@@ -7,9 +7,9 @@ Command line functionality
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
-from montreal_forced_aligner.command_line.classify_speakers import classify_speakers_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
 from montreal_forced_aligner.command_line.create_segments import create_segments_cli
+from montreal_forced_aligner.command_line.diarize_speakers import diarize_speakers_cli
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
 from montreal_forced_aligner.command_line.mfa import mfa_cli
@@ -29,7 +29,7 @@ __all__ = [
     "adapt",
     "align",
     "anchor",
-    "classify_speakers",
+    "diarize_speakers.py",
     "create_segments",
     "g2p",
     "mfa",
@@ -46,7 +46,7 @@ __all__ = [
     "validate",
     "adapt_model_cli",
     "align_corpus_cli",
-    "classify_speakers_cli",
+    "diarize_speakers_cli",
     "create_segments_cli",
     "g2p_cli",
     "mfa_cli",

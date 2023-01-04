@@ -5,7 +5,7 @@ from montreal_forced_aligner.validation.corpus_validator import TrainingValidato
 
 
 def test_training_validator_arpa(
-    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, global_config
+    multilingual_ipa_tg_corpus_dir, english_dictionary, temp_dir, global_config, db_setup
 ):
     output_directory = os.path.join(temp_dir, "training_validator")
     global_config.temporary_directory = output_directory
@@ -58,7 +58,7 @@ def test_training_validator_arpa(
 
 
 def test_training_validator_ipa(
-    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, global_config
+    multilingual_ipa_tg_corpus_dir, english_us_mfa_dictionary, temp_dir, global_config, db_setup
 ):
     output_directory = os.path.join(temp_dir, "training_validator_ipa")
     global_config.temporary_directory = output_directory

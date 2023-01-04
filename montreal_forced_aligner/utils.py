@@ -5,23 +5,23 @@ Utility functions
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import multiprocessing as mp
 import os
+import re
 import shutil
 import subprocess
-import sys
+import time
 import typing
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import ansiwrap
 import numpy as np
 import sqlalchemy
-from colorama import Fore, Style
 from sqlalchemy.orm import Session
 
-from montreal_forced_aligner.abc import DatabaseBackend, KaldiFunction
+from montreal_forced_aligner.abc import KaldiFunction
 from montreal_forced_aligner.config import GLOBAL_CONFIG
 from montreal_forced_aligner.data import CtmInterval, DatasetType, MfaArguments
 from montreal_forced_aligner.db import Corpus, Dictionary
@@ -39,13 +39,13 @@ __all__ = [
     "log_kaldi_errors",
     "get_mfa_version",
     "parse_logs",
-    "CustomFormatter",
     "Counter",
     "Stopped",
     "ProcessWorker",
     "KaldiProcessWorker",
     "run_mp",
     "run_non_mp",
+    "run_kaldi_function",
 ]
 canary_kaldi_bins = [
     "compute-mfcc-feats",
@@ -60,6 +60,8 @@ canary_kaldi_bins = [
     "gmm-rescore-lattice",
 ]
 
+logger = logging.getLogger("mfa")
+
 
 def inspect_database(name: str) -> DatasetType:
     """
@@ -67,23 +69,16 @@ def inspect_database(name: str) -> DatasetType:
 
     Parameters
     ----------
-    path: str
-        Path to the sqlite database
+    name: str
+        Name of database
 
     Returns
     -------
     DatasetType
         Dataset type of the database
     """
-    if GLOBAL_CONFIG.current_profile.database_backend == DatabaseBackend.POSTGRES.value:
-        string = f"postgresql+psycopg2://{os.getlogin()}@localhost/{name}"
-    else:
-        db_path = os.path.join(
-            GLOBAL_CONFIG.current_profile.temporary_directory, name, f"{name}.db"
-        )
-        if not os.path.exists(db_path):
-            return DatasetType.NONE
-        string = f"sqlite:///{db_path}"
+
+    string = f"postgresql+psycopg2://{os.getlogin()}@localhost:{GLOBAL_CONFIG.current_profile.database_port}/{name}"
     try:
         engine = sqlalchemy.create_engine(string)
         with Session(engine) as session:
@@ -102,7 +97,7 @@ def inspect_database(name: str) -> DatasetType:
                 return DatasetType.ACOUSTIC_CORPUS_WITH_DICTIONARY
             else:
                 return DatasetType.TEXT_CORPUS_WITH_DICTIONARY
-    except sqlalchemy.exc.OperationalError:
+    except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.ProgrammingError):
         return DatasetType.NONE
 
 
@@ -173,56 +168,37 @@ def parse_dictionary_file(
     float or None
         Correction factor for no silence before the pronunciation
     """
+    prob_pattern = re.compile(r"\b\d+\.\d+\b")
     with mfa_open(path) as f:
         for i, line in enumerate(f):
             line = line.strip()
             if not line:
                 continue
-            if "\t" not in line:
-                raise DictionaryError(
-                    f"Error parsing line {i} of {path}: Did not find any tabs, "
-                    f"please ensure that your dictionary has tabs between words and their pronunciations."
-                )
-            line = line.split("\t")
+            line = line.split()
             if len(line) <= 1:
                 raise DictionaryError(
                     f'Error parsing line {i} of {path}: "{line}" did not have a pronunciation'
                 )
             word = line.pop(0)
-            pron = tuple(line.pop(-1).split())
             prob = None
-            try:
-                if len(line) < 1:
-                    raise ValueError
-                prob = float(line[0])
-                if prob > 1 or prob < 0.01:
-                    raise ValueError
-                line.pop(0)
-            except ValueError:
-                pass
             silence_after_prob = None
             silence_before_correct = None
             non_silence_before_correct = None
-            try:
-                if len(line) < 3:
-                    raise ValueError
-                silence_after_prob = float(line[0])
-                if silence_after_prob == 0:
-                    silence_after_prob = None
-                silence_before_correct = float(line[1])
-                if silence_before_correct == 1.0 or silence_before_correct == 0:
-                    silence_before_correct = None
-                non_silence_before_correct = float(line[2])
-                if non_silence_before_correct == 1.0 or non_silence_before_correct == 0:
-                    non_silence_before_correct = None
-            except ValueError:
-                pass
+            if prob_pattern.match(line[0]):
+                prob = float(line.pop(0))
+                if prob_pattern.match(line[0]):
+                    silence_after_prob = float(line.pop(0))
+                    if prob_pattern.match(line[0]):
+                        silence_before_correct = float(line.pop(0))
+                        if prob_pattern.match(line[0]):
+                            non_silence_before_correct = float(line.pop(0))
+            pron = tuple(line)
             yield word, pron, prob, silence_after_prob, silence_before_correct, non_silence_before_correct
 
 
 def parse_ctm_output(
     proc: subprocess.Popen, reversed_phone_mapping: Dict[int, Any], raw_id: bool = False
-) -> typing.Generator[typing.Tuple[int, typing.List[CtmInterval]]]:
+) -> typing.Generator[typing.Tuple[typing.Union[int, str], typing.List[CtmInterval]]]:
     """
     Parse stdout of a process into intervals grouped by utterance
 
@@ -331,7 +307,7 @@ def thirdparty_binary(binary_name: str) -> str:
     return bin_path
 
 
-def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
+def log_kaldi_errors(error_logs: List[str]) -> None:
     """
     Save details of Kaldi processing errors to a logger
 
@@ -339,8 +315,6 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
     ----------
     error_logs: list[str]
         Kaldi log files with errors
-    logger: :class:`~logging.Logger`
-        Logger to output to
     """
     logger.debug(f"There were {len(error_logs)} kaldi processing files that had errors:")
     for path in error_logs:
@@ -351,101 +325,7 @@ def log_kaldi_errors(error_logs: List[str], logger: logging.Logger) -> None:
                 logger.debug("\t" + line.strip())
 
 
-def configure_logger(
-    identifier: str, log_file: Optional[str] = None, quiet: bool = False, verbose: bool = False
-) -> logging.Logger:
-    """
-    Configure logging for the given identifier
-
-    Parameters
-    ----------
-    identifier: str
-        Logger identifier
-    log_file: str
-        Path to file to write all messages to
-    quiet: bool
-        Flag for whether logger should write to stdout
-    verbose: bool
-        Flag for writing debug level information to stdout
-
-    Returns
-    -------
-    logging.Logger
-        Configured logger instance
-    """
-    logger = logging.getLogger(identifier)
-    logger.setLevel(logging.DEBUG)
-    if log_file is not None:
-        file_handler = logging.FileHandler(log_file, encoding="utf8")
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    if not quiet:
-        handler = logging.StreamHandler(sys.stdout)
-        if verbose:
-            handler.setLevel(logging.DEBUG)
-        else:
-            handler.setLevel(logging.INFO)
-        handler.setFormatter(CustomFormatter())
-        logger.addHandler(handler)
-    return logger
-
-
-class CustomFormatter(logging.Formatter):
-    """
-    Custom log formatter class for MFA to highlight messages and incorporate terminal options from
-    the global configuration
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        use_colors = GLOBAL_CONFIG.terminal_colors
-        red = ""
-        green = ""
-        yellow = ""
-        blue = ""
-        reset = ""
-        if use_colors:
-            red = Fore.RED
-            green = Fore.GREEN
-            yellow = Fore.YELLOW
-            blue = Fore.CYAN
-            reset = Style.RESET_ALL
-
-        self.FORMATS = {
-            logging.DEBUG: (f"{blue}DEBUG{reset} - ", "%(message)s"),
-            logging.INFO: (f"{green}INFO{reset} - ", "%(message)s"),
-            logging.WARNING: (f"{yellow}WARNING{reset} - ", "%(message)s"),
-            logging.ERROR: (f"{red}ERROR{reset} - ", "%(message)s"),
-            logging.CRITICAL: (f"{red}CRITICAL{reset} - ", "%(message)s"),
-        }
-
-    def format(self, record: logging.LogRecord):
-        """
-        Format a given log message
-
-        Parameters
-        ----------
-        record: logging.LogRecord
-            Log record to format
-
-        Returns
-        -------
-        str
-            Formatted log message
-        """
-        log_fmt = self.FORMATS.get(record.levelno)
-        return ansiwrap.fill(
-            record.getMessage(),
-            initial_indent=log_fmt[0],
-            subsequent_indent=" " * len(log_fmt[0]),
-            width=shutil.get_terminal_size().columns,
-        )
-
-
-def read_feats(proc: subprocess.Popen) -> Dict[str, np.array]:
+def read_feats(proc: subprocess.Popen, raw_id=False) -> Dict[str, np.array]:
     """
     Inspired by https://github.com/it-muslim/kaldi-helpers/blob/master/kaldi-helpers/kaldi_io.py#L87
 
@@ -479,10 +359,23 @@ def read_feats(proc: subprocess.Popen) -> Dict[str, np.array]:
     current_id = None
     for line in proc.stdout:
         line = line.decode("ascii").strip()
-        if "[" in line:
+        if "[" in line and "]" in line:
+            line = line.replace("]", "").replace("[", "").split()
+            ids = line.pop(0)
+            if raw_id:
+                utt_id = ids
+            else:
+                utt_id = int(ids.split("-")[-1])
+            feats = np.array([float(x) for x in line])
+            yield utt_id, feats
+            feats = []
+            continue
+        elif "[" in line:
             ids = line.strip().split()[0]
-            speaker_id, utt_id = ids.split("-")
-            utt_id = int(utt_id)
+            if raw_id:
+                utt_id = ids
+            else:
+                utt_id = int(ids.split("-")[-1])
             if current_id is None:
                 current_id = utt_id
             if current_id != utt_id:
@@ -494,8 +387,9 @@ def read_feats(proc: subprocess.Popen) -> Dict[str, np.array]:
         if not line:
             continue
         feats.append([float(x) for x in line.replace("]", "").split()])
-    feats = np.array(feats)
-    yield current_id, feats
+    if current_id is not None:
+        feats = np.array(feats)
+        yield current_id, feats
 
 
 def parse_logs(log_directory: str) -> None:
@@ -573,6 +467,7 @@ class ProgressCallback(object):
         self._progress = 0
         self.callback_interval = 1
         self.lock = mp.Lock()
+        self.start_time = None
 
     @property
     def total(self) -> int:
@@ -604,6 +499,8 @@ class ProgressCallback(object):
             New total
         """
         with self.lock:
+            if self._total == 0 and total != 0:
+                self.start_time = time.time()
             self._total = total
             if self.total_callback is not None:
                 self.total_callback(self._total)
@@ -632,7 +529,14 @@ class ProgressCallback(object):
         with self.lock:
             self._progress += increment
             if self.callback is not None:
-                self.callback(self._progress)
+                current_time = time.time()
+                current_duration = current_time - self.start_time
+                time_per_iteration = current_duration / self._progress
+                remaining_iterations = self._total - self._progress
+                remaining_time = datetime.timedelta(
+                    seconds=int(time_per_iteration * remaining_iterations)
+                )
+                self.callback(self._progress, str(remaining_time))
 
 
 class Stopped(object):
@@ -653,6 +557,11 @@ class Stopped(object):
         self.val = mp.Value("i", initval)
         self.lock = mp.Lock()
         self._source = mp.Value("i", 0)
+
+    def reset(self) -> None:
+        """Signal that work should stop asap"""
+        with self.lock:
+            self.val.value = False
 
     def stop(self) -> None:
         """Signal that work should stop asap"""
@@ -783,6 +692,52 @@ class KaldiProcessWorker(mp.Process):
             self.return_q.put(e)
         finally:
             self.finished.stop()
+
+
+def run_kaldi_function(function, arguments, progress_callback, stopped: Stopped = None):
+    if stopped is None:
+        stopped = Stopped()
+    if GLOBAL_CONFIG.use_mp:
+        error_dict = {}
+        return_queue = mp.Queue(10000)
+        procs = []
+        for i, args in enumerate(arguments):
+            f = function(args)
+            p = KaldiProcessWorker(i, return_queue, f, stopped)
+            procs.append(p)
+            p.start()
+        while True:
+            try:
+                result = return_queue.get(timeout=1)
+                if isinstance(result, Exception):
+                    error_dict[getattr(result, "job_name", 0)] = result
+                    continue
+                if stopped.stop_check():
+                    continue
+            except Empty:
+                for proc in procs:
+                    if not proc.finished.stop_check():
+                        break
+                else:
+                    break
+                continue
+            yield result
+            progress_callback(1)
+        for p in procs:
+            p.join()
+
+        if error_dict:
+            for v in error_dict.values():
+                raise v
+
+    else:
+        for args in arguments:
+            f = function(args)
+            for result in f.run():
+                if stopped.stop_check():
+                    break
+                yield result
+                progress_callback(1)
 
 
 def run_non_mp(

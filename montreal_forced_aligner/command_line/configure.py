@@ -17,76 +17,76 @@ __all__ = ["configure_cli"]
     "--profile",
     help='Configuration profile to use, defaults to "global"',
     type=str,
-    default="global",
+    default=None,
 )
 @click.option(
     "--temporary_directory",
     "-t",
     help=f"Set the default temporary directory, default is {GLOBAL_CONFIG.temporary_directory}",
     type=str,
-    default=GLOBAL_CONFIG.temporary_directory,
+    default=None,
 )
 @click.option(
     "--num_jobs",
     "-j",
     help=f"Set the number of processes to use by default, defaults to {GLOBAL_CONFIG.num_jobs}",
     type=int,
-    default=GLOBAL_CONFIG.num_jobs,
+    default=None,
 )
 @click.option(
     "--always_clean/--never_clean",
     "clean",
     help="Turn on/off clean mode where MFA will clean temporary files before each run.",
-    default=GLOBAL_CONFIG.clean,
+    default=None,
 )
 @click.option(
     "--always_verbose/--never_verbose",
     "verbose",
     help="Turn on/off verbose mode where MFA will print more output.",
-    default=GLOBAL_CONFIG.verbose,
+    default=None,
 )
 @click.option(
     "--always_quiet/--never_quiet",
     "quiet",
     help="Turn on/off quiet mode where MFA will not print any output.",
-    default=GLOBAL_CONFIG.quiet,
+    default=None,
 )
 @click.option(
     "--always_debug/--never_debug",
     "debug",
     help="Turn on/off extra debugging functionality.",
-    default=GLOBAL_CONFIG.debug,
+    default=None,
 )
 @click.option(
     "--always_overwrite/--never_overwrite",
     "overwrite",
     help="Turn on/off overwriting export files.",
-    default=GLOBAL_CONFIG.overwrite,
+    default=None,
 )
 @click.option(
     "--enable_mp/--disable_mp",
     "use_mp",
     help="Turn on/off multiprocessing. Multiprocessing is recommended will allow for faster executions.",
-    default=GLOBAL_CONFIG.use_mp,
+    default=None,
 )
 @click.option(
     "--enable_textgrid_cleanup/--disable_textgrid_cleanup",
     "cleanup_textgrids",
     help="Turn on/off post-processing of TextGrids that cleans up "
     "silences and recombines compound words and clitics.",
-    default=GLOBAL_CONFIG.cleanup_textgrids,
+    default=None,
 )
 @click.option(
     "--enable_detect_phone_set/--disable_detect_phone_set",
     "detect_phone_set",
     help="Turn on/off automatic detection of phone sets during training.",
-    default=GLOBAL_CONFIG.detect_phone_set,
+    default=None,
 )
 @click.option(
     "--enable_terminal_colors/--disable_terminal_colors",
     "terminal_colors",
     help="Turn on/off colored text in command line output.",
-    default=GLOBAL_CONFIG.terminal_colors,
+    default=None,
 )
 @click.option(
     "--blas_num_threads",
@@ -94,20 +94,25 @@ __all__ = ["configure_cli"]
     "due to how much MFA relies on multiprocessing. "
     f"Currently set to {GLOBAL_CONFIG.blas_num_threads}.",
     type=int,
-    default=GLOBAL_CONFIG.blas_num_threads,
-)
-@click.option(
-    "--database_backend",
-    default=GLOBAL_CONFIG.database_backend,
-    help="Backend database to use for storing metadata. "
-    f"Currently set to {GLOBAL_CONFIG.database_backend}.",
-    type=click.Choice(["sqlite", "psycopg2"]),
+    default=None,
 )
 @click.option(
     "--github_token",
-    default=GLOBAL_CONFIG.github_token,
+    default=None,
     help="Github token to use for model downloading.",
     type=str,
+)
+@click.option(
+    "--database_port",
+    default=None,
+    help="Port for postgresql database.",
+    type=int,
+)
+@click.option(
+    "--plda_dimension",
+    default=None,
+    help="Dimension for PLDA ivectors.",
+    type=int,
 )
 @click.help_option("-h", "--help")
 def configure_cli(**kwargs) -> None:
@@ -115,7 +120,7 @@ def configure_cli(**kwargs) -> None:
     Configure Montreal Forced Aligner command lines to new defaults
 
     """
-    profile = kwargs.get("profile", "global")
-    os.putenv(MFA_PROFILE_VARIABLE, profile)
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
     GLOBAL_CONFIG.current_profile.update(kwargs)
     GLOBAL_CONFIG.save()

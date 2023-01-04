@@ -1,11 +1,15 @@
 """Classes for validating dictionaries"""
+import logging
 import os
 import shutil
 import typing
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.g2p.generator import PyniniValidator
 from montreal_forced_aligner.g2p.trainer import PyniniTrainer
+
+logger = logging.getLogger("mfa")
 
 
 class DictionaryValidator(PyniniTrainer):
@@ -43,11 +47,6 @@ class DictionaryValidator(PyniniTrainer):
         self.g2p_model_path = g2p_model_path
         self.g2p_threshold = g2p_threshold
 
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for validation"""
-        return "validate_dictionary"
-
     def setup(self) -> None:
         """Set up the dictionary validator"""
         if self.initialized:
@@ -56,12 +55,15 @@ class DictionaryValidator(PyniniTrainer):
         self.dictionary_setup()
         self.write_lexicon_information()
         if self.g2p_model_path is None:
-            self.log_info("Not using a pretrained G2P model, training from the dictionary...")
+            self.create_new_current_workflow(WorkflowType.train_g2p)
+            logger.info("Not using a pretrained G2P model, training from the dictionary...")
             self.initialize_training()
             self.train()
             self.g2p_model_path = os.path.join(self.working_log_directory, "g2p_model.zip")
             self.export_model(self.g2p_model_path)
+            self.create_new_current_workflow(WorkflowType.g2p)
         else:
+            self.create_new_current_workflow(WorkflowType.g2p)
             self.initialize_training()
         self.initialized = True
 
@@ -86,4 +88,4 @@ class DictionaryValidator(PyniniTrainer):
         gen.evaluate_g2p_model(self.g2p_training_dictionary)
         if output_path is not None:
             shutil.copyfile(gen.evaluation_csv_path, output_path)
-            self.log_info(f"Wrote scores to {output_path}")
+            logger.info(f"Wrote scores to {output_path}")

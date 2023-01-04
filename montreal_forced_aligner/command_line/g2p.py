@@ -7,6 +7,7 @@ import click
 
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_g2p_model,
 )
@@ -47,9 +48,10 @@ def g2p_cli(context, **kwargs) -> None:
     """
     Generate a pronunciation dictionary using a G2P model.
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
 
     config_path = kwargs.get("config_path", None)
@@ -61,13 +63,13 @@ def g2p_cli(context, **kwargs) -> None:
         g2p = PyniniCorpusGenerator(
             corpus_directory=input_path,
             g2p_model_path=g2p_model_path,
-            **PyniniCorpusGenerator.parse_parameters(config_path, context.params, context.args)
+            **PyniniCorpusGenerator.parse_parameters(config_path, context.params, context.args),
         )
     else:
         g2p = PyniniWordListGenerator(
             word_list_path=input_path,
             g2p_model_path=g2p_model_path,
-            **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args)
+            **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
         )
 
     try:
@@ -78,3 +80,4 @@ def g2p_cli(context, **kwargs) -> None:
         raise
     finally:
         g2p.cleanup()
+        cleanup_databases()

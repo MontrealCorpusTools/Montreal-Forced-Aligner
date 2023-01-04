@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import multiprocessing as mp
 import operator
 import os
@@ -20,7 +21,7 @@ from pynini import Fst
 
 from montreal_forced_aligner.abc import MetaDict, MfaWorker, TopLevelMfaWorker, TrainerMixin
 from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.data import WordType
+from montreal_forced_aligner.data import WordType, WorkflowType
 from montreal_forced_aligner.db import Pronunciation, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import KaldiProcessingError, PyniniAlignmentError
@@ -36,6 +37,8 @@ INF = float("inf")
 RAND_MAX = 32767
 
 __all__ = ["RandomStartWorker", "PyniniTrainer", "G2PTrainer"]
+
+logger = logging.getLogger("mfa")
 
 
 class RandomStart(NamedTuple):
@@ -343,7 +346,7 @@ class PyniniTrainerMixin:
         """
         assert os.path.exists(self.far_path)
         if os.path.exists(self.fst_path):
-            self.log_info("Model building already done, skipping!")
+            logger.info("Model building already done, skipping!")
             return
         with mfa_open(os.path.join(self.working_log_directory, "model.log"), "w") as logf:
             ngramcount_proc = subprocess.Popen(
@@ -432,14 +435,16 @@ class PyniniTrainerMixin:
         """Computes the number of arcs in an FST."""
         return sum(f.num_arcs(state) for state in f.states())
 
-    def _lexicon_covering(
-        self,
-    ) -> None:
+    def _lexicon_covering(self, input_path=None, output_path=None) -> None:
         """Builds covering grammar and lexicon FARs."""
         # Sets of labels for the covering grammar.
         with mfa_open(
             os.path.join(self.working_log_directory, "covering_grammar.log"), "w"
         ) as log_file:
+            if input_path is None:
+                input_path = self.input_path
+            if output_path is None:
+                output_path = self.output_path
             com = [
                 thirdparty_binary("farcompilestrings"),
                 "--fst_type=compact",
@@ -452,7 +457,7 @@ class PyniniTrainerMixin:
                 com.append("--unknown_symbol=<unk>")
             else:
                 com.append("--token_type=utf8")
-            com.extend([self.input_path, self.input_far_path])
+            com.extend([input_path, self.input_far_path])
             print(" ".join(com), file=log_file)
             subprocess.check_call(com, env=os.environ, stderr=log_file, stdout=log_file)
             com = [
@@ -460,7 +465,7 @@ class PyniniTrainerMixin:
                 "--fst_type=compact",
                 "--token_type=symbol",
                 f"--symbols={self.phone_symbol_table_path}",
-                self.output_path,
+                output_path,
                 self.output_far_path,
             ]
             print(" ".join(com), file=log_file)
@@ -489,7 +494,7 @@ class PyniniTrainerMixin:
     def _alignments(self) -> None:
         """Trains the aligner and constructs the alignments FAR."""
         if not os.path.exists(self.align_path):
-            self.log_info("Training aligner")
+            logger.info("Training aligner")
             train_opts = []
             if self.batch_size:
                 train_opts.append(f"--batch_size={self.batch_size}")
@@ -529,7 +534,7 @@ class PyniniTrainerMixin:
             job_queue = mp.JoinableQueue()
             fst_likelihoods = {}
             # Actually runs starts.
-            self.log_info("Calculating alignments...")
+            logger.info("Calculating alignments...")
             begin = time.time()
             with tqdm.tqdm(
                 total=num_commands * self.num_iterations, disable=GLOBAL_CONFIG.quiet
@@ -575,8 +580,8 @@ class PyniniTrainerMixin:
             if error_dict:
                 raise PyniniAlignmentError(error_dict)
             (best_fst, best_likelihood) = min(fst_likelihoods.items(), key=operator.itemgetter(1))
-            self.log_info(f"Best likelihood: {best_likelihood}")
-            self.log_debug(
+            logger.info(f"Best likelihood: {best_likelihood}")
+            logger.debug(
                 f"Ran {self.random_starts} random starts in {time.time() - begin} seconds"
             )
             # Moves best likelihood solution to the requested location.
@@ -590,13 +595,13 @@ class PyniniTrainerMixin:
         cmd.append(self.output_far_path)
         cmd.append(self.align_path)
         cmd.append(self.afst_path)
-        self.log_debug(f"Subprocess call: {cmd}")
+        logger.debug(f"Subprocess call: {cmd}")
         subprocess.check_call(cmd, env=os.environ)
-        self.log_info("Completed computing alignments!")
+        logger.info("Completed computing alignments!")
 
     def _encode(self) -> None:
         """Encodes the alignments."""
-        self.log_info("Encoding the alignments as FSAs")
+        logger.info("Encoding the alignments as FSAs")
         subprocess.check_call(
             [
                 thirdparty_binary("farencode"),
@@ -607,7 +612,7 @@ class PyniniTrainerMixin:
             ],
             env=os.environ,
         )
-        self.log_info(f"Success! FAR path: {self.far_path}; encoder path: {self.encoder_path}")
+        logger.info(f"Success! FAR path: {self.far_path}; encoder path: {self.encoder_path}")
 
 
 class PyniniTrainer(
@@ -642,11 +647,6 @@ class PyniniTrainer(
         return self.working_directory
 
     @property
-    def workflow_identifier(self) -> str:
-        """Identifier for Pynini G2P trainer"""
-        return "pynini_train_g2p"
-
-    @property
     def configuration(self) -> MetaDict:
         """Configuration for G2P trainer"""
         config = super().configuration
@@ -655,9 +655,12 @@ class PyniniTrainer(
 
     def setup(self) -> None:
         """Setup for G2P training"""
-        if self.initialized:
+        super().setup()
+        self.create_new_current_workflow(WorkflowType.train_g2p)
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("G2P training already done, skipping.")
             return
-        self.initialize_database()
         self.dictionary_setup()
         os.makedirs(self.phones_dir, exist_ok=True)
         self._write_phone_symbol_table()
@@ -739,25 +742,25 @@ class PyniniTrainer(
                         self.g2p_training_phones.update(p.split())
                         print(word, file=inf)
                         print(p, file=outf)
-            self.log_debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
-            self.log_debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
+            logger.debug(f"Graphemes in training data: {sorted(self.g2p_training_graphemes)}")
+            logger.debug(f"Phones in training data: {sorted(self.g2p_training_phones)}")
             if self.evaluation_mode:
                 for word, pronunciations in self.g2p_validation_dictionary.items():
                     self.g2p_validation_graphemes.update(word)
                     for p in pronunciations:
                         self.g2p_validation_phones.update(p.split())
-                self.log_debug(
+                logger.debug(
                     f"Graphemes in validation data: {sorted(self.g2p_validation_graphemes)}"
                 )
-                self.log_debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
+                logger.debug(f"Phones in validation data: {sorted(self.g2p_validation_phones)}")
                 grapheme_diff = sorted(self.g2p_validation_graphemes - self.g2p_training_graphemes)
                 phone_diff = sorted(self.g2p_validation_phones - self.g2p_training_phones)
                 if grapheme_diff:
-                    self.log_debug(
+                    logger.debug(
                         f"The following graphemes appear only in the validation set: {', '.join(grapheme_diff)}"
                     )
                 if phone_diff:
-                    self.log_debug(
+                    logger.debug(
                         f"The following phones appear only in the validation set: {', '.join(phone_diff)}"
                     )
 
@@ -796,7 +799,7 @@ class PyniniTrainer(
         model.dump(basename)
         model.clean_up()
         # self.clean_up()
-        self.log_info(f"Saved model to {output_model_path}")
+        logger.info(f"Saved model to {output_model_path}")
 
     def train(self) -> None:
         """
@@ -805,15 +808,15 @@ class PyniniTrainer(
         os.makedirs(self.working_log_directory, exist_ok=True)
         begin = time.time()
         if os.path.exists(self.far_path) and os.path.exists(self.encoder_path):
-            self.log_info("Alignment already done, skipping!")
+            logger.info("Alignment already done, skipping!")
         else:
             self.align_g2p()
-            self.log_debug(
+            logger.debug(
                 f"Aligning {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
             )
         begin = time.time()
         self.generate_model()
-        self.log_debug(
+        logger.debug(
             f"Generating model for {len(self.g2p_training_dictionary)} words took {time.time() - begin} seconds"
         )
         self.finalize_training()

@@ -41,12 +41,6 @@ Helper
    SanitizeFunction
    SplitWordsFunction
 
-.. currentmodule:: montreal_forced_aligner.dictionary.multispeaker
-
-.. autosummary::
-   :toctree: generated/
-
-   MultispeakerSanitizationFunction
 
 Pronunciation probability functionality
 =======================================

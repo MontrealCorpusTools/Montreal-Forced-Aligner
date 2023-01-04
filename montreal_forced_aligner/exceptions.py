@@ -890,7 +890,7 @@ class KaldiProcessingError(MFAError):
         self.error_logs.append(error_log)
         self.refresh_message()
 
-    def update_log_file(self, logger: logging.Logger) -> None:
+    def update_log_file(self) -> None:
         """
         Update the log file output
 
@@ -899,6 +899,11 @@ class KaldiProcessingError(MFAError):
         logger: logging.Logger
             Logger
         """
+
+        logger = logging.getLogger("mfa")
         if logger.handlers:
-            self.log_file = logger.handlers[0].baseFilename
+            for handler in logger.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    self.log_file = handler.baseFilename
+                    break
         self.refresh_message()

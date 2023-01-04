@@ -1,9 +1,9 @@
-'m	m
+'m	1.0	m
 ’m	m
-i’m	ay	m	ih
-this	dh	ih	s
-is	ih	z
-the	dh	ah
+i’m	0.01	ay	m	ih
+this	1.0   0.43   1.23   0.85 dh	ih	s
+is	1.0   0.5   1.0   1.0	ih	z
+the	1.0   0.5   1.0   1.0	dh	ah
 acoustic	ah	k	uw	s	t	ih	k
 corpus	k	ao	r	p	us
 i'm	ay	m

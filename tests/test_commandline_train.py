@@ -6,7 +6,7 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_train_acoustic_with_g2p(
-    basic_corpus_dir,
+    combined_corpus_dir,
     english_us_mfa_dictionary,
     generated_dir,
     temp_dir,
@@ -15,11 +15,14 @@ def test_train_acoustic_with_g2p(
 ):
     if os.path.exists(acoustic_g2p_model_path):
         os.remove(acoustic_g2p_model_path)
+    output_directory = os.path.join(generated_dir, "train_g2p_textgrids")
     command = [
         "train",
-        basic_corpus_dir,
+        combined_corpus_dir,
         english_us_mfa_dictionary,
         acoustic_g2p_model_path,
+        "--output_directory",
+        output_directory,
         "-t",
         os.path.join(temp_dir, "train_cli"),
         "-q",
@@ -39,6 +42,7 @@ def test_train_acoustic_with_g2p(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(acoustic_g2p_model_path)
+    assert os.path.exists(output_directory)
 
 
 def test_train_and_align_basic_speaker_dict(

@@ -8,3 +8,4 @@ Workflows
    g2p/index
    transcription/index
    segmentation/index
+   diarization/index

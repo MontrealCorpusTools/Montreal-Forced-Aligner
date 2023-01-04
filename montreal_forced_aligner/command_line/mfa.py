@@ -12,9 +12,9 @@ import click
 from montreal_forced_aligner.command_line.adapt import adapt_model_cli
 from montreal_forced_aligner.command_line.align import align_corpus_cli
 from montreal_forced_aligner.command_line.anchor import anchor_cli
-from montreal_forced_aligner.command_line.classify_speakers import classify_speakers_cli
 from montreal_forced_aligner.command_line.configure import configure_cli
 from montreal_forced_aligner.command_line.create_segments import create_segments_cli
+from montreal_forced_aligner.command_line.diarize_speakers import diarize_speakers_cli
 from montreal_forced_aligner.command_line.g2p import g2p_cli
 from montreal_forced_aligner.command_line.history import history_cli
 from montreal_forced_aligner.command_line.model import model_cli
@@ -28,7 +28,7 @@ from montreal_forced_aligner.command_line.validate import (
     validate_corpus_cli,
     validate_dictionary_cli,
 )
-from montreal_forced_aligner.config import update_command_history
+from montreal_forced_aligner.config import GLOBAL_CONFIG, update_command_history
 from montreal_forced_aligner.utils import check_third_party
 
 BEGIN = time.time()
@@ -100,10 +100,11 @@ def mfa_cli() -> None:
     """
     Main function for the MFA command line interface
     """
+    GLOBAL_CONFIG.load()
+    from montreal_forced_aligner.helper import configure_logger
+
+    configure_logger("mfa")
     check_third_party()
-    # os.putenv(MFA_PROFILE_VARIABLE, profile)
-    # GLOBAL_CONFIG.current_profile.update(context.params)
-    # GLOBAL_CONFIG.save()
 
     hooks = ExitHooks()
     hooks.hook()
@@ -117,7 +118,7 @@ def mfa_cli() -> None:
 mfa_cli.add_command(adapt_model_cli)
 mfa_cli.add_command(align_corpus_cli)
 mfa_cli.add_command(anchor_cli)
-mfa_cli.add_command(classify_speakers_cli)
+mfa_cli.add_command(diarize_speakers_cli)
 mfa_cli.add_command(create_segments_cli)
 mfa_cli.add_command(configure_cli)
 mfa_cli.add_command(history_cli)

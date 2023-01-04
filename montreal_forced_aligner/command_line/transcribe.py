@@ -7,6 +7,7 @@ import click
 
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -96,9 +97,10 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     """
     Transcribe utterances using an acoustic model, language model, and pronunciation dictionary.
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -128,3 +130,4 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
         raise
     finally:
         transcriber.cleanup()
+        cleanup_databases()

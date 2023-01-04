@@ -9,6 +9,7 @@ import yaml
 from montreal_forced_aligner.alignment import PretrainedAligner
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -85,9 +86,10 @@ def align_corpus_cli(context, **kwargs) -> None:
     """
     Align a corpus with a pronunciation dictionary and a pretrained acoustic model.
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)
@@ -106,6 +108,18 @@ def align_corpus_cli(context, **kwargs) -> None:
     )
     try:
         aligner.align()
+        if aligner.use_phone_model:
+            aligner.export_files(
+                output_directory,
+                output_format=output_format,
+                include_original_text=include_original_text,
+            )
+        else:
+            aligner.export_files(
+                output_directory,
+                output_format=output_format,
+                include_original_text=include_original_text,
+            )
         if reference_directory:
             mapping = None
             if custom_mapping_path:
@@ -117,12 +131,6 @@ def align_corpus_cli(context, **kwargs) -> None:
             reference_alignments = WorkflowType.alignment
 
         if aligner.use_phone_model:
-            aligner.export_files(
-                output_directory,
-                output_format=output_format,
-                include_original_text=include_original_text,
-                workflow=WorkflowType.phone_transcription,
-            )
             aligner.evaluate_alignments(
                 mapping,
                 output_directory=output_directory,
@@ -130,12 +138,6 @@ def align_corpus_cli(context, **kwargs) -> None:
                 comparison_source=WorkflowType.phone_transcription,
             )
         else:
-            aligner.export_files(
-                output_directory,
-                output_format=output_format,
-                include_original_text=include_original_text,
-                workflow=WorkflowType.alignment,
-            )
             if reference_alignments is WorkflowType.reference:
                 aligner.evaluate_alignments(
                     mapping,
@@ -148,3 +150,4 @@ def align_corpus_cli(context, **kwargs) -> None:
         raise
     finally:
         aligner.cleanup()
+        cleanup_databases()

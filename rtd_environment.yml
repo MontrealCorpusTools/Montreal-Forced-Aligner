@@ -13,7 +13,7 @@ dependencies:
   - dataclassy
   - sqlalchemy>=1.4
   - pynini
-  - biopython
+  - biopython=1.79
   - click
   - setuptools_scm
   - importlib_metadata
@@ -24,3 +24,14 @@ dependencies:
   - sphinx-intl
   - pydata-sphinx-theme
   - interrogate
+  - myst-parser
+  - pytest
+  - mock
+  - coverage
+  - coveralls
+  - tox
+  - tox-conda
+  - setuptools-scm
+  - pip:
+      - sphinx-needs
+      - sphinxcontrib-plantuml

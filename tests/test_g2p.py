@@ -20,7 +20,7 @@ def test_clean_up_word():
     assert m == {"+"}
 
 
-def test_check_bracketed(basic_dict_path):
+def test_check_bracketed(basic_dict_path, db_setup):
     """Checks if the brackets are removed correctly and handling an empty string works"""
     word_set = ["uh", "(the)", "sick", "<corpus>", "[a]", "{cold}", ""]
     expected_result = ["uh", "sick", ""]
@@ -28,7 +28,7 @@ def test_check_bracketed(basic_dict_path):
     assert [x for x in word_set if not dictionary_config.check_bracketed(x)] == expected_result
 
 
-def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config):
+def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config, db_setup):
     output_directory = os.path.join(temp_dir, "g2p_tests", "train")
     global_config.temporary_directory = output_directory
     trainer = PyniniTrainer(
@@ -50,7 +50,7 @@ def test_training(basic_dict_path, basic_g2p_model_path, temp_dir, global_config
 
 
 def test_generator(
-    basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir, global_config
+    basic_g2p_model_path, basic_corpus_dir, g2p_basic_output, temp_dir, global_config, db_setup
 ):
     output_directory = os.path.join(temp_dir, "g2p_tests", "gen")
     global_config.temporary_directory = output_directory
@@ -71,7 +71,7 @@ def test_generator(
     gen.cleanup()
 
 
-def test_generator_pretrained(english_g2p_model, temp_dir, global_config):
+def test_generator_pretrained(english_g2p_model, temp_dir, global_config, db_setup):
     words = ["petted", "petted-patted", "pedal"]
     output_directory = os.path.join(temp_dir, "g2p_tests")
     global_config.temporary_directory = output_directory

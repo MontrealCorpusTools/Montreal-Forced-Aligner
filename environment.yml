@@ -1,5 +1,8 @@
 channels:
   - conda-forge
+  - pytorch
+  - nvidia
+  - local
 dependencies:
   - python
   - numpy
@@ -18,9 +21,13 @@ dependencies:
   - baumwelch
   - ngram
   - praatio
-  - biopython
+  - biopython=1.79
   - sqlalchemy>=1.4
+  - pgvector
+  - pgvector-python
   - postgresql
   - psycopg2
   - click
+  - pytorch
+  - torchaudio
   - setuptools_scm

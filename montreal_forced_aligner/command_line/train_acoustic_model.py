@@ -8,6 +8,7 @@ import click
 from montreal_forced_aligner.acoustic_modeling import TrainableAligner
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_dictionary,
 )
@@ -79,9 +80,10 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     """
     Train a new acoustic model on a corpus and optionally export alignments
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)
@@ -109,3 +111,4 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
         raise
     finally:
         trainer.cleanup()
+        cleanup_databases()

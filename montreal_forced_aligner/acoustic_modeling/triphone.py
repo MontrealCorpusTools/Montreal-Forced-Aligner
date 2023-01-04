@@ -1,6 +1,7 @@
 """Class definitions for TriphoneTrainer"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import re
@@ -35,6 +36,8 @@ __all__ = [
     "ConvertAlignmentsFunction",
     "ConvertAlignmentsArguments",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 class TreeStatsArguments(MfaArguments):
@@ -212,23 +215,39 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         list[:class:`~montreal_forced_aligner.acoustic_modeling.triphone.TreeStatsArguments`]
             Arguments for processing
         """
-        feat_strings = self.worker.construct_feature_proc_strings()
         alignment_model_path = os.path.join(self.previous_aligner.working_directory, "final.mdl")
-        return [
-            TreeStatsArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"acc_tree.{j.name}.log"),
-                j.dictionary_ids,
-                self.worker.context_independent_csl,
-                alignment_model_path,
-                feat_strings[j.name],
-                j.construct_path_dictionary(self.previous_aligner.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(self.working_directory, "tree", "acc"),
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            ali_paths = {}
+            treeacc_paths = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+                ali_paths[d_id] = j.construct_path(
+                    self.previous_aligner.working_directory, "ali", "ark", d_id
+                )
+                treeacc_paths[d_id] = j.construct_path(self.working_directory, "tree", "acc", d_id)
+            arguments.append(
+                TreeStatsArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"acc_tree.{j.id}.log"),
+                    j.dictionary_ids,
+                    self.worker.context_independent_csl,
+                    alignment_model_path,
+                    feat_strings,
+                    ali_paths,
+                    treeacc_paths,
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def convert_alignments_arguments(self) -> List[ConvertAlignmentsArguments]:
         """
@@ -241,9 +260,9 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
         """
         return [
             ConvertAlignmentsArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"convert_alignments.{j.name}.log"),
+                j.id,
+                getattr(self, "db_string", ""),
+                os.path.join(self.working_log_directory, f"convert_alignments.{j.id}.log"),
                 j.dictionary_ids,
                 self.model_path,
                 self.tree_path,
@@ -252,7 +271,6 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
                 j.construct_path_dictionary(self.working_directory, "ali", "ark"),
             )
             for j in self.jobs
-            if j.has_data
         ]
 
     def convert_alignments(self) -> None:
@@ -273,7 +291,7 @@ class TriphoneTrainer(AcousticModelTrainingMixin):
             Reference Kaldi script
 
         """
-        self.log_info("Converting alignments...")
+        logger.info("Converting alignments...")
         arguments = self.convert_alignments_arguments()
         with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:

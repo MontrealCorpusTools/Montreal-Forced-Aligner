@@ -10,6 +10,8 @@ MFA root directory
 
 MFA uses a temporary directory for commands that can be specified in running commands with ``--temp_directory`` (see below), and it also uses a directory to store global configuration settings and saved models.  By default this root directory is ``~/Documents/MFA``, but if you would like to put this somewhere else, you can set the environment variable ``MFA_ROOT_DIR`` to use that.  MFA will raise an error on load if it's unable to write to the root directory.
 
+.. _configure_cli:
+
 Global configuration
 ====================
 
@@ -80,3 +82,4 @@ You can then also override these options on the command like, i.e. ``--beam 10 -
    transcription.rst
    segment.rst
    ivector.rst
+   diarization

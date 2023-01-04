@@ -4,6 +4,7 @@ Validating corpora
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 import typing
@@ -33,6 +34,8 @@ if TYPE_CHECKING:
 
 
 __all__ = ["TrainingValidator", "PretrainedValidator"]
+
+logger = logging.getLogger("mfa")
 
 
 class ValidationMixin:
@@ -76,7 +79,7 @@ class ValidationMixin:
         self.target_num_ngrams = target_num_ngrams
         self.order = order
         self.method = method
-        self.printer = TerminalPrinter(print_function=self.log_info)
+        self.printer = TerminalPrinter(print_function=logger.info)
 
     @property
     def working_log_directory(self) -> str:
@@ -95,13 +98,13 @@ class ValidationMixin:
             total_duration = session.query(sqlalchemy.func.sum(Utterance.duration)).scalar()
 
         total_duration = Decimal(str(total_duration)).quantize(Decimal("0.001"))
-        self.log_debug(f"Duration calculation took {time.time() - begin}")
+        logger.debug(f"Duration calculation took {time.time() - begin}")
 
         begin = time.time()
         ignored_count = len(self.no_transcription_files)
         ignored_count += len(self.textgrid_read_errors)
         ignored_count += len(self.decode_error_files)
-        self.log_debug(f"Ignored count calculation took {time.time() - begin}")
+        logger.debug(f"Ignored count calculation took {time.time() - begin}")
 
         self.printer.print_header("Corpus")
         self.printer.print_green_stat(sound_file_count, "sound files")
@@ -357,7 +360,7 @@ class ValidationMixin:
         :meth:`.AlignMixin.compile_information_arguments`
             Job method for generating arguments for the helper function
         """
-        self.log_debug("Analyzing alignment information")
+        logger.debug("Analyzing alignment information")
         compile_info_begin = time.time()
         self.collect_alignments()
         jobs = self.compile_information_arguments()
@@ -390,7 +393,7 @@ class ValidationMixin:
 
         self.printer.print_header("Alignment")
         if not avg_like_frames:
-            self.log_debug(
+            logger.debug(
                 "No utterances were aligned, this likely indicates serious problems with the aligner."
             )
             self.printer.print_red_stat(0, f"of {self.num_utterances} utterances were aligned")
@@ -402,7 +405,7 @@ class ValidationMixin:
             else:
                 self.printer.print_green_stat(0, "utterances were too short to be aligned")
             if beam_too_narrow_count:
-                self.log_debug(
+                logger.debug(
                     f"There were {beam_too_narrow_count} utterances that could not be aligned with "
                     f"the current beam settings."
                 )
@@ -445,8 +448,8 @@ class ValidationMixin:
             average_log_like = avg_like_sum / avg_like_frames
             if average_logdet_sum:
                 average_log_like += average_logdet_sum / average_logdet_frames
-            self.log_debug(f"Average per frame likelihood for alignment: {average_log_like}")
-        self.log_debug(f"Compiling information took {time.time() - compile_info_begin}")
+            logger.debug(f"Average per frame likelihood for alignment: {average_log_like}")
+        logger.debug(f"Compiling information took {time.time() - compile_info_begin}")
 
     def test_utterance_transcriptions(self) -> None:
         """
@@ -458,17 +461,12 @@ class ValidationMixin:
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
-        self.log_info("Checking utterance transcriptions...")
+        logger.info("Checking utterance transcriptions...")
 
         try:
             self.train_speaker_lms()
 
-            self.decode(WorkflowType.per_speaker_transcription)
-            if self.uses_speaker_adaptation:
-                self.log_info("Performing speaker adjusted transcription...")
-
-                self.transcribe_fmllr()
-            self.collect_alignments(WorkflowType.per_speaker_transcription)
+            self.transcribe(WorkflowType.per_speaker_transcription)
 
             self.printer.print_header("Test transcriptions")
             ser, wer, cer = self.compute_wer()
@@ -499,11 +497,8 @@ class ValidationMixin:
 
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
 
@@ -525,14 +520,13 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
     """
 
     def __init__(self, **kwargs):
+        training_configuration = kwargs.pop("training_configuration", None)
         super().__init__(**kwargs)
         self.training_configs = {}
-        self.add_config("monophone", {})
-
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for validation"""
-        return "validate_training"
+        if training_configuration is None:
+            training_configuration = [("monophone", {})]
+        for k, v in training_configuration:
+            self.add_config(k, v)
 
     @classmethod
     def parse_parameters(
@@ -601,21 +595,23 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
+        self.check_previous_run()
+        if hasattr(self, "initialize_database"):
+            self.initialize_database()
         if self.initialized:
             return
         try:
             all_begin = time.time()
-            self.initialize_database()
             self.dictionary_setup()
-            self.log_debug(f"Loaded dictionary in {time.time() - all_begin}")
+            logger.debug(f"Loaded dictionary in {time.time() - all_begin}")
 
             begin = time.time()
             self._load_corpus()
-            self.log_debug(f"Loaded corpus in {time.time() - begin}")
+            logger.debug(f"Loaded corpus in {time.time() - begin}")
 
             begin = time.time()
             self.initialize_jobs()
-            self.log_debug(f"Initialized jobs in {time.time() - begin}")
+            logger.debug(f"Initialized jobs in {time.time() - begin}")
 
             self.normalize_text()
 
@@ -624,33 +620,29 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
             begin = time.time()
             self.write_lexicon_information()
             self.write_training_information()
-            self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+            if self.test_transcriptions:
+                self.write_lexicon_information(write_disambiguation=True)
+            logger.debug(f"Wrote lexicon information in {time.time() - begin}")
 
             if self.ignore_acoustics:
-                self.log_info("Skipping acoustic feature generation")
+                logger.info("Skipping acoustic feature generation")
             else:
                 begin = time.time()
                 self.create_corpus_split()
-                self.log_debug(f"Created corpus split directory in {time.time() - begin}")
-                if self.test_transcriptions:
-                    begin = time.time()
-                    self.write_lexicon_information(write_disambiguation=True)
-                    self.log_debug(f"Wrote lexicon information in {time.time() - begin}")
+                logger.debug(f"Created corpus split directory in {time.time() - begin}")
                 begin = time.time()
                 self.generate_features()
-                self.log_debug(f"Generated features in {time.time() - begin}")
+                logger.debug(f"Generated features in {time.time() - begin}")
                 begin = time.time()
                 self.save_oovs_found(self.output_directory)
-                self.log_debug(f"Calculated OOVs in {time.time() - begin}")
+                logger.debug(f"Calculated OOVs in {time.time() - begin}")
+                self.setup_trainers()
 
             self.initialized = True
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
 
     def validate(self) -> None:
@@ -658,10 +650,10 @@ class TrainingValidator(TrainableAligner, ValidationMixin):
         Performs validation of the corpus
         """
         begin = time.time()
-        self.log_debug(f"Setup took {time.time() - begin}")
+        logger.debug(f"Setup took {time.time() - begin}")
         self.setup()
         self.analyze_setup()
-        self.log_debug(f"Setup took {time.time() - begin}")
+        logger.debug(f"Setup took {time.time() - begin}")
         if self.ignore_acoustics:
             self.printer.print_info_lines("Skipping test alignments.")
             return
@@ -688,11 +680,6 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    @property
-    def workflow_identifier(self) -> str:
-        """Identifier for validation"""
-        return "validate_pretrained"
-
     def setup(self) -> None:
         """
         Set up the corpus and validator
@@ -702,6 +689,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
+        self.initialize_database()
         if self.initialized:
             return
         try:
@@ -714,7 +702,7 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
             self.save_oovs_found(self.output_directory)
 
             if self.ignore_acoustics:
-                self.log_info("Skipping acoustic feature generation")
+                logger.info("Skipping acoustic feature generation")
             else:
                 self.write_lexicon_information()
 
@@ -723,82 +711,41 @@ class PretrainedValidator(PretrainedAligner, ValidationMixin):
                     self.write_lexicon_information(write_disambiguation=True)
                 self.generate_features()
             self.acoustic_model.validate(self)
-            import logging
-
-            logger = logging.getLogger(self.identifier)
-            self.acoustic_model.log_details(logger)
+            self.acoustic_model.log_details()
 
             self.initialized = True
-            self.log_info("Finished initializing!")
+            logger.info("Finished initializing!")
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
-
-    def align(self) -> None:
-        """
-        Validate alignment
-        """
-        done_path = os.path.join(self.working_directory, "done")
-        dirty_path = os.path.join(self.working_directory, "dirty")
-        if os.path.exists(done_path):
-            self.log_debug("Alignment already done, skipping.")
-            return
-        try:
-            log_dir = os.path.join(self.working_directory, "log")
-            os.makedirs(log_dir, exist_ok=True)
-            self.compile_train_graphs()
-
-            self.log_debug("Performing first-pass alignment...")
-            self.speaker_independent = True
-            self.align_utterances()
-            if self.uses_speaker_adaptation:
-                self.log_debug("Calculating fMLLR for speaker adaptation...")
-                self.calc_fmllr()
-
-                self.speaker_independent = False
-                self.log_debug("Performing second-pass alignment...")
-                self.align_utterances()
-
-        except Exception as e:
-            with mfa_open(dirty_path, "w"):
-                pass
-            if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
-            raise
-        with mfa_open(done_path, "w"):
-            pass
 
     def validate(self) -> None:
         """
         Performs validation of the corpus
         """
+        self.initialize_database()
+        self.create_new_current_workflow(WorkflowType.alignment)
         self.setup()
         self.analyze_setup()
         self.analyze_missing_phones()
         if self.ignore_acoustics:
-            self.log_info("Skipping test alignments.")
+            logger.info("Skipping test alignments.")
             return
         self.align()
-        self._collect_alignments()
+        self.collect_alignments()
         self.compile_information()
         if self.phone_confidence:
             self.get_phone_confidences()
 
         if self.use_phone_model:
-            self.transcribe(WorkflowType.phone_transcription)
-            self._collect_alignments(WorkflowType.phone_transcription)
+            self.create_new_current_workflow(WorkflowType.phone_transcription)
+            self.transcribe()
+            self.collect_alignments()
         if self.test_transcriptions:
             self.test_utterance_transcriptions()
-            self._collect_alignments(WorkflowType.per_speaker_transcription)
+            self.collect_alignments()
             self.transcription_done = True
             with self.session() as session:
                 session.query(Corpus).update({"transcription_done": True})

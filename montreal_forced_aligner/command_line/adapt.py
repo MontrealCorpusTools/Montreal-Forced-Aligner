@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import os
-import time
 
 import click
 
 from montreal_forced_aligner.alignment import AdaptingAligner
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_acoustic_model,
     validate_dictionary,
@@ -75,9 +75,10 @@ def adapt_model_cli(context, **kwargs) -> None:
     """
     Adapt an acoustic model to a new corpus.
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     output_directory = kwargs.get("output_directory", None)
@@ -98,11 +99,7 @@ def adapt_model_cli(context, **kwargs) -> None:
         adapter.adapt()
         if output_directory is not None:
             os.makedirs(output_directory, exist_ok=True)
-            begin = time.time()
             adapter.align()
-            adapter.log_debug(
-                f"Generated alignments with adapted model in {time.time() - begin} seconds"
-            )
             adapter.export_files(
                 output_directory,
                 output_format,
@@ -115,3 +112,4 @@ def adapt_model_cli(context, **kwargs) -> None:
         raise
     finally:
         adapter.cleanup()
+        cleanup_databases()

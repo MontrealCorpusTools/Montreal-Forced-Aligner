@@ -1,6 +1,7 @@
 """Class definitions for corpora"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import sys
@@ -15,10 +16,13 @@ from montreal_forced_aligner.corpus.base import CorpusMixin
 from montreal_forced_aligner.corpus.classes import FileData
 from montreal_forced_aligner.corpus.helper import find_exts
 from montreal_forced_aligner.corpus.multiprocessing import CorpusProcessWorker
-from montreal_forced_aligner.data import DatabaseImportData
+from montreal_forced_aligner.data import DatabaseImportData, WordType
+from montreal_forced_aligner.db import Dialect, Dictionary, Utterance, Word
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import TextGridParseError, TextParseError
 from montreal_forced_aligner.utils import Stopped
+
+logger = logging.getLogger("mfa")
 
 
 class TextCorpusMixin(CorpusMixin):
@@ -34,13 +38,46 @@ class TextCorpusMixin(CorpusMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    def count_word_tokens(self):
+        word_objs = {}
+        word_id = 1
+        with self.session() as session:
+            session.query(Word).delete()
+            session.query(Dictionary).delete()
+            session.query(Dialect).delete()
+            session.flush()
+
+            dialect = Dialect(name="unspecified")
+            d = Dictionary(name="corpus", default=True, dialect=dialect)
+            session.add(dialect)
+            session.add(d)
+            session.flush()
+            utt_query = session.query(Utterance.text)
+            for text in utt_query:
+                words = text[0].split()
+                for w in words:
+                    if w not in word_objs:
+                        word_objs[w] = {
+                            "id": word_id,
+                            "word": w,
+                            "mapping_id": word_id,
+                            "count": 0,
+                            "dictionary_id": d.id,
+                            "word_type": WordType.speech,
+                        }
+                        word_id += 1
+                    word_objs[w]["count"] += 1
+            session.bulk_insert_mappings(
+                Word, word_objs.values(), return_defaults=False, render_nulls=True
+            )
+            session.commit()
+
     def _load_corpus_from_source_mp(self) -> None:
         """
         Load a corpus using multiprocessing
         """
         if self.stopped is None:
             self.stopped = Stopped()
-        sanitize_function = getattr(self, "sanitize_function", None)
         begin_time = time.time()
         job_queue = mp.Queue()
         return_queue = mp.Queue()
@@ -55,7 +92,6 @@ class TextCorpusMixin(CorpusMixin):
                 self.stopped,
                 finished_adding,
                 self.speaker_characters,
-                sanitize_function,
                 sample_rate=0,
             )
             procs.append(p)
@@ -118,7 +154,7 @@ class TextCorpusMixin(CorpusMixin):
                     pbar.update(1)
                     import_data.add_objects(self.generate_import_objects(file))
 
-                self.log_debug("Waiting for workers to finish...")
+                logger.debug("Waiting for workers to finish...")
                 for p in procs:
                     p.join()
 
@@ -131,21 +167,21 @@ class TextCorpusMixin(CorpusMixin):
                 for k in ["decode_error_files", "textgrid_read_errors"]:
                     if hasattr(self, k):
                         if k in error_dict:
-                            self.log_info(
+                            logger.info(
                                 "There were some issues with files in the corpus. "
                                 "Please look at the log file or run the validator for more information."
                             )
-                            self.log_debug(f"{k} showed {len(error_dict[k])} errors:")
+                            logger.debug(f"{k} showed {len(error_dict[k])} errors:")
                             if k == "textgrid_read_errors":
                                 getattr(self, k).extend(error_dict[k])
                                 for e in error_dict[k]:
-                                    self.log_debug(f"{e.file_name}: {e.error}")
+                                    logger.debug(f"{e.file_name}: {e.error}")
                             else:
-                                self.log_debug(", ".join(error_dict[k]))
+                                logger.debug(", ".join(error_dict[k]))
                                 setattr(self, k, error_dict[k])
 
         except KeyboardInterrupt:
-            self.log_info("Detected ctrl-c, please wait a moment while we clean everything up...")
+            logger.info("Detected ctrl-c, please wait a moment while we clean everything up...")
             self.stopped.stop()
             finished_adding.stop()
             job_queue.join()
@@ -167,11 +203,11 @@ class TextCorpusMixin(CorpusMixin):
             for p in procs:
                 p.join()
             if self.stopped.stop_check():
-                self.log_info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
+                logger.info(f"Stopped parsing early ({time.time() - begin_time} seconds)")
                 if self.stopped.source():
                     sys.exit(0)
             else:
-                self.log_debug(
+                logger.debug(
                     f"Parsed corpus directory with {GLOBAL_CONFIG.num_jobs} jobs in {time.time() - begin_time} seconds"
                 )
 
@@ -217,23 +253,23 @@ class TextCorpusMixin(CorpusMixin):
                         self.textgrid_read_errors.append(e)
             self._finalize_load(session, import_data)
         if self.decode_error_files or self.textgrid_read_errors:
-            self.log_info(
+            logger.info(
                 "There were some issues with files in the corpus. "
                 "Please look at the log file or run the validator for more information."
             )
             if self.decode_error_files:
-                self.log_debug(
+                logger.debug(
                     f"There were {len(self.decode_error_files)} errors decoding text files:"
                 )
-                self.log_debug(", ".join(self.decode_error_files))
+                logger.debug(", ".join(self.decode_error_files))
             if self.textgrid_read_errors:
-                self.log_debug(
+                logger.debug(
                     f"There were {len(self.textgrid_read_errors)} errors decoding reading TextGrid files:"
                 )
                 for e in self.textgrid_read_errors:
-                    self.log_debug(f"{e.file_name}: {e.error}")
+                    logger.debug(f"{e.file_name}: {e.error}")
 
-        self.log_debug(f"Parsed corpus directory in {time.time()-begin_time} seconds")
+        logger.debug(f"Parsed corpus directory in {time.time()-begin_time} seconds")
 
 
 class DictionaryTextCorpusMixin(TextCorpusMixin, MultispeakerDictionaryMixin):
@@ -295,6 +331,7 @@ class TextCorpus(TextCorpusMixin, MfaWorker, TemporaryDirectoryMixin):
 
         self._load_corpus()
         self.initialize_jobs()
+        self.count_word_tokens()
         self.create_corpus_split()
 
     @property

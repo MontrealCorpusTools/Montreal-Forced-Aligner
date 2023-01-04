@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import functools
+import logging
 import multiprocessing as mp
 import os
 import queue
@@ -36,6 +37,8 @@ __all__ = [
     "PyniniCorpusGenerator",
     "PyniniWordListGenerator",
 ]
+
+logger = logging.getLogger("mfa")
 
 
 def threshold_lattice_to_dfa(
@@ -402,7 +405,7 @@ class PyniniGenerator(G2PTopLevelMixin):
         missing_graphemes = set()
         if self.rewriter is None:
             self.setup()
-        self.log_info("Generating pronunciations...")
+        logger.info("Generating pronunciations...")
         to_return = {}
         skipped_words = 0
         if num_words < 30 or GLOBAL_CONFIG.num_jobs == 1:
@@ -422,7 +425,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                     except rewrite.Error:
                         continue
                     to_return[word] = prons
-                self.log_debug(
+                logger.debug(
                     f"Skipping {skipped_words} words for containing the following graphemes: "
                     f"{comma_join(sorted(missing_graphemes))}"
                 )
@@ -439,7 +442,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                     skipped_words += 1
                     continue
                 job_queue.put(w)
-            self.log_debug(
+            logger.debug(
                 f"Skipping {skipped_words} words for containing the following graphemes: "
                 f"{comma_join(sorted(missing_graphemes))}"
             )
@@ -479,7 +482,7 @@ class PyniniGenerator(G2PTopLevelMixin):
                 p.join()
             if error_dict:
                 raise PyniniGenerationError(error_dict)
-        self.log_debug(f"Processed {num_words} in {time.time() - begin} seconds")
+        logger.debug(f"Processed {num_words} in {time.time() - begin} seconds")
         return to_return
 
 
@@ -526,10 +529,13 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
 
     def setup(self) -> None:
         """Set up the G2P validator"""
+        TopLevelMfaWorker.setup(self)
         if self.initialized:
             return
+        self._current_workflow = "validation"
+        os.makedirs(self.working_log_directory, exist_ok=True)
         self.g2p_model.validate(self.words_to_g2p)
-        super().setup()
+        PyniniGenerator.setup(self)
         self.initialized = True
         self.wer = None
         self.ler = None
@@ -558,7 +564,7 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
         total_length = 0
         # Since the edit distance algorithm is quadratic, let's do this with
         # multiprocessing.
-        self.log_debug(f"Processing results for {len(hypothesis_values)} hypotheses")
+        logger.debug(f"Processing results for {len(hypothesis_values)} hypotheses")
         to_comp = []
         indices = []
         hyp_pron_count = 0
@@ -601,12 +607,12 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 incorrect += 1
                 indices.append(word)
                 to_comp.append((gold_pronunciations, hyp))  # Multiple hypotheses to compare
-            self.log_debug(
+            logger.debug(
                 f"For the word {word}: gold is {gold_pronunciations}, hypothesized are: {hyp}"
             )
             hyp_pron_count += len(hyp)
             gold_pron_count += len(gold_pronunciations)
-        self.log_debug(
+        logger.debug(
             f"Generated an average of {hyp_pron_count /len(hypothesis_values)} variants "
             f"The gold set had an average of {gold_pron_count/len(hypothesis_values)} variants."
         )
@@ -645,9 +651,9 @@ class PyniniValidator(PyniniGenerator, TopLevelMfaWorker):
                 writer.writerow(line)
         self.wer = 100 * incorrect / (correct + incorrect)
         self.ler = 100 * total_edits / total_length
-        self.log_info(f"WER:\t{self.wer:.2f}")
-        self.log_info(f"LER:\t{self.ler:.2f}")
-        self.log_debug(
+        logger.info(f"WER:\t{self.wer:.2f}")
+        logger.info(f"LER:\t{self.ler:.2f}")
+        logger.debug(
             f"Computation of errors for {len(gold_values)} words took {time.time() - begin} seconds"
         )
 
@@ -737,8 +743,8 @@ class PyniniCorpusGenerator(PyniniGenerator, TextCorpusMixin, TopLevelMfaWorker)
             return
         self._load_corpus()
         self.initialize_jobs()
-        self.normalize_text()
         super().setup()
+        self.count_word_tokens()
         self.g2p_model.validate(self.words_to_g2p)
         self.initialized = True
 

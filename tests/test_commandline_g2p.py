@@ -3,10 +3,13 @@ import os
 import click.testing
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.command_line.utils import check_databases
 from montreal_forced_aligner.dictionary import MultispeakerDictionary
 
 
-def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, generated_dir):
+def test_generate_pretrained(
+    english_g2p_model, basic_corpus_dir, temp_dir, generated_dir, db_setup
+):
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
         "g2p",
@@ -32,6 +35,7 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_path)
+    check_databases()
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
@@ -39,7 +43,7 @@ def test_generate_pretrained(english_g2p_model, basic_corpus_dir, temp_dir, gene
 
 
 def test_generate_pretrained_threshold(
-    english_g2p_model, basic_corpus_dir, temp_dir, generated_dir
+    english_g2p_model, basic_corpus_dir, temp_dir, generated_dir, db_setup
 ):
     output_path = os.path.join(generated_dir, "g2p_out.txt")
     command = [
@@ -64,13 +68,19 @@ def test_generate_pretrained_threshold(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_path)
+    check_databases()
     d = MultispeakerDictionary(output_path)
     d.dictionary_setup()
 
     assert len(d.word_mapping(1)) > 0
 
 
-def test_train_g2p(basic_dict_path, basic_g2p_model_path, temp_dir, train_g2p_config_path):
+def test_train_g2p(
+    basic_dict_path,
+    basic_g2p_model_path,
+    temp_dir,
+    train_g2p_config_path,
+):
     command = [
         "train_g2p",
         basic_dict_path,
@@ -97,7 +107,10 @@ def test_train_g2p(basic_dict_path, basic_g2p_model_path, temp_dir, train_g2p_co
 
 
 def test_train_g2p_phonetisaurus(
-    basic_dict_path, basic_phonetisaurus_g2p_model_path, temp_dir, train_g2p_config_path
+    basic_dict_path,
+    basic_phonetisaurus_g2p_model_path,
+    temp_dir,
+    train_g2p_config_path,
 ):
     command = [
         "train_g2p",
@@ -130,6 +143,7 @@ def test_generate_dict(
     g2p_basic_output,
     temp_dir,
     g2p_config_path,
+    db_setup,
 ):
     command = [
         "g2p",
@@ -154,6 +168,7 @@ def test_generate_dict(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(g2p_basic_output)
+    check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
@@ -165,6 +180,7 @@ def test_generate_dict_phonetisaurus(
     g2p_basic_phonetisaurus_output,
     temp_dir,
     g2p_config_path,
+    db_setup,
 ):
     command = [
         "g2p",
@@ -189,6 +205,7 @@ def test_generate_dict_phonetisaurus(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(g2p_basic_phonetisaurus_output)
+    check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_phonetisaurus_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
@@ -200,6 +217,7 @@ def test_generate_dict_text_only(
     g2p_basic_output,
     temp_dir,
     g2p_config_path,
+    db_setup,
 ):
     text_dir = basic_split_dir[1]
     command = [
@@ -225,6 +243,7 @@ def test_generate_dict_text_only(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(g2p_basic_output)
+    check_databases()
     d = MultispeakerDictionary(dictionary_path=g2p_basic_output)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0
@@ -236,6 +255,7 @@ def test_generate_dict_textgrid(
     generated_dir,
     temp_dir,
     g2p_config_path,
+    db_setup,
 ):
     output_file = os.path.join(generated_dir, "tg_g2pped.dict")
     command = [
@@ -261,6 +281,7 @@ def test_generate_dict_textgrid(
         raise result.exception
     assert not result.return_value
     assert os.path.exists(output_file)
+    check_databases()
     d = MultispeakerDictionary(dictionary_path=output_file)
     d.dictionary_setup()
     assert len(d.word_mapping()) > 0

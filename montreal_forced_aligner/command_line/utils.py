@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import functools
 import os
+import shutil
 import subprocess
+import time
 import typing
 
 import click
-import sqlalchemy
 import yaml
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -41,7 +42,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
             "--profile",
             help='Configuration profile to use, defaults to "global"',
             type=str,
-            default="global",
+            default=None,
         ),
         click.option(
             "--temporary_directory",
@@ -52,58 +53,51 @@ def common_options(f: typing.Callable) -> typing.Callable:
             default=GLOBAL_CONFIG.temporary_directory,
         ),
         click.option(
-            "--database_backend",
-            default=GLOBAL_CONFIG.database_backend,
-            help="Backend database to use for storing metadata. "
-            f"Currently set to {GLOBAL_CONFIG.database_backend}.",
-            type=click.Choice(["sqlite", "psycopg2"]),
-        ),
-        click.option(
             "-j",
             "--num_jobs",
             "num_jobs",
             help=f"Set the number of processes to use by default, defaults to {GLOBAL_CONFIG.num_jobs}",
             type=int,
-            default=GLOBAL_CONFIG.num_jobs,
+            default=None,
         ),
         click.option(
             "--clean/--no_clean",
             "clean",
             help=f"Remove files from previous runs, default is {GLOBAL_CONFIG.clean}",
-            default=GLOBAL_CONFIG.clean,
+            default=None,
         ),
         click.option(
             "--verbose/--no_verbose",
             "-v/-nv",
             "verbose",
             help=f"Output debug messages, default is {GLOBAL_CONFIG.verbose}",
-            default=GLOBAL_CONFIG.verbose,
+            default=None,
         ),
         click.option(
             "--quiet/--no_quiet",
             "-q/-nq",
             "quiet",
             help=f"Suppress all output messages (overrides verbose), default is {GLOBAL_CONFIG.quiet}",
-            default=GLOBAL_CONFIG.quiet,
+            default=None,
         ),
         click.option(
             "--overwrite/--no_overwrite",
             "overwrite",
             help=f"Overwrite output files when they exist, default is {GLOBAL_CONFIG.overwrite}",
-            default=GLOBAL_CONFIG.overwrite,
+            default=None,
         ),
         click.option(
             "--use_mp/--no_use_mp",
             "use_mp",
             help="Turn on/off multiprocessing. Multiprocessing is recommended will allow for faster executions.",
-            default=GLOBAL_CONFIG.use_mp,
+            default=None,
         ),
         click.option(
             "--debug/--no_debug",
             "-d/-nd",
             "debug",
             help=f"Run extra steps for debugging issues, default is {GLOBAL_CONFIG.debug}",
-            default=GLOBAL_CONFIG.debug,
+            default=None,
         ),
         click.option(
             "--single_speaker",
@@ -117,7 +111,7 @@ def common_options(f: typing.Callable) -> typing.Callable:
             "cleanup_textgrids",
             help="Turn on/off post-processing of TextGrids that cleans up "
             "silences and recombines compound words and clitics.",
-            default=GLOBAL_CONFIG.cleanup_textgrids,
+            default=None,
         ),
     ]
     options.reverse()
@@ -166,12 +160,10 @@ def validate_model_arg(name: str, model_type: str) -> str:
         if model_type == "dictionary" and os.path.splitext(name)[1].lower() == ".yaml":
             with mfa_open(name, "r") as f:
                 data = yaml.safe_load(f)
-                found_default = False
-                for speaker, path in data.items():
-                    if speaker == "default":
-                        found_default = True
-                    path = validate_model_arg(path, "dictionary")
-                if not found_default:
+                paths = sorted(set(data.values()))
+                for path in paths:
+                    validate_model_arg(path, "dictionary")
+                if "default" not in data:
                     raise click.BadParameter(str(NoDefaultSpeakerDictionaryError()))
     else:
         if os.path.exists(name):
@@ -211,36 +203,89 @@ def validate_g2p_model(ctx, param, value):
 
 def validate_ivector_extractor(ctx, param, value):
     """Validation callback for ivector extractor paths"""
+    if value == "speechbrain":
+        return value
     return validate_model_arg(value, "ivector")
+
+
+def configure_pg(directory):
+    with mfa_open(os.path.join(directory, "postgresql.conf"), "r") as f:
+        config = f.read()
+    config = config.replace("#enable_partitionwise_join = off", "enable_partitionwise_join = on")
+    config = config.replace(
+        "#enable_partitionwise_aggregate = off", "enable_partitionwise_aggregate = on"
+    )
+    with mfa_open(os.path.join(directory, "postgresql.conf"), "w") as f:
+        f.write(config)
 
 
 def check_databases() -> None:
     """Check for existence of necessary databases"""
-    from montreal_forced_aligner.abc import DatabaseBackend
-    from montreal_forced_aligner.config import GLOBAL_CONFIG
+    GLOBAL_CONFIG.load()
 
-    if GLOBAL_CONFIG["database_backend"] == DatabaseBackend.POSTGRES.value:
-        db_directory = os.path.join(GLOBAL_CONFIG["temporary_directory"], "pg_mfa")
-        init_log_path = os.path.join(GLOBAL_CONFIG["temporary_directory"], "pg_init_log.txt")
-        log_path = os.path.join(GLOBAL_CONFIG["temporary_directory"], "pg_log.txt")
-        os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
-        create = not os.path.exists(db_directory)
-        with open(init_log_path, "w") as log_file:
-            if create:
-                subprocess.check_call(
-                    ["initdb", "-D", db_directory, "--encoding=UTF8"],
-                    stdout=log_file,
-                    stderr=log_file,
-                )
-            try:
-                e = sqlalchemy.create_engine(
-                    f"postgresql+psycopg2://{os.getlogin()}@localhost/pg_mfa"
-                )
-                with e.connect():
-                    pass
-            except sqlalchemy.exc.OperationalError:
-                subprocess.check_call(
-                    ["pg_ctl", "-D", db_directory, "-l", log_path, "restart"],
-                    stdout=log_file,
-                    stderr=log_file,
-                )
+    db_directory = os.path.join(
+        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    )
+    init_log_path = os.path.join(
+        GLOBAL_CONFIG["temporary_directory"],
+        f"pg_init_log_{GLOBAL_CONFIG.current_profile_name}.txt",
+    )
+    log_path = os.path.join(
+        GLOBAL_CONFIG["temporary_directory"], f"pg_log_{GLOBAL_CONFIG.current_profile_name}.txt"
+    )
+    os.makedirs(GLOBAL_CONFIG["temporary_directory"], exist_ok=True)
+    create = not os.path.exists(db_directory)
+    with open(init_log_path, "w") as log_file:
+        if create:
+            subprocess.check_call(
+                ["initdb", "-D", db_directory, "--encoding=UTF8", f"--username={os.getlogin()}"],
+                stdout=log_file,
+                stderr=log_file,
+            )
+
+        try:
+            subprocess.check_call(
+                [
+                    "pg_ctl",
+                    "-D",
+                    db_directory,
+                    "-l",
+                    log_path,
+                    "-o",
+                    f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
+                    "start",
+                ],
+                stdout=log_file,
+                stderr=log_file,
+            )
+        except Exception:
+            pass
+
+
+def cleanup_databases() -> None:
+    """Stop current database"""
+    GLOBAL_CONFIG.load()
+
+    db_directory = os.path.join(
+        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    )
+    time.sleep(5)
+    try:
+        subprocess.check_call(
+            ["pg_ctl", "-D", db_directory, "stop"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def remove_databases() -> None:
+    """Remove database"""
+    time.sleep(5)
+    GLOBAL_CONFIG.load()
+
+    db_directory = os.path.join(
+        GLOBAL_CONFIG["temporary_directory"], f"pg_mfa_{GLOBAL_CONFIG.current_profile_name}"
+    )
+    shutil.rmtree(db_directory)

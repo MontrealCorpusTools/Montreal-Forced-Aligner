@@ -8,8 +8,10 @@ from __future__ import annotations
 import functools
 import itertools
 import json
+import logging
 import re
 import shutil
+import sys
 import typing
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
@@ -41,6 +43,8 @@ __all__ = [
     "overlap_scoring",
     "align_phones",
     "split_phone_position",
+    "CustomFormatter",
+    "configure_logger",
 ]
 
 
@@ -147,6 +151,96 @@ def parse_old_features(config: MetaDict) -> MetaDict:
                 config[new_key] = config[key]
                 del config[key]
     return config
+
+
+def configure_logger(identifier: str, log_file: Optional[str] = None) -> None:
+    """
+    Configure logging for the given identifier
+
+    Parameters
+    ----------
+    identifier: str
+        Logger identifier
+    log_file: str
+        Path to file to write all messages to
+    quiet: bool
+        Flag for whether logger should write to stdout
+    verbose: bool
+        Flag for writing debug level information to stdout
+    """
+    from montreal_forced_aligner.config import MfaConfiguration
+
+    config = MfaConfiguration()
+    logger = logging.getLogger(identifier)
+    logger.setLevel(logging.DEBUG)
+    if log_file is not None:
+        file_handler = logging.FileHandler(log_file, encoding="utf8")
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    elif not config.current_profile.quiet:
+        handler = logging.StreamHandler(sys.stdout)
+        if config.current_profile.verbose:
+            handler.setLevel(logging.DEBUG)
+        else:
+            handler.setLevel(logging.INFO)
+        handler.setFormatter(CustomFormatter())
+        logger.addHandler(handler)
+
+
+class CustomFormatter(logging.Formatter):
+    """
+    Custom log formatter class for MFA to highlight messages and incorporate terminal options from
+    the global configuration
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from montreal_forced_aligner.config import GLOBAL_CONFIG
+
+        use_colors = GLOBAL_CONFIG.terminal_colors
+        red = ""
+        green = ""
+        yellow = ""
+        blue = ""
+        reset = ""
+        if use_colors:
+            red = Fore.RED
+            green = Fore.GREEN
+            yellow = Fore.YELLOW
+            blue = Fore.CYAN
+            reset = Style.RESET_ALL
+
+        self.FORMATS = {
+            logging.DEBUG: (f"{blue}DEBUG{reset} - ", "%(message)s"),
+            logging.INFO: (f"{green}INFO{reset} - ", "%(message)s"),
+            logging.WARNING: (f"{yellow}WARNING{reset} - ", "%(message)s"),
+            logging.ERROR: (f"{red}ERROR{reset} - ", "%(message)s"),
+            logging.CRITICAL: (f"{red}CRITICAL{reset} - ", "%(message)s"),
+        }
+
+    def format(self, record: logging.LogRecord):
+        """
+        Format a given log message
+
+        Parameters
+        ----------
+        record: logging.LogRecord
+            Log record to format
+
+        Returns
+        -------
+        str
+            Formatted log message
+        """
+        log_fmt = self.FORMATS.get(record.levelno)
+        return ansiwrap.fill(
+            record.getMessage(),
+            initial_indent=log_fmt[0],
+            subsequent_indent=" " * len(log_fmt[0]),
+            width=shutil.get_terminal_size().columns,
+        )
 
 
 class TerminalPrinter:
@@ -272,12 +366,12 @@ class TerminalPrinter:
             Section header string
         """
         self.indent_level = 0
-        self.print_function()
+        self.print_function("")
         underline = "*" * len(header)
         self.print_function(self.colorize(underline, "bright"))
         self.print_function(self.colorize(header, "bright"))
         self.print_function(self.colorize(underline, "bright"))
-        self.print_function()
+        self.print_function("")
         self.indent_level += 1
 
     def print_sub_header(self, header: str) -> None:
@@ -292,13 +386,13 @@ class TerminalPrinter:
         underline = "=" * len(header)
         self.print_function(self.indent_string + self.colorize(header, "bright"))
         self.print_function(self.indent_string + self.colorize(underline, "bright"))
-        self.print_function()
+        self.print_function("")
         self.indent_level += 1
 
     def print_end_section(self) -> None:
         """Mark the end of a section"""
         self.indent_level -= 1
-        self.print_function()
+        self.print_function("")
 
     def format_info_lines(self, lines: Union[list[str], str]) -> List[str]:
         """
@@ -426,7 +520,7 @@ class TerminalPrinter:
             self.print_information_line(k, value, key_color, value_color, starting_level)
             if isinstance(v, dict):
                 self.print_block(v, starting_level=starting_level + 1)
-        self.print_function()
+        self.print_function("")
 
     def print_config(self, configuration: MetaDict) -> None:
         """
@@ -873,6 +967,7 @@ def align_phones(
     silence_phone: str,
     ignored_phones: typing.Set[str] = None,
     custom_mapping: Optional[Dict[str, str]] = None,
+    debug: bool = False,
 ) -> Tuple[float, float]:
     """
     Align phones based on how much they overlap and their phone label, with the ability to specify a custom mapping for
@@ -905,17 +1000,7 @@ def align_phones(
         score_func = functools.partial(
             overlap_scoring, silence_phone=silence_phone, mapping=custom_mapping
         )
-        coalesced_phones = {tuple(x.split()) for x in custom_mapping.keys() if " " in x}
-        if coalesced_phones:
-            for cp in coalesced_phones:
-                custom_mapping["".join(cp)] = custom_mapping[" ".join(cp)]
-            coalesced = []
-            for t in test:
-                if coalesced and (coalesced[-1].label, t.label) in coalesced_phones:
-                    coalesced[-1].label += t.label
-                    coalesced[-1].end = t.end
-                    continue
-                coalesced.append(t)
+
     alignments = pairwise2.align.globalcs(
         ref, test, score_func, -5, -5, gap_char=["-"], one_alignment_only=True
     )
@@ -944,6 +1029,11 @@ def align_phones(
                 overlap_count += 1
                 if compare_labels(sa.label, sb.label, silence_phone, mapping=custom_mapping) > 0:
                     num_substitutions += 1
+    if debug:
+        import logging
+
+        logger = logging.getLogger("mfa")
+        logger.debug(pairwise2.format_alignment(*alignments[0]))
     if overlap_count:
         score = overlap_sum / overlap_count
     else:
@@ -957,9 +1047,9 @@ def format_probability(probability_value: float) -> float:
     return min(max(round(probability_value, 2), 0.01), 0.99)
 
 
-def format_correction(correction_value: float) -> float:
+def format_correction(correction_value: float, positive_only=True) -> float:
     """Format a probability correction value to have two decimal places and be  greater than 0.01"""
     correction_value = round(correction_value, 2)
-    if correction_value <= 0:
+    if correction_value <= 0 and positive_only:
         correction_value = 0.01
     return correction_value

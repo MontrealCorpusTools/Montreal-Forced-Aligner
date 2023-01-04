@@ -5,9 +5,13 @@ import os
 
 import click
 
-from montreal_forced_aligner.command_line.utils import check_databases, common_options
+from montreal_forced_aligner.command_line.utils import (
+    check_databases,
+    cleanup_databases,
+    common_options,
+)
 from montreal_forced_aligner.config import GLOBAL_CONFIG, MFA_PROFILE_VARIABLE
-from montreal_forced_aligner.segmenter import Segmenter
+from montreal_forced_aligner.vad.segmenter import Segmenter
 
 __all__ = ["create_segments_cli"]
 
@@ -35,16 +39,27 @@ __all__ = ["create_segments_cli"]
     default="long_textgrid",
     type=click.Choice(["long_textgrid", "short_textgrid", "json", "csv"]),
 )
+@click.option(
+    "--speechbrain/--no_speechbrain",
+    "speechbrain",
+    help="Flag for using SpeechBrain's pretrained VAD model",
+)
+@click.option(
+    "--cuda/--no_cuda",
+    "cuda",
+    help="Flag for using CUDA for SpeechBrain's model",
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
 def create_segments_cli(context, **kwargs) -> None:
     """
-    Create segments based on voice activity detection (VAD)
+    Create segments based on SpeechBrain's voice activity detection (VAD) model or a basic energy-based algorithm
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
 
     config_path = kwargs.get("config_path", None)
@@ -64,3 +79,4 @@ def create_segments_cli(context, **kwargs) -> None:
         raise
     finally:
         segmenter.cleanup()
+        cleanup_databases()

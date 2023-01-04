@@ -223,7 +223,7 @@ def export_textgrid(
                     tier_name = annotation_type
                 if tier_name not in tg.tierNameList:
                     tg.addTier(tgio.IntervalTier(tier_name, [], minT=0, maxT=duration))
-                for a in intervals:
+                for a in sorted(intervals, key=lambda x: x.begin):
                     if duration - a.end < (frame_shift * 2):  # Fix rounding issues
                         a.end = duration
                     tg.tierDict[tier_name].entryList.append(a.to_tg_interval())

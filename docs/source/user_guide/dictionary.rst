@@ -171,7 +171,7 @@ The first float column is the probability of the pronunciation, the next float i
 
 .. note::
 
-   You can include entries that only have pronunciations or pronunciation probabilities mixed with those with silence probabilities.  If an entry doesn't have a pronunciation probability, it will default to ``1.0`` (assumes equal weight between pronunciation variants as above).  If an entry does not have the three silence numbers, then the probability following silence will use the default (:ref:`defaults to 0.5 for non-pretrained models <configuration_dictionary>`, or :ref:`whatever probability was estimated during training <train_silence_probability>`), along with no correction for when the pronunciation follows silence or non-silence.
+   You can include entries that only have pronunciations or pronunciation probabilities mixed with those with silence probabilities.  If an entry doesn't have a pronunciation probability, it will default to ``1.0`` (assumes equal weight between pronunciation variants as above).  If an entry does not have the three silence numbers, then the probability following silence will use the default (:ref:`defaults to 0.5 for non-pretrained models <configuration_dictionary>`, or :ref:`whatever probability was estimated during training <silence_probability>`), along with no correction for when the pronunciation follows silence or non-silence.
 
 Non-speech annotations
 ======================

@@ -14,7 +14,6 @@ MFA uses a SQLite database to cache information during training/alignment runs. 
    Dictionary
    Dialect
    Word
-   OovWord
    Pronunciation
    Phone
    Grapheme
@@ -22,7 +21,6 @@ MFA uses a SQLite database to cache information during training/alignment runs. 
    TextFile
    SoundFile
    Speaker
-   SpeakerOrdering
    Utterance
    WordInterval
    PhoneInterval

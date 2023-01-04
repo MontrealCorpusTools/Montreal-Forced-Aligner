@@ -7,6 +7,7 @@ import click
 
 from montreal_forced_aligner.command_line.utils import (
     check_databases,
+    cleanup_databases,
     common_options,
     validate_dictionary,
 )
@@ -56,9 +57,10 @@ def train_g2p_cli(context, **kwargs) -> None:
     """
     Train a G2P model from a pronunciation dictionary.
     """
-    os.putenv(MFA_PROFILE_VARIABLE, kwargs.get("profile", "global"))
-    GLOBAL_CONFIG.current_profile.update(kwargs)
-    GLOBAL_CONFIG.save()
+    if kwargs.get("profile", None) is not None:
+        os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
+        GLOBAL_CONFIG.current_profile.update(kwargs)
+        GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     dictionary_path = kwargs["dictionary_path"]
@@ -67,13 +69,13 @@ def train_g2p_cli(context, **kwargs) -> None:
     if phonetisaurus:
         trainer = PhonetisaurusTrainer(
             dictionary_path=dictionary_path,
-            **PhonetisaurusTrainer.parse_parameters(config_path, context.params, context.args)
+            **PhonetisaurusTrainer.parse_parameters(config_path, context.params, context.args),
         )
 
     else:
         trainer = PyniniTrainer(
             dictionary_path=dictionary_path,
-            **PyniniTrainer.parse_parameters(config_path, context.params, context.args)
+            **PyniniTrainer.parse_parameters(config_path, context.params, context.args),
         )
 
     try:
@@ -86,3 +88,4 @@ def train_g2p_cli(context, **kwargs) -> None:
         raise
     finally:
         trainer.cleanup()
+        cleanup_databases()

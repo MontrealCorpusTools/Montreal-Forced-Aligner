@@ -4,7 +4,7 @@ import click.testing
 import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
-from montreal_forced_aligner.command_line.model import RemoteModelNotFoundError
+from montreal_forced_aligner.exceptions import RemoteModelNotFoundError
 from montreal_forced_aligner.models import AcousticModel, DictionaryModel, G2PModel, ModelManager
 
 

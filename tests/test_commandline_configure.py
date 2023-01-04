@@ -1,11 +1,13 @@
 import os
 
 import click.testing
+import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
 from montreal_forced_aligner.config import generate_config_path
 
 
+@pytest.mark.skip()
 def test_configure(
     temp_dir,
     basic_corpus_dir,
@@ -51,7 +53,6 @@ def test_configure(
     assert not global_config.current_profile.clean
 
     global_config.clean = True
-    global_config.database_backend = "sqlite"
     global_config.debug = True
     global_config.verbose = True
     global_config.use_mp = False

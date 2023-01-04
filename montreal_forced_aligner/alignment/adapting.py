@@ -1,6 +1,7 @@
 """Class definitions for adapting acoustic models"""
 from __future__ import annotations
 
+import logging
 import multiprocessing as mp
 import os
 import shutil
@@ -15,6 +16,8 @@ from montreal_forced_aligner.abc import AdapterMixin
 from montreal_forced_aligner.alignment.multiprocessing import AccStatsArguments, AccStatsFunction
 from montreal_forced_aligner.alignment.pretrained import PretrainedAligner
 from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.data import WorkflowType
+from montreal_forced_aligner.db import CorpusWorkflow
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.models import AcousticModel
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 
 
 __all__ = ["AdaptingAligner"]
+
+logger = logging.getLogger("mfa")
 
 
 class AdaptingAligner(PretrainedAligner, AdapterMixin):
@@ -71,25 +76,35 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         list[:class:`~montreal_forced_aligner.alignment.multiprocessing.AccStatsArguments`]
             Arguments for processing
         """
-        feat_strings = self.construct_feature_proc_strings()
         if alignment:
             model_path = self.alignment_model_path
         else:
             model_path = self.model_path
-        return [
-            AccStatsArguments(
-                j.name,
-                getattr(self, "read_only_db_string", ""),
-                os.path.join(self.working_log_directory, f"map_acc_stats.{j.name}.log"),
-                j.dictionary_ids,
-                feat_strings[j.name],
-                j.construct_path_dictionary(self.working_directory, "ali", "ark"),
-                j.construct_path_dictionary(self.working_directory, "map", "acc"),
-                model_path,
+        arguments = []
+        for j in self.jobs:
+            feat_strings = {}
+            for d_id in j.dictionary_ids:
+                feat_strings[d_id] = j.construct_feature_proc_string(
+                    self.working_directory,
+                    d_id,
+                    self.feature_options["uses_splices"],
+                    self.feature_options["splice_left_context"],
+                    self.feature_options["splice_right_context"],
+                    self.feature_options["uses_speaker_adaptation"],
+                )
+            arguments.append(
+                AccStatsArguments(
+                    j.id,
+                    getattr(self, "db_string", ""),
+                    os.path.join(self.working_log_directory, f"map_acc_stats.{j.id}.log"),
+                    j.dictionary_ids,
+                    feat_strings,
+                    j.construct_path_dictionary(self.working_directory, "ali", "ark"),
+                    j.construct_path_dictionary(self.working_directory, "map", "acc"),
+                    model_path,
+                )
             )
-            for j in self.jobs
-            if j.has_data
-        ]
+        return arguments
 
     def acc_stats(self, alignment: bool = False) -> None:
         """
@@ -107,9 +122,7 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         else:
             initial_mdl_path = os.path.join(self.working_directory, "unadapted.mdl")
             final_mdl_path = os.path.join(self.working_directory, "final.mdl")
-        if not os.path.exists(initial_mdl_path):
-            return
-        self.log_info("Accumulating statistics...")
+        logger.info("Accumulating statistics...")
         with tqdm.tqdm(total=self.num_current_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
             if GLOBAL_CONFIG.use_mp:
                 error_dict = {}
@@ -191,21 +204,9 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
             est_proc.communicate()
 
     @property
-    def workflow_identifier(self) -> str:
-        """Adaptation identifier"""
-        return "adapt_acoustic_model"
-
-    @property
     def align_directory(self) -> str:
         """Align directory"""
         return os.path.join(self.output_directory, "adapted_align")
-
-    @property
-    def working_directory(self) -> str:
-        """Current working directory"""
-        if self.adaptation_done:
-            return self.align_directory
-        return self.workflow_directory
 
     @property
     def working_log_directory(self) -> str:
@@ -215,16 +216,16 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
     @property
     def model_path(self) -> str:
         """Current acoustic model path"""
-        if not self.adaptation_done:
+        if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
             return os.path.join(self.working_directory, "unadapted.mdl")
         return os.path.join(self.working_directory, "final.mdl")
 
     @property
     def alignment_model_path(self) -> str:
         """Current acoustic model path"""
-        if not self.adaptation_done:
+        if self.current_workflow.workflow_type == WorkflowType.acoustic_model_adaptation:
             path = os.path.join(self.working_directory, "unadapted.alimdl")
-            if os.path.exists(path) and getattr(self, "speaker_independent", True):
+            if os.path.exists(path) and not getattr(self, "uses_speaker_adaptation", False):
                 return path
             return self.model_path
         return super().alignment_model_path
@@ -263,26 +264,36 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
         if self.uses_speaker_adaptation:
             self.acc_stats(alignment=True)
 
-        self.log_debug(f"Mapping models took {time.time() - begin}")
+        logger.debug(f"Mapping models took {time.time() - begin}")
 
     def adapt(self) -> None:
         """Run the adaptation"""
+        self.initialize_database()
+        self.create_new_current_workflow(WorkflowType.acoustic_model_adaptation)
         self.setup()
-        dirty_path = os.path.join(self.working_directory, "dirty")
-        done_path = os.path.join(self.working_directory, "done")
-        if os.path.exists(done_path):
-            self.log_info("Adaptation already done, skipping.")
+        wf = self.current_workflow
+        if wf.done:
+            logger.info("Adaptation already done, skipping.")
             return
-        self.log_info("Generating initial alignments...")
+        logger.info("Generating initial alignments...")
         for f in ["final.mdl", "final.alimdl"]:
             p = os.path.join(self.working_directory, f)
             if not os.path.exists(p):
                 continue
             os.rename(p, os.path.join(self.working_directory, f.replace("final", "unadapted")))
         self.align()
+        alignment_workflow = self.current_workflow
+        self.create_new_current_workflow(WorkflowType.acoustic_model_adaptation)
+        for j in self.jobs:
+            old_paths = j.construct_path_dictionary(
+                alignment_workflow.working_directory, "ali", "ark"
+            )
+            new_paths = j.construct_path_dictionary(self.working_directory, "ali", "ark")
+            for k, v in old_paths.items():
+                shutil.copyfile(v, new_paths[k])
         os.makedirs(self.align_directory, exist_ok=True)
         try:
-            self.log_info("Adapting pretrained model...")
+            logger.info("Adapting pretrained model...")
             self.train_map()
             self.export_model(os.path.join(self.working_log_directory, "acoustic_model.zip"))
             shutil.copyfile(
@@ -307,19 +318,21 @@ class AdaptingAligner(PretrainedAligner, AdapterMixin):
                     os.path.join(self.working_directory, "lda.mat"),
                     os.path.join(self.align_directory, "lda.mat"),
                 )
-            self.adaptation_done = True
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"done": True}
+                )
+                session.commit()
         except Exception as e:
-            with mfa_open(dirty_path, "w"):
-                pass
+            with self.session() as session:
+                session.query(CorpusWorkflow).filter(CorpusWorkflow.id == wf.id).update(
+                    {"dirty": True}
+                )
+                session.commit()
             if isinstance(e, KaldiProcessingError):
-                import logging
-
-                logger = logging.getLogger(self.identifier)
-                log_kaldi_errors(e.error_logs, logger)
-                e.update_log_file(logger)
+                log_kaldi_errors(e.error_logs)
+                e.update_log_file()
             raise
-        with mfa_open(done_path, "w"):
-            pass
 
     @property
     def meta(self) -> MetaDict:
