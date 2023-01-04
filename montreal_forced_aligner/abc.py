@@ -211,7 +211,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
             [
                 "createdb",
                 f"--port={GLOBAL_CONFIG.current_profile.database_port}",
-                f"--username={os.getlogin()}",
                 self.identifier,
             ],
             stderr=subprocess.DEVNULL,
