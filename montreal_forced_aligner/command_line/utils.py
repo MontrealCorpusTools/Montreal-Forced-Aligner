@@ -238,7 +238,7 @@ def check_databases() -> None:
     with open(init_log_path, "w") as log_file:
         if create:
             subprocess.check_call(
-                ["initdb", "-D", db_directory, "--encoding=UTF8", f"--username={os.getlogin()}"],
+                ["initdb", "-D", db_directory, "--encoding=UTF8"],
                 stdout=log_file,
                 stderr=log_file,
             )
