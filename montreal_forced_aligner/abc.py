@@ -246,7 +246,6 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
                 [
                     "dropdb",
                     f"--port={GLOBAL_CONFIG.current_profile.database_port}",
-                    f"--username={os.getlogin()}",
                     self.identifier,
                 ],
                 stderr=subprocess.DEVNULL,
@@ -320,7 +319,7 @@ class DatabaseMixin(TemporaryDirectoryMixin, metaclass=abc.ABCMeta):
     @property
     def db_string(self):
         """Connection string for the database"""
-        return f"postgresql+psycopg2://{os.getlogin()}@localhost:{GLOBAL_CONFIG.current_profile.database_port}/{self.identifier}"
+        return f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{self.identifier}"
 
     def construct_engine(self, read_only=False, **kwargs) -> sqlalchemy.engine.Engine:
         """

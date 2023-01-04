@@ -78,7 +78,9 @@ def inspect_database(name: str) -> DatasetType:
         Dataset type of the database
     """
 
-    string = f"postgresql+psycopg2://{os.getlogin()}@localhost:{GLOBAL_CONFIG.current_profile.database_port}/{name}"
+    string = (
+        f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{name}"
+    )
     try:
         engine = sqlalchemy.create_engine(string)
         with Session(engine) as session:
