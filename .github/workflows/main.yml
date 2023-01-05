@@ -40,7 +40,14 @@ jobs:
 
       - name: Cache MFA models
         uses: actions/cache@v3
+        env:
+          cache-name: cache-mfa-models
         with:
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
           path: |
             ~/Documents/MFA
 
