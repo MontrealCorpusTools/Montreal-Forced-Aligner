@@ -257,7 +257,13 @@ def check_databases() -> None:
                 # stderr=log_file,
             )
             subprocess.check_call(
-                ["createuser", "-s", "postgres"],
+                [
+                    "createuser",
+                    "-s",
+                    "postgres",
+                    "-p",
+                    str(GLOBAL_CONFIG.current_profile.database_port),
+                ],
                 # stdout=log_file,
                 # stderr=log_file,
             )
