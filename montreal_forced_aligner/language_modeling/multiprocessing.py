@@ -289,7 +289,8 @@ class TrainSpeakerLmFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
 
             for d in job.dictionaries:

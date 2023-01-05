@@ -479,7 +479,7 @@ class LmDictionaryCorpusTrainerMixin(MultispeakerDictionaryMixin, LmCorpusTraine
     def sym_path(self) -> str:
         """Internal path to symbols file"""
         with self.session() as session:
-            default_dictionary = session.query(Dictionary).get(self._default_dictionary_id)
+            default_dictionary = session.get(Dictionary, self._default_dictionary_id)
             words_path = default_dictionary.words_symbol_path
         return words_path
 

@@ -363,7 +363,7 @@ class MfccFunction(KaldiFunction):
         db_engine = sqlalchemy.create_engine(self.db_string)
         with Session(db_engine) as session, mfa_open(self.log_path, "w") as log_file:
             processed = 0
-            job: Job = session.query(Job).get(self.job_name)
+            job: Job = session.get(Job, self.job_name)
             feats_scp_path = job.construct_path(self.data_directory, "feats", "scp")
             wav_path = job.construct_path(self.data_directory, "wav", "scp")
             segment_path = job.construct_path(self.data_directory, "segments", "scp")
@@ -491,7 +491,8 @@ class RecomputeVadFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -1158,7 +1159,8 @@ class ExtractIvectorsFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             feature_string = job.construct_online_feature_proc_string(uses_vad=True)
 
@@ -1232,7 +1234,8 @@ class ExportIvectorsFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
 
             query = (

@@ -536,7 +536,8 @@ class ExportKaldiFilesFunction(KaldiFunction):
         job = (
             session.query(Job)
             .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-            .get(self.job_name)
+            .filter(Job.id == self.job_name)
+            .first()
         )
         wav_scp_path = job.wav_scp_path
         segments_scp_path = job.segments_scp_path
@@ -549,7 +550,7 @@ class ExportKaldiFilesFunction(KaldiFunction):
                 .join(File.utterances)
                 .filter(Utterance.job_id == job.id)
                 .order_by(File.id.cast(sqlalchemy.String))
-                .distinct()
+                .distinct(File.id.cast(sqlalchemy.String))
             )
             for f_id, sox_string, sound_file_path in files:
                 if not sox_string:
@@ -585,7 +586,8 @@ class ExportKaldiFilesFunction(KaldiFunction):
         job = (
             session.query(Job)
             .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-            .get(self.job_name)
+            .filter(Job.id == self.job_name)
+            .first()
         )
         base_utterance_query = (
             session.query(sqlalchemy.func.count(Utterance.id))

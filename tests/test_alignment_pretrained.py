@@ -56,7 +56,7 @@ def test_align_one(
     a.create_new_current_workflow(WorkflowType.alignment)
     a.setup()
     with a.session() as session:
-        utterance = session.query(Utterance).get(3)
+        utterance = session.get(Utterance, 3)
         print(utterance.kaldi_id)
         assert utterance.alignment_log_likelihood is None
         assert utterance.features is not None
@@ -64,7 +64,7 @@ def test_align_one(
         a.align_one_utterance(utterance, session)
 
     with a.session() as session:
-        utterance = session.query(Utterance).get(3)
+        utterance = session.get(Utterance, 3)
         print(utterance.kaldi_id)
         assert utterance.alignment_log_likelihood is not None
         assert len(utterance.phone_intervals) > 0
@@ -76,7 +76,7 @@ def test_align_one(
         session.commit()
 
     with a.session() as session:
-        utterance = session.query(Utterance).get(3)
+        utterance = session.get(Utterance, 3)
         assert utterance.alignment_log_likelihood is None
         assert utterance.features is None
         assert len(utterance.phone_intervals) == 0
@@ -84,7 +84,7 @@ def test_align_one(
         a.align_one_utterance(utterance, session)
 
     with a.session() as session:
-        utterance = session.query(Utterance).get(3)
+        utterance = session.get(Utterance, 3)
         assert utterance.alignment_log_likelihood is not None
         assert utterance.features is None
         assert len(utterance.phone_intervals) > 0

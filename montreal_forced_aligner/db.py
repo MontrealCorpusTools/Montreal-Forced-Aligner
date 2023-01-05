@@ -99,7 +99,7 @@ def bulk_update(
         create_statement = str(
             sqlalchemy.schema.CreateTable(temp_table).compile(session.get_bind())
         )
-        session.execute(create_statement)
+        session.execute(sqlalchemy.text(create_statement))
         session.execute(temp_table.insert(), values)
         set_statements = []
         for c in column_names:
@@ -113,14 +113,16 @@ def bulk_update(
               WHERE temp_{table.__tablename__}.{id_field} = {table.__tablename__}.{id_field})"""
         set_statements = ",\n".join(set_statements)
         session.execute(
-            f"""UPDATE
+            sqlalchemy.text(
+                f"""UPDATE
                               {table.__tablename__}
                         SET {set_statements}
                         WHERE {exist_statement}"""
+            )
         )
 
         # drop temp table
-        session.execute(f"DROP TABLE temp_{table.__tablename__}")
+        session.execute(sqlalchemy.text(f"DROP TABLE temp_{table.__tablename__}"))
     MfaSqlBase.metadata.remove(temp_table)
 
 
@@ -1126,7 +1128,7 @@ class SoundFile(MfaSqlBase):
             self.sound_file_path, sr=None, mono=False, offset=begin, duration=end - begin
         )
         if len(y.shape) > 1 and y.shape[0] == 2:
-            y /= np.max(np.abs(y), axis=0)
+            y /= np.max(np.abs(y))
             num_steps = y.shape[1]
         else:
             y /= np.max(np.abs(y), axis=0)
@@ -1470,7 +1472,7 @@ class Utterance(MfaSqlBase):
             normalized_text=" ".join(data.normalized_text),
             text=data.text,
             num_frames=num_frames,
-            file=file,
+            file_id=file.id,
             speaker_id=speaker,
         )
 

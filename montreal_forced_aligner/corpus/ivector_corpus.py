@@ -8,6 +8,7 @@ import typing
 from typing import List
 
 import numpy as np
+import sqlalchemy
 import tqdm
 
 from montreal_forced_aligner.config import GLOBAL_CONFIG
@@ -299,8 +300,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                     scp_line = line.strip().split(maxsplit=1)
                     ivector_arks[int(scp_line[0].split("-")[-1])] = scp_line[-1]
         with self.session() as session:
-            session.execute("DROP INDEX IF EXISTS utterance_ivector_index")
-            session.execute("ALTER TABLE utterance DISABLE TRIGGER all")
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS utterance_ivector_index"))
+            session.execute(sqlalchemy.text("ALTER TABLE utterance DISABLE TRIGGER all"))
             session.commit()
             copy_proc = subprocess.Popen(
                 [
@@ -330,11 +331,13 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             bulk_update(session, Utterance, update_mapping)
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
             session.execute(
-                "CREATE INDEX utterance_ivector_index ON utterance "
-                "USING ivfflat (ivector vector_cosine_ops) "
-                "WITH (lists = 1000)"
+                sqlalchemy.text(
+                    "CREATE INDEX utterance_ivector_index ON utterance "
+                    "USING ivfflat (ivector vector_cosine_ops) "
+                    "WITH (lists = 1000)"
+                )
             )
-            session.execute("ALTER TABLE utterance ENABLE TRIGGER all")
+            session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
 
     def collect_speaker_ivectors(self):
@@ -350,8 +353,8 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
         with self.session() as session:
-            session.execute("ALTER TABLE speaker DISABLE TRIGGER all")
-            session.execute("DROP INDEX IF EXISTS speaker_ivector_index ")
+            session.execute(sqlalchemy.text("ALTER TABLE speaker DISABLE TRIGGER all"))
+            session.execute(sqlalchemy.text("DROP INDEX IF EXISTS speaker_ivector_index"))
             session.commit()
             copy_proc = subprocess.Popen(
                 [thirdparty_binary("copy-vector"), f"ark:{speaker_ivector_ark_path}", "ark,t:-"],
@@ -375,11 +378,13 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             bulk_update(session, Speaker, update_mapping)
             session.query(Corpus).update({Corpus.ivectors_calculated: True})
             session.execute(
-                "CREATE INDEX speaker_ivector_index ON speaker "
-                "USING ivfflat (ivector vector_cosine_ops) "
-                "WITH (lists = 1000)"
+                sqlalchemy.text(
+                    "CREATE INDEX speaker_ivector_index ON speaker "
+                    "USING ivfflat (ivector vector_cosine_ops) "
+                    "WITH (lists = 1000)"
+                )
             )
-            session.execute("ALTER TABLE speaker ENABLE TRIGGER all")
+            session.execute(sqlalchemy.text("ALTER TABLE speaker ENABLE TRIGGER all"))
             session.commit()
             plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
             with open(plda_transform_path, "wb") as f:

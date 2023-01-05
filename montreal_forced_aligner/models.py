@@ -1220,7 +1220,7 @@ class ModelManager:
         }
         self.token = token
         environment_token = os.environ.get("MFA_GITHUB_TOKEN", None)
-        if self.token is None:
+        if self.token is not None:
             self.token = environment_token
         self.synced_remote = False
         self.printer = TerminalPrinter()

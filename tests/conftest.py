@@ -13,7 +13,7 @@ from montreal_forced_aligner.helper import mfa_open
 
 @pytest.fixture(autouse=True, scope="session")
 def mock_settings_env_vars():
-    with mock.patch.dict(os.environ, {"MFA_PROFILE": "test"}):
+    with mock.patch.dict(os.environ, {"MFA_PROFILE": "test", "SQLALCHEMY_WARN_20": "true"}):
         yield
 
 

@@ -147,7 +147,7 @@ class OnlineAlignmentFunction(KaldiFunction):
         """Run the function"""
         db_engine = sqlalchemy.create_engine(self.db_string)
         with Session(db_engine) as session:
-            d: Dictionary = session.query(Dictionary).get(self.dictionary_id)
+            d: Dictionary = session.get(Dictionary, self.dictionary_id)
 
             self.clitic_marker = d.clitic_marker
             self.silence_word = d.silence_word

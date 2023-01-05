@@ -104,7 +104,8 @@ class GmmGselectFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             current_done_count = 0
             feature_string = job.construct_online_feature_proc_string(
@@ -180,7 +181,8 @@ class GaussToPostFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             feature_string = job.construct_online_feature_proc_string(
                 subsample_feats=self.ivector_options["subsample"]
@@ -260,7 +262,8 @@ class AccGlobalStatsFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             feature_string = job.construct_online_feature_proc_string(
                 subsample_feats=self.ivector_options["subsample"], uses_vad=True
@@ -328,7 +331,8 @@ class AccIvectorStatsFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             feature_string = job.construct_online_feature_proc_string(
                 subsample_feats=self.ivector_options["subsample"]

@@ -82,7 +82,7 @@ def inspect_database(name: str) -> DatasetType:
         f"postgresql+psycopg2://localhost:{GLOBAL_CONFIG.current_profile.database_port}/{name}"
     )
     try:
-        engine = sqlalchemy.create_engine(string)
+        engine = sqlalchemy.create_engine(string, future=True)
         with Session(engine) as session:
             corpus = session.query(Corpus).first()
             dictionary = session.query(Dictionary).first()
@@ -275,7 +275,10 @@ def check_third_party():
     if p.returncode == 1 and p.stderr:
         raise ThirdpartyError("fstcompile", open_fst=True, error_text=p.stderr)
     for fn in canary_kaldi_bins:
-        p = subprocess.run([thirdparty_binary(fn), "--help"], capture_output=True, text=True)
+        try:
+            p = subprocess.run([thirdparty_binary(fn), "--help"], capture_output=True, text=True)
+        except Exception as e:
+            raise ThirdpartyError(fn, error_text=str(e))
         if p.returncode == 1 and p.stderr:
             raise ThirdpartyError(fn, error_text=p.stderr)
 

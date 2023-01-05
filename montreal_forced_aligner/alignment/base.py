@@ -683,12 +683,12 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             ("ix_phone_interval_begin", "phone_interval", ["begin"]),
         ]
         with self.session() as session:
-            session.execute("ALTER TABLE word_interval DISABLE TRIGGER all")
-            session.execute("ALTER TABLE phone_interval DISABLE TRIGGER all")
+            session.execute(sqlalchemy.text("ALTER TABLE word_interval DISABLE TRIGGER all"))
+            session.execute(sqlalchemy.text("ALTER TABLE phone_interval DISABLE TRIGGER all"))
             session.commit()
             for ix in indices:
                 try:
-                    session.execute(f"DROP INDEX {ix[0]}")
+                    session.execute(sqlalchemy.text(f"DROP INDEX {ix[0]}"))
                 except Exception:
                     pass
                 session.commit()
@@ -815,11 +815,13 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 total=len(indices), disable=GLOBAL_CONFIG.quiet
             ) as pbar, self.session() as session:
                 for ix in indices:
-                    session.execute(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
+                    session.execute(
+                        sqlalchemy.text(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
+                    )
                     session.commit()
                     pbar.update(1)
-                session.execute("ALTER TABLE word_interval ENABLE TRIGGER all")
-                session.execute("ALTER TABLE phone_interval ENABLE TRIGGER all")
+                session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+                session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
                 session.commit()
 
         with self.session() as session:

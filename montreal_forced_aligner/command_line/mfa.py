@@ -5,6 +5,7 @@ import atexit
 import multiprocessing as mp
 import sys
 import time
+import warnings
 from datetime import datetime
 
 import click
@@ -103,6 +104,7 @@ def mfa_cli() -> None:
     GLOBAL_CONFIG.load()
     from montreal_forced_aligner.helper import configure_logger
 
+    warnings.simplefilter("ignore")
     configure_logger("mfa")
     check_third_party()
 
@@ -134,10 +136,4 @@ mfa_cli.add_command(validate_corpus_cli)
 mfa_cli.add_command(validate_dictionary_cli)
 
 if __name__ == "__main__":
-    import warnings
-
-    warnings.warn(
-        "Use 'python -m montreal_forced_aligner', not 'python -m montreal_forced_aligner.command_line.mfa'",
-        DeprecationWarning,
-    )
     mfa_cli()

@@ -481,7 +481,8 @@ class CompileTrainGraphsFunction(KaldiFunction):
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -782,7 +783,8 @@ class AlignFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -1068,7 +1070,8 @@ class FineTuneFunction(KaldiFunction):
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -1481,7 +1484,8 @@ class GeneratePronunciationsFunction(KaldiFunction):
             job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)
@@ -1851,7 +1855,8 @@ class AlignmentExtractionFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True), subqueryload(Job.dictionaries))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             workflow: CorpusWorkflow = (
                 session.query(CorpusWorkflow)

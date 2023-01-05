@@ -192,7 +192,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if session is None:
             session = self.session()
         if id is not None:
-            utterance = session.query(Utterance).get(id)
+            utterance = session.get(Utterance, id)
             if not utterance:
                 raise Exception(f"Could not find utterance with id of {id}")
             return utterance
@@ -791,7 +791,7 @@ class CorpusMixin(MfaWorker, DatabaseMixin, metaclass=ABCMeta):
         if not speaker_obj:
             dictionary = None
             if hasattr(self, "get_dictionary_id"):
-                dictionary = session.query(Dictionary).get(self.get_dictionary_id(name))
+                dictionary = session.get(Dictionary, self.get_dictionary_id(name))
             speaker_obj = Speaker(
                 id=self.get_next_primary_key(Speaker), name=name, dictionary=dictionary
             )

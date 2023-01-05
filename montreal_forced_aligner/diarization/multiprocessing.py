@@ -252,7 +252,8 @@ class PldaClassificationFunction(KaldiFunction):
             job: Job = (
                 session.query(Job)
                 .options(joinedload(Job.corpus, innerjoin=True))
-                .get(self.job_name)
+                .filter(Job.id == self.job_name)
+                .first()
             )
             utterances = (
                 session.query(
