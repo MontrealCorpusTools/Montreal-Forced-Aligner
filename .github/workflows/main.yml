@@ -38,6 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Cache MFA models
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/Documents/MFA
+
       - name: Setup Mambaforge
         uses: conda-incubator/setup-miniconda@v2
         with:
@@ -60,4 +66,4 @@ jobs:
 
       - name: Run tests
         shell: bash -l {0}
-        run: pytest ./tests
+        run: pytest -x ./tests

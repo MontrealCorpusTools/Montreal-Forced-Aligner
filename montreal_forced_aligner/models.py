@@ -1219,6 +1219,9 @@ class ModelManager:
             k: {} for k in MODEL_TYPES.keys()
         }
         self.token = token
+        environment_token = os.environ.get("MFA_GITHUB_TOKEN", None)
+        if self.token is None:
+            self.token = environment_token
         self.synced_remote = False
         self.printer = TerminalPrinter()
         self._cache_info = {}

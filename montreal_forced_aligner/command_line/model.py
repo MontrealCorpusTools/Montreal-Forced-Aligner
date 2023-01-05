@@ -44,7 +44,7 @@ def model_cli() -> None:
     "--github_token",
     help="Personal access token to use for requests to GitHub to increase rate limit.",
     type=str,
-    default=GLOBAL_CONFIG.github_token,
+    default=None,
 )
 @click.option(
     "--ignore_cache",

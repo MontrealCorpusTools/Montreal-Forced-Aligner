@@ -242,6 +242,11 @@ def check_databases() -> None:
                 stdout=log_file,
                 stderr=log_file,
             )
+            subprocess.check_call(
+                ["createuser", "-s", "postgres"],
+                stdout=log_file,
+                stderr=log_file,
+            )
 
         try:
             subprocess.check_call(
