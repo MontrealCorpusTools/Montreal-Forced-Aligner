@@ -50,8 +50,8 @@ def g2p_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
 
     config_path = kwargs.get("config_path", None)
@@ -71,6 +71,9 @@ def g2p_cli(context, **kwargs) -> None:
             g2p_model_path=g2p_model_path,
             **PyniniWordListGenerator.parse_parameters(config_path, context.params, context.args),
         )
+    if kwargs.get("clean", False):
+        g2p.clean_working_directory()
+        g2p.remove_database()
 
     try:
         g2p.setup()

@@ -509,6 +509,10 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
     def setup(self) -> None:
         """Setup for worker"""
         self.check_previous_run()
+        if GLOBAL_CONFIG.clean:
+            self.clean_working_directory()
+            if hasattr(self, "remove_database"):
+                self.remove_database()
         if hasattr(self, "initialize_database"):
             self.initialize_database()
 
@@ -732,10 +736,6 @@ class TopLevelMfaWorker(MfaWorker, TemporaryDirectoryMixin, metaclass=abc.ABCMet
             conf = load_configuration(self.worker_config_path)
             if conf.get("version", current_version) != current_version:
                 clean = True
-        if clean or GLOBAL_CONFIG.clean:
-            self.clean_working_directory()
-            if hasattr(self, "remove_database"):
-                self.remove_database()
         os.makedirs(self.output_directory, exist_ok=True)
         configure_logger("mfa", log_file=self.log_file)
         logger = logging.getLogger("mfa")

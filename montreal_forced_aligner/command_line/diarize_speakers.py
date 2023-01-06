@@ -73,6 +73,14 @@ __all__ = ["diarize_speakers_cli"]
     default=False,
     help="Flag for using PLDA log-likelihood ratios as distance metric.",
 )
+@click.option(
+    "--evaluate",
+    "--validate",
+    "evaluation_mode",
+    is_flag=True,
+    help="Perform an analysis of clustering/classification.",
+    default=False,
+)
 @common_options
 @click.help_option("-h", "--help")
 @click.pass_context
@@ -86,8 +94,8 @@ def diarize_speakers_cli(context, **kwargs) -> None:  # pragma: no cover
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -99,6 +107,9 @@ def diarize_speakers_cli(context, **kwargs) -> None:  # pragma: no cover
         ivector_extractor_path=ivector_extractor_path,
         **SpeakerDiarizer.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        classifier.clean_working_directory()
+        classifier.remove_database()
     try:
         if classify:
             classifier.classify_speakers()

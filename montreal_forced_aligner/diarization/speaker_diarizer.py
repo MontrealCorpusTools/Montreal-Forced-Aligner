@@ -11,22 +11,24 @@ import csv
 import logging
 import os
 import pickle
+import shutil
 import subprocess
 import sys
 import typing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import librosa
 import numpy as np
+import scipy.spatial
 import sqlalchemy
 import tqdm
-from sklearn.metrics import pairwise_distances
+from sklearn import metrics
 from sqlalchemy.orm import joinedload, selectinload
 
 from montreal_forced_aligner.abc import FileExporterMixin, TopLevelMfaWorker
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.alignment.multiprocessing import construct_output_path
+from montreal_forced_aligner.config import GLOBAL_CONFIG, PLDA_DIMENSION
 from montreal_forced_aligner.corpus.ivector_corpus import IvectorCorpusMixin
-from montreal_forced_aligner.data import TextFileType, WorkflowType
+from montreal_forced_aligner.data import WorkflowType
 from montreal_forced_aligner.db import (
     File,
     SoundFile,
@@ -40,23 +42,28 @@ from montreal_forced_aligner.db import (
 from montreal_forced_aligner.diarization.multiprocessing import (
     PldaClassificationArguments,
     PldaClassificationFunction,
-    UtteranceDistanceArguments,
+    SpeechbrainArguments,
+    SpeechbrainClassificationFunction,
+    SpeechbrainEmbeddingFunction,
     cluster_matrix,
     score_plda,
 )
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import load_configuration, mfa_open
 from montreal_forced_aligner.models import IvectorExtractorModel
+from montreal_forced_aligner.textgrid import export_textgrid
 from montreal_forced_aligner.utils import log_kaldi_errors, run_kaldi_function, thirdparty_binary
 
 try:
-    torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-    torch_logger.setLevel(logging.ERROR)
-    torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-    torch_logger.setLevel(logging.ERROR)
-    import torch
-    from speechbrain.dataio.batch import PaddedBatch
-    from speechbrain.pretrained import EncoderClassifier
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
+        torch_logger.setLevel(logging.ERROR)
+        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
+        torch_logger.setLevel(logging.ERROR)
+        from speechbrain.pretrained import EncoderClassifier
 
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError) as e:
@@ -94,7 +101,9 @@ class SpeakerDiarizer(
         ivector_extractor_path: str = "speechbrain",
         expected_num_speakers: int = 0,
         cluster: bool = True,
+        evaluation_mode: bool = False,
         cuda: bool = False,
+        cuda_batch_size: int = 25,
         use_plda: bool = False,
         cluster_type: str = "hdbscan",
         eps: float = 0.5,
@@ -116,8 +125,11 @@ class SpeakerDiarizer(
         self.cluster = cluster
         self.use_plda = use_plda
         self.cuda = cuda
+        self.cuda_batch_size = cuda_batch_size
         self.cluster_type = cluster_type
         self.eps = eps
+        self.evaluation_mode = evaluation_mode
+        self.ground_truth_utt2spk = {}
 
     @classmethod
     def parse_parameters(
@@ -183,6 +195,8 @@ class SpeakerDiarizer(
         :class:`~montreal_forced_aligner.exceptions.KaldiProcessingError`
             If there were any errors in running Kaldi binaries
         """
+        if self.initialized:
+            return
         super().setup()
         self.create_new_current_workflow(WorkflowType.speaker_diarization)
         wf = self.current_workflow
@@ -205,6 +219,7 @@ class SpeakerDiarizer(
                     ),
                     run_opts=run_opts,
                 )
+                logger.debug(f"Speechbrain hparams: {self.speaker_recognition_model.hparams}")
                 self.initialize_database()
                 self._load_corpus()
             else:
@@ -213,11 +228,18 @@ class SpeakerDiarizer(
                 self.ivector_extractor.export_model(self.working_directory)
                 self.extract_ivectors()
                 self.compute_speaker_ivectors()
+            if self.evaluation_mode:
+                self.ground_truth_utt2spk = {}
+                with self.session() as session:
+                    query = session.query(Utterance.id, Utterance.speaker_id)
+                    for u_id, s_id in query:
+                        self.ground_truth_utt2spk[u_id] = s_id
         except Exception as e:
             if isinstance(e, KaldiProcessingError):
                 log_kaldi_errors(e.error_logs)
                 e.update_log_file()
             raise
+        self.initialized = True
 
     def plda_score_speakers(
         self, speaker_one: typing.Union[int, np.array], speaker_two: typing.Union[int, np.array]
@@ -302,23 +324,37 @@ class SpeakerDiarizer(
                 file_clusters[classified_speaker].append(file_id)
                 speaker_clusters[classified_speaker][speaker_id] += 1
             utterance_mapping = []
-            for cluster_id, utterance_ids in utterance_clusters.items():
-                cluster_name = max(
-                    speaker_clusters[cluster_id], key=lambda x: speaker_clusters[cluster_id][x]
-                )
+            speaker_id = self.get_next_primary_key(Speaker)
+            speaker_mapping = []
+            for cluster_id, utterance_ids in sorted(utterance_clusters.items()):
+                if self.evaluation_mode:
+                    speaker_id = max(
+                        speaker_clusters[cluster_id].keys(),
+                        key=lambda x: speaker_clusters[cluster_id][x],
+                    )
+                else:
+                    if cluster_id < 0:
+                        speaker_name = "unknown"
+                    else:
+                        speaker_name = f"Speaker {cluster_id}"
+                    speaker_mapping.append({"id": speaker_id, "name": speaker_name})
                 for u_id in utterance_ids:
-                    utterance_mapping.append({"id": u_id, "speaker_id": cluster_name})
+                    utterance_mapping.append({"id": u_id, "speaker_id": speaker_id})
                 for file_id in file_clusters[cluster_id]:
                     speaker_ordering_mapping.append(
-                        {"speaker_id": cluster_name, "file_id": file_id, "index": 1}
+                        {"speaker_id": speaker_id, "file_id": file_id, "index": 10}
                     )
+                if not self.evaluation_mode:
+                    speaker_id += 1
 
+            if speaker_mapping:
+                session.bulk_insert_mappings(Speaker, speaker_mapping)
             bulk_update(session, Utterance, utt_mapping)
             if speaker_ordering_mapping:
-                session.query(SpeakerOrdering).delete()
                 session.execute(
-                    sqlalchemy.insert(SpeakerOrdering),
-                    speaker_ordering_mapping,
+                    sqlalchemy.dialects.postgresql.insert(SpeakerOrdering)
+                    .values(speaker_ordering_mapping)
+                    .on_conflict_do_nothing()
                 )
                 session.flush()
             sq = (
@@ -332,6 +368,123 @@ class SpeakerDiarizer(
             sq2 = session.query(sq.c.id).filter(sq.c.utterance_count == 0)
             session.query(Speaker).filter(Speaker.id.in_(sq2)).delete(synchronize_session="fetch")
             session.commit()
+        if self.evaluation_mode:
+            self.evaluate_classification()
+
+    def evaluate_clustering(self):
+        with self.session() as session, mfa_open(
+            os.path.join(self.working_directory, "diarization_evaluation_results.csv"), "w"
+        ) as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "file",
+                    "begin",
+                    "end",
+                    "text",
+                    "predicted_speaker",
+                    "ground_truth_speaker",
+                ],
+            )
+            writer.writeheader()
+            predicted_utt2spk = {}
+            speakers = {k: v for k, v in session.query(Speaker.id, Speaker.name)}
+            query = session.query(
+                Utterance.id,
+                File.name,
+                Utterance.begin,
+                Utterance.end,
+                Utterance.text,
+                Utterance.speaker_id,
+            ).join(Utterance.file)
+            for u_id, file_name, begin, end, text, s_id in query:
+                predicted_utt2spk[u_id] = s_id
+                writer.writerow(
+                    {
+                        "file": file_name,
+                        "begin": begin,
+                        "end": end,
+                        "text": text,
+                        "predicted_speaker": speakers[s_id],
+                        "ground_truth_speaker": speakers[self.ground_truth_utt2spk[u_id]],
+                    }
+                )
+
+            ground_truth_labels = np.array([v for v in self.ground_truth_utt2spk.values()])
+            predicted_labels = np.array(
+                [predicted_utt2spk[k] for k in self.ground_truth_utt2spk.keys()]
+            )
+            rand_score = metrics.adjusted_rand_score(ground_truth_labels, predicted_labels)
+            ami_score = metrics.adjusted_mutual_info_score(ground_truth_labels, predicted_labels)
+            nmi_score = metrics.normalized_mutual_info_score(ground_truth_labels, predicted_labels)
+            homogeneity_score = metrics.homogeneity_score(ground_truth_labels, predicted_labels)
+            completeness_score = metrics.completeness_score(ground_truth_labels, predicted_labels)
+            v_measure_score = metrics.v_measure_score(ground_truth_labels, predicted_labels)
+            fm_score = metrics.fowlkes_mallows_score(ground_truth_labels, predicted_labels)
+            logger.info(f"Adjusted Rand index score (0-1, higher is better): {rand_score:.4f}")
+            logger.info(f"Normalized Mutual Information score (perfect=1.0): {nmi_score:.4f}")
+            logger.info(f"Adjusted Mutual Information score (perfect=1.0): {ami_score:.4f}")
+            logger.info(f"Homogeneity score (0-1, higher is better): {homogeneity_score:.4f}")
+            logger.info(f"Completeness score (0-1, higher is better): {completeness_score:.4f}")
+            logger.info(f"V measure score (0-1, higher is better): {v_measure_score:.4f}")
+            logger.info(f"Fowlkes-Mallows score (0-1, higher is better): {fm_score:.4f}")
+
+    def evaluate_classification(self):
+        with self.session() as session, mfa_open(
+            os.path.join(self.working_directory, "diarization_evaluation_results.csv"), "w"
+        ) as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "file",
+                    "begin",
+                    "end",
+                    "text",
+                    "predicted_speaker",
+                    "ground_truth_speaker",
+                ],
+            )
+            writer.writeheader()
+            predicted_utt2spk = {}
+            speakers = {k: v for k, v in session.query(Speaker.id, Speaker.name)}
+            query = session.query(
+                Utterance.id,
+                File.name,
+                Utterance.begin,
+                Utterance.end,
+                Utterance.text,
+                Utterance.speaker_id,
+            ).join(Utterance.file)
+            for u_id, file_name, begin, end, text, s_id in query:
+                predicted_utt2spk[u_id] = s_id
+                writer.writerow(
+                    {
+                        "file": file_name,
+                        "begin": begin,
+                        "end": end,
+                        "text": text,
+                        "predicted_speaker": speakers[s_id],
+                        "ground_truth_speaker": speakers[self.ground_truth_utt2spk[u_id]],
+                    }
+                )
+
+            ground_truth_labels = np.array([v for v in self.ground_truth_utt2spk.values()])
+            predicted_labels = np.array(
+                [
+                    predicted_utt2spk[k] if k in predicted_utt2spk else -1
+                    for k in self.ground_truth_utt2spk.keys()
+                ]
+            )
+            precision_score = metrics.precision_score(
+                ground_truth_labels, predicted_labels, average="weighted"
+            )
+            recall_score = metrics.recall_score(
+                ground_truth_labels, predicted_labels, average="weighted"
+            )
+            f1_score = metrics.f1_score(ground_truth_labels, predicted_labels, average="weighted")
+            logger.info(f"Precision (0-1): {precision_score:.4f}")
+            logger.info(f"Recall (0-1): {recall_score:.4f}")
+            logger.info(f"F1 (0-1): {f1_score:.4f}")
 
     @property
     def num_utts_path(self):
@@ -353,7 +506,6 @@ class SpeakerDiarizer(
         utt_mapping = []
         speaker_ordering_mapping = []
         speaker_mapping = []
-        import gc
 
         logger.info("Classifying utterances...")
         with tqdm.tqdm(
@@ -361,98 +513,44 @@ class SpeakerDiarizer(
         ) as pbar, self.session() as session:
             speakers = {x.name: x.id for x in session.query(Speaker)}
             current_speaker_id = self.get_next_primary_key(Speaker)
-            utterances: List[Utterance] = session.query(Utterance).options(
-                joinedload(Utterance.file).joinedload(File.sound_file)
-            )
-            batch = []
-            utt_ids = []
-            file_ids = []
+
             speaker_ordering_set = set()
-            batch_size = 25
-            for u in utterances:
-                y, sr = librosa.load(
-                    u.file.sound_file.sound_file_path,
-                    sr=16000,
-                    mono=False,
-                    offset=u.begin,
-                    duration=u.duration,
-                )
-                batch.append({"id": u.id, "wav": torch.tensor(y)})
-                utt_ids.append(u.id)
-                file_ids.append(u.file_id)
-                if len(batch) == batch_size:
-                    batch = PaddedBatch(batch)
-                    (
-                        out_prob,
-                        score,
-                        index,
-                        text_lab,
-                    ) = self.speaker_recognition_model.classify_batch(
-                        batch["wav"].data, batch["wav"].lengths
+            arguments = [
+                SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cuda_batch_size)
+                for j in self.jobs
+            ]
+            for u_id, file_id, new_speaker in run_kaldi_function(
+                SpeechbrainClassificationFunction, arguments, pbar.update
+            ):
+                if new_speaker not in speakers:
+                    speakers[new_speaker] = current_speaker_id
+                    speaker_mapping.append({"id": current_speaker_id, "name": new_speaker})
+                    current_speaker_id += 1
+                if (speakers[new_speaker], file_id) not in speaker_ordering_set:
+                    speaker_ordering_mapping.append(
+                        {
+                            "file_id": file_id,
+                            "speaker_id": speakers[new_speaker],
+                            "index": 10,
+                        }
                     )
-                    for i in range(batch_size):
-                        utt_id = utt_ids[i]
-                        speaker = text_lab[i]
-                        if speaker not in speakers:
-                            speakers[speaker] = current_speaker_id
-                            speaker_mapping.append({"id": current_speaker_id, "name": speaker})
-                            current_speaker_id += 1
-                        if (speakers[speaker], file_ids[i]) not in speaker_ordering_set:
-                            speaker_ordering_mapping.append(
-                                {
-                                    "file_id": file_ids[i],
-                                    "speaker_id": speakers[speaker],
-                                    "index": 10,
-                                }
-                            )
-                            speaker_ordering_set.add((speakers[speaker], file_ids[i]))
-                        utt_mapping.append({"id": utt_id, "speaker_id": speakers[speaker]})
-                    del out_prob
-                    del score
-                    del index
-                    del text_lab
-                    del batch
-                    gc.collect()
-                    batch = []
-                    utt_ids = []
-                    file_ids = []
-                    pbar.update(batch_size)
-            if len(batch):
-                batch = PaddedBatch(batch)
-                out_prob, score, index, text_lab = self.speaker_recognition_model.classify_batch(
-                    batch["wav"].data, batch["wav"].lengths
-                )
-                for i in range(len(batch)):
-                    utt_id = utt_ids[i]
-                    speaker = text_lab[i]
-                    if speaker not in speakers:
-                        speakers[speaker] = current_speaker_id
-                        speaker_mapping.append({"id": current_speaker_id, "name": speaker})
-                        current_speaker_id += 1
-                    if (speakers[speaker], file_ids[i]) not in speaker_ordering_set:
-                        speaker_ordering_mapping.append(
-                            {"file_id": file_ids[i], "speaker_id": speakers[speaker], "index": 10}
-                        )
-                        speaker_ordering_set.add((speakers[speaker], file_ids[i]))
-                    utt_mapping.append({"id": utt_id, "speaker_id": speakers[speaker]})
-                del out_prob
-                del score
-                del index
-                del text_lab
-                del batch
-                gc.collect()
-                pbar.update(batch_size)
+                    speaker_ordering_set.add((speakers[new_speaker], file_id))
+                utt_mapping.append({"id": u_id, "speaker_id": speakers[new_speaker]})
             if speaker_mapping:
                 session.bulk_insert_mappings(
                     Speaker, speaker_mapping, return_defaults=False, render_nulls=True
                 )
 
             bulk_update(session, Utterance, utt_mapping)
-            session.execute(
-                sqlalchemy.insert(SpeakerOrdering),
-                speaker_ordering_mapping,
-            )
+            if speaker_ordering_mapping:
+                session.execute(
+                    sqlalchemy.dialects.postgresql.insert(SpeakerOrdering)
+                    .values(speaker_ordering_mapping)
+                    .on_conflict_do_nothing()
+                )
             session.commit()
+        if self.evaluation_mode:
+            self.evaluate_classification()
 
     def cluster_speakers_mfa(self):
         logger.info("Clustering speakers...")
@@ -468,7 +566,7 @@ class SpeakerDiarizer(
                 .filter(Speaker.ivector != None)  # noqa
             )
             speaker_ids = []
-            ivectors = np.empty((self.num_speakers, self.plda.dimension))
+            ivectors = np.empty((self.num_speakers, PLDA_DIMENSION))
             for i, (speaker, utt_count) in enumerate(query):
                 ivectors[i, :] = speaker.ivector
                 speaker_ids.append(speaker.id)
@@ -484,7 +582,7 @@ class SpeakerDiarizer(
                 "agglomerative",
             ]:
                 distance_matrix = score_plda(
-                    ivectors, ivectors, self.plda, normalize=True, distance=True
+                    ivectors, ivectors, self.plda.psi, normalize=True, distance=True
                 )
             speaker_clusters = collections.defaultdict(list)
             with tqdm.tqdm(total=num_speakers, disable=GLOBAL_CONFIG.quiet) as pbar:
@@ -551,55 +649,38 @@ class SpeakerDiarizer(
 
                 bulk_update(session, Speaker, speaker_mapping)
                 session.commit()
-
-    def utterance_distance_arguments(self) -> List[UtteranceDistanceArguments]:
-        return [
-            UtteranceDistanceArguments(
-                j.id,
-                getattr(self, "db_string", ""),
-                os.path.join(self.working_log_directory, f"utterance_distance.{j.id}.log"),
-                self.sparse_threshold,
-            )
-            for j in self.jobs
-        ]
+        if self.evaluation_mode:
+            self.calculate_eer(speaker_ids, to_fit)
 
     def cluster_utterances_mfa(self):
         plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
         with open(plda_transform_path, "rb") as f:
             self.plda = pickle.load(f)
         with self.session() as session:
-            utt2spk = {}
-            query = session.query(Utterance.id, Utterance.speaker_id, Utterance.ivector).filter(
+            query = session.query(Utterance.id, Utterance.file_id, Utterance.ivector).filter(
                 Utterance.ivector != None  # noqa
             )
             utterance_ids = []
-            ivectors = np.empty((query.count(), self.plda.dimension))
-            for i, (u_id, s_id, ivector) in enumerate(query):
+            file_ids = []
+            ivectors = np.empty((query.count(), PLDA_DIMENSION))
+            for i, (u_id, f_id, ivector) in enumerate(query):
                 utterance_ids.append(u_id)
-                utt2spk[u_id] = s_id
+                file_ids.append(f_id)
                 ivectors[i, :] = ivector
             num_utterances = ivectors.shape[0]
             kwargs = {}
 
-            if (
-                self.cluster_type
-                in ["spectral", "hdbscan", "dbscan", "optics", "affinity", "agglomerative"]
-                and self.use_plda
-            ):
-                logger.info("Generating distance matrix...")
-                to_fit = score_plda(ivectors, ivectors, self.plda, normalize=True, distance=True)
-
-                precomputed = True
-            else:
-                precomputed = False
-                to_fit = ivectors
-
             if self.stopped.stop_check():
                 logger.debug("Stopping clustering early.")
             logger.info("Clustering utterances...")
+            metric = "euclidean"
+            if self.use_plda:
+                metric = self.plda.distance
             with tqdm.tqdm(total=num_utterances, disable=GLOBAL_CONFIG.quiet) as pbar:
                 if self.cluster_type == "affinity":
                     logger.info("Running Affinity Propagation...")
+                    if self.use_plda:
+                        metric = self.plda.log_likelihood
                 elif self.cluster_type == "agglomerative":
                     logger.info("Running Agglomerative Clustering...")
                     kwargs["n_clusters"] = self.expected_num_speakers
@@ -613,7 +694,6 @@ class SpeakerDiarizer(
                     kwargs["min_cluster_size"] = 100
                     kwargs["min_samples"] = 10
                     kwargs["cluster_selection_epsilon"] = 0.0
-                    kwargs["location"] = os.path.join(self.working_directory, "cache_dir")
                 elif self.cluster_type == "optics":
                     logger.info("Running OPTICS...")
                     kwargs["min_samples"] = 15
@@ -625,34 +705,78 @@ class SpeakerDiarizer(
                     raise NotImplementedError(
                         f"The cluster type '{self.cluster_type} is not supported."
                     )
-                labels = cluster_matrix(
-                    to_fit, self.cluster_type, precomputed=precomputed, **kwargs
-                )
+                labels = cluster_matrix(ivectors, self.cluster_type, metric=metric, **kwargs)
+                file_clusters = collections.defaultdict(list)
                 utterance_clusters = collections.defaultdict(list)
                 speaker_clusters = collections.defaultdict(collections.Counter)
                 for i in range(num_utterances):
                     u_id = utterance_ids[i]
                     speaker_cluster_id = labels[i]
                     utterance_clusters[speaker_cluster_id].append(u_id)
-                    speaker_clusters[speaker_cluster_id][utt2spk[u_id]] += 1
+                    file_clusters[speaker_cluster_id].append(file_ids[i])
+                    speaker_clusters[speaker_cluster_id][self.ground_truth_utt2spk[u_id]] += 1
                     pbar.update(1)
                 utterance_mapping = []
                 speaker_id = self.get_next_primary_key(Speaker)
                 speaker_mapping = []
+                speaker_ordering_mapping = []
 
-                for cluster_id, utterance_ids in utterance_clusters.items():
-                    if cluster_id < 0:
-                        speaker_name = "unknown"
+                for cluster_id, utterance_ids in sorted(utterance_clusters.items()):
+                    if self.evaluation_mode:
+                        speaker_id = max(
+                            speaker_clusters[cluster_id].keys(),
+                            key=lambda x: speaker_clusters[cluster_id][x],
+                        )
                     else:
-                        speaker_name = f"Cluster {cluster_id}"
-                    speaker_mapping.append({"id": speaker_id, "name": speaker_name})
+                        if cluster_id < 0:
+                            speaker_name = "unknown"
+                        else:
+                            speaker_name = f"Cluster {cluster_id}"
+                        speaker_mapping.append({"id": speaker_id, "name": speaker_name})
                     for u_id in utterance_ids:
                         utterance_mapping.append({"id": u_id, "speaker_id": speaker_id})
-                    speaker_id += 1
-                session.bulk_insert_mappings(Speaker, speaker_mapping)
+                    for file_id in file_clusters[cluster_id]:
+                        speaker_ordering_mapping.append(
+                            {"speaker_id": speaker_id, "file_id": file_id, "index": 10}
+                        )
+                    if not self.evaluation_mode:
+                        speaker_id += 1
+                if speaker_mapping:
+                    session.bulk_insert_mappings(Speaker, speaker_mapping)
+                if speaker_ordering_mapping:
+                    session.execute(
+                        sqlalchemy.dialects.postgresql.insert(SpeakerOrdering)
+                        .values(speaker_ordering_mapping)
+                        .on_conflict_do_nothing()
+                    )
                 bulk_update(session, Utterance, utterance_mapping)
 
                 session.commit()
+        if self.evaluation_mode:
+            self.calculate_eer(utterance_ids, ivectors)
+            self.evaluate_clustering()
+
+    def calculate_eer(self, utterance_ids, to_fit):
+        return
+        if self.evaluation_mode:
+            y = []
+            scores = []
+            for i, u_id in enumerate(utterance_ids):
+                for j in range(i + 1, len(utterance_ids)):
+                    u2_id = utterance_ids[j]
+                    if self.ground_truth_utt2spk[u_id] == u2_id:
+                        y.append(1)
+                    else:
+                        y.append(0)
+                    if self.use_plda:
+                        scores.append(to_fit[i, j])
+                    else:
+                        scores.append(scipy.spatial.distance.euclidean(to_fit[i], to_fit[j]))
+            y = np.array(y)
+            scores = np.array(scores)
+            fprs, tprs, _ = metrics.roc_curve(y, scores)
+            eer = fprs[np.nanargmin(np.absolute((1 - tprs) - fprs))]
+            logger.info(f"EER: {eer*100:.2f}%")
 
     def cluster_speakers(self) -> None:
         self.setup()
@@ -663,156 +787,122 @@ class SpeakerDiarizer(
 
     def cluster_utterances(self) -> None:
         self.setup()
+
+        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
+        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.num_jobs}"
         if self.ivector_extractor is None:
             self.cluster_utterances_speechbrain()
         else:
             self.cluster_utterances_mfa()
 
+        os.environ["OMP_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+        os.environ["MKL_NUM_THREADS"] = f"{GLOBAL_CONFIG.current_profile.blas_num_threads}"
+
     def cluster_utterances_speechbrain(self) -> None:
         """
         Cluster utterances based on their ivectors
         """
-        self.setup()
         utt_mapping = []
-        import gc
 
         logger.info("Clustering utterances...")
         with tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar, self.session() as session:
-            utterances = (
-                session.query(Utterance)
-                .filter(Utterance.ignored == False)  # noqa
-                .options(
-                    joinedload(Utterance.file).joinedload(File.sound_file),
-                    joinedload(Utterance.speaker),
-                )
-            )
-            num_utterances = utterances.count()
-            batch = []
             utt_ids = []
             file_ids = []
             speaker_ids = []
-            batch_size = GLOBAL_CONFIG.num_jobs
-            embeddings = None
-            for u in utterances:
-                y, sr = librosa.load(
-                    u.file.sound_file.sound_file_path,
-                    sr=16000,
-                    mono=False,
-                    offset=u.begin,
-                    duration=u.duration,
-                )
-                batch.append({"id": u.id, "wav": torch.tensor(y)})
-                utt_ids.append(u.id)
-                file_ids.append(u.file_id)
-                speaker_ids.append(u.speaker_id)
-                if len(batch) == batch_size:
-                    batch = PaddedBatch(batch)
-                    emb = (
-                        self.speaker_recognition_model.encode_batch(
-                            batch["wav"].data, batch["wav"].lengths
-                        )
-                        .cpu()
-                        .numpy()
-                        .squeeze(axis=1)
-                    )
-                    if embeddings is None:
-                        embeddings = emb
-                    else:
-                        embeddings = np.append(embeddings, emb, axis=0)
-                    del batch
-                    gc.collect()
-                    batch = []
-                    pbar.update(batch_size)
-            if len(batch):
-                batch = PaddedBatch(batch)
-                emb = (
-                    self.speaker_recognition_model.encode_batch(
-                        batch["wav"].data, batch["wav"].lengths
-                    )
-                    .cpu()
-                    .numpy()
-                    .squeeze(axis=1)
-                )
-
-                if embeddings is None:
-                    embeddings = emb
-                else:
-                    embeddings = np.append(embeddings, emb, axis=0)
-                pbar.update(len(batch))
-                del batch
-                gc.collect()
-
-            if self.cluster_type in [
-                "spectral",
-                "dbscan",
-                "optics",
-                "affinity",
-                "hdbscan",
-                "agglomerative",
-            ]:
-                distance_matrix = pairwise_distances(
-                    embeddings,
-                    embeddings,
-                    metric="cosine",
-                    n_jobs=GLOBAL_CONFIG.current_profile.num_jobs,
-                )
-
+            embeddings = []
+            arguments = [
+                SpeechbrainArguments(j.id, self.db_string, None, self.cuda, self.cuda_batch_size)
+                for j in self.jobs
+            ]
+            for u_id, file_id, speaker_id, emb in run_kaldi_function(
+                SpeechbrainEmbeddingFunction, arguments, pbar.update
+            ):
+                utt_ids.append(u_id)
+                file_ids.append(file_id)
+                speaker_ids.append(speaker_id)
+                embeddings.append(emb)
+            embeddings = np.array(embeddings)
             kwargs = {}
             if self.cluster_type == "affinity":
                 logger.info("Running Affinity Propagation...")
-                to_fit = 1 - distance_matrix
             elif self.cluster_type == "agglomerative":
                 logger.info("Running Agglomerative Clustering...")
                 kwargs["n_clusters"] = self.expected_num_speakers
-                to_fit = distance_matrix
             elif self.cluster_type == "spectral":
                 logger.info("Running Spectral Clustering...")
                 kwargs["n_clusters"] = self.expected_num_speakers
-                to_fit = distance_matrix
             elif self.cluster_type == "dbscan":
                 logger.info("Running DBSCAN...")
-                to_fit = distance_matrix
             elif self.cluster_type == "hdbscan":
                 logger.info("Running HDBSCAN...")
-                to_fit = distance_matrix
-                kwargs["min_cluster_size"] = 60
-                kwargs["min_samples"] = 15
-                kwargs["cluster_selection_epsilon"] = self.eps
+                kwargs["min_cluster_size"] = 15
+                kwargs["min_samples"] = 1
+                kwargs["cluster_selection_epsilon"] = 0.0
             elif self.cluster_type == "optics":
                 logger.info("Running OPTICS...")
-                to_fit = distance_matrix
                 kwargs["min_samples"] = 15
                 kwargs["eps"] = self.eps
             elif self.cluster_type == "kmeans":
                 logger.info("Running KMeans...")
-                to_fit = embeddings
                 kwargs["n_clusters"] = self.expected_num_speakers
             else:
                 raise NotImplementedError(
                     f"The cluster type '{self.cluster_type} is not supported."
                 )
-            labels = cluster_matrix(to_fit, self.cluster_type, **kwargs)
+            labels = cluster_matrix(embeddings, self.cluster_type, **kwargs)
             utterance_clusters = collections.defaultdict(list)
             speaker_clusters = collections.defaultdict(collections.Counter)
-            for i in range(num_utterances):
+            file_clusters = collections.defaultdict(list)
+            for i in range(len(utt_ids)):
                 u_id = utt_ids[i]
                 speaker_id = speaker_ids[i]
                 speaker_cluster_id = labels[i]
                 utterance_clusters[speaker_cluster_id].append(u_id)
+                file_clusters[speaker_cluster_id].append(file_ids[i])
                 speaker_clusters[speaker_cluster_id][speaker_id] += 1
                 pbar.update(1)
             utterance_mapping = []
+            speaker_id = self.get_next_primary_key(Speaker)
+            speaker_mapping = []
+            speaker_ordering_mapping = []
             for cluster_id, utterance_ids in utterance_clusters.items():
-
-                cluster_name = max(
-                    speaker_clusters[cluster_id], key=lambda x: speaker_clusters[cluster_id][x]
-                )
+                if self.evaluation_mode:
+                    speaker_id = max(
+                        speaker_clusters[cluster_id].keys(),
+                        key=lambda x: speaker_clusters[cluster_id][x],
+                    )
+                else:
+                    if cluster_id < 0:
+                        speaker_name = "unknown"
+                    else:
+                        speaker_name = f"Cluster {cluster_id}"
+                    speaker_mapping.append({"id": speaker_id, "name": speaker_name})
                 for u_id in utterance_ids:
-                    utterance_mapping.append({"id": u_id, "speaker_id": cluster_name})
+                    utterance_mapping.append({"id": u_id, "speaker_id": speaker_id})
+                for file_id in file_clusters[cluster_id]:
+                    speaker_ordering_mapping.append(
+                        {"speaker_id": speaker_id, "file_id": file_id, "index": 10}
+                    )
+                if not self.evaluation_mode:
+                    speaker_id += 1
+            if speaker_mapping:
+                session.bulk_insert_mappings(Speaker, speaker_mapping)
+            if speaker_ordering_mapping:
+                session.execute(
+                    sqlalchemy.dialects.postgresql.insert(SpeakerOrdering)
+                    .values(speaker_ordering_mapping)
+                    .on_conflict_do_nothing()
+                )
+                session.flush()
             bulk_update(session, Utterance, utt_mapping)
             session.commit()
+        if self.evaluation_mode:
+            self.calculate_eer(utterance_ids, embeddings)
+            self.evaluate_clustering()
 
     def export_files(self, output_directory: str) -> None:
         """
@@ -826,7 +916,14 @@ class SpeakerDiarizer(
         if not self.overwrite and os.path.exists(output_directory):
             output_directory = os.path.join(self.working_directory, "speaker_classification")
         os.makedirs(output_directory, exist_ok=True)
-
+        evaluation_path = os.path.join(
+            self.working_directory, "diarization_evaluation_results.csv"
+        )
+        if os.path.exists(evaluation_path):
+            shutil.copyfile(
+                evaluation_path,
+                os.path.join(output_directory, "diarization_evaluation_results.csv"),
+            )
         with self.session() as session:
             logger.info("Writing results csv...")
             with mfa_open(
@@ -861,7 +958,24 @@ class SpeakerDiarizer(
 
                     if utterance_count == 0:
                         logger.debug(f"Could not find any utterances for {file.name}")
-                    file.save(
-                        output_directory, overwrite=True, output_format=TextFileType.TEXTGRID.value
+                        continue
+                    output_format = file.text_file.file_type
+                    output_path = construct_output_path(
+                        file.name,
+                        file.relative_path,
+                        output_directory,
+                        output_format=output_format,
                     )
+                    if output_format == "lab":
+                        with mfa_open(output_path, "w") as f:
+                            f.write(file.utterances[0].text)
+                    else:
+                        data = file.construct_transcription_tiers(original_text=True)
+                        export_textgrid(
+                            data,
+                            output_path,
+                            file.duration,
+                            self.export_frame_shift,
+                            output_format,
+                        )
                     pbar.update(1)

@@ -239,34 +239,37 @@ def check_databases() -> None:
         if create:
             subprocess.check_call(
                 ["initdb", "-D", db_directory, "--encoding=UTF8"],
-                # stdout=log_file,
-                # stderr=log_file,
+                stdout=log_file,
+                stderr=log_file,
             )
-            subprocess.check_call(
-                [
-                    "pg_ctl",
-                    "-D",
-                    db_directory,
-                    "-l",
-                    log_path,
-                    "-o",
-                    f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
-                    "start",
-                ],
-                # stdout=log_file,
-                # stderr=log_file,
-            )
-            subprocess.check_call(
-                [
-                    "createuser",
-                    "-p",
-                    str(GLOBAL_CONFIG.current_profile.database_port),
-                    "-s",
-                    "postgres",
-                ],
-                # stdout=log_file,
-                # stderr=log_file,
-            )
+            try:
+                subprocess.check_call(
+                    [
+                        "pg_ctl",
+                        "-D",
+                        db_directory,
+                        "-l",
+                        log_path,
+                        "-o",
+                        f"-F -p {GLOBAL_CONFIG.current_profile.database_port}",
+                        "start",
+                    ],
+                    stdout=log_file,
+                    stderr=log_file,
+                )
+                subprocess.check_call(
+                    [
+                        "createuser",
+                        "-p",
+                        str(GLOBAL_CONFIG.current_profile.database_port),
+                        "-s",
+                        "postgres",
+                    ],
+                    stdout=log_file,
+                    stderr=log_file,
+                )
+            except Exception:
+                pass
         else:
             try:
                 subprocess.check_call(

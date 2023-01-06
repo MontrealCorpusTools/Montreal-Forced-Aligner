@@ -37,6 +37,8 @@ dependencies:
   - coverage
   - coveralls
   - interrogate
+  - numba
   - pip:
       - build
       - twine
+      - speechbrain

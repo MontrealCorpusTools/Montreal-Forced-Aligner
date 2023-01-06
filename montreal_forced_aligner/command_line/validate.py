@@ -88,8 +88,8 @@ def validate_corpus_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -108,6 +108,9 @@ def validate_corpus_cli(context, **kwargs) -> None:
             dictionary_path=dictionary_path,
             **TrainingValidator.parse_parameters(config_path, context.params, context.args),
         )
+    if kwargs.get("clean", False):
+        validator.clean_working_directory()
+        validator.remove_database()
     try:
         validator.validate()
     except Exception:

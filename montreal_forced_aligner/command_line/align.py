@@ -88,8 +88,8 @@ def align_corpus_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     reference_directory = kwargs.get("reference_directory", None)
@@ -106,6 +106,9 @@ def align_corpus_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         **PretrainedAligner.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        aligner.clean_working_directory()
+        aligner.remove_database()
     try:
         aligner.align()
         if aligner.use_phone_model:

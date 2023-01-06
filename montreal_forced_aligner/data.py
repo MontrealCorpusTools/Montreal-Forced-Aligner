@@ -34,6 +34,8 @@ __all__ = [
     "PronunciationProbabilityCounter",
 ]
 
+M_LOG_2PI = 1.8378770664093454835606594728112
+
 
 # noinspection PyUnresolvedReferences
 @dataclassy.dataclass(slots=True)

@@ -99,8 +99,8 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -117,6 +117,9 @@ def transcribe_corpus_cli(context, **kwargs) -> None:
         language_model_path=language_model_path,
         **Transcriber.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        transcriber.clean_working_directory()
+        transcriber.remove_database()
     try:
         transcriber.setup()
         transcriber.transcribe()

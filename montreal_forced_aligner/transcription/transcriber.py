@@ -1766,8 +1766,6 @@ class Transcriber(TranscriberMixin, TopLevelMfaWorker):
                         with mfa_open(output_path, "w") as f:
                             f.write(intervals[0].label)
                 else:
-                    self.export_textgrids()
-
                     tg = textgrid.Textgrid()
                     tg.minTimestamp = 0
                     tg.maxTimestamp = duration

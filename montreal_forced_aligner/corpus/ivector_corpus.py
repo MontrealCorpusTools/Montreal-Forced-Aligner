@@ -283,6 +283,12 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
         logger.debug(f"Ivector extraction took {time.time() - begin}")
 
     def collect_utterance_ivectors(self):
+        plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
+        if os.path.exists(plda_transform_path):
+            with open(plda_transform_path, "rb") as f:
+                self.plda = pickle.load(f)
+        if self.has_ivectors(speaker=False) and os.path.exists(plda_transform_path):
+            return
         plda_path = (
             self.adapted_plda_path if os.path.exists(self.adapted_plda_path) else self.plda_path
         )
@@ -291,6 +297,9 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             return
         logger.info("Collecting ivectors...")
         self.adapt_plda()
+        plda_path = (
+            self.adapted_plda_path if os.path.exists(self.adapted_plda_path) else self.plda_path
+        )
         self.plda = PldaModel.load(plda_path)
         ivector_arks = {}
         for j in self.jobs:
@@ -319,10 +328,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 utt_ids.append(utt_id)
                 ivectors.append(ivector)
             ivectors = np.array(ivectors)
-            ivectors = self.plda.preprocess_ivectors(ivectors)
-            ivectors, pca_transform = self.plda.compute_pca_transform(ivectors)
-            self.plda.apply_transform(pca_transform)
-            ivectors = self.plda.transform_ivectors(ivectors)
+            ivectors = self.plda.process_ivectors(ivectors)
             update_mapping = []
             for i, utt_id in enumerate(utt_ids):
                 update_mapping.append(
@@ -339,16 +345,15 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             )
             session.execute(sqlalchemy.text("ALTER TABLE utterance ENABLE TRIGGER all"))
             session.commit()
+            with open(plda_transform_path, "wb") as f:
+                pickle.dump(self.plda, f)
 
     def collect_speaker_ivectors(self):
-        plda_path = (
-            self.adapted_plda_path if os.path.exists(self.adapted_plda_path) else self.plda_path
-        )
-        if not os.path.exists(plda_path):
-            logger.info("Missing plda, skipping speaker ivector collection")
+        if self.has_ivectors(speaker=True):
             return
+        if self.plda is None:
+            self.collect_utterance_ivectors()
         logger.info("Collecting speaker ivectors...")
-        self.plda = PldaModel.load(plda_path)
         speaker_ivector_ark_path = os.path.join(self.working_directory, "speaker_ivectors.ark")
         if not os.path.exists(speaker_ivector_ark_path):
             self.compute_speaker_ivectors()
@@ -368,10 +373,7 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
                 speaker_ids.append(int(speaker_id))
                 ivectors.append(ivector)
             ivectors = np.array(ivectors)
-            ivectors = self.plda.preprocess_ivectors(ivectors)
-            ivectors, pca_transform = self.plda.compute_pca_transform(ivectors)
-            self.plda.apply_transform(pca_transform)
-            ivectors = self.plda.transform_ivectors(ivectors)
+            ivectors = self.plda.process_ivectors(ivectors)
             update_mapping = []
             for i, speaker_id in enumerate(speaker_ids):
                 update_mapping.append({"id": speaker_id, "ivector": ivectors[i, :]})
@@ -386,6 +388,3 @@ class IvectorCorpusMixin(AcousticCorpusMixin, IvectorConfigMixin):
             )
             session.execute(sqlalchemy.text("ALTER TABLE speaker ENABLE TRIGGER all"))
             session.commit()
-            plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
-            with open(plda_transform_path, "wb") as f:
-                pickle.dump(self.plda, f)

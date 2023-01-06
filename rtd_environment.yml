@@ -31,6 +31,7 @@ dependencies:
   - myst-parser
   - mock
   - setuptools-scm
+  - numba
   - pip:
       - sphinx-needs
       - sphinxcontrib-plantuml

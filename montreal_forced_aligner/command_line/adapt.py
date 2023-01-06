@@ -77,8 +77,8 @@ def adapt_model_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     output_directory = kwargs.get("output_directory", None)
@@ -94,6 +94,9 @@ def adapt_model_cli(context, **kwargs) -> None:
         acoustic_model_path=acoustic_model_path,
         **AdaptingAligner.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        adapter.clean_working_directory()
+        adapter.remove_database()
 
     try:
         adapter.adapt()

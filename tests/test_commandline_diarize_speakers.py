@@ -6,7 +6,7 @@ from montreal_forced_aligner.command_line.mfa import mfa_cli
 
 
 def test_cluster_mfa(
-    basic_corpus_dir,
+    combined_corpus_dir,
     english_ivector_model,
     generated_dir,
     transcription_acoustic_model,
@@ -16,15 +16,18 @@ def test_cluster_mfa(
     output_path = os.path.join(generated_dir, "cluster_test_mfa")
     command = [
         "diarize",
-        basic_corpus_dir,
+        combined_corpus_dir,
         english_ivector_model,
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
         "--cluster",
         "--cluster_type",
-        "affinity",
+        "kmeans",
+        "--expected_num_speakers",
+        "3",
         "--clean",
+        "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
@@ -39,7 +42,7 @@ def test_cluster_mfa(
 
 
 def test_classify_mfa(
-    basic_corpus_dir,
+    combined_corpus_dir,
     english_ivector_model,
     generated_dir,
     transcription_acoustic_model,
@@ -49,13 +52,14 @@ def test_classify_mfa(
     output_path = os.path.join(generated_dir, "classify_test_mfa")
     command = [
         "diarize",
-        basic_corpus_dir,
+        combined_corpus_dir,
         english_ivector_model,
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
         "--classify",
         "--clean",
+        "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
@@ -70,7 +74,7 @@ def test_classify_mfa(
 
 
 def test_cluster_speechbrain(
-    basic_corpus_dir,
+    combined_corpus_dir,
     generated_dir,
     transcription_acoustic_model,
     transcription_language_model,
@@ -79,15 +83,18 @@ def test_cluster_speechbrain(
     output_path = os.path.join(generated_dir, "cluster_test_sb")
     command = [
         "diarize",
-        basic_corpus_dir,
+        combined_corpus_dir,
         "speechbrain",
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
         "--cluster",
         "--cluster_type",
-        "affinity",
+        "kmeans",
+        "--expected_num_speakers",
+        "3",
         "--clean",
+        "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True
@@ -102,7 +109,7 @@ def test_cluster_speechbrain(
 
 
 def test_classify_speechbrain(
-    basic_corpus_dir,
+    combined_corpus_dir,
     generated_dir,
     transcription_acoustic_model,
     transcription_language_model,
@@ -111,13 +118,14 @@ def test_classify_speechbrain(
     output_path = os.path.join(generated_dir, "classify_test_sb")
     command = [
         "diarize",
-        basic_corpus_dir,
+        combined_corpus_dir,
         "speechbrain",
         output_path,
         "-t",
         os.path.join(temp_dir, "diarize_cli"),
         "--classify",
         "--clean",
+        "--evaluate",
     ]
     result = click.testing.CliRunner(mix_stderr=False, echo_stdin=True).invoke(
         mfa_cli, command, catch_exceptions=True

@@ -82,8 +82,8 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     output_model_path = kwargs.get("output_model_path", None)
@@ -95,6 +95,9 @@ def train_acoustic_model_cli(context, **kwargs) -> None:
         dictionary_path=dictionary_path,
         **TrainableAligner.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        trainer.clean_working_directory()
+        trainer.remove_database()
     try:
         trainer.train()
         if output_model_path is not None:

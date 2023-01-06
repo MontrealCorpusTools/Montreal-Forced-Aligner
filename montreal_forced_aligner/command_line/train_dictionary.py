@@ -66,27 +66,30 @@ def train_dictionary_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     acoustic_model_path = kwargs["acoustic_model_path"]
     corpus_directory = kwargs["corpus_directory"]
     dictionary_path = kwargs["dictionary_path"]
     output_directory = kwargs["output_directory"]
-    aligner = DictionaryTrainer(
+    trainer = DictionaryTrainer(
         acoustic_model_path=acoustic_model_path,
         corpus_directory=corpus_directory,
         dictionary_path=dictionary_path,
         **DictionaryTrainer.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        trainer.clean_working_directory()
+        trainer.remove_database()
 
     try:
-        aligner.align()
-        aligner.export_lexicons(output_directory)
+        trainer.align()
+        trainer.export_lexicons(output_directory)
     except Exception:
-        aligner.dirty = True
+        trainer.dirty = True
         raise
     finally:
-        aligner.cleanup()
+        trainer.cleanup()
         cleanup_databases()

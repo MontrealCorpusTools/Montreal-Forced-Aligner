@@ -56,8 +56,8 @@ def train_ivector_cli(context, **kwargs) -> None:
     """
     if kwargs.get("profile", None) is not None:
         os.putenv(MFA_PROFILE_VARIABLE, kwargs["profile"])
-        GLOBAL_CONFIG.current_profile.update(kwargs)
-        GLOBAL_CONFIG.save()
+    GLOBAL_CONFIG.current_profile.update(kwargs)
+    GLOBAL_CONFIG.save()
     check_databases()
     config_path = kwargs.get("config_path", None)
     corpus_directory = kwargs["corpus_directory"]
@@ -67,6 +67,9 @@ def train_ivector_cli(context, **kwargs) -> None:
         corpus_directory=corpus_directory,
         **TrainableIvectorExtractor.parse_parameters(config_path, context.params, context.args),
     )
+    if kwargs.get("clean", False):
+        trainer.clean_working_directory()
+        trainer.remove_database()
 
     try:
 

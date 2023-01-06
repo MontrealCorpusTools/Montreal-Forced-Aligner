@@ -14,11 +14,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 import dataclassy
 import numpy as np
 import sqlalchemy
+from numba import njit
 from sqlalchemy.orm import Session, joinedload
 
 from montreal_forced_aligner.abc import KaldiFunction
-from montreal_forced_aligner.config import GLOBAL_CONFIG
-from montreal_forced_aligner.data import MfaArguments
+from montreal_forced_aligner.config import PLDA_DIMENSION
+from montreal_forced_aligner.data import M_LOG_2PI, MfaArguments
 from montreal_forced_aligner.db import CorpusWorkflow, Job, Utterance
 from montreal_forced_aligner.exceptions import KaldiProcessingError
 from montreal_forced_aligner.helper import mfa_open
@@ -27,6 +28,7 @@ from montreal_forced_aligner.utils import thirdparty_binary
 if TYPE_CHECKING:
     SpeakerCharacterType = Union[str, int]
     from montreal_forced_aligner.abc import MetaDict
+
 
 __all__ = [
     "FeatureConfigMixin",
@@ -1079,11 +1081,11 @@ class IvectorConfigMixin(VadConfigMixin):
 
     def __init__(
         self,
-        ivector_dimension=128,
-        num_gselect=20,
-        posterior_scale=1.0,
-        min_post=0.025,
-        max_count=100,
+        ivector_dimension: int = 128,
+        num_gselect: int = 20,
+        posterior_scale: float = 1.0,
+        min_post: float = 0.025,
+        max_count: int = 100,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1270,13 +1272,57 @@ class ExportIvectorsFunction(KaldiFunction):
         engine.dispose()
 
 
+@njit
+def plda_distance(train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray):
+    mean = (psi) / (psi + 1.0)
+    mean *= train_ivector  # N X D , X[0]- Train ivectors
+    variance_given = 1.0 + psi / (psi + 1.0)
+    logdet_given = np.sum(np.log(variance_given))
+    variance_given = 1.0 / variance_given
+    # without class computation
+    variance_without = 1.0 + psi
+    logdet_without = np.sum(np.log(variance_without))
+    variance_without = 1.0 / variance_without
+    sqdiff_given = test_ivector - mean
+    sqdiff_given = sqdiff_given**2
+    loglikes = -0.5 * (logdet_given + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_given @ variance_given))
+    sqdiff_without = test_ivector**2
+    loglike_without_class = -0.5 * (
+        logdet_without + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_without @ variance_without)
+    )
+    return -1 * (loglikes - loglike_without_class)  # Negative for distance
+
+
+@njit
+def plda_log_likelihood(train_ivector: np.ndarray, test_ivector: np.ndarray, psi: np.ndarray):
+    mean = (psi) / (psi + 1.0)
+    mean *= train_ivector  # N X D , X[0]- Train ivectors
+    variance_given = 1.0 + psi / (psi + 1.0)
+    logdet_given = np.sum(np.log(variance_given))
+    variance_given = 1.0 / variance_given
+    # without class computation
+    variance_without = 1.0 + psi
+    logdet_without = np.sum(np.log(variance_without))
+    variance_without = 1.0 / variance_without
+    sqdiff_given = test_ivector - mean
+    sqdiff_given = sqdiff_given**2
+    loglikes = -0.5 * (logdet_given + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_given @ variance_given))
+    sqdiff_without = test_ivector**2
+    loglike_without_class = -0.5 * (
+        logdet_without + M_LOG_2PI * PLDA_DIMENSION + (sqdiff_without @ variance_without)
+    )
+    return loglikes - loglike_without_class  # Negative for distance
+
+
 @dataclassy.dataclass(slots=True)
 class PldaModel:
     mean: np.ndarray
     diagonalizing_transform: np.ndarray
     psi: np.ndarray
-    dimension: int
     offset: typing.Optional[np.ndarray] = None
+    pca_transform: typing.Optional[np.ndarray] = None
+    transformed_mean: typing.Optional[np.ndarray] = None
+    transformed_diagonalizing_transform: typing.Optional[np.ndarray] = None
 
     @classmethod
     def load(cls, plda_path):
@@ -1310,9 +1356,19 @@ class PldaModel:
                 line = line.strip()[2:-2]
                 psi = np.fromstring(line, dtype="float32", sep=" ")
         copy_proc.wait()
-        return PldaModel(
-            mean, diagonalizing_transform, psi, GLOBAL_CONFIG.current_profile.plda_dimension
-        )
+        return PldaModel(mean, diagonalizing_transform, psi)
+
+    def distance(self, train_ivector: np.ndarray, test_ivector: np.ndarray):
+        return plda_distance(train_ivector, test_ivector, self.psi)
+
+    def log_likelihood(self, train_ivector: np.ndarray, test_ivector: np.ndarray):
+        return plda_log_likelihood(train_ivector, test_ivector, self.psi)
+
+    def process_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
+        ivectors = self.preprocess_ivectors(ivectors)
+        ivectors = self.compute_pca_transform(ivectors)
+        ivectors = self.transform_ivectors(ivectors)
+        return ivectors
 
     def preprocess_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
         """
@@ -1342,7 +1398,7 @@ class PldaModel:
 
         return ivectors_new.T
 
-    def compute_pca_transform(self, ivectors: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray]:
+    def compute_pca_transform(self, ivectors: np.ndarray) -> np.ndarray:
         """
         Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L53
 
@@ -1360,7 +1416,8 @@ class PldaModel:
         numpy.ndarray
             Transform
         """
-
+        if self.pca_transform is not None:
+            return ivectors @ self.pca_transform
         num_rows = ivectors.shape[0]
         mean = np.mean(ivectors, 0, keepdims=True)
         S = np.matmul(ivectors.T, ivectors)
@@ -1369,16 +1426,17 @@ class PldaModel:
         S = S - mean.T @ mean
 
         ev_s, eig_s, _ = np.linalg.svd(S, full_matrices=True)
-        energy_percent = np.sum(eig_s[: self.dimension]) / np.sum(eig_s)
-        logger.debug(f"PLDA PCA transform energy: {energy_percent*100:.2f}%")
-        transform = ev_s[:, : self.dimension]
+        energy_percent = np.sum(eig_s[:PLDA_DIMENSION]) / np.sum(eig_s)
+        logger.debug(f"PLDA PCA transform energy with: {energy_percent*100:.2f}%")
+        transform = ev_s[:, :PLDA_DIMENSION]
 
         transxvec = ivectors @ transform
         newX = transxvec
+        self.pca_transform = transform
+        self.apply_transform()
+        return newX
 
-        return newX, transform.T
-
-    def apply_transform(self, transform_in: np.ndarray):
+    def apply_transform(self):
         """
         Adapted from https://github.com/prachiisc/PLDA_scoring/blob/master/PLDA_scoring.py#L101
 
@@ -1390,6 +1448,7 @@ class PldaModel:
 
         mean_plda = self.mean
         # transfomed mean vector
+        transform_in = self.pca_transform.T
         new_mean = transform_in @ mean_plda[:, np.newaxis]
         D = self.diagonalizing_transform
         psi = self.psi
@@ -1408,9 +1467,9 @@ class PldaModel:
         psi_new = eig_b
 
         Dnew = ev_b.T @ Dnew
-        self.mean = new_mean
-        self.diagonalizing_transform = Dnew
-        self.psi = psi_new
+        self.transformed_mean = new_mean
+        self.transformed_diagonalizing_transform = Dnew
+        self.psi = psi_new.astype("float32")
         self.offset = -Dnew @ new_mean.reshape(-1, 1)
 
     def transform_ivectors(self, ivectors: np.ndarray) -> np.ndarray:
@@ -1432,7 +1491,7 @@ class PldaModel:
         offset = self.offset
         offset = offset.T
 
-        D = self.diagonalizing_transform
+        D = self.transformed_diagonalizing_transform
         Dnew = D.T
         X_new = ivectors @ Dnew
         X_new = X_new + offset

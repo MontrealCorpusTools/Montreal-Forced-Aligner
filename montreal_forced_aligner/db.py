@@ -15,7 +15,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integ
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import Bundle, declarative_base, relationship
 
-from montreal_forced_aligner.config import GLOBAL_CONFIG
+from montreal_forced_aligner.config import PLDA_DIMENSION
 from montreal_forced_aligner.data import (
     CtmInterval,
     PhoneSetType,
@@ -847,7 +847,7 @@ class Speaker(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, unique=True, nullable=False)
     cmvn = Column(String)
-    ivector = Column(Vector(GLOBAL_CONFIG.current_profile.plda_dimension), nullable=True)
+    ivector = Column(Vector(PLDA_DIMENSION), nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
     dictionary: Dictionary = relationship("Dictionary", back_populates="speakers")
     utterances: typing.List[Utterance] = relationship("Utterance", back_populates="speaker")
@@ -1038,13 +1038,15 @@ class File(MfaSqlBase):
                 tg.addTier(t)
             tg.save(output_path, includeBlankSpaces=True, format=output_format)
 
-    def construct_transcription_tiers(self) -> typing.Dict[str, typing.List[CtmInterval]]:
+    def construct_transcription_tiers(
+        self, original_text=False
+    ) -> typing.Dict[str, typing.Dict[str, typing.List[CtmInterval]]]:
         """
         Construct output transcription tiers for the file
 
         Returns
         -------
-        dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]
+        dict[str, dict[str, list[:class:`~montreal_forced_aligner.data.CtmInterval`]]]
             Tier dictionary of utterance transcriptions
         """
         data = {}
@@ -1055,11 +1057,18 @@ class File(MfaSqlBase):
                     speaker_name = speaker.name
                     break
             if speaker_name not in data:
-                data[speaker_name] = []
-            label = u.transcription_text
+                data[speaker_name] = {}
+            if original_text:
+                label = u.text
+                key = "text"
+            else:
+                label = u.transcription_text
+                key = "transcription"
             if not label:
                 label = ""
-            data[speaker_name].append(CtmInterval(u.begin, u.end, label))
+            if key not in data[speaker_name]:
+                data[speaker_name][key] = []
+            data[speaker_name][key].append(CtmInterval(u.begin, u.end, label))
         return data
 
 
@@ -1245,7 +1254,7 @@ class Utterance(MfaSqlBase):
     alignment_score = Column(Float)
     word_error_rate = Column(Float)
     character_error_rate = Column(Float)
-    ivector = Column(Vector(GLOBAL_CONFIG.current_profile.plda_dimension), nullable=True)
+    ivector = Column(Vector(PLDA_DIMENSION), nullable=True)
     file_id = Column(Integer, ForeignKey("file.id"), index=True, nullable=False)
     speaker_id = Column(Integer, ForeignKey("speaker.id"), index=True, nullable=False)
     kaldi_id = Column(

@@ -14,11 +14,15 @@ from montreal_forced_aligner.helper import mfa_open
 from montreal_forced_aligner.utils import read_feats, thirdparty_binary
 
 try:
-    torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
-    torch_logger.setLevel(logging.ERROR)
-    torch_logger = logging.getLogger("speechbrain.utils.train_logger")
-    torch_logger.setLevel(logging.ERROR)
-    from speechbrain.pretrained import VAD
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch_logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
+        torch_logger.setLevel(logging.ERROR)
+        torch_logger = logging.getLogger("speechbrain.utils.train_logger")
+        torch_logger.setLevel(logging.ERROR)
+        from speechbrain.pretrained import VAD
 
     FOUND_SPEECHBRAIN = True
 except (ImportError, OSError):

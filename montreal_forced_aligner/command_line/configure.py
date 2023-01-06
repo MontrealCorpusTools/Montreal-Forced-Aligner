@@ -108,12 +108,6 @@ __all__ = ["configure_cli"]
     help="Port for postgresql database.",
     type=int,
 )
-@click.option(
-    "--plda_dimension",
-    default=None,
-    help="Dimension for PLDA ivectors.",
-    type=int,
-)
 @click.help_option("-h", "--help")
 def configure_cli(**kwargs) -> None:
     """
