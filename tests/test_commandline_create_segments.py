@@ -2,8 +2,10 @@ import os
 import shutil
 
 import click.testing
+import pytest
 
 from montreal_forced_aligner.command_line.mfa import mfa_cli
+from montreal_forced_aligner.diarization.speaker_diarizer import FOUND_SPEECHBRAIN
 
 
 def test_create_segments(
@@ -45,6 +47,8 @@ def test_create_segments_speechbrain(
     temp_dir,
     basic_segment_config_path,
 ):
+    if not FOUND_SPEECHBRAIN:
+        pytest.skip("SpeechBrain not installed")
     output_path = os.path.join(generated_dir, "segment_output")
     command = [
         "segment",
