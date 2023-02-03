@@ -56,6 +56,7 @@ from montreal_forced_aligner.db import (
 from montreal_forced_aligner.dictionary.mixins import DictionaryMixin
 from montreal_forced_aligner.dictionary.multispeaker import MultispeakerDictionaryMixin
 from montreal_forced_aligner.exceptions import (
+    FeatureGenerationError,
     KaldiProcessingError,
     SoundFileError,
     TextGridParseError,
@@ -889,6 +890,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
         """
         job = self.jobs[0]
         dict_id = None
+        log_path = os.path.join(self.features_log_directory, "feat-to-dim.log")
         if job.dictionary_ids:
             dict_id = self.jobs[0].dictionary_ids[0]
         feature_string = job.construct_feature_proc_string(
@@ -899,9 +901,7 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
             self.feature_options["splice_right_context"],
             self.feature_options["uses_speaker_adaptation"],
         )
-        with mfa_open(
-            os.path.join(self.features_log_directory, "feat-to-dim.log"), "w"
-        ) as log_file:
+        with mfa_open(log_path, "w") as log_file:
             subset_ark_path = os.path.join(self.split_directory, "temp.ark")
             subset_proc = subprocess.Popen(
                 [
@@ -921,9 +921,14 @@ class AcousticCorpusMixin(CorpusMixin, FeatureConfigMixin, metaclass=ABCMeta):
                 env=os.environ,
                 encoding="utf8",
             )
-            feats = int(dim_proc.stdout.readline().strip())
+            feats = dim_proc.stdout.readline().strip()
             dim_proc.wait()
-            os.remove(subset_ark_path)
+        if not feats:
+            with mfa_open(log_path) as f:
+                logged = f.read()
+            raise FeatureGenerationError(logged)
+        feats = int(feats)
+        os.remove(subset_ark_path)
         return feats
 
     def _load_corpus_from_source_mp(self) -> None:

@@ -77,6 +77,7 @@ class PldaClassificationArguments(MfaArguments):
     train_ivector_path: str
     num_utts_path: str
     use_xvector: bool
+    min_utterances: int
 
 
 # noinspection PyUnresolvedReferences
@@ -491,18 +492,19 @@ class PldaClassificationFunction(KaldiFunction):
         self.train_ivector_path = args.train_ivector_path
         self.num_utts_path = args.num_utts_path
         self.use_xvector = args.use_xvector
+        self.min_utterances = args.min_utterances
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
-        os.environ["OMP_NUM_THREADS"] = "3"
-        os.environ["OPENBLAS_NUM_THREADS"] = "3"
-        os.environ["MKL_NUM_THREADS"] = "3"
         db_engine = sqlalchemy.create_engine(self.db_string)
         utterance_counts = {}
         with open(self.num_utts_path) as f:
             for line in f:
                 speaker, utt_count = line.strip().split()
-                utterance_counts[int(speaker)] = int(utt_count)
+                utt_count = int(utt_count)
+                if self.min_utterances and utt_count < self.min_utterances:
+                    continue
+                utterance_counts[int(speaker)] = utt_count
         input_proc = subprocess.Popen(
             [
                 thirdparty_binary("ivector-subtract-global-mean"),

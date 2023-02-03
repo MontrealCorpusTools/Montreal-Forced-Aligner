@@ -295,7 +295,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             raise
         self.initialized = True
 
-    def plda_classification_arguments(self) -> List[PldaClassificationArguments]:
+    def plda_classification_arguments(
+        self, min_cluster_size=None
+    ) -> List[PldaClassificationArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`
 
@@ -313,6 +315,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 self.speaker_ivector_path,
                 self.num_utts_path,
                 self.use_xvector,
+                min_cluster_size,
             )
             for j in self.jobs
         ]
@@ -790,6 +793,18 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
     def classify_iteration(self, iteration=None) -> None:
         logger.info("Classifying utterances...")
 
+        low_count = None
+        if iteration is not None and self.min_cluster_size:
+            low_count = np.linspace(0, self.min_cluster_size, self.max_iterations)[iteration]
+            logger.debug(f"Minimum size: {low_count}")
+        score_threshold = self.plda_score_threshold
+        if iteration is not None:
+            score_threshold = np.linspace(
+                self.initial_plda_score_threshold,
+                self.plda_score_threshold,
+                self.max_iterations,
+            )[iteration]
+        logger.debug(f"Score threshold: {score_threshold}")
         with self.session() as session, tqdm.tqdm(
             total=self.num_utterances, disable=GLOBAL_CONFIG.quiet
         ) as pbar:
@@ -803,17 +818,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
             with open(plda_transform_path, "rb") as f:
                 self.plda: PldaModel = pickle.load(f)
-            arguments = self.plda_classification_arguments()
+            arguments = self.plda_classification_arguments(low_count)
             func = PldaClassificationFunction
-            score_threshold = self.plda_score_threshold
-            if iteration:
-                score_threshold = np.linspace(
-                    self.initial_plda_score_threshold,
-                    self.plda_score_threshold,
-                    self.max_iterations,
-                )[iteration]
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
-            logger.debug(f"Score threshold: {score_threshold}")
 
             for utt_id, classified_speaker, score in run_kaldi_function(
                 func, arguments, pbar.update
@@ -845,10 +852,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             session.commit()
         if iteration is not None and iteration < self.max_iterations - 2:
             self.breakup_large_clusters()
-        low_count = None
-        if iteration and self.min_cluster_size:
-            low_count = np.linspace(0, self.min_cluster_size, self.max_iterations)[iteration]
-            logger.debug(f"Minimum size: {low_count}")
         self.cleanup_empty_speakers(low_count)
 
     def breakup_large_clusters(self):
@@ -931,6 +934,9 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                             if s_id in self.single_clusters:
                                 continue
                             if label not in new_speakers:
+                                if s_id == unknown_speaker_id:
+                                    label = self._unknown_speaker_break_up_count
+                                    self._unknown_speaker_break_up_count += 1
                                 new_speakers[label] = {
                                     "id": next_speaker_id,
                                     "name": f"{s_id}_{label}",
@@ -1007,6 +1013,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             logger.info(f"Initial average PLDA score {self.classification_score:.4f}")
         logger.info(f"Number of speakers: {self.num_speakers}")
         logger.info(f"Unclassified utterances: {uncategorized_count}")
+        self._unknown_speaker_break_up_count = 0
         for i in range(self.max_iterations):
             logger.info(f"Iteration {i}:")
             current_score = self.classification_score

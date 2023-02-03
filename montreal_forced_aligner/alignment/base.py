@@ -834,22 +834,21 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                 phone_buf.seek(0)
             conn.commit()
             conn.close()
-        if self.num_utterances > 1000000:
-            logger.info("Refreshing indices...")
-            with tqdm.tqdm(
-                total=len(indices), disable=GLOBAL_CONFIG.quiet
-            ) as pbar, self.session() as session:
-                if new_words:
-                    session.execute(sqlalchemy.insert(Word).values(new_words))
-                for ix in indices:
-                    session.execute(
-                        sqlalchemy.text(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
-                    )
-                    session.commit()
-                    pbar.update(1)
-                session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
-                session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
+        logger.info("Refreshing indices...")
+        with tqdm.tqdm(
+            total=len(indices), disable=GLOBAL_CONFIG.quiet
+        ) as pbar, self.session() as session:
+            if new_words:
+                session.execute(sqlalchemy.insert(Word).values(new_words))
+            for ix in indices:
+                session.execute(
+                    sqlalchemy.text(f'CREATE INDEX {ix[0]} ON {ix[1]} ({", ".join(ix[2])})')
+                )
                 session.commit()
+                pbar.update(1)
+            session.execute(sqlalchemy.text("ALTER TABLE word_interval ENABLE TRIGGER all"))
+            session.execute(sqlalchemy.text("ALTER TABLE phone_interval ENABLE TRIGGER all"))
+            session.commit()
 
         with self.session() as session:
             workflow = (
