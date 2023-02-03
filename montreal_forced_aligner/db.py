@@ -199,7 +199,7 @@ class Corpus(MfaSqlBase):
     num_jobs = Column(Integer, default=0)
 
     current_subset = Column(Integer, default=0)
-    data_directory: typing.Union[str, Column] = Column(String, nullable=False)
+    data_directory = Column(String, nullable=False)
 
     jobs = relationship("Job", back_populates="corpus")
 
@@ -327,7 +327,7 @@ class Dictionary(MfaSqlBase):
     final_non_silence_correction = Column(Float, nullable=True)
 
     dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=True)
-    dialect: Dialect = relationship("Dialect", back_populates="dictionaries")
+    dialect = relationship("Dialect", back_populates="dictionaries")
 
     words = relationship(
         "Word",
@@ -551,7 +551,7 @@ class Word(MfaSqlBase):
     count = Column(Integer, default=0, nullable=False, index=True)
     word_type = Column(Enum(WordType), nullable=False, index=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=False, index=True)
-    dictionary: Dictionary = relationship("Dictionary", back_populates="words")
+    dictionary = relationship("Dictionary", back_populates="words")
     pronunciations = relationship(
         "Pronunciation", back_populates="word", cascade="all, delete", passive_deletes=True
     )
@@ -617,7 +617,7 @@ class Pronunciation(MfaSqlBase):
     word_id = Column(
         Integer, ForeignKey("word.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    word: Word = relationship("Word", back_populates="pronunciations")
+    word = relationship("Word", back_populates="pronunciations")
 
     base_pronunciation_id = Column(
         Integer, ForeignKey("pronunciation.id"), nullable=False, index=True
@@ -684,9 +684,9 @@ class PhonologicalRule(MfaSqlBase):
     non_silence_before_correction = Column(Float, nullable=True)
 
     dialect_id = Column(Integer, ForeignKey("dialect.id"), index=True, nullable=False)
-    dialect: Dialect = relationship("Dialect", back_populates="rules")
+    dialect = relationship("Dialect", back_populates="rules")
 
-    pronunciations: typing.List[RuleApplication] = relationship(
+    pronunciations = relationship(
         "RuleApplication",
         back_populates="rule",
         cascade="all, delete",
@@ -832,9 +832,9 @@ class RuleApplication(MfaSqlBase):
     pronunciation_id = Column(ForeignKey("pronunciation.id", ondelete="CASCADE"), primary_key=True)
     rule_id = Column(ForeignKey("phonological_rule.id", ondelete="CASCADE"), primary_key=True)
 
-    pronunciation: Pronunciation = relationship("Pronunciation", back_populates="rules")
+    pronunciation = relationship("Pronunciation", back_populates="rules")
 
-    rule: PhonologicalRule = relationship("PhonologicalRule", back_populates="pronunciations")
+    rule = relationship("PhonologicalRule", back_populates="pronunciations")
 
 
 class Speaker(MfaSqlBase):
@@ -870,11 +870,9 @@ class Speaker(MfaSqlBase):
     plda_vector = Column(Vector(PLDA_DIMENSION), nullable=True)
     xvector = Column(Vector(XVECTOR_DIMENSION), nullable=True)
     dictionary_id = Column(Integer, ForeignKey("dictionary.id"), nullable=True, index=True)
-    dictionary: Dictionary = relationship("Dictionary", back_populates="speakers")
-    utterances: typing.List[Utterance] = relationship("Utterance", back_populates="speaker")
-    files: typing.List[File] = relationship(
-        "File", secondary=SpeakerOrdering, back_populates="speakers"
-    )
+    dictionary = relationship("Dictionary", back_populates="speakers")
+    utterances = relationship("Utterance", back_populates="speaker")
+    files = relationship("File", secondary=SpeakerOrdering, back_populates="speakers")
 
 
 class File(MfaSqlBase):
@@ -913,10 +911,10 @@ class File(MfaSqlBase):
         back_populates="files",
         order_by=SpeakerOrdering.c.index,
     )
-    text_file: TextFile = relationship(
+    text_file = relationship(
         "TextFile", back_populates="file", uselist=False, cascade="all, delete"
     )
-    sound_file: SoundFile = relationship(
+    sound_file = relationship(
         "SoundFile", back_populates="file", uselist=False, cascade="all, delete"
     )
     utterances = relationship(
@@ -1115,15 +1113,13 @@ class SoundFile(MfaSqlBase):
     __tablename__ = "sound_file"
 
     file_id = Column(ForeignKey("file.id"), primary_key=True)
-    file: File = relationship("File", back_populates="sound_file")
+    file = relationship("File", back_populates="sound_file")
     sound_file_path = Column(String, nullable=False)
     format = Column(String, nullable=False)
     sample_rate = Column(Integer, nullable=False)
     duration = Column(Float, nullable=False)
     num_channels = Column(Integer, nullable=False)
     sox_string = Column(String)
-
-    waveform: np.array
 
     def normalized_waveform(
         self, begin: float = 0, end: typing.Optional[float] = None
@@ -1181,7 +1177,7 @@ class TextFile(MfaSqlBase):
     __tablename__ = "text_file"
 
     file_id = Column(ForeignKey("file.id"), primary_key=True)
-    file: File = relationship("File", back_populates="text_file")
+    file = relationship("File", back_populates="text_file")
     text_file_path = Column(String, nullable=False)
     file_type = Column(String, nullable=False)
 
@@ -1281,17 +1277,17 @@ class Utterance(MfaSqlBase):
         index=True,
     )
     job_id = Column(Integer, ForeignKey("job.id"), index=True, nullable=True)
-    file: File = relationship("File", back_populates="utterances")
-    speaker: Speaker = relationship("Speaker", back_populates="utterances")
-    job: Job = relationship("Job", back_populates="utterances")
-    phone_intervals: typing.List[PhoneInterval] = relationship(
+    file = relationship("File", back_populates="utterances")
+    speaker = relationship("Speaker", back_populates="utterances")
+    job = relationship("Job", back_populates="utterances")
+    phone_intervals = relationship(
         "PhoneInterval",
         back_populates="utterance",
         order_by="PhoneInterval.begin",
         collection_class=ordering_list("begin"),
         cascade="all, delete",
     )
-    word_intervals: typing.List[WordInterval] = relationship(
+    word_intervals = relationship(
         "WordInterval",
         back_populates="utterance",
         order_by="WordInterval.begin",
@@ -1605,16 +1601,16 @@ class PhoneInterval(MfaSqlBase):
     phone_goodness = Column(Float, nullable=True)
 
     phone_id = Column(Integer, ForeignKey("phone.id"), index=True, nullable=False)
-    phone: Phone = relationship("Phone", back_populates="phone_intervals")
+    phone = relationship("Phone", back_populates="phone_intervals")
 
     word_interval_id = Column(Integer, ForeignKey("word_interval.id"), index=True, nullable=True)
-    word_interval: WordInterval = relationship("WordInterval", back_populates="phone_intervals")
+    word_interval = relationship("WordInterval", back_populates="phone_intervals")
 
     utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
-    utterance: Utterance = relationship("Utterance", back_populates="phone_intervals")
+    utterance = relationship("Utterance", back_populates="phone_intervals")
 
     workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
-    workflow: CorpusWorkflow = relationship("CorpusWorkflow", back_populates="phone_intervals")
+    workflow = relationship("CorpusWorkflow", back_populates="phone_intervals")
 
     __table_args__ = (
         sqlalchemy.Index("phone_utterance_workflow_index", "utterance_id", "workflow_id"),
@@ -1704,16 +1700,16 @@ class WordInterval(MfaSqlBase):
     end = Column(Float, nullable=False)
 
     utterance_id = Column(Integer, ForeignKey("utterance.id"), index=True, nullable=False)
-    utterance: Utterance = relationship("Utterance", back_populates="word_intervals")
+    utterance = relationship("Utterance", back_populates="word_intervals")
 
     word_id = Column(Integer, ForeignKey("word.id"), index=True, nullable=False)
-    word: Word = relationship("Word", back_populates="word_intervals")
+    word = relationship("Word", back_populates="word_intervals")
 
     pronunciation_id = Column(Integer, ForeignKey("pronunciation.id"), index=True, nullable=True)
-    pronunciation: Pronunciation = relationship("Pronunciation", back_populates="word_intervals")
+    pronunciation = relationship("Pronunciation", back_populates="word_intervals")
 
     workflow_id = Column(Integer, ForeignKey("corpus_workflow.id"), index=True, nullable=False)
-    workflow: CorpusWorkflow = relationship("CorpusWorkflow", back_populates="word_intervals")
+    workflow = relationship("CorpusWorkflow", back_populates="word_intervals")
 
     phone_intervals = relationship(
         "PhoneInterval",
@@ -1793,7 +1789,7 @@ class Job(MfaSqlBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     corpus_id = Column(Integer, ForeignKey("corpus.id"), index=True, nullable=True)
-    corpus: Corpus = relationship("Corpus", back_populates="jobs")
+    corpus = relationship("Corpus", back_populates="jobs")
     utterances = relationship("Utterance", back_populates="job")
 
     symbols = relationship(
@@ -1806,7 +1802,7 @@ class Job(MfaSqlBase):
         back_populates="job",
     )
 
-    dictionaries: typing.List[Dictionary] = relationship(
+    dictionaries = relationship(
         "Dictionary",
         secondary=Dictionary2Job,
         back_populates="jobs",
@@ -2059,8 +2055,8 @@ class M2M2Job(MfaSqlBase):
     __tablename__ = "m2m_job"
     m2m_id = Column(ForeignKey("m2m_symbol.id"), primary_key=True)
     job_id = Column(ForeignKey("job.id"), primary_key=True)
-    m2m_symbol: M2MSymbol = relationship("M2MSymbol", back_populates="jobs")
-    job: Job = relationship("Job", back_populates="symbols")
+    m2m_symbol = relationship("M2MSymbol", back_populates="jobs")
+    job = relationship("Job", back_populates="symbols")
 
 
 class Word2Job(MfaSqlBase):
@@ -2085,5 +2081,5 @@ class Word2Job(MfaSqlBase):
     word_id = Column(ForeignKey("word.id"), primary_key=True)
     job_id = Column(ForeignKey("job.id"), primary_key=True)
     training = Column(Boolean, index=True)
-    word: Word = relationship("Word", back_populates="job")
-    job: Job = relationship("Job", back_populates="words")
+    word = relationship("Word", back_populates="job")
+    job = relationship("Job", back_populates="words")
