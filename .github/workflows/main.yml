@@ -71,9 +71,6 @@ jobs:
         run: mamba env update -n my-env -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: Update speechbrain
-        run: pip install -U speechbrain
-
       - name: Run tests
         shell: bash -l {0}
         run: pytest -x ./tests
