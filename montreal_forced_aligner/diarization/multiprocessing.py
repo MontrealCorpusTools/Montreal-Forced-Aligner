@@ -77,7 +77,6 @@ class PldaClassificationArguments(MfaArguments):
     train_ivector_path: str
     num_utts_path: str
     use_xvector: bool
-    min_utterances: int
 
 
 # noinspection PyUnresolvedReferences
@@ -492,7 +491,6 @@ class PldaClassificationFunction(KaldiFunction):
         self.train_ivector_path = args.train_ivector_path
         self.num_utts_path = args.num_utts_path
         self.use_xvector = args.use_xvector
-        self.min_utterances = args.min_utterances
 
     def _run(self) -> typing.Generator[typing.Tuple[int, int, int]]:
         """Run the function"""
@@ -502,8 +500,6 @@ class PldaClassificationFunction(KaldiFunction):
             for line in f:
                 speaker, utt_count = line.strip().split()
                 utt_count = int(utt_count)
-                if self.min_utterances and utt_count < self.min_utterances:
-                    continue
                 utterance_counts[int(speaker)] = utt_count
         input_proc = subprocess.Popen(
             [

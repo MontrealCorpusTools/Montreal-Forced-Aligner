@@ -175,7 +175,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
         self.current_labels = []
         self.classification_score = None
         self.initial_plda_score_threshold = 0
-        self.plda_score_threshold = 20
+        self.plda_score_threshold = 10
         self.initial_sb_score_threshold = 0.25
 
         self.ground_truth_utt2spk = {}
@@ -295,9 +295,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             raise
         self.initialized = True
 
-    def plda_classification_arguments(
-        self, min_cluster_size=None
-    ) -> List[PldaClassificationArguments]:
+    def plda_classification_arguments(self) -> List[PldaClassificationArguments]:
         """
         Generate Job arguments for :class:`~montreal_forced_aligner.diarization.multiprocessing.PldaClassificationFunction`
 
@@ -315,7 +313,6 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
                 self.speaker_ivector_path,
                 self.num_utts_path,
                 self.use_xvector,
-                min_cluster_size,
             )
             for j in self.jobs
         ]
@@ -818,7 +815,7 @@ class SpeakerDiarizer(IvectorCorpusMixin, TopLevelMfaWorker, FileExporterMixin):
             plda_transform_path = os.path.join(self.working_directory, "plda.pkl")
             with open(plda_transform_path, "rb") as f:
                 self.plda: PldaModel = pickle.load(f)
-            arguments = self.plda_classification_arguments(low_count)
+            arguments = self.plda_classification_arguments()
             func = PldaClassificationFunction
             utt2spk = {k: v for k, v in session.query(Utterance.id, Utterance.speaker_id)}
 

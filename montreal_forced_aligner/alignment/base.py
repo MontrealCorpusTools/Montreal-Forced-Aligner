@@ -755,6 +755,10 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
             cursor = conn.cursor()
             new_words = []
             word_index = self.get_next_primary_key(Word)
+            mapping_id = session.query(sqlalchemy.func.max(Word.mapping_id)).scalar()
+            if mapping_id is None:
+                mapping_id = -1
+            mapping_id += 1
             for (
                 utterance,
                 word_intervals,
@@ -782,6 +786,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         new_words.append(
                             {
                                 "id": word_index,
+                                "mapping_id": mapping_id,
                                 "word": word_id,
                                 "dictionary_id": 1,
                                 "word_type": WordType.oov,
@@ -789,6 +794,7 @@ class CorpusAligner(AcousticCorpusPronunciationMixin, AlignMixin, FileExporterMi
                         )
                         word_id = word_index
                         word_index += 1
+                        mapping_id += 1
                     max_word_interval_id += 1
                     new_word_interval_mappings.append(
                         {
