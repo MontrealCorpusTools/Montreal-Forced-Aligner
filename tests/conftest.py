@@ -112,7 +112,8 @@ def db_setup(temp_dir, global_config, request):
 def model_manager():
     from montreal_forced_aligner.models import ModelManager
 
-    return ModelManager()
+    github_token = os.getenv("MFA_GITHUB_TOKEN", None)
+    return ModelManager(github_token)
 
 
 @pytest.fixture(scope="session")
