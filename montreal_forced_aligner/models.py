@@ -1329,6 +1329,7 @@ class ModelManager:
             page += 1
         with mfa_open(self.cache_path, "w") as f:
             json.dump(self._cache_info, f, ensure_ascii=False)
+        self.synced_remote = True
 
     def has_local_model(self, model_type: str, model_name: str) -> bool:
         """Check for local model"""

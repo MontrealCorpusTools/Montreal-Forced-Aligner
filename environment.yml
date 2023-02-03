@@ -41,6 +41,7 @@ dependencies:
   - kneed
   - matplotlib
   - seaborn
+  - pip
   - pip:
       - build
       - twine
